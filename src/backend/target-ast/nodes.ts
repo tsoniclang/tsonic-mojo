@@ -43,11 +43,17 @@ export type MojoExpression =
       readonly whenTrue: MojoExpression;
       readonly whenFalse: MojoExpression;
     }
-  | { readonly kind: "call"; readonly callee: MojoExpression; readonly arguments: readonly MojoCallArgument[] }
+  | {
+      readonly kind: "call";
+      readonly callee: MojoExpression;
+      readonly genericArguments?: readonly import("../../target-model/provider/model.js").MojoTargetGenericArgument[];
+      readonly arguments: readonly MojoCallArgument[];
+    }
   | {
       readonly kind: "method-call";
       readonly receiver: MojoExpression;
       readonly name: string;
+      readonly genericArguments?: readonly import("../../target-model/provider/model.js").MojoTargetGenericArgument[];
       readonly arguments: readonly MojoCallArgument[];
     }
   | { readonly kind: "member"; readonly receiver: MojoExpression; readonly name: string }
@@ -59,7 +65,12 @@ export type MojoExpression =
       readonly end?: MojoExpression;
       readonly step?: MojoExpression;
     }
-  | { readonly kind: "construct"; readonly type: MojoTargetTypeRef; readonly arguments: readonly MojoCallArgument[] }
+  | {
+      readonly kind: "construct";
+      readonly type: MojoTargetTypeRef;
+      readonly genericArguments?: readonly import("../../target-model/provider/model.js").MojoTargetGenericArgument[];
+      readonly arguments: readonly MojoCallArgument[];
+    }
   | { readonly kind: "consume"; readonly expression: MojoExpression }
   | { readonly kind: "await"; readonly expression: MojoExpression }
   | { readonly kind: "parenthesized"; readonly expression: MojoExpression }
@@ -73,6 +84,7 @@ export interface MojoDictionaryEntry {
 export interface MojoCallArgument {
   readonly value: MojoExpression;
   readonly name?: string;
+  readonly spread?: boolean;
 }
 
 export interface MojoCatchClause {

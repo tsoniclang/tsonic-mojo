@@ -167,12 +167,12 @@ function printExpression(expression: MojoExpression): string {
     case "unary": return `${expression.operator}${/^[A-Za-z]/u.test(expression.operator) ? " " : ""}${printExpression(expression.operand)}`;
     case "binary": return `(${printExpression(expression.left)} ${expression.operator} ${printExpression(expression.right)})`;
     case "conditional": return `(${printExpression(expression.whenTrue)} if ${printExpression(expression.condition)} else ${printExpression(expression.whenFalse)})`;
-    case "call": return `${printExpression(expression.callee)}(${expression.arguments.map(printCallArgument).join(", ")})`;
-    case "method-call": return `${printExpression(expression.receiver)}.${expression.name}(${expression.arguments.map(printCallArgument).join(", ")})`;
+    case "call": return `${printExpression(expression.callee)}${printCallGenericArguments(expression.genericArguments)}(${expression.arguments.map(printCallArgument).join(", ")})`;
+    case "method-call": return `${printExpression(expression.receiver)}.${expression.name}${printCallGenericArguments(expression.genericArguments)}(${expression.arguments.map(printCallArgument).join(", ")})`;
     case "member": return `${printExpression(expression.receiver)}.${expression.name}`;
     case "element": return `${printExpression(expression.receiver)}[${printExpression(expression.index)}]`;
     case "slice": return `${printExpression(expression.receiver)}[${expression.start === undefined ? "" : printExpression(expression.start)}:${expression.end === undefined ? "" : printExpression(expression.end)}${expression.step === undefined ? "" : `:${printExpression(expression.step)}`}]`;
-    case "construct": return `${requiredTypeName(expression.type)}(${expression.arguments.map(printCallArgument).join(", ")})`;
+    case "construct": return `${requiredTypeName(expression.type)}${printCallGenericArguments(expression.genericArguments)}(${expression.arguments.map(printCallArgument).join(", ")})`;
     case "consume": return `${printExpression(expression.expression)}^`;
     case "await": return `await ${printExpression(expression.expression)}`;
     case "parenthesized": return `(${printExpression(expression.expression)})`;
@@ -180,8 +180,27 @@ function printExpression(expression: MojoExpression): string {
   }
 }
 
+function printCallGenericArguments(
+  arguments_: readonly import("../../target-model/provider/model.js").MojoTargetGenericArgument[] | undefined,
+): string {
+  return arguments_ === undefined || arguments_.length === 0
+    ? ""
+    : `[${arguments_.map(renderCallGenericArgument).join(", ")}]`;
+}
+
+function renderCallGenericArgument(
+  argument: import("../../target-model/provider/model.js").MojoTargetGenericArgument,
+): string {
+  const value = argument.kind === "type"
+    ? requiredTypeName(argument.type)
+    : argument.kind === "unbound"
+      ? "_"
+      : argument.expression;
+  return argument.name === undefined ? value : `${argument.name}=${value}`;
+}
+
 function printCallArgument(argument: MojoCallArgument): string {
-  const value = printExpression(argument.value);
+  const value = `${argument.spread === true ? "*" : ""}${printExpression(argument.value)}`;
   return argument.name === undefined ? value : `${argument.name}=${value}`;
 }
 

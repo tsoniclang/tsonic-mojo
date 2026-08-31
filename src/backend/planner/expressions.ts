@@ -4,8 +4,8 @@ import {
   BinaryExpression_Right,
   Node_Expression,
 } from "@tsonic/target-api/source";
-import { mojoTargetTypeEquals } from "../../target-model/provider/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
+import type { MojoValueConversion } from "../../analysis/program/model.js";
 import type { MojoExpression } from "../target-ast/nodes.js";
 import type { MojoCallArgument } from "../target-ast/nodes.js";
 import { appendMojoPlanningDiagnostic } from "./context.js";
@@ -121,7 +121,11 @@ export function planMojoExpression(
   }
   return expectedType === undefined || actualType === undefined
     ? planned
-    : convertMojoExpression(planned, actualType, expectedType, context, node);
+    : applyMojoConversion(
+        planned,
+        requiredConversion(node, expectedType, context),
+        context,
+      );
 }
 
 function planCall(node: Node, context: MojoPlanningContext): MojoExpression | undefined {
@@ -130,20 +134,17 @@ function planCall(node: Node, context: MojoPlanningContext): MojoExpression | un
     appendMojoPlanningDiagnostic(context, "MOJO_CALL_PLAN_MISSING", "Call expression has no sealed target selection.", node);
     return undefined;
   }
-  const sourceArguments = context.program.source.ast.arguments(node);
-  if (sourceArguments.some((argument) => argument === undefined)) return undefined;
   if (selection.kind === "project") {
-    if (sourceArguments.length !== selection.parameterTypes.length) return undefined;
-    const arguments_ = (sourceArguments as readonly Node[]).map((argument, index) =>
-      planMojoExpression(argument, context, selection.parameterTypes[index]));
+    const arguments_ = selection.arguments.map((argument) => planSelectedArgument(argument, context));
     if (arguments_.some((argument) => argument === undefined)) return undefined;
-    return {
+    const call: MojoExpression = {
       kind: "call",
       callee: { kind: "path", path: selection.functionName },
-      arguments: Object.freeze((arguments_ as MojoExpression[]).map((value) => Object.freeze({ value }))),
+      ...(selection.genericArguments.length === 0 ? {} : { genericArguments: selection.genericArguments }),
+      arguments: Object.freeze(arguments_ as MojoCallArgument[]),
     };
+    return applyMojoConversion(call, selection.resultConversion, context);
   }
-  const parameterTypes = selection.operation.parameterTypes ?? [];
   const target = selection.operation.target;
   if (target.kind !== "function-call" && target.kind !== "instance-call") {
     appendMojoPlanningDiagnostic(
@@ -154,32 +155,25 @@ function planCall(node: Node, context: MojoPlanningContext): MojoExpression | un
     );
     return undefined;
   }
-  const arguments_: MojoCallArgument[] = [];
-  for (const [index, argument] of selection.arguments.entries()) {
-    const expected = parameterTypes[index];
-    const planned = expected === undefined ? undefined : planMojoExpression(argument, context, expected);
-    if (planned === undefined) return undefined;
-    const binding = target.arguments[index];
-    if (binding === undefined) return undefined;
-    const value = binding.convention === "var" || binding.convention === "deinit"
-      ? { kind: "consume" as const, expression: planned }
-      : planned;
-    arguments_.push(Object.freeze({
-      value,
-      ...(binding.position === "keyword" ? { name: binding.nativeName! } : {}),
-    }));
-  }
+  const arguments_ = selection.arguments.map((argument) => planSelectedArgument(argument, context));
+  if (arguments_.some((argument) => argument === undefined)) return undefined;
   let call: MojoExpression;
   if (target.kind === "function-call") {
     registerMojoModuleImport(context, target.modulePath);
     call = {
       kind: "call",
       callee: { kind: "path", path: [...target.modulePath, ...(target.ownerPath ?? []), target.name].join(".") },
-      arguments: Object.freeze(arguments_),
+      ...(selection.operation.genericArguments.length === 0
+        ? {}
+        : { genericArguments: selection.operation.genericArguments }),
+      arguments: Object.freeze(arguments_ as MojoCallArgument[]),
     };
   } else if (target.kind === "instance-call") {
     if (selection.receiver === undefined) return undefined;
-    const receiver = planMojoExpression(selection.receiver, context, selection.operation.receiverType);
+    const rawReceiver = planMojoExpression(selection.receiver, context);
+    const receiver = rawReceiver === undefined || selection.receiverConversion === undefined
+      ? rawReceiver
+      : applyMojoConversion(rawReceiver, selection.receiverConversion, context);
     if (receiver === undefined) return undefined;
     call = {
       kind: "method-call",
@@ -187,44 +181,74 @@ function planCall(node: Node, context: MojoPlanningContext): MojoExpression | un
         ? { kind: "consume", expression: receiver }
         : receiver,
       name: target.name,
-      arguments: Object.freeze(arguments_),
+      ...(selection.operation.genericArguments.length === 0
+        ? {}
+        : { genericArguments: selection.operation.genericArguments }),
+      arguments: Object.freeze(arguments_ as MojoCallArgument[]),
     };
   } else {
     return undefined;
   }
-  const sourceType = context.program.queries.expressionType(node);
-  return sourceType === undefined
-    ? call
-    : convertMojoExpression(call, selection.operation.resultType, sourceType, context, node);
+  return applyMojoConversion(call, selection.resultConversion, context);
 }
 
-function convertMojoExpression(
-  expression: MojoExpression,
-  actual: MojoTargetTypeRef,
-  expected: MojoTargetTypeRef,
+function planSelectedArgument(
+  argument: import("../../analysis/program/model.js").MojoAnalyzedCallArgument,
   context: MojoPlanningContext,
-  sourceNode: Node,
-): MojoExpression | undefined {
-  if (mojoTargetTypeEquals(actual, expected)) return expression;
-  if (isJsString(actual) && expected.kind === "native-string") {
-    registerMojoModuleImport(context, ["tsonic_js"]);
-    return { kind: "method-call", receiver: expression, name: "to_native_strict", arguments: Object.freeze([]) };
-  }
-  if (actual.kind === "native-string" && isJsString(expected)) {
-    registerMojoModuleImport(context, ["tsonic_js"]);
-    return { kind: "construct", type: expected, arguments: Object.freeze([{ value: expression }]) };
-  }
-  if (actual.kind === "source-primitive" && expected.kind === "source-primitive") {
-    registerMojoTypeImports(expected, context);
-    return { kind: "construct", type: expected, arguments: Object.freeze([{ value: expression }]) };
-  }
-  appendMojoPlanningDiagnostic(
+): MojoCallArgument | undefined {
+  const expression = planMojoExpression(argument.expression, context);
+  if (expression === undefined) return undefined;
+  const converted = applyMojoConversion(
+    expression,
+    argument.conversion,
     context,
-    "MOJO_VALUE_CONVERSION_UNPROVEN",
-    `No exact Mojo value conversion exists from '${JSON.stringify(actual)}' to '${JSON.stringify(expected)}'.`,
-    sourceNode,
   );
-  return undefined;
+  if (converted === undefined) return undefined;
+  const value: MojoExpression = argument.passing === "consume"
+    ? { kind: "consume", expression: converted }
+    : converted;
+  return Object.freeze({
+    value,
+    ...(argument.position === "keyword" ? { name: argument.nativeName! } : {}),
+    ...(argument.spread ? { spread: true } : {}),
+  });
+}
+
+function requiredConversion(
+  expression: Node,
+  expectedType: MojoTargetTypeRef,
+  context: MojoPlanningContext,
+): MojoValueConversion | undefined {
+  const conversion = context.program.queries.expressionConversion(expression, expectedType);
+  if (conversion === undefined) {
+    appendMojoPlanningDiagnostic(
+      context,
+      "MOJO_VALUE_CONVERSION_PLAN_MISSING",
+      "Expression use has no sealed Mojo conversion classification.",
+      expression,
+    );
+  }
+  return conversion;
+}
+
+function applyMojoConversion(
+  expression: MojoExpression,
+  conversion: MojoValueConversion | undefined,
+  context: MojoPlanningContext,
+): MojoExpression | undefined {
+  if (conversion === undefined) return undefined;
+  switch (conversion.kind) {
+    case "identity": return expression;
+    case "js-to-native-string":
+      registerMojoModuleImport(context, ["tsonic_js"]);
+      return { kind: "method-call", receiver: expression, name: "to_native_strict", arguments: Object.freeze([]) };
+    case "native-to-js-string":
+      registerMojoModuleImport(context, ["tsonic_js"]);
+      return { kind: "construct", type: conversion.targetType, arguments: Object.freeze([{ value: expression }]) };
+    case "primitive-cast":
+      registerMojoTypeImports(conversion.targetType, context);
+      return { kind: "construct", type: conversion.targetType, arguments: Object.freeze([{ value: expression }]) };
+  }
 }
 
 function isJsString(type: MojoTargetTypeRef): boolean {

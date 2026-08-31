@@ -3,18 +3,13 @@ import type {
   MojoAnalyzedFunction,
   MojoCallSelection,
 } from "./model.js";
-import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
 
 export function providerCallRequiresRaisingConversion(
   selection: Extract<MojoCallSelection, { readonly kind: "provider" }>,
-  expressionTypes: WeakMap<Node, MojoTargetTypeRef>,
 ): boolean {
-  return selection.arguments.some((argument, index) => {
-    const source = expressionTypes.get(argument);
-    const target = selection.operation.parameterTypes?.[index];
-    return source?.kind === "target-named" &&
-      source.id === "tsonic.mojo.js.JsString" && target?.kind === "native-string";
-  });
+  return selection.arguments.some((argument) => argument.conversion.kind === "js-to-native-string") ||
+    selection.receiverConversion?.kind === "js-to-native-string" ||
+    selection.resultConversion.kind === "js-to-native-string";
 }
 
 export function propagateRaisingEffects(

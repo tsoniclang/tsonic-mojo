@@ -179,7 +179,9 @@ export function mojoGenericParametersText(
       parts.push("*");
     }
     const name = `${parameter.variadic ? "*" : ""}${parameter.name}`;
-    const constraints = parameter.constraints.map(requiredTypeName).join(" & ");
+    const constraints = parameter.constraints.length === 0
+      ? "AnyType"
+      : parameter.constraints.map(requiredTypeName).join(" & ");
     const defaultArgument = parameter.defaultArgument === undefined
       ? ""
       : ` = ${renderGenericArgument(parameter.defaultArgument)}`;

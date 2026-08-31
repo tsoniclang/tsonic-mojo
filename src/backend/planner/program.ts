@@ -8,7 +8,9 @@ import { registerMojoTypeImports } from "./types/render.js";
 
 export function planMojoOutput(context: MojoPlanningContext): TargetStageResult<MojoOutputPlan> {
   const declarations: MojoDeclaration[] = [];
-  for (const function_ of context.program.functions) {
+  for (const declaration of context.program.declarations) {
+    if (declaration.kind !== "function") continue;
+    const function_ = declaration;
     for (const parameter of function_.parameters) registerMojoTypeImports(parameter.type, context);
     registerMojoTypeImports(function_.resultType, context);
     const statements = planMojoFunctionStatements(function_, context);
@@ -16,13 +18,24 @@ export function planMojoOutput(context: MojoPlanningContext): TargetStageResult<
     declarations.push(Object.freeze({
       kind: "function",
       name: function_.name,
-      genericParameters: Object.freeze([]),
+      genericParameters: Object.freeze(function_.typeParameters.map((parameter) => Object.freeze({
+        kind: "type" as const,
+        name: parameter.name,
+        position: "positional-or-keyword" as const,
+        variadic: false,
+        constraints: parameter.constraints,
+      }))),
       parameters: Object.freeze(function_.parameters.map((parameter) => Object.freeze({
         name: parameter.name,
         type: parameter.type,
+        convention: parameter.convention,
+        variadic: parameter.rest,
+        ...(parameter.optional && parameter.initializer === undefined
+          ? { defaultValue: Object.freeze({ kind: "none-literal" as const }) }
+          : {}),
       }))),
       resultType: function_.resultType,
-      asynchronous: false,
+      asynchronous: function_.asynchronous,
       raises: function_.raises,
       statements,
     }));

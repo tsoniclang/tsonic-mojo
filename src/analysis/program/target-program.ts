@@ -11,11 +11,13 @@ import {
   targetSourceSyntaxProgram,
 } from "@tsonic/target-api/analysis";
 import {
-  Node_Expression,
   Node_Initializer,
 } from "@tsonic/target-api/source";
 import { createMojoNameAllocator } from "../names/identifiers.js";
-import { selectMojoProviderCall } from "../operations/provider-selection.js";
+import { analyzeMojoFunctionSignature } from "../callables/signatures.js";
+import { createMojoConversionIndex } from "../conversions/classification.js";
+import { recordMojoFunctionConversionUses } from "../conversions/uses.js";
+import { analyzeMojoCall } from "../operations/calls.js";
 import { analyzeMojoRuntimePackages } from "../runtime/references.js";
 import {
   resolveMojoTargetType,
@@ -28,7 +30,6 @@ import {
 import { inferMojoExpressionType, isMojoExpressionNode } from "./expression-types.js";
 import type {
   MojoAnalyzedFunction,
-  MojoAnalyzedParameter,
   MojoCallSelection,
   MojoProgramQueries,
   MojoTargetAnalysisRequest,
@@ -54,6 +55,7 @@ export function analyzeMojoTargetProgram(
   const bindingTypes = new WeakMap<Node, MojoTargetTypeRef>();
   const expressionTypes = new WeakMap<Node, MojoTargetTypeRef>();
   const callSelections = new WeakMap<Node, MojoCallSelection>();
+  const conversions = createMojoConversionIndex();
   const functionByDeclaration = new WeakMap<Node, MojoAnalyzedFunction>();
   const directRaises = new Map<Node, boolean>();
   const projectDependencies = new Map<Node, Set<Node>>();
@@ -124,75 +126,21 @@ export function analyzeMojoTargetProgram(
 
   const functions: MojoAnalyzedFunction[] = [];
   for (const draft of functionDrafts) {
-    const semantics = input.source.semantics.forFile(draft.sourceFile);
-    const callableType = semantics.declarations.declaredValueType(draft.declaration);
-    const callable = callableType === undefined ? undefined : semantics.types.callable(callableType);
-    if (callable === undefined) {
-      diagnostics.push(diagnostic(
-        "MOJO_FUNCTION_SIGNATURE_NOT_PROVEN",
-        "The TypeScript checker supplied no exact callable signature for this function.",
-        draft.declaration,
-      ));
-      continue;
-    }
-    const sourceParameters = ast.parameters(draft.declaration);
-    if (sourceParameters.length !== callable.parameters.length ||
-      sourceParameters.some((parameter) => parameter === undefined)) {
-      diagnostics.push(diagnostic(
-        "MOJO_FUNCTION_PARAMETER_EVIDENCE_MISMATCH",
-        "Function syntax and selected checker parameter evidence do not align exactly.",
-        draft.declaration,
-      ));
-      continue;
-    }
-    const parameters: MojoAnalyzedParameter[] = [];
-    for (const [index, parameter] of (sourceParameters as readonly Node[]).entries()) {
-      const nameNode = ast.name(parameter);
-      const selected = callable.parameters[index];
-      if (nameNode === undefined || !ast.is.IsIdentifier(nameNode) || selected === undefined) {
-        diagnostics.push(diagnostic(
-          "MOJO_PARAMETER_SHAPE_UNSUPPORTED",
-          "Mojo foundation requires simple named parameters with exact checker-selected types.",
-          parameter,
-        ));
-        continue;
-      }
-      const typeResolution = resolveMojoTargetType(
-        selected.type,
-        ast.typeNode(parameter),
-        { ast, semantics, sourceFacts: input.source.sourceFacts, providerSemantics, projectTypes, jsEnabled },
-      );
-      if (typeResolution.kind === "unsupported") {
-        diagnostics.push(typeDiagnostic(parameter, typeResolution.reason));
-        continue;
-      }
-      const name = draft.localNames(ast.text(nameNode));
-      bindingNames.set(parameter, name);
-      bindingTypes.set(parameter, typeResolution.type);
-      parameters.push(Object.freeze({
-        declaration: parameter,
-        name,
-        type: typeResolution.type,
-      }));
-    }
-    const resultResolution = resolveMojoTargetType(
-      callable.result.selectedType,
-      callable.result.authoredTypeNode ?? ast.typeNode(draft.declaration),
-      { ast, semantics, sourceFacts: input.source.sourceFacts, providerSemantics, projectTypes, jsEnabled },
-    );
-    if (resultResolution.kind === "unsupported") {
-      diagnostics.push(typeDiagnostic(draft.declaration, resultResolution.reason));
-      continue;
-    }
-    const function_: MojoAnalyzedFunction = {
+    const function_ = analyzeMojoFunctionSignature({
+      source: input.source,
+      providerSemantics,
+      projectTypes,
+      jsEnabled,
       declaration: draft.declaration,
       sourceFile: draft.sourceFile,
       name: draft.name,
-      parameters: Object.freeze(parameters),
-      resultType: resultResolution.type,
       body: draft.body,
-      raises: false,
-    };
+      allocateLocalName: draft.localNames,
+      bindingNames,
+      bindingTypes,
+      diagnostics,
+    });
+    if (function_ === undefined) continue;
     functions.push(function_);
     functionByDeclaration.set(draft.declaration, function_);
     allocateLocalBindings(
@@ -253,76 +201,42 @@ export function analyzeMojoTargetProgram(
         ));
         return;
       }
-      const callee = Node_Expression(ast, node);
-      const projectDeclaration = callee === undefined
-        ? undefined
-        : input.source.navigation.sourceReferenceFor(callee)?.declaration;
-      const projectFunction = projectDeclaration === undefined
-        ? undefined
-        : functionByDeclaration.get(projectDeclaration);
-      if (projectFunction !== undefined) {
-        dependencies.add(projectFunction.declaration);
-        callSelections.set(node, Object.freeze({
-          kind: "project",
-          functionName: projectFunction.name,
-          parameterTypes: Object.freeze(projectFunction.parameters.map((entry) => entry.type)),
-          resultType: projectFunction.resultType,
-        }));
+      const analyzedCall = analyzeMojoCall(node, selectedCall, {
+        source: input.source,
+        providerSemantics,
+        projectTypes,
+        jsEnabled,
+        expressionTypes,
+        conversions,
+        functionByDeclaration,
+      });
+      if (analyzedCall.kind === "unsupported") {
+        diagnostics.push(diagnostic(analyzedCall.code, analyzedCall.reason, node));
         return;
       }
-      const provider = selectMojoProviderCall(input.source, selectedCall, providerSemantics);
-      if (provider.kind !== "selected") {
-        diagnostics.push(diagnostic(
-          provider.kind === "ambiguous"
-            ? "MOJO_PROVIDER_CALL_AMBIGUOUS"
-            : "MOJO_CALL_TARGET_UNSUPPORTED",
-          provider.kind === "ambiguous"
-            ? `Selected provider call matches ${provider.count} Mojo operations.`
-            : provider.reason,
-          node,
-        ));
-        return;
-      }
-      const arguments_ = ast.arguments(node);
-      const target = provider.operation.target;
-      if (target.kind !== "function-call" && target.kind !== "instance-call") {
-        diagnostics.push(diagnostic(
-          "MOJO_PROVIDER_CALL_FORM_INVALID",
-          `Selected provider call maps to non-call target form '${target.kind}'.`,
-          node,
-        ));
-        return;
-      }
-      if (arguments_.some((argument) => argument === undefined) ||
-        arguments_.length !== (provider.operation.parameterTypes ?? []).length ||
-        arguments_.length !== target.arguments.length) {
-        diagnostics.push(diagnostic(
-          "MOJO_PROVIDER_CALL_ABI_MISMATCH",
-          "Selected provider call arguments do not align with its closed Mojo ABI row.",
-          node,
-        ));
-        return;
-      }
-      const receiver = selectedCall.sourceReceiver?.expression;
-      callSelections.set(node, Object.freeze({
-        kind: "provider",
-        operation: provider.operation,
-        arguments: Object.freeze(arguments_ as readonly Node[]),
-        ...(receiver === undefined ? {} : { receiver }),
-      }));
+      if (analyzedCall.dependency !== undefined) dependencies.add(analyzedCall.dependency);
+      callSelections.set(node, analyzedCall.selection);
     });
     walkSourceTreePostOrder(function_.body, ast, (node): void => {
       if (!isMojoExpressionNode(node, ast)) return;
       const inferred = inferMojoExpressionType(node, ast, expressionTypes);
       if (inferred !== undefined) expressionTypes.set(node, inferred);
     });
+    recordMojoFunctionConversionUses(
+      function_,
+      ast,
+      bindingTypes,
+      expressionTypes,
+      conversions,
+      diagnostics,
+    );
     let functionRaises = false;
     walkSourceTree(function_.body, ast, (node): void => {
       if (!ast.is.IsCallExpression(node)) return;
       const selection = callSelections.get(node);
       if (selection?.kind !== "provider") return;
       functionRaises = functionRaises || selection.operation.raises === true ||
-        providerCallRequiresRaisingConversion(selection, expressionTypes);
+        providerCallRequiresRaisingConversion(selection);
     });
     directRaises.set(function_.declaration, functionRaises);
   }
@@ -352,6 +266,9 @@ export function analyzeMojoTargetProgram(
     expressionType(expression: Node): MojoTargetTypeRef | undefined {
       return expressionTypes.get(expression);
     },
+    expressionConversion(expression: Node, expectedType: MojoTargetTypeRef) {
+      return conversions.get(expression, expectedType);
+    },
     callSelection(call: Node): MojoCallSelection | undefined {
       return callSelections.get(call);
     },
@@ -360,7 +277,7 @@ export function analyzeMojoTargetProgram(
     configuration,
     source: targetSourceSyntaxProgram(input.source),
     projectTypes,
-    functions: Object.freeze(finalizedFunctions),
+    declarations: Object.freeze(finalizedFunctions),
     queries,
     runtimePackages: analyzeMojoRuntimePackages(input.runtimeReferences),
   }));
