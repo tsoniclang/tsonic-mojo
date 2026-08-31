@@ -280,7 +280,7 @@ function normalizeArgument(
 ): MojoCompilerFunctionArgument {
   const variadic = argument.name.startsWith("*");
   return Object.freeze({
-    name: variadic ? argument.name.slice(1) : argument.name,
+    name: variadic ? argument.name.replace(/^\*{1,2}/u, "") : argument.name,
     convention: argument.convention,
     position: argument.passingKind === "pos"
       ? "positional"

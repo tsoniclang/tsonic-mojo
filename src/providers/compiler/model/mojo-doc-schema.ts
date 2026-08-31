@@ -18,6 +18,7 @@ export interface MojoDocParameter extends MojoDocTypeValue {
   readonly name: string;
   readonly passingKind: "pos" | "pos_or_kw" | "kw" | "inferred";
   readonly traits?: readonly MojoDocTypeValue[];
+  readonly default?: string;
   readonly description: string;
 }
 
@@ -103,12 +104,27 @@ export interface MojoDocModule {
   readonly summary: string;
 }
 
+export interface MojoDocPackage {
+  readonly kind: "package";
+  readonly name: string;
+  readonly modules: readonly MojoDocModule[];
+  readonly packages: readonly MojoDocPackage[];
+  readonly description: string;
+  readonly summary: string;
+}
+
 export interface MojoDocDocument {
   readonly version: string;
   readonly decl: MojoDocModule;
 }
 
+export interface MojoDocPackageDocument {
+  readonly version: string;
+  readonly decl: MojoDocPackage;
+}
+
 const moduleKeys = ["aliases", "description", "functions", "kind", "name", "structs", "summary", "traits"];
+const packageKeys = ["description", "kind", "modules", "name", "packages", "summary"];
 const groupKeys = ["kind", "name", "overloads"];
 const overloadKeys = [
   "args", "async", "constraints", "deprecated", "description",
@@ -117,7 +133,7 @@ const overloadKeys = [
   "raisesDoc", "returns", "signature", "sinceVersion", "summary",
 ];
 const argumentKeys = ["convention", "default", "description", "kind", "name", "passingKind", "path", "type"];
-const parameterKeys = ["description", "kind", "name", "passingKind", "path", "traits", "type"];
+const parameterKeys = ["default", "description", "kind", "name", "passingKind", "path", "traits", "type"];
 const structKeys = [
   "aliases", "constraints", "convention", "deprecated", "description", "fields",
   "functions", "isStabilityTracked", "isStable", "kind", "name", "parameters",
@@ -141,6 +157,28 @@ export function parseMojoDocDocument(value: unknown): MojoDocDocument {
   const version = text(root.version, "document.version");
   const decl = parseModule(root.decl, "document.decl");
   return Object.freeze({ version, decl });
+}
+
+export function parseMojoDocPackageDocument(value: unknown): MojoDocPackageDocument {
+  const root = record(value, "document");
+  exactKeys(root, ["decl", "version"], "document");
+  const version = text(root.version, "document.version");
+  const decl = parsePackage(root.decl, "document.decl");
+  return Object.freeze({ version, decl });
+}
+
+function parsePackage(value: unknown, field: string): MojoDocPackage {
+  const input = record(value, field);
+  exactKeys(input, packageKeys, field);
+  literal(input.kind, "package", `${field}.kind`);
+  return Object.freeze({
+    kind: "package",
+    name: identifier(input.name, `${field}.name`),
+    modules: parseArray(input.modules, `${field}.modules`, parseModule),
+    packages: parseArray(input.packages, `${field}.packages`, parsePackage),
+    description: text(input.description, `${field}.description`),
+    summary: text(input.summary, `${field}.summary`),
+  });
 }
 
 function parseModule(value: unknown, field: string): MojoDocModule {
@@ -198,9 +236,13 @@ function parseArgument(value: unknown, field: string): MojoDocArgument {
   literal(input.kind, "argument", `${field}.kind`);
   const convention = oneOf(input.convention, ["imm", "mut", "var", "ref", "out", "deinit"], `${field}.convention`);
   const passingKind = oneOf(input.passingKind, ["pos", "pos_or_kw", "kw"], `${field}.passingKind`);
+  const name = argumentName(input.name, `${field}.name`);
+  if (name.startsWith("**") && passingKind !== "kw") {
+    throw new Error(`Mojo documentation '${field}' has inconsistent keyword-variadic argument evidence.`);
+  }
   return Object.freeze({
     kind: "argument",
-    name: argumentName(input.name, `${field}.name`),
+    name,
     convention,
     passingKind,
     ...parseTypeValue(input, field),
@@ -221,6 +263,7 @@ function parseParameter(value: unknown, field: string): MojoDocParameter {
     ...(input.traits === undefined
       ? {}
       : { traits: parseArray(input.traits, `${field}.traits`, parseTypeValue) }),
+    ...(input.default === undefined ? {} : { default: text(input.default, `${field}.default`) }),
     description: text(input.description, `${field}.description`),
   });
 }
@@ -348,7 +391,7 @@ function identifier(value: unknown, field: string): string {
 
 function argumentName(value: unknown, field: string): string {
   const result = text(value, field);
-  const unwrapped = result.startsWith("*") ? result.slice(1) : result;
+  const unwrapped = result.replace(/^\*{1,2}/u, "");
   if (!/^[_A-Za-z][_A-Za-z0-9]*$/u.test(unwrapped)) {
     throw new Error(`Mojo documentation '${field}' is not an argument name.`);
   }

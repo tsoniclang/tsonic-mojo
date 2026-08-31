@@ -44,8 +44,14 @@ function configuration() {
 test("compiler snapshots close exact command, environment, package, module, and source identity", () => {
   const snapshot = createMojoCompilerProjectSnapshot(configuration(), "1.1.0.dev2026083005");
   assert.equal(snapshot.packages.length, 1);
-  assert.deepEqual(snapshot.packages[0].modules.map(({ modulePath }) => modulePath), [["api"], ["traits"]]);
-  assert.equal(snapshot.packages[0].modules[0].byteLength, readFileSync(join(sourceRoot, "api.mojo")).byteLength);
+  assert.deepEqual(snapshot.packages[0].modules.map(({ modulePath }) => modulePath), [
+    ["_private"],
+    ["api"],
+    ["traits"],
+  ]);
+  const api = snapshot.packages[0].modules.find(({ modulePath }) => modulePath.join(".") === "api");
+  assert.ok(api);
+  assert.equal(api.byteLength, readFileSync(join(sourceRoot, "api.mojo")).byteLength);
   assert.match(snapshot.digest, /^[0-9a-f]{64}$/u);
   assert.ok(Object.isFrozen(snapshot));
 });
@@ -54,7 +60,8 @@ test("compiler metadata extraction normalizes exact conventions, keywords, const
   const providerConfiguration = configuration();
   const snapshot = createMojoCompilerProjectSnapshot(providerConfiguration, "1.1.0.dev2026083005");
   const package_ = snapshot.packages[0];
-  const source = package_.modules[0];
+  const source = package_.modules.find(({ modulePath }) => modulePath.join(".") === "api");
+  assert.ok(source);
   const loader = createMojoCompilerMetadataLoader(join(repositoryRoot, ".temp", "compiler-provider-test"));
   try {
     const model = loader.module({ snapshot, package: package_, module: source });
@@ -174,16 +181,20 @@ test("compiler metadata uses the exact snapshotted environment and persistent do
     const providerConfiguration = configuration();
     const snapshot = createMojoCompilerProjectSnapshot(providerConfiguration, "1.1.0.dev2026083005");
     const package_ = snapshot.packages[0];
-    const source = package_.modules[0];
+    const source = package_.modules.find(({ modulePath }) => modulePath.join(".") === "api");
+    assert.ok(source);
+    const traits = package_.modules.find(({ modulePath }) => modulePath.join(".") === "traits");
+    assert.ok(traits);
     process.env.TSONIC_MOJO_PROVIDER_ENV = "mutated-after-snapshot";
 
     const first = createMojoCompilerMetadataLoader(cacheRoot);
     try {
       assert.equal(first.module({ snapshot, package: package_, module: source }).functions[0].name, "sum");
+      assert.equal(first.module({ snapshot, package: package_, module: traits }).declarations.length, 3);
     } finally {
       first.close();
     }
-    assert.equal(readFileSync(logPath, "utf8"), "doc\ndoc\n");
+    assert.equal(readFileSync(logPath, "utf8"), "doc\n");
 
     const second = createMojoCompilerMetadataLoader(cacheRoot);
     try {
@@ -193,8 +204,8 @@ test("compiler metadata uses the exact snapshotted environment and persistent do
     }
     assert.equal(
       readFileSync(logPath, "utf8"),
-      "doc\ndoc\n",
-      "the exact cached documents avoid compiler re-entry",
+      "doc\n",
+      "the exact cached package document avoids compiler re-entry",
     );
 
     const documentPath = join(
@@ -202,7 +213,7 @@ test("compiler metadata uses the exact snapshotted environment and persistent do
       "documents",
       snapshot.digest,
       encodeURIComponent(package_.id),
-      "api.json",
+      "package.json",
     );
     assert.equal(existsSync(documentPath), true);
     writeFileSync(documentPath, "corrupt");
@@ -214,7 +225,7 @@ test("compiler metadata uses the exact snapshotted environment and persistent do
     }
     assert.equal(
       readFileSync(logPath, "utf8"),
-      "doc\ndoc\ndoc\n",
+      "doc\ndoc\n",
       "corrupt cache data is regenerated exactly once",
     );
   } finally {
@@ -224,12 +235,36 @@ test("compiler metadata uses the exact snapshotted environment and persistent do
   }
 });
 
+test("compiler package documents cannot publish modules absent from the immutable source snapshot", () => {
+  const cacheRoot = join(repositoryRoot, ".temp", `compiler-provider-unexpected-${process.pid}`);
+  const previousUnexpected = process.env.TSONIC_MOJO_PROVIDER_EXTRA_MODULE;
+  process.env.TSONIC_MOJO_PROVIDER_EXTRA_MODULE = "unexpected";
+  try {
+    const snapshot = createMojoCompilerProjectSnapshot(configuration(), "1.1.0.dev2026083005");
+    const package_ = snapshot.packages[0];
+    const source = package_.modules.find(({ modulePath }) => modulePath.join(".") === "api");
+    assert.ok(source);
+    const loader = createMojoCompilerMetadataLoader(cacheRoot);
+    try {
+      assert.throws(
+        () => loader.module({ snapshot, package: package_, module: source }),
+        /documentation contains 1 module\(s\) absent from its immutable source snapshot/u,
+      );
+    } finally {
+      loader.close();
+    }
+  } finally {
+    restoreEnvironment("TSONIC_MOJO_PROVIDER_EXTRA_MODULE", previousUnexpected);
+  }
+});
+
 test("corrupt staged sources recover through a private immutable snapshot", () => {
   const cacheRoot = join(repositoryRoot, ".temp", `compiler-provider-staging-${process.pid}`);
   const providerConfiguration = configuration();
   const snapshot = createMojoCompilerProjectSnapshot(providerConfiguration, "1.1.0.dev2026083005");
   const package_ = snapshot.packages[0];
-  const source = package_.modules[0];
+  const source = package_.modules.find(({ modulePath }) => modulePath.join(".") === "api");
+  assert.ok(source);
   const first = createMojoCompilerMetadataLoader(cacheRoot);
   try {
     first.module({ snapshot, package: package_, module: source });
@@ -260,7 +295,7 @@ test("runtime package artifacts retain the exact analyzed Mojo sources", () => {
     include: importRoot,
     attributes: { packageName: "probe" },
   }])[0];
-  assert.deepEqual(packagePlan.sources.map(({ path }) => path), ["api.mojo", "traits.mojo"]);
+  assert.deepEqual(packagePlan.sources.map(({ path }) => path), ["_private.mojo", "api.mojo", "traits.mojo"]);
   assert.match(packagePlan.digest, /^[0-9a-f]{64}$/u);
   const output = materializeMojoOutputPlan({
     configuration: {
@@ -275,7 +310,7 @@ test("runtime package artifacts retain the exact analyzed Mojo sources", () => {
   });
   assert.deepEqual(
     output.artifacts.filter(({ path }) => path.startsWith("packages/")).map(({ path }) => path),
-    ["packages/probe/api.mojo", "packages/probe/traits.mojo"],
+    ["packages/probe/_private.mojo", "packages/probe/api.mojo", "packages/probe/traits.mojo"],
   );
   const project = output.artifacts.find(({ path }) => path === "pixi.toml");
   assert.match(project.text, /-I 'packages'/u);

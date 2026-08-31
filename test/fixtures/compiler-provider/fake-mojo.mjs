@@ -1,5 +1,4 @@
 import { appendFileSync, writeFileSync } from "node:fs";
-import { basename } from "node:path";
 
 const args = process.argv.slice(2);
 if (args.length === 1 && args[0] === "--version") {
@@ -96,25 +95,7 @@ const struct = (name, extras = {}) => ({
   ...extras,
 });
 
-if (basename(args[1]) === "traits.mojo") {
-  writeFileSync(args[outputIndex + 1], JSON.stringify({
-    decl: {
-      aliases: [],
-      description: "",
-      functions: [],
-      kind: "module",
-      name: "traits",
-      structs: [struct("Flag")],
-      summary: "",
-      traits: [trait("Sequence"), trait("Copyable")],
-    },
-    version: "1.1.0.dev2026083005",
-  }));
-  process.exit(0);
-}
-
-writeFileSync(args[outputIndex + 1], JSON.stringify({
-  decl: {
+const apiModule = {
     aliases: [],
     description: "",
     functions: [
@@ -212,6 +193,38 @@ writeFileSync(args[outputIndex + 1], JSON.stringify({
     })],
     summary: "",
     traits: [],
+  };
+const traitsModule = {
+  aliases: [],
+  description: "",
+  functions: [],
+  kind: "module",
+  name: "traits",
+  structs: [struct("Flag")],
+  summary: "",
+  traits: [trait("Sequence"), trait("Copyable")],
+};
+const extraModules = process.env.TSONIC_MOJO_PROVIDER_EXTRA_MODULE === undefined
+  ? []
+  : [{
+      aliases: [],
+      description: "",
+      functions: [],
+      kind: "module",
+      name: process.env.TSONIC_MOJO_PROVIDER_EXTRA_MODULE,
+      structs: [],
+      summary: "",
+      traits: [],
+    }];
+
+writeFileSync(args[outputIndex + 1], JSON.stringify({
+  decl: {
+    description: "",
+    kind: "package",
+    modules: [apiModule, traitsModule, ...extraModules],
+    name: "probe",
+    packages: [],
+    summary: "",
   },
   version: "1.1.0.dev2026083005",
 }));
