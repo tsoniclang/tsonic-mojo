@@ -37,6 +37,7 @@ import {
   writeCachedMojoPackageDocument,
 } from "./documents/package-document.js";
 import type { IndexedMojoPackageDocument } from "./documents/package-document.js";
+import { classifyMojoGenericParameterWithCompiler } from "./classification/generic-parameter.js";
 
 const extractionTimeoutMilliseconds = 600_000;
 const maximumDiagnosticBytes = 2_097_152;
@@ -75,7 +76,7 @@ export function createMojoCompilerMetadataLoader(
     const snapshotRoot = materializedSnapshots.get(options.snapshot.digest) ??
       prepareSnapshot(cacheRoot, options.snapshot, ephemeralSnapshotRoots);
     materializedSnapshots.set(options.snapshot.digest, snapshotRoot);
-    verifyPackageSnapshot(snapshotRoot, options.package);
+    verifyMaterializedSnapshot(snapshotRoot, options.snapshot);
     const cached = readCachedMojoPackageDocument(cacheRoot, options.snapshot, options.package);
     if (cached !== undefined) {
       const indexed = indexMojoPackageDocument(options.package, cached);
@@ -135,7 +136,7 @@ export function createMojoCompilerMetadataLoader(
           `mojo doc document version '${document.version}' differs from compiler '${options.snapshot.compiler.version}'.`,
         );
       }
-      verifyPackageSnapshot(snapshotRoot, options.package);
+      verifyMaterializedSnapshot(snapshotRoot, options.snapshot);
       const indexed = indexMojoPackageDocument(options.package, document);
       writeCachedMojoPackageDocument(cacheRoot, options.snapshot, options.package, parsed);
       packageDocuments.set(identity, indexed);
@@ -191,16 +192,35 @@ export function createMojoCompilerMetadataLoader(
       const existing = modules.get(identity);
       if (existing !== undefined) return existing;
       const document = loadDocument(options);
+      const snapshotRoot = materializedSnapshots.get(options.snapshot.digest);
+      if (snapshotRoot === undefined) {
+        throw new Error(`Mojo compiler snapshot '${options.snapshot.digest}' is not materialized.`);
+      }
       const model = normalizeMojoDocModule({
         package: options.package,
         modulePath: options.module.modulePath,
         sourceDigest: options.module.digest,
         document,
-        classifyGenericParameter: (parameter) => classifyGenericParameter(
-          options.snapshot,
-          parameter,
+        classifyGenericParameter: (request) => classifyGenericParameter({
+          snapshot: options.snapshot,
+          parameter: request.parameter,
           loadDocument,
-        ),
+          classifyAmbiguous: () => classifyMojoGenericParameterWithCompiler({
+            cacheRoot,
+            snapshot: options.snapshot,
+            package: options.package,
+            module: options.module,
+            parameter: request.parameter,
+            parentParameters: request.parentParameters,
+            precedingParameters: request.precedingParameters,
+            includeRoots: options.snapshot.packages.map((package_) =>
+              stagedImportRoot(snapshotRoot, package_)),
+            verifySnapshot: () => {
+              verifyCompiler(options.snapshot.compiler);
+              verifyMaterializedSnapshot(snapshotRoot, options.snapshot);
+            },
+          }),
+        }),
       });
       modules.set(identity, model);
       return model;
@@ -327,20 +347,6 @@ function verifyMaterializedSnapshot(
   }
 }
 
-function verifyPackageSnapshot(
-  snapshotRoot: string,
-  package_: MojoCompilerPackageSnapshot,
-): void {
-  for (const module of package_.modules) {
-    verifyFile(
-      stagedSourcePath(snapshotRoot, package_, module),
-      module.byteLength,
-      module.digest,
-      "staged Mojo source",
-    );
-  }
-}
-
 function stagedImportRoot(
   snapshotRoot: string,
   package_: MojoCompilerPackageSnapshot,
@@ -416,15 +422,17 @@ function packageDocumentIdentity(
   return `${snapshot.digest}\0${package_.id}`;
 }
 
-function classifyGenericParameter(
-  snapshot: MojoCompilerProjectSnapshot,
-  parameter: MojoDocParameter,
-  loadDocument: (options: {
+function classifyGenericParameter(options: {
+  readonly snapshot: MojoCompilerProjectSnapshot;
+  readonly parameter: MojoDocParameter;
+  readonly loadDocument: (options: {
     readonly snapshot: MojoCompilerProjectSnapshot;
     readonly package: MojoCompilerPackageSnapshot;
     readonly module: MojoCompilerModuleSource;
-  }) => MojoDocDocument,
-): "type" | "value" | "origin" {
+  }) => MojoDocDocument;
+  readonly classifyAmbiguous: () => "type" | "value" | "origin";
+}): "type" | "value" | "origin" {
+  const { snapshot, parameter, loadDocument } = options;
   if (parameter.traits !== undefined) {
     if (parameter.traits.length === 0) {
       throw new Error(`Mojo generic parameter '${parameter.name}' has an empty trait constraint set.`);
@@ -438,19 +446,11 @@ function classifyGenericParameter(
     }
     return "type";
   }
-  if (parameter.path === undefined) {
-    throw new Error(
-      `Mojo generic parameter '${parameter.name}' has no compiler-owned constraint declaration path.`,
-    );
-  }
+  if (parameter.path === undefined) return "value";
   const location = declarationLocation(snapshot, parameter.path);
   const kind = declarationKind(snapshot, parameter.path, loadDocument);
   if (kind === "trait") return "type";
-  if (kind === "alias") {
-    throw new Error(
-      `Mojo generic parameter '${parameter.name}' uses alias constraint '${parameter.path}', whose parameter category is not retained by mojo doc.`,
-    );
-  }
+  if (kind === "alias") return options.classifyAmbiguous();
   if (location.package.kind === "standard-library" &&
     location.module.modulePath.length === 1 &&
     location.module.modulePath[0] === "origin" &&

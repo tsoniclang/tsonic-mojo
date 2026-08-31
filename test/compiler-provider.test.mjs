@@ -62,7 +62,9 @@ test("compiler metadata extraction normalizes exact conventions, keywords, const
   const package_ = snapshot.packages[0];
   const source = package_.modules.find(({ modulePath }) => modulePath.join(".") === "api");
   assert.ok(source);
-  const loader = createMojoCompilerMetadataLoader(join(repositoryRoot, ".temp", "compiler-provider-test"));
+  const loader = createMojoCompilerMetadataLoader(
+    join(repositoryRoot, ".temp", `compiler-provider-test-${process.pid}`),
+  );
   try {
     const model = loader.module({ snapshot, package: package_, module: source });
     const sum = model.functions[0];
@@ -81,7 +83,7 @@ test("compiler metadata extraction normalizes exact conventions, keywords, const
     });
     assert.deepEqual(
       projection.declarationModel.exports.map(({ name }) => name),
-      ["Bucket", "Counter", "collect", "sum"],
+      ["Bucket", "Counter", "classify", "collect", "sum"],
     );
     const sumOperation = projection.operations.find(({ exportId }) => exportId.endsWith("export:function:sum"));
     assert.equal(sumOperation.target.arguments[1].nativeName, "right");
@@ -111,6 +113,19 @@ test("compiler metadata extraction normalizes exact conventions, keywords, const
         variadic: false,
         constraints: 1,
       },
+    ]);
+    const classifyOperation = projection.operations.find(({ exportId }) =>
+      exportId.endsWith("export:function:classify"));
+    assert.deepEqual(classifyOperation.target.genericParameters.map((parameter) => ({
+      kind: parameter.kind,
+      name: parameter.name,
+      position: parameter.position,
+      variadic: parameter.variadic,
+    })), [
+      { kind: "type", name: "T", position: "positional", variadic: false },
+      { kind: "origin", name: "origin", position: "inferred", variadic: false },
+      { kind: "value", name: "size", position: "keyword", variadic: false },
+      { kind: "value", name: "payload", position: "positional-or-keyword", variadic: false },
     ]);
     const bucket = projection.types.find(({ exportId }) => exportId.endsWith("export:struct:Bucket"));
     assert.deepEqual(bucket.conformances.map(({ condition }) => condition), [
@@ -194,7 +209,7 @@ test("compiler metadata uses the exact snapshotted environment and persistent do
     } finally {
       first.close();
     }
-    assert.equal(readFileSync(logPath, "utf8"), "doc\n");
+    assert.equal(readFileSync(logPath, "utf8"), "doc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\n");
 
     const second = createMojoCompilerMetadataLoader(cacheRoot);
     try {
@@ -204,8 +219,8 @@ test("compiler metadata uses the exact snapshotted environment and persistent do
     }
     assert.equal(
       readFileSync(logPath, "utf8"),
-      "doc\n",
-      "the exact cached package document avoids compiler re-entry",
+      "doc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\n",
+      "the exact cached package document and classifications avoid compiler re-entry",
     );
 
     const documentPath = join(
@@ -225,7 +240,7 @@ test("compiler metadata uses the exact snapshotted environment and persistent do
     }
     assert.equal(
       readFileSync(logPath, "utf8"),
-      "doc\ndoc\n",
+      "doc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\n",
       "corrupt cache data is regenerated exactly once",
     );
   } finally {

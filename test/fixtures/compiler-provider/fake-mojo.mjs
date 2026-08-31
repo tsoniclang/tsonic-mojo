@@ -1,4 +1,5 @@
-import { appendFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { basename } from "node:path";
 
 const args = process.argv.slice(2);
 if (args.length === 1 && args[0] === "--version") {
@@ -24,6 +25,27 @@ const outputIndex = args.indexOf("-o");
 if (outputIndex < 0 || args[outputIndex + 1] === undefined) {
   process.stderr.write("missing metadata output path\n");
   process.exit(2);
+}
+
+const inputPath = args[1];
+const inputSource = statSync(inputPath).isFile() ? readFileSync(inputPath, "utf8") : "";
+const probeCategory = /__tsonic_classify_(type|origin|value)_/u.exec(inputSource)?.[1] ??
+  basename(inputPath, ".mojo");
+if (probeCategory === "type" || probeCategory === "origin" || probeCategory === "value") {
+  const constraint = /__TsonicCandidate:\s*([^\]\n]+)/u.exec(inputSource)?.[1]?.trim();
+  const expected = constraint === "TypeAlias"
+    ? "type"
+    : constraint === "OriginAlias"
+      ? "origin"
+      : constraint === "ValueAlias"
+        ? "value"
+        : undefined;
+  if (probeCategory !== expected) {
+    process.stderr.write(`fixture rejects ${probeCategory} classification for ${constraint ?? "unknown"}\n`);
+    process.exit(1);
+  }
+  writeFileSync(args[outputIndex + 1], "{}");
+  process.exit(0);
 }
 
 const typeValue = (type, path) => ({ type, ...(path === undefined ? {} : { path }) });
@@ -125,6 +147,39 @@ const apiModule = {
           },
         ],
       })]),
+      group("classify", [overload("classify", [], typeValue("Int32", int32), {
+        parameters: [
+          {
+            description: "",
+            kind: "parameter",
+            name: "T",
+            passingKind: "pos",
+            ...typeValue("TypeAlias", "/probe/_private/TypeAlias"),
+          },
+          {
+            description: "",
+            kind: "parameter",
+            name: "origin",
+            passingKind: "inferred",
+            ...typeValue("OriginAlias", "/probe/_private/OriginAlias"),
+          },
+          {
+            default: "Int(4)",
+            description: "",
+            kind: "parameter",
+            name: "size",
+            passingKind: "kw",
+            ...typeValue("ValueAlias", "/probe/_private/ValueAlias"),
+          },
+          {
+            description: "",
+            kind: "parameter",
+            name: "payload",
+            passingKind: "pos_or_kw",
+            type: "T",
+          },
+        ],
+      })]),
     ],
     kind: "module",
     name: "api",
@@ -204,6 +259,35 @@ const traitsModule = {
   summary: "",
   traits: [trait("Sequence"), trait("Copyable")],
 };
+const privateAlias = (name, type, value) => ({
+  deprecated: "",
+  description: "",
+  isStabilityTracked: false,
+  isStable: false,
+  kind: "alias",
+  name,
+  parameters: [],
+  path: `/probe/_private/${name}`,
+  signature: `comptime ${name}`,
+  sinceVersion: "",
+  summary: "",
+  type,
+  value,
+});
+const privateModule = {
+  aliases: [
+    privateAlias("TypeAlias", "AnyType", "AnyType"),
+    privateAlias("OriginAlias", "Origin", "ImmStaticOrigin"),
+    privateAlias("ValueAlias", "Int", "Int(0)"),
+  ],
+  description: "",
+  functions: [],
+  kind: "module",
+  name: "_private",
+  structs: [],
+  summary: "",
+  traits: [],
+};
 const extraModules = process.env.TSONIC_MOJO_PROVIDER_EXTRA_MODULE === undefined
   ? []
   : [{
@@ -221,7 +305,7 @@ writeFileSync(args[outputIndex + 1], JSON.stringify({
   decl: {
     description: "",
     kind: "package",
-    modules: [apiModule, traitsModule, ...extraModules],
+    modules: [apiModule, privateModule, traitsModule, ...extraModules],
     name: "probe",
     packages: [],
     summary: "",
