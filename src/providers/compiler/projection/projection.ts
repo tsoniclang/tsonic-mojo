@@ -21,7 +21,6 @@ import type {
   MojoProviderTypeDefinition,
 } from "../../packages/model.js";
 import type { MojoProviderTargetArgument } from "../../../target-model/provider/model.js";
-import { mojoCompilerModuleSpecifier } from "./module-specifier.js";
 import type { MojoCompilerProviderProjection } from "./model.js";
 import {
   projectMojoCompilerType,
@@ -37,17 +36,20 @@ export function projectMojoCompilerModule(
   options: {
     readonly providerModuleId: string;
     readonly moduleSpecifier: string;
-    readonly requestedExports?: readonly string[];
+    readonly exports: readonly {
+      readonly declarationName: string;
+      readonly exportName: string;
+    }[];
   },
 ): MojoCompilerProviderProjection {
   if (module.packageId !== package_.id || module.packageVersion !== package_.version ||
-    !samePath(module.modulePath, findModulePath(package_, options.moduleSpecifier))) {
-    throw new Error(`Mojo compiler module '${module.moduleIdentity}' does not match its requested package/module identity.`);
+    package_.modules.every((candidate) => !samePath(candidate.modulePath, module.modulePath))) {
+    throw new Error(`Mojo compiler module '${module.moduleIdentity}' does not match its physical package identity.`);
   }
   const imports = new Map<string, Set<string>>();
   const operations: MojoProviderOperationDefinition[] = [];
   const types: MojoProviderTypeDefinition[] = [];
-  const baseContext: MojoCompilerTypeProjectionContext = {
+  const baseContext: Omit<MojoCompilerTypeProjectionContext, "source"> = {
     snapshot,
     package: package_,
     modulePath: module.modulePath,
@@ -56,26 +58,36 @@ export function projectMojoCompilerModule(
       .map(({ name }) => name)),
     imports,
   };
-  const requested = options.requestedExports === undefined
-    ? undefined
-    : new Set(options.requestedExports);
   const available = new Set(module.availableExports.map(({ name }) => name));
-  if (requested !== undefined) {
-    for (const name of requested) {
-      if (!available.has(name)) throw new Error(`Mojo module has no exported declaration '${name}'.`);
+  const mappings = canonicalExportMappings(options.exports);
+  for (const { declarationName } of mappings) {
+    if (!available.has(declarationName)) {
+      throw new Error(`Mojo module has no exported declaration '${declarationName}'.`);
     }
   }
   const exports: ProviderExportDeclaration[] = [];
-  for (const [name, functions] of groupByName(module.functions)) {
-    if (requested !== undefined && !requested.has(name)) continue;
-    exports.push(projectFunctionExport(name, functions, baseContext, operations));
+  const functionsByName = groupByName(module.functions);
+  const declarationsByName = new Map(module.declarations.map((declaration) =>
+    [declaration.name, declaration] as const));
+  for (const mapping of mappings) {
+    const context: MojoCompilerTypeProjectionContext = {
+      ...baseContext,
+      source: Object.freeze({
+        providerModuleId: options.providerModuleId,
+        moduleSpecifier: options.moduleSpecifier,
+        exportName: mapping.exportName,
+      }),
+    };
+    const functions = functionsByName.get(mapping.declarationName);
+    const declaration = declarationsByName.get(mapping.declarationName);
+    if ((functions === undefined) === (declaration === undefined)) {
+      throw new Error(`Mojo export '${mapping.declarationName}' has no singular declaration category.`);
+    }
+    exports.push(functions === undefined
+      ? projectTypeDeclaration(declaration!, mapping.exportName, context, operations, types)
+      : projectFunctionExport(mapping.declarationName, mapping.exportName, functions, context, operations));
   }
-  for (const declaration of module.declarations) {
-    if (requested !== undefined && !requested.has(declaration.name)) continue;
-    exports.push(projectTypeDeclaration(declaration, baseContext, operations, types));
-  }
-  const ownSpecifier = mojoCompilerModuleSpecifier(package_, module.modulePath);
-  imports.delete(ownSpecifier);
+  imports.delete(options.moduleSpecifier);
   const declarationImports: ProviderImportDeclaration[] = [...imports.entries()]
     .sort(([left], [right]) => compareText(left, right))
     .map(([moduleSpecifier, names]) => Object.freeze({
@@ -97,11 +109,12 @@ export function projectMojoCompilerModule(
 
 function projectFunctionExport(
   name: string,
+  sourceName: string,
   functions: readonly MojoCompilerFunction[],
   context: MojoCompilerTypeProjectionContext,
   operations: MojoProviderOperationDefinition[],
 ): ProviderExportDeclaration {
-  const exportId = `${moduleIdentity(context)}::export:function:${name}`;
+  const exportId = sourceExportId(context);
   const signatures = functions.map((function_) => {
     const projected = projectFunctionSignature(function_, context, undefined);
     operations.push(Object.freeze({
@@ -126,6 +139,7 @@ function projectFunctionExport(
   return Object.freeze({
     id: exportId,
     name,
+    ...(sourceName === name ? {} : { exportName: sourceName }),
     kind: "function",
     signatures: Object.freeze(signatures),
     ...firstDocumentation(functions),
@@ -134,18 +148,20 @@ function projectFunctionExport(
 
 function projectTypeDeclaration(
   declaration: MojoCompilerTypeDeclaration,
+  sourceName: string,
   parentContext: MojoCompilerTypeProjectionContext,
   operations: MojoProviderOperationDefinition[],
   types: MojoProviderTypeDefinition[],
 ): ProviderExportDeclaration {
   if (declaration.kind === "alias") {
-    return projectAlias(declaration, parentContext, operations, types);
+    return projectAlias(declaration, sourceName, parentContext, operations, types);
   }
-  const exportId = `${moduleIdentity(parentContext)}::export:${declaration.kind}:${declaration.name}`;
+  const exportId = sourceExportId(parentContext);
   const context: MojoCompilerTypeProjectionContext = {
     ...parentContext,
     owner: {
       name: declaration.name,
+      sourceName,
       exportId,
       genericParameters: declaration.kind === "struct" ? declaration.genericParameters : Object.freeze([]),
     },
@@ -212,6 +228,7 @@ function projectTypeDeclaration(
   return Object.freeze({
     id: exportId,
     name: declaration.name,
+    ...(sourceName === declaration.name ? {} : { exportName: sourceName }),
     kind: declaration.kind === "struct" ? "class" : "interface",
     ...(typeParameters.length === 0 ? {} : { typeParameters }),
     ...(heritage.length === 0 ? {} : { heritage: Object.freeze(heritage) }),
@@ -406,11 +423,12 @@ function projectTraitMembers(
 
 function projectAlias(
   declaration: MojoCompilerAlias,
+  sourceName: string,
   context: MojoCompilerTypeProjectionContext,
   operations: MojoProviderOperationDefinition[],
   types: MojoProviderTypeDefinition[],
 ): ProviderExportDeclaration {
-  const exportId = `${moduleIdentity(context)}::export:alias:${declaration.name}`;
+  const exportId = sourceExportId(context);
   if (declaration.category === "type") {
     if (declaration.targetType === undefined) {
       throw new Error(`Mojo type alias '${declaration.name}' has no exact target type.`);
@@ -420,6 +438,7 @@ function projectAlias(
     return Object.freeze({
       id: exportId,
       name: declaration.name,
+      ...(sourceName === declaration.name ? {} : { exportName: sourceName }),
       kind: "type",
       type: projected.source,
       ...(declaration.genericParameters.length === 0
@@ -445,6 +464,7 @@ function projectAlias(
   return Object.freeze({
     id: exportId,
     name: declaration.name,
+    ...(sourceName === declaration.name ? {} : { exportName: sourceName }),
     kind: "value",
     type: projected.source,
     ...documentation(declaration.documentation),
@@ -502,8 +522,8 @@ function projectFunctionSignature(
   });
 }
 
-function moduleIdentity(context: MojoCompilerTypeProjectionContext): string {
-  return `${context.package.id}@${context.package.version}:${context.package.sourceDigest}:${context.modulePath.join(".")}`;
+function sourceExportId(context: MojoCompilerTypeProjectionContext): string {
+  return `${context.source.providerModuleId}::export:${context.source.exportName}`;
 }
 
 function groupByName<T extends { readonly name: string }>(values: readonly T[]): Map<string, T[]> {
@@ -516,14 +536,22 @@ function groupByName<T extends { readonly name: string }>(values: readonly T[]):
   return result;
 }
 
-function findModulePath(
-  package_: MojoCompilerPackageSnapshot,
-  moduleSpecifier: string,
-): readonly string[] {
-  const match = package_.modules.find((module) =>
-    mojoCompilerModuleSpecifier(package_, module.modulePath) === moduleSpecifier);
-  if (match === undefined) throw new Error(`Mojo module specifier '${moduleSpecifier}' has no package module.`);
-  return match.modulePath;
+function canonicalExportMappings(
+  mappings: readonly { readonly declarationName: string; readonly exportName: string }[],
+): readonly { readonly declarationName: string; readonly exportName: string }[] {
+  const declarations = new Set<string>();
+  const exports = new Set<string>();
+  for (const mapping of mappings) {
+    if (declarations.has(mapping.declarationName)) {
+      throw new Error(`Mojo projection duplicates declaration '${mapping.declarationName}'.`);
+    }
+    if (exports.has(mapping.exportName)) {
+      throw new Error(`Mojo projection duplicates public export '${mapping.exportName}'.`);
+    }
+    declarations.add(mapping.declarationName);
+    exports.add(mapping.exportName);
+  }
+  return Object.freeze([...mappings].sort((left, right) => compareText(left.exportName, right.exportName)));
 }
 
 function firstDocumentation(values: readonly { readonly documentation?: string }[]) {

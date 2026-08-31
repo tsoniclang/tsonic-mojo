@@ -29,8 +29,14 @@ export interface MojoCompilerTypeProjectionContext {
   readonly package: MojoCompilerPackageSnapshot;
   readonly modulePath: readonly string[];
   readonly localDeclarations: ReadonlySet<string>;
+  readonly source: {
+    readonly providerModuleId: string;
+    readonly moduleSpecifier: string;
+    readonly exportName: string;
+  };
   readonly owner?: {
     readonly name: string;
+    readonly sourceName: string;
     readonly exportId: string;
     readonly genericParameters: readonly MojoCompilerGenericParameter[];
   };
@@ -51,7 +57,7 @@ export function projectMojoCompilerType(
       if (context.owner === undefined) {
         throw new Error(`Mojo associated self type '${["Self", ...type.memberPath].join(".")}' is not representable.`);
       }
-      const moduleSpecifier = mojoCompilerModuleSpecifier(context.package, context.modulePath);
+      const moduleSpecifier = context.source.moduleSpecifier;
       const genericArguments = context.owner.genericParameters.map((parameter): MojoTargetGenericArgument =>
         parameter.kind === "type"
           ? Object.freeze({ kind: "type", type: Object.freeze({ kind: "type-parameter", name: parameter.name }) })
@@ -78,7 +84,7 @@ export function projectMojoCompilerType(
         source: Object.freeze({
           kind: "provider-ref",
           moduleSpecifier,
-          exportName: context.owner.name,
+          exportName: context.owner.sourceName,
           ...(context.owner.genericParameters.length === 0
             ? {}
             : {
@@ -245,13 +251,21 @@ function projectNamedType(
     throw new Error(`Mojo type '${type.name}' contains an unbound generic argument.`);
   }
   const location = resolveTypeLocation(type, context);
-  const moduleSpecifier = mojoCompilerModuleSpecifier(location.package, location.modulePath);
-  addImport(context.imports, moduleSpecifier, location.exportName);
+  const physicalModuleSpecifier = mojoCompilerModuleSpecifier(location.package, location.modulePath);
+  const currentOwner = context.owner !== undefined && type.name === context.owner.name;
+  const directModule = physicalModuleSpecifier === context.source.moduleSpecifier;
+  const moduleSpecifier = currentOwner || directModule
+    ? context.source.moduleSpecifier
+    : physicalModuleSpecifier;
+  const sourceExportName = currentOwner ? context.owner!.sourceName : location.exportName;
+  if (moduleSpecifier !== context.source.moduleSpecifier) {
+    addImport(context.imports, moduleSpecifier, sourceExportName);
+  }
   return Object.freeze({
     source: Object.freeze({
       kind: "provider-ref",
       moduleSpecifier,
-      exportName: location.exportName,
+      exportName: sourceExportName,
       ...(sourceArguments.length === 0
         ? {}
         : { typeArguments: Object.freeze(sourceArguments as ProviderTypeExpression[]) }),

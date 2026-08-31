@@ -20,6 +20,7 @@ export const maximumMojoPackageDocumentBytes = 268_435_456;
 export interface IndexedMojoPackageDocument {
   readonly modules: ReadonlyMap<string, MojoDocDocument>;
   readonly declarationsByName: ReadonlyMap<string, readonly string[]>;
+  readonly exportsByModule: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
 export function readCachedMojoPackageDocument(
@@ -79,6 +80,7 @@ export function indexMojoPackageDocument(
   }
   const modules = new Map<string, MojoDocDocument>();
   const declarationsByName = new Map<string, string[]>();
+  const exportsByModule = new Map<string, ReadonlySet<string>>();
   const visit = (packageDocument: MojoDocPackage, prefix: readonly string[]): void => {
     for (const module of packageDocument.modules) {
       const modulePath = module.name === "__init__" ? prefix : [...prefix, module.name];
@@ -87,6 +89,12 @@ export function indexMojoPackageDocument(
         throw new Error(`Mojo package document contains duplicate module '${modulePath.join(".")}'.`);
       }
       modules.set(identity, Object.freeze({ version: document.version, decl: module }));
+      exportsByModule.set(identity, new Set([
+        ...module.functions.map(({ name }) => name),
+        ...module.structs.map(({ name }) => name),
+        ...module.traits.map(({ name }) => name),
+        ...module.aliases.map(({ name }) => name),
+      ]));
       for (const declaration of [...module.structs, ...module.traits, ...module.aliases]) {
         const path = declaration.kind === "alias" && declaration.path !== undefined
           ? declaration.path
@@ -110,6 +118,8 @@ export function indexMojoPackageDocument(
     modules,
     declarationsByName: new Map([...declarationsByName.entries()].map(([name, paths]) =>
       [name, Object.freeze([...paths].sort())] as const)),
+    exportsByModule: new Map([...exportsByModule.entries()].map(([identity, names]) =>
+      [identity, new Set([...names].sort())] as const)),
   });
 }
 

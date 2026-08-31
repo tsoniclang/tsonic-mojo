@@ -1,22 +1,17 @@
-import { createHash, randomUUID } from "node:crypto";
 import {
-  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  renameSync,
   rmSync,
   rmdirSync,
   statSync,
   unlinkSync,
-  writeFileSync,
 } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import type {
-  MojoCompilerIdentity,
   MojoCompilerModuleModel,
   MojoCompilerModuleSource,
   MojoCompilerPackageSnapshot,
@@ -45,6 +40,20 @@ import {
   classifyMojoGenericParameterMetadata,
   mojoNominalHead,
 } from "./classification/metadata-category.js";
+import {
+  enumerateMojoCompilerModuleExports,
+  resolveMojoCompilerExports,
+} from "./resolution/language-server.js";
+import type { MojoCompilerResolvedExport } from "./resolution/language-server.js";
+import {
+  stagedImportRoot,
+  stagedPackageRoot,
+} from "./snapshot/materialized-paths.js";
+import {
+  prepareMojoCompilerSnapshot,
+  verifyMojoCompilerExecutable,
+  verifyMojoCompilerMaterializedSnapshot,
+} from "./snapshot/materialization.js";
 
 const extractionTimeoutMilliseconds = 600_000;
 const maximumDiagnosticBytes = 2_097_152;
@@ -60,6 +69,17 @@ export interface MojoCompilerMetadataLoader {
     readonly module: MojoCompilerModuleSource;
     readonly requestedExports?: readonly string[];
   }): MojoCompilerModuleModel;
+  resolveExports(options: {
+    readonly snapshot: MojoCompilerProjectSnapshot;
+    readonly package: MojoCompilerPackageSnapshot;
+    readonly module: MojoCompilerModuleSource;
+    readonly exportNames: readonly string[];
+  }): readonly MojoCompilerResolvedExport[];
+  listExports(options: {
+    readonly snapshot: MojoCompilerProjectSnapshot;
+    readonly package: MojoCompilerPackageSnapshot;
+    readonly module: MojoCompilerModuleSource;
+  }): readonly string[];
   close(): void;
 }
 
@@ -71,6 +91,7 @@ export function createMojoCompilerMetadataLoader(
   const ephemeralSnapshotRoots = new Set<string>();
   const modules = new Map<string, MojoCompilerModuleModel>();
   const packageDocuments = new Map<string, IndexedMojoPackageDocument>();
+  const resolvedExports = new Map<string, MojoCompilerResolvedExport>();
 
   const loadPackageDocument = (options: {
     readonly snapshot: MojoCompilerProjectSnapshot;
@@ -82,16 +103,16 @@ export function createMojoCompilerMetadataLoader(
     const existing = packageDocuments.get(identity);
     if (existing !== undefined) return existing;
     const snapshotRoot = materializedSnapshots.get(options.snapshot.digest) ??
-      prepareSnapshot(cacheRoot, options.snapshot, ephemeralSnapshotRoots);
+      prepareMojoCompilerSnapshot(cacheRoot, options.snapshot, ephemeralSnapshotRoots);
     materializedSnapshots.set(options.snapshot.digest, snapshotRoot);
-    verifyMaterializedSnapshot(snapshotRoot, options.snapshot);
+    verifyMojoCompilerMaterializedSnapshot(snapshotRoot, options.snapshot);
     const cached = readCachedMojoPackageDocument(cacheRoot, options.snapshot, options.package);
     if (cached !== undefined) {
       const indexed = indexMojoPackageDocument(options.package, cached);
       packageDocuments.set(identity, indexed);
       return indexed;
     }
-    verifyCompiler(options.snapshot.compiler);
+    verifyMojoCompilerExecutable(options.snapshot.compiler);
     const requestsRoot = resolve(cacheRoot, "requests");
     mkdirSync(requestsRoot, { recursive: true });
     const requestDirectory = mkdtempSync(resolve(requestsRoot, `${process.pid}-`));
@@ -144,7 +165,7 @@ export function createMojoCompilerMetadataLoader(
           `mojo doc document version '${document.version}' differs from compiler '${options.snapshot.compiler.version}'.`,
         );
       }
-      verifyMaterializedSnapshot(snapshotRoot, options.snapshot);
+      verifyMojoCompilerMaterializedSnapshot(snapshotRoot, options.snapshot);
       const indexed = indexMojoPackageDocument(options.package, document);
       writeCachedMojoPackageDocument(cacheRoot, options.snapshot, options.package, parsed);
       packageDocuments.set(identity, indexed);
@@ -185,7 +206,7 @@ export function createMojoCompilerMetadataLoader(
         );
       }
       const snapshotRoot = materializedSnapshots.get(options.snapshot.digest) ??
-        prepareSnapshot(cacheRoot, options.snapshot, ephemeralSnapshotRoots);
+        prepareMojoCompilerSnapshot(cacheRoot, options.snapshot, ephemeralSnapshotRoots);
       materializedSnapshots.set(options.snapshot.digest, snapshotRoot);
       return stagedImportRoot(snapshotRoot, options.package);
     },
@@ -264,8 +285,8 @@ export function createMojoCompilerMetadataLoader(
             includeRoots: options.snapshot.packages.map((package_) =>
               stagedImportRoot(snapshotRoot, package_)),
             verifySnapshot: () => {
-              verifyCompiler(options.snapshot.compiler);
-              verifyMaterializedSnapshot(snapshotRoot, options.snapshot);
+              verifyMojoCompilerExecutable(options.snapshot.compiler);
+              verifyMojoCompilerMaterializedSnapshot(snapshotRoot, options.snapshot);
             },
           }),
         }),
@@ -280,168 +301,114 @@ export function createMojoCompilerMetadataLoader(
           includeRoots: options.snapshot.packages.map((package_) =>
             stagedImportRoot(snapshotRoot, package_)),
           verifySnapshot: () => {
-            verifyCompiler(options.snapshot.compiler);
-            verifyMaterializedSnapshot(snapshotRoot, options.snapshot);
+            verifyMojoCompilerExecutable(options.snapshot.compiler);
+            verifyMojoCompilerMaterializedSnapshot(snapshotRoot, options.snapshot);
           },
         }),
       });
       modules.set(identity, model);
       return model;
     },
+    resolveExports(options: {
+      readonly snapshot: MojoCompilerProjectSnapshot;
+      readonly package: MojoCompilerPackageSnapshot;
+      readonly module: MojoCompilerModuleSource;
+      readonly exportNames: readonly string[];
+    }): readonly MojoCompilerResolvedExport[] {
+      if (state === "closed") throw new Error("Mojo compiler metadata loader is closed.");
+      validateOwnership(options.snapshot, options.package, options.module);
+      const exportNames = canonicalRequestedExports(options.exportNames) ?? Object.freeze([]);
+      const indexed = loadPackageDocument({ snapshot: options.snapshot, package: options.package });
+      const direct = indexed.exportsByModule.get(mojoModulePathIdentity(options.module.modulePath));
+      if (direct === undefined) {
+        throw new Error(`Mojo package metadata has no module '${options.module.modulePath.join(".")}'.`);
+      }
+      const unresolved: string[] = [];
+      for (const exportName of exportNames) {
+        const identity = resolvedExportIdentity(
+          options.snapshot,
+          options.package,
+          options.module,
+          exportName,
+        );
+        if (resolvedExports.has(identity)) continue;
+        if (direct.has(exportName)) {
+          resolvedExports.set(identity, Object.freeze({
+            exportName,
+            declarationName: exportName,
+            package: options.package,
+            module: options.module,
+          }));
+        } else {
+          unresolved.push(exportName);
+        }
+      }
+      if (unresolved.length > 0) {
+        const snapshotRoot = materializedSnapshots.get(options.snapshot.digest);
+        if (snapshotRoot === undefined) {
+          throw new Error(`Mojo compiler snapshot '${options.snapshot.digest}' is not materialized.`);
+        }
+        for (const resolved of resolveMojoCompilerExports({
+          snapshotRoot,
+          snapshot: options.snapshot,
+          package: options.package,
+          module: options.module,
+          exportNames: unresolved,
+        })) {
+          resolvedExports.set(resolvedExportIdentity(
+            options.snapshot,
+            options.package,
+            options.module,
+            resolved.exportName,
+          ), resolved);
+        }
+      }
+      return Object.freeze(exportNames.map((exportName) => {
+        const resolved = resolvedExports.get(resolvedExportIdentity(
+          options.snapshot,
+          options.package,
+          options.module,
+          exportName,
+        ));
+        if (resolved === undefined) throw new Error(`Mojo export '${exportName}' was not resolved.`);
+        return resolved;
+      }));
+    },
+    listExports(options: {
+      readonly snapshot: MojoCompilerProjectSnapshot;
+      readonly package: MojoCompilerPackageSnapshot;
+      readonly module: MojoCompilerModuleSource;
+    }): readonly string[] {
+      if (state === "closed") throw new Error("Mojo compiler metadata loader is closed.");
+      validateOwnership(options.snapshot, options.package, options.module);
+      const indexed = loadPackageDocument({ snapshot: options.snapshot, package: options.package });
+      const direct = indexed.exportsByModule.get(mojoModulePathIdentity(options.module.modulePath));
+      if (direct === undefined) {
+        throw new Error(`Mojo package metadata has no module '${options.module.modulePath.join(".")}'.`);
+      }
+      if (options.module.modulePath.length === 0) return Object.freeze([...direct].sort(compareText));
+      const snapshotRoot = materializedSnapshots.get(options.snapshot.digest);
+      if (snapshotRoot === undefined) {
+        throw new Error(`Mojo compiler snapshot '${options.snapshot.digest}' is not materialized.`);
+      }
+      const discovered = enumerateMojoCompilerModuleExports({
+        snapshotRoot,
+        snapshot: options.snapshot,
+        package: options.package,
+        module: options.module,
+      });
+      return Object.freeze([...new Set([...direct, ...discovered])].sort(compareText));
+    },
     close(): void {
       modules.clear();
       packageDocuments.clear();
+      resolvedExports.clear();
       materializedSnapshots.clear();
       for (const root of ephemeralSnapshotRoots) rmSync(root, { recursive: true, force: true });
       ephemeralSnapshotRoots.clear();
       state = "closed";
     },
   });
-}
-
-function prepareSnapshot(
-  cacheRoot: string,
-  snapshot: MojoCompilerProjectSnapshot,
-  ephemeralRoots: Set<string>,
-): string {
-  const canonicalRoot = resolve(cacheRoot, "snapshots", snapshot.digest);
-  if (existsSync(canonicalRoot)) {
-    try {
-      validateMaterializedSnapshot(canonicalRoot, snapshot);
-      return canonicalRoot;
-    } catch {
-      const ephemeral = createMaterializedSnapshot(cacheRoot, snapshot, "leases");
-      ephemeralRoots.add(ephemeral);
-      return ephemeral;
-    }
-  }
-  const staged = createMaterializedSnapshot(cacheRoot, snapshot, "staging");
-  mkdirSync(dirname(canonicalRoot), { recursive: true });
-  try {
-    renameSync(staged, canonicalRoot);
-    return canonicalRoot;
-  } catch {
-    if (existsSync(canonicalRoot)) {
-      try {
-        validateMaterializedSnapshot(canonicalRoot, snapshot);
-        rmSync(staged, { recursive: true, force: true });
-        return canonicalRoot;
-      } catch {
-        ephemeralRoots.add(staged);
-        return staged;
-      }
-    }
-    rmSync(staged, { recursive: true, force: true });
-    throw new Error(`Mojo compiler snapshot '${snapshot.digest}' could not be published.`);
-  }
-}
-
-function createMaterializedSnapshot(
-  cacheRoot: string,
-  snapshot: MojoCompilerProjectSnapshot,
-  kind: "staging" | "leases",
-): string {
-  const root = resolve(cacheRoot, kind, `${snapshot.digest}-${process.pid}-${randomUUID()}`);
-  mkdirSync(root, { recursive: true });
-  try {
-    materializeSnapshot(root, snapshot);
-    return root;
-  } catch (error) {
-    rmSync(root, { recursive: true, force: true });
-    throw error;
-  }
-}
-
-function materializeSnapshot(
-  snapshotRoot: string,
-  snapshot: MojoCompilerProjectSnapshot,
-): void {
-  const markerPath = join(snapshotRoot, "snapshot.json");
-  for (const package_ of snapshot.packages) {
-    for (const module of package_.modules) {
-      const destination = stagedSourcePath(snapshotRoot, package_, module);
-      mkdirSync(dirname(destination), { recursive: true });
-      const temporary = `${destination}.${process.pid}.${randomUUID()}.tmp`;
-      copyFileSync(module.sourcePath, temporary);
-      verifyFile(temporary, module.byteLength, module.digest, "copied Mojo source");
-      renameSync(temporary, destination);
-    }
-  }
-  verifyMaterializedSnapshot(snapshotRoot, snapshot);
-  const markerTemporary = `${markerPath}.${randomUUID()}.tmp`;
-  writeFileSync(markerTemporary, JSON.stringify({ contractVersion: 1, digest: snapshot.digest }));
-  renameSync(markerTemporary, markerPath);
-}
-
-function validateMaterializedSnapshot(
-  snapshotRoot: string,
-  snapshot: MojoCompilerProjectSnapshot,
-): void {
-  const markerPath = join(snapshotRoot, "snapshot.json");
-  const marker = JSON.parse(readFileSync(markerPath, "utf8")) as unknown;
-  if (!isSnapshotMarker(marker, snapshot.digest)) {
-    throw new Error(`Mojo compiler cache marker is corrupt for snapshot '${snapshot.digest}'.`);
-  }
-  verifyMaterializedSnapshot(snapshotRoot, snapshot);
-}
-
-function verifyCompiler(compiler: MojoCompilerIdentity): void {
-  verifyFile(
-    compiler.executablePath,
-    compiler.executableByteLength,
-    compiler.executableDigest,
-    "snapshotted Mojo compiler executable",
-  );
-}
-
-function verifyMaterializedSnapshot(
-  snapshotRoot: string,
-  snapshot: MojoCompilerProjectSnapshot,
-): void {
-  for (const package_ of snapshot.packages) {
-    for (const module of package_.modules) {
-      verifyFile(
-        stagedSourcePath(snapshotRoot, package_, module),
-        module.byteLength,
-        module.digest,
-        "staged Mojo source",
-      );
-    }
-  }
-}
-
-function stagedImportRoot(
-  snapshotRoot: string,
-  package_: MojoCompilerPackageSnapshot,
-): string {
-  return join(snapshotRoot, "imports", encodeURIComponent(package_.alias));
-}
-
-function stagedPackageRoot(
-  snapshotRoot: string,
-  package_: MojoCompilerPackageSnapshot,
-): string {
-  return join(stagedImportRoot(snapshotRoot, package_), package_.packageName);
-}
-
-function stagedSourcePath(
-  snapshotRoot: string,
-  package_: MojoCompilerPackageSnapshot,
-  module: MojoCompilerModuleSource,
-): string {
-  const relativeSource = relative(package_.sourceRoot, module.sourcePath);
-  if (relativeSource.startsWith("..") || relativeSource.split(sep).includes("..")) {
-    throw new Error(`Mojo module source '${module.sourcePath}' escapes package '${package_.id}'.`);
-  }
-  return join(stagedImportRoot(snapshotRoot, package_), package_.packageName, relativeSource);
-}
-
-function verifyFile(path: string, byteLength: number, digest: string, kind: string): void {
-  const bytes = readFileSync(path);
-  const actualDigest = createHash("sha256").update(bytes).digest("hex");
-  if (bytes.byteLength !== byteLength || actualDigest !== digest) {
-    throw new Error(`${kind} '${path}' does not match its immutable compiler snapshot.`);
-  }
 }
 
 function validateOwnership(
@@ -498,11 +465,13 @@ function packageDocumentIdentity(
   return `${snapshot.digest}\0${package_.id}`;
 }
 
-function isSnapshotMarker(value: unknown, digest: string): boolean {
-  return value !== null && typeof value === "object" && !Array.isArray(value) &&
-    (value as Record<string, unknown>).contractVersion === 1 &&
-    (value as Record<string, unknown>).digest === digest &&
-    Object.keys(value).length === 2;
+function resolvedExportIdentity(
+  snapshot: MojoCompilerProjectSnapshot,
+  package_: MojoCompilerPackageSnapshot,
+  module: MojoCompilerModuleSource,
+  exportName: string,
+): string {
+  return `${snapshot.digest}\0${package_.id}\0${module.modulePath.join(".")}\0${exportName}`;
 }
 
 function boundedDiagnostic(value: unknown): string {

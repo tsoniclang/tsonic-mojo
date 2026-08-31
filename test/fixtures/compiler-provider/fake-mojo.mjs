@@ -305,6 +305,16 @@ const privateModule = {
   summary: "",
   traits: [],
 };
+const surfaceModule = {
+  aliases: [],
+  description: "",
+  functions: [],
+  kind: "module",
+  name: "__init__",
+  structs: [],
+  summary: "",
+  traits: [],
+};
 const extraModules = process.env.TSONIC_MOJO_PROVIDER_EXTRA_MODULE === undefined
   ? []
   : [{
@@ -324,7 +334,14 @@ writeFileSync(args[outputIndex + 1], JSON.stringify({
     kind: "package",
     modules: [apiModule, privateModule, traitsModule, ...extraModules],
     name: "probe",
-    packages: [],
+    packages: [{
+      description: "",
+      kind: "package",
+      modules: [surfaceModule],
+      name: "surface",
+      packages: [],
+      summary: "",
+    }],
     summary: "",
   },
   version: "1.1.0.dev2026083005",

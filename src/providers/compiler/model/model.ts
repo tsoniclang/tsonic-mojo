@@ -1,8 +1,8 @@
 import type { MojoCallArgumentConvention, MojoCallArgumentPosition } from "../../../target-model/provider/model.js";
 
-export const mojoCompilerProviderProtocolVersion = 1;
+export const mojoCompilerProviderProtocolVersion = 2;
 
-export interface MojoCompilerIdentity {
+export interface MojoCompilerToolIdentity {
   readonly version: string;
   readonly executablePath: string;
   readonly executableByteLength: number;
@@ -35,7 +35,8 @@ export interface MojoCompilerPackageSnapshot {
 
 export interface MojoCompilerProjectSnapshot {
   readonly protocolVersion: typeof mojoCompilerProviderProtocolVersion;
-  readonly compiler: MojoCompilerIdentity;
+  readonly compiler: MojoCompilerToolIdentity;
+  readonly languageServer: MojoCompilerToolIdentity;
   readonly packages: readonly MojoCompilerPackageSnapshot[];
   readonly digest: string;
 }

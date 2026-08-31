@@ -12,10 +12,10 @@ import type {
   MojoCompilerProviderConfiguration,
 } from "../../../target-model/project/model.js";
 import type {
-  MojoCompilerIdentity,
   MojoCompilerModuleSource,
   MojoCompilerPackageSnapshot,
   MojoCompilerProjectSnapshot,
+  MojoCompilerToolIdentity,
 } from "../model/model.js";
 import { mojoCompilerProviderProtocolVersion } from "../model/model.js";
 
@@ -29,16 +29,29 @@ export function createMojoCompilerProjectSnapshot(
   configuration: MojoCompilerProviderConfiguration,
   requiredVersion: string,
 ): MojoCompilerProjectSnapshot {
-  const compiler = createCompilerIdentity(configuration, requiredVersion);
+  const compiler = createToolIdentity(
+    configuration.command,
+    ["--version"],
+    "compiler",
+    requiredVersion,
+  );
+  const languageServer = createToolIdentity(
+    configuration.languageServer,
+    ["--mojo-version"],
+    "language server",
+    requiredVersion,
+  );
   const packages = configuration.packages.map(createPackageSnapshot);
   const digest = stableDigest({
     protocolVersion: mojoCompilerProviderProtocolVersion,
     compiler,
+    languageServer,
     packages,
   });
   return Object.freeze({
     protocolVersion: mojoCompilerProviderProtocolVersion,
     compiler,
+    languageServer,
     packages: Object.freeze(packages),
     digest,
   });
@@ -55,18 +68,20 @@ export function verifyMojoCompilerProjectSnapshot(
   }
 }
 
-function createCompilerIdentity(
-  configuration: MojoCompilerProviderConfiguration,
+function createToolIdentity(
+  configuration: MojoCompilerProviderConfiguration["command"],
+  versionArguments: readonly string[],
+  label: string,
   requiredVersion: string,
-): MojoCompilerIdentity {
+): MojoCompilerToolIdentity {
   const executable = resolveExecutable(
-    configuration.command.executable,
-    configuration.command.workingDirectory,
+    configuration.executable,
+    configuration.workingDirectory,
   );
   const executableBytes = readFileSync(executable);
   const executableDigest = createHash("sha256").update(executableBytes).digest("hex");
-  const workingDirectory = realpathSync(configuration.command.workingDirectory);
-  const arguments_ = Object.freeze([...configuration.command.arguments]);
+  const workingDirectory = realpathSync(configuration.workingDirectory);
+  const arguments_ = Object.freeze([...configuration.arguments]);
   const environment = Object.freeze(Object.fromEntries(Object.entries(process.env)
     .filter((entry): entry is [string, string] =>
       entry[1] !== undefined && !nonSemanticShellEnvironment.has(entry[0]))
@@ -81,7 +96,7 @@ function createCompilerIdentity(
   const environmentDigest = stableDigest(environment);
   const result = spawnSync(
     executable,
-    [...arguments_, "--version"],
+    [...arguments_, ...versionArguments],
     {
       cwd: workingDirectory,
       encoding: "utf8",
@@ -93,13 +108,13 @@ function createCompilerIdentity(
   );
   if (result.error !== undefined || result.status !== 0) {
     throw new Error(
-      `Mojo compiler identity query failed: ${boundedDiagnostic(result.error?.message ?? result.stderr ?? result.stdout)}.`,
+      `Mojo ${label} identity query failed: ${boundedDiagnostic(result.error?.message ?? result.stderr ?? result.stdout)}.`,
     );
   }
   const version = String(result.stdout).trim();
   if (!version.includes(requiredVersion)) {
     throw new Error(
-      `Mojo compiler version '${version}' does not match required '${requiredVersion}'.`,
+      `Mojo ${label} version '${version}' does not match required '${requiredVersion}'.`,
     );
   }
   return Object.freeze({

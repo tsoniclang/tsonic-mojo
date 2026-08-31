@@ -24,12 +24,18 @@ const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 const importRoot = join(root, "imports");
 const sourceRoot = join(importRoot, "probe");
 const fakeMojo = join(root, "fake-mojo.mjs");
+const fakeMojoLanguageServer = join(root, "fake-mojo-lsp.mjs");
 
 function configuration() {
   return Object.freeze({
     command: Object.freeze({
       executable: process.execPath,
       arguments: Object.freeze([fakeMojo]),
+      workingDirectory: dirname(root),
+    }),
+    languageServer: Object.freeze({
+      executable: process.execPath,
+      arguments: Object.freeze([fakeMojoLanguageServer]),
       workingDirectory: dirname(root),
     }),
     packages: Object.freeze([Object.freeze({
@@ -48,8 +54,10 @@ test("compiler snapshots close exact command, environment, package, module, and 
   const snapshot = createMojoCompilerProjectSnapshot(configuration(), "1.1.0.dev2026083005");
   assert.equal(snapshot.packages.length, 1);
   assert.deepEqual(snapshot.packages[0].modules.map(({ modulePath }) => modulePath), [
+    [],
     ["_private"],
     ["api"],
+    ["surface"],
     ["traits"],
   ]);
   const api = snapshot.packages[0].modules.find(({ modulePath }) => modulePath.join(".") === "api");
@@ -83,18 +91,19 @@ test("compiler metadata extraction normalizes exact conventions, keywords, const
     const projection = projectMojoCompilerModule(snapshot, package_, model, {
       providerModuleId: "fixture-probe:api",
       moduleSpecifier,
+      exports: model.availableExports.map(({ name }) => ({ declarationName: name, exportName: name })),
     });
     assert.deepEqual(
       projection.declarationModel.exports.map(({ name }) => name),
       ["Bucket", "Counter", "classify", "collect", "sum"],
     );
-    const sumOperation = projection.operations.find(({ exportId }) => exportId.endsWith("export:function:sum"));
+    const sumOperation = projection.operations.find(({ exportId }) => exportId.endsWith("::export:sum"));
     assert.equal(sumOperation.target.arguments[1].nativeName, "right");
     assert.equal(sumOperation.target.arguments[1].position, "keyword");
     assert.equal(projection.operations.some(({ operationKind }) => operationKind === "constructor"), true);
     assert.equal(projection.operations.some(({ operationKind }) => operationKind === "property-set"), true);
     const collectOperation = projection.operations.find(({ exportId }) =>
-      exportId.endsWith("export:function:collect"));
+      exportId.endsWith("::export:collect"));
     assert.deepEqual(collectOperation.target.genericParameters.map((parameter) => ({
       kind: parameter.kind,
       name: parameter.name,
@@ -118,7 +127,7 @@ test("compiler metadata extraction normalizes exact conventions, keywords, const
       },
     ]);
     const classifyOperation = projection.operations.find(({ exportId }) =>
-      exportId.endsWith("export:function:classify"));
+      exportId.endsWith("::export:classify"));
     assert.deepEqual(classifyOperation.target.genericParameters.map((parameter) => ({
       kind: parameter.kind,
       name: parameter.name,
@@ -139,7 +148,7 @@ test("compiler metadata extraction normalizes exact conventions, keywords, const
       kind: "literal",
       value: "Int(4)",
     });
-    const bucket = projection.types.find(({ exportId }) => exportId.endsWith("export:struct:Bucket"));
+    const bucket = projection.types.find(({ exportId }) => exportId.endsWith("::export:Bucket"));
     assert.deepEqual(bucket.conformances.map(({ condition }) => condition), [
       undefined,
       { kind: "conforms-to", subject: "T", traitNames: ["Copyable"] },
@@ -179,6 +188,7 @@ test("compiler aliases retain exact semantic category, target, value type, and c
     const projection = projectMojoCompilerModule(snapshot, package_, model, {
       providerModuleId: "fixture-probe:_private",
       moduleSpecifier,
+      exports: model.availableExports.map(({ name }) => ({ declarationName: name, exportName: name })),
     });
     assert.deepEqual(projection.declarationModel.exports.map(({ name, kind }) => [name, kind]), [
       ["OriginAlias", "value"],
@@ -302,6 +312,48 @@ test("incremental compiler-provider slices isolate unrelated unsupported exports
     }
   } finally {
     restoreEnvironment("TSONIC_MOJO_PROVIDER_BROKEN_EXPORT", previousBroken);
+  }
+});
+
+test("compiler provider resolves public re-exports through exact language-server definitions", () => {
+  const providerConfiguration = configuration();
+  const snapshot = createMojoCompilerProjectSnapshot(providerConfiguration, "1.1.0.dev2026083005");
+  const package_ = snapshot.packages[0];
+  const surface = package_.modules.find(({ modulePath }) => modulePath.join(".") === "surface");
+  assert.ok(surface);
+  const loader = createMojoCompilerMetadataLoader(
+    join(repositoryRoot, ".temp", `compiler-provider-reexport-${process.pid}`),
+  );
+  try {
+    const [resolved] = loader.resolveExports({
+      snapshot,
+      package: package_,
+      module: surface,
+      exportNames: ["PublicCounter"],
+    });
+    assert.equal(resolved.package.id, package_.id);
+    assert.deepEqual(resolved.module.modulePath, ["api"]);
+    assert.equal(resolved.declarationName, "Counter");
+    const model = loader.module({
+      snapshot,
+      package: resolved.package,
+      module: resolved.module,
+      requestedExports: [resolved.declarationName],
+    });
+    const moduleSpecifier = mojoCompilerModuleSpecifier(package_, ["surface"]);
+    const projection = projectMojoCompilerModule(snapshot, resolved.package, model, {
+      providerModuleId: "fixture-probe:surface",
+      moduleSpecifier,
+      exports: [{ declarationName: "Counter", exportName: "PublicCounter" }],
+    });
+    assert.deepEqual(projection.declarationModel.exports.map(({ name, exportName }) =>
+      [name, exportName]), [["Counter", "PublicCounter"]]);
+    assert.equal(projection.types[0].targetType.name, "Counter");
+    assert.deepEqual(projection.types[0].targetType.modulePath, ["probe", "api"]);
+    assert.equal(projection.operations.every(({ exportId }) =>
+      exportId === "fixture-probe:surface::export:PublicCounter"), true);
+  } finally {
+    loader.close();
   }
 });
 
@@ -600,7 +652,13 @@ test("runtime package artifacts retain the exact analyzed Mojo sources", () => {
     include: importRoot,
     attributes: { packageName: "probe" },
   }])[0];
-  assert.deepEqual(packagePlan.sources.map(({ path }) => path), ["_private.mojo", "api.mojo", "traits.mojo"]);
+  assert.deepEqual(packagePlan.sources.map(({ path }) => path), [
+    "__init__.mojo",
+    "_private.mojo",
+    "api.mojo",
+    "surface/__init__.mojo",
+    "traits.mojo",
+  ]);
   assert.match(packagePlan.digest, /^[0-9a-f]{64}$/u);
   const output = materializeMojoOutputPlan({
     configuration: {
@@ -615,7 +673,13 @@ test("runtime package artifacts retain the exact analyzed Mojo sources", () => {
   });
   assert.deepEqual(
     output.artifacts.filter(({ path }) => path.startsWith("packages/")).map(({ path }) => path),
-    ["packages/probe/_private.mojo", "packages/probe/api.mojo", "packages/probe/traits.mojo"],
+    [
+      "packages/probe/__init__.mojo",
+      "packages/probe/_private.mojo",
+      "packages/probe/api.mojo",
+      "packages/probe/surface/__init__.mojo",
+      "packages/probe/traits.mojo",
+    ],
   );
   const project = output.artifacts.find(({ path }) => path === "pixi.toml");
   assert.match(project.text, /-I 'packages'/u);

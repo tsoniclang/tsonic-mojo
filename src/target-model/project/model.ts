@@ -18,6 +18,7 @@ export interface MojoCompilerPackageConfiguration {
 
 export interface MojoCompilerProviderConfiguration {
   readonly command: MojoCompilerCommandConfiguration;
+  readonly languageServer: MojoCompilerCommandConfiguration;
   readonly packages: readonly MojoCompilerPackageConfiguration[];
 }
 

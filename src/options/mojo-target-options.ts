@@ -45,6 +45,7 @@ function readCompilerProvider(
 ): MojoCompilerProviderConfiguration {
   return Object.freeze({
     command: readCompilerCommand(target.options?.compiler, projectDirectory),
+    languageServer: readLanguageServerCommand(target.options?.compiler, projectDirectory),
     packages: Object.freeze(readCompilerPackages(target.options?.providerPackages, projectDirectory)),
   });
 }
@@ -61,11 +62,57 @@ function readCompilerCommand(
     });
   }
   const record = requireRecord(value, "options.compiler");
-  requireOnlyKeys(record, ["executable", "arguments", "workingDirectory"], "options.compiler");
+  requireOnlyKeys(record, [
+    "executable",
+    "arguments",
+    "languageServerExecutable",
+    "languageServerArguments",
+    "workingDirectory",
+  ], "options.compiler");
   const executable = requireNonEmptyText(record.executable, "options.compiler.executable");
   const arguments_ = record.arguments === undefined
     ? []
     : requireTextArray(record.arguments, "options.compiler.arguments");
+  const workingDirectory = record.workingDirectory === undefined
+    ? projectDirectory
+    : existingDirectory(
+        resolve(projectDirectory, requireNonEmptyText(
+          record.workingDirectory,
+          "options.compiler.workingDirectory",
+        )),
+        "options.compiler.workingDirectory",
+      );
+  return Object.freeze({
+    executable,
+    arguments: Object.freeze(arguments_),
+    workingDirectory,
+  });
+}
+
+function readLanguageServerCommand(
+  value: unknown,
+  projectDirectory: string,
+): MojoCompilerCommandConfiguration {
+  if (value === undefined) {
+    return Object.freeze({
+      executable: "mojo-lsp-server",
+      arguments: Object.freeze([]),
+      workingDirectory: projectDirectory,
+    });
+  }
+  const record = requireRecord(value, "options.compiler");
+  const executable = record.languageServerExecutable === undefined
+    ? "mojo-lsp-server"
+    : requireNonEmptyText(
+        record.languageServerExecutable,
+        "options.compiler.languageServerExecutable",
+      );
+  const arguments_ = record.languageServerArguments === undefined
+    ? []
+    : requireTextArray(
+        record.languageServerArguments,
+        "options.compiler.languageServerArguments",
+      );
   const workingDirectory = record.workingDirectory === undefined
     ? projectDirectory
     : existingDirectory(

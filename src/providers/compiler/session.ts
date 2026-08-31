@@ -31,6 +31,7 @@ import {
 import type { MojoCompilerMetadataLoader } from "./mojo-doc.js";
 import { resolveMojoCompilerModuleSpecifier } from "./projection/module-specifier.js";
 import { projectMojoCompilerModule } from "./projection/projection.js";
+import { mergeMojoCompilerProjections } from "./projection/merge.js";
 import type { MojoCompilerProviderProjection } from "./projection/model.js";
 
 const diagnosticCodes = Object.freeze({
@@ -183,17 +184,24 @@ function createCompilerProvider(options: {
       const module = findModule(package_, resolved.modulePath);
       try {
         const requestedExports = requestedExportNames(request);
-        const model = options.loader.module({
-          snapshot: options.snapshot,
-          package: package_,
-          module,
-          ...(requestedExports === undefined ? {} : { requestedExports }),
-        });
-        const projection = projectMojoCompilerModule(options.snapshot, package_, model, {
-          providerModuleId: expectedModuleId,
-          moduleSpecifier: resolution.moduleSpecifier,
-          ...(requestedExports === undefined ? {} : { requestedExports }),
-        });
+        const projection = requestedExports === undefined
+          ? projectCompleteModule({
+              snapshot: options.snapshot,
+              package: package_,
+              module,
+              loader: options.loader,
+              providerModuleId: expectedModuleId,
+              moduleSpecifier: resolution.moduleSpecifier,
+            })
+          : projectRequestedExports({
+              snapshot: options.snapshot,
+              package: package_,
+              module,
+              loader: options.loader,
+              providerModuleId: expectedModuleId,
+              moduleSpecifier: resolution.moduleSpecifier,
+              exportNames: requestedExports,
+            });
         options.registry.add(projection);
         return materializeClosedMetadata(projection.declarationModel);
       } catch (error) {
@@ -205,6 +213,67 @@ function createCompilerProvider(options: {
       }
     },
   });
+}
+
+function projectCompleteModule(options: {
+  readonly snapshot: MojoCompilerProjectSnapshot;
+  readonly package: MojoCompilerPackageSnapshot;
+  readonly module: MojoCompilerModuleSource;
+  readonly loader: MojoCompilerMetadataLoader;
+  readonly providerModuleId: string;
+  readonly moduleSpecifier: string;
+}): MojoCompilerProviderProjection {
+  const exportNames = options.loader.listExports({
+    snapshot: options.snapshot,
+    package: options.package,
+    module: options.module,
+  });
+  return projectRequestedExports({
+    snapshot: options.snapshot,
+    package: options.package,
+    module: options.module,
+    loader: options.loader,
+    providerModuleId: options.providerModuleId,
+    moduleSpecifier: options.moduleSpecifier,
+    exportNames,
+  });
+}
+
+function projectRequestedExports(options: {
+  readonly snapshot: MojoCompilerProjectSnapshot;
+  readonly package: MojoCompilerPackageSnapshot;
+  readonly module: MojoCompilerModuleSource;
+  readonly loader: MojoCompilerMetadataLoader;
+  readonly providerModuleId: string;
+  readonly moduleSpecifier: string;
+  readonly exportNames: readonly string[];
+}): MojoCompilerProviderProjection {
+  const projections = options.loader.resolveExports({
+    snapshot: options.snapshot,
+    package: options.package,
+    module: options.module,
+    exportNames: options.exportNames,
+  }).map((resolved) => {
+    const model = options.loader.module({
+      snapshot: options.snapshot,
+      package: resolved.package,
+      module: resolved.module,
+      requestedExports: [resolved.declarationName],
+    });
+    return projectMojoCompilerModule(options.snapshot, resolved.package, model, {
+      providerModuleId: options.providerModuleId,
+      moduleSpecifier: options.moduleSpecifier,
+      exports: [Object.freeze({
+        declarationName: resolved.declarationName,
+        exportName: resolved.exportName,
+      })],
+    });
+  });
+  return mergeMojoCompilerProjections(
+    options.moduleSpecifier,
+    options.providerModuleId,
+    projections,
+  );
 }
 
 interface ProjectionRegistry {
