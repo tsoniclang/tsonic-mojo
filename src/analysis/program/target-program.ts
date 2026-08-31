@@ -11,6 +11,7 @@ import {
   targetSourceSyntaxProgram,
 } from "@tsonic/target-api/analysis";
 import {
+  Node_Expression,
   Node_Initializer,
 } from "@tsonic/target-api/source";
 import { createMojoNameAllocator } from "../names/identifiers.js";
@@ -19,6 +20,8 @@ import { analyzeMojoClass } from "../declarations/classes.js";
 import { createMojoConversionIndex } from "../conversions/classification.js";
 import { recordMojoFunctionConversionUses } from "../conversions/uses.js";
 import { analyzeMojoCall } from "../operations/calls.js";
+import { analyzeMojoElementAccess } from "../operations/elements.js";
+import { analyzeMojoIteration } from "../operations/iterations.js";
 import {
   analyzeMojoProjectProperty,
   analyzeMojoProviderProperty,
@@ -39,6 +42,8 @@ import type {
   MojoAnalyzedDeclaration,
   MojoAnalyzedFunction,
   MojoCallSelection,
+  MojoElementSelection,
+  MojoIterationSelection,
   MojoPropertySelection,
   MojoProgramQueries,
   MojoTargetAnalysisRequest,
@@ -65,6 +70,8 @@ export function analyzeMojoTargetProgram(
   const expressionTypes = new WeakMap<Node, MojoTargetTypeRef>();
   const callSelections = new WeakMap<Node, MojoCallSelection>();
   const propertySelections = new WeakMap<Node, MojoPropertySelection>();
+  const elementSelections = new WeakMap<Node, MojoElementSelection>();
+  const iterationSelections = new WeakMap<Node, MojoIterationSelection>();
   const conversions = createMojoConversionIndex();
   const functionByDeclaration = new WeakMap<Node, MojoAnalyzedFunction>();
   const classByDeclaration = new WeakMap<Node, MojoAnalyzedClass>();
@@ -256,6 +263,7 @@ export function analyzeMojoTargetProgram(
   for (const function_ of functions) {
     const semantics = input.source.semantics.forFile(function_.sourceFile);
     const dependencies = new Set<Node>();
+    const iterationNodes: Node[] = [];
     projectDependencies.set(function_.declaration, dependencies);
     walkSourceTree(function_.body, ast, (node): void => {
       if (ast.is.IsVariableDeclaration(node)) {
@@ -330,6 +338,38 @@ export function analyzeMojoTargetProgram(
           }
         }
       }
+      if (ast.is.IsElementAccessExpression(node)) {
+        const selectedElement = semantics.operations.elementAccess(node);
+        if (selectedElement === undefined) {
+          diagnostics.push(diagnostic(
+            "MOJO_ELEMENT_EVIDENCE_MISSING",
+            "Element lowering requires one exact checker-selected access.",
+            node,
+          ));
+        } else {
+          const element = analyzeMojoElementAccess(
+            selectedElement,
+            (type) => {
+              const resolved = resolveMojoTargetType(
+                type,
+                undefined,
+                { ast, semantics, sourceFacts: input.source.sourceFacts, providerSemantics, projectTypes, jsEnabled },
+              );
+              return resolved.kind === "resolved" ? resolved.type : undefined;
+            },
+            conversions,
+          );
+          if (element.kind === "unsupported") {
+            diagnostics.push(diagnostic(element.code, element.reason, node));
+          } else {
+            elementSelections.set(node, element.selection);
+            expressionTypes.set(node, element.expressionType);
+          }
+        }
+      }
+      if (ast.is.IsForOfStatement(node) || ast.is.IsForInStatement(node)) {
+        iterationNodes.push(node);
+      }
       if (!ast.is.IsCallExpression(node) && !ast.is.IsNewExpression(node)) return;
       const selectedCall = semantics.operations.call(node);
       if (selectedCall === undefined || selectedCall.sourceSelectedSignatureKind !== "resolved") {
@@ -358,6 +398,39 @@ export function analyzeMojoTargetProgram(
       if (analyzedCall.dependency !== undefined) dependencies.add(analyzedCall.dependency);
       callSelections.set(node, analyzedCall.selection);
     });
+    for (const node of iterationNodes) {
+        const selectedIteration = semantics.operations.iteration(node);
+        const iterable = Node_Expression(ast, node);
+        if (selectedIteration === undefined || iterable === undefined) {
+          diagnostics.push(diagnostic(
+            "MOJO_ITERATION_EVIDENCE_MISSING",
+            "Iteration lowering requires one exact checker-selected iteration operation.",
+            node,
+          ));
+        } else {
+          const iteration = analyzeMojoIteration({
+            ast,
+            statement: node,
+            iterable,
+            source: selectedIteration,
+            bindingNames,
+            bindingTypes,
+            resolveType(type) {
+              const resolved = resolveMojoTargetType(
+                type,
+                undefined,
+                { ast, semantics, sourceFacts: input.source.sourceFacts, providerSemantics, projectTypes, jsEnabled },
+              );
+              return resolved.kind === "resolved" ? resolved.type : undefined;
+            },
+          });
+          if (iteration.kind === "unsupported") {
+            diagnostics.push(diagnostic(iteration.code, iteration.reason, node));
+          } else {
+            iterationSelections.set(node, iteration.selection);
+          }
+        }
+    }
     walkSourceTreePostOrder(function_.body, ast, (node): void => {
       if (!isMojoExpressionNode(node, ast)) return;
       const inferred = inferMojoExpressionType(node, ast, expressionTypes);
@@ -369,6 +442,7 @@ export function analyzeMojoTargetProgram(
       bindingTypes,
       expressionTypes,
       propertySelections,
+      elementSelections,
       conversions,
       diagnostics,
     );
@@ -418,6 +492,8 @@ export function analyzeMojoTargetProgram(
       ast,
       callSelections,
       propertySelections,
+      elementSelections,
+      iterationSelections,
       bindingNames,
       diagnostics,
     );
@@ -442,6 +518,12 @@ export function analyzeMojoTargetProgram(
     },
     propertySelection(access: Node): MojoPropertySelection | undefined {
       return propertySelections.get(access);
+    },
+    elementSelection(access: Node): MojoElementSelection | undefined {
+      return elementSelections.get(access);
+    },
+    iterationSelection(statement: Node): MojoIterationSelection | undefined {
+      return iterationSelections.get(statement);
     },
   });
   const topLevelFunctions = finalizedFunctions.filter((function_) => function_.kind === "function");

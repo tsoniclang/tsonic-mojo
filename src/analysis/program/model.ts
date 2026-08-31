@@ -124,6 +124,31 @@ export type MojoPropertySelection =
       readonly readResultConversion?: MojoValueConversion;
     };
 
+export interface MojoElementSelection {
+  readonly kind: "native";
+  readonly receiver: Node;
+  readonly index: Node;
+  readonly accessMode: "read" | "write" | "read-write";
+  readonly receiverType: MojoTargetTypeRef;
+  readonly indexType: MojoTargetTypeRef;
+  readonly readType?: MojoTargetTypeRef;
+  readonly writeType?: MojoTargetTypeRef;
+  readonly indexConversion: MojoValueConversion;
+  readonly readResultConversion?: MojoValueConversion;
+  readonly selectedElementIndex?: number;
+}
+
+export interface MojoIterationSelection {
+  readonly kind: "for-of" | "for-in";
+  readonly statement: Node;
+  readonly iterable: Node;
+  readonly bindingDeclaration: Node;
+  readonly bindingName: string;
+  readonly iterableType: MojoTargetTypeRef;
+  readonly elementType: MojoTargetTypeRef;
+  readonly target: "native-values" | "dictionary-keys";
+}
+
 export type MojoCallSelection =
   | {
       readonly kind: "project";
@@ -156,6 +181,8 @@ export interface MojoProgramQueries {
   ): MojoValueConversion | undefined;
   callSelection(call: Node): MojoCallSelection | undefined;
   propertySelection(access: Node): MojoPropertySelection | undefined;
+  elementSelection(access: Node): MojoElementSelection | undefined;
+  iterationSelection(statement: Node): MojoIterationSelection | undefined;
 }
 
 export interface MojoRuntimePackagePlan {

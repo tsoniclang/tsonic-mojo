@@ -46,10 +46,16 @@ export function isMojoExpressionNode(node: Node, ast: AstReader): boolean {
   return ast.is.IsIdentifier(node) || ast.is.IsStringLiteral(node) ||
     ast.is.IsNoSubstitutionTemplateLiteral(node) || ast.is.IsNumericLiteral(node) ||
     ast.is.IsBinaryExpression(node) || ast.is.IsCallExpression(node) || ast.is.IsNewExpression(node) ||
-    ast.is.IsPropertyAccessExpression(node) ||
+    ast.is.IsPropertyAccessExpression(node) || ast.is.IsElementAccessExpression(node) ||
+    ast.is.IsArrayLiteralExpression(node) || ast.is.IsObjectLiteralExpression(node) ||
+    ast.is.IsPrefixUnaryExpression(node) || ast.is.IsPostfixUnaryExpression(node) ||
+    ast.is.IsConditionalExpression(node) ||
+    ast.is.IsAwaitExpression(node) || ast.is.IsAsExpression(node) || ast.is.IsTypeAssertion(node) ||
+    ast.is.IsNonNullExpression(node) || ast.is.IsSatisfiesExpression(node) ||
     ast.is.IsParenthesizedExpression(node) ||
     ast.kindName(node) === "KindThisKeyword" || ast.kindName(node) === "KindNullKeyword" ||
-    ast.kindName(node) === "KindTrueKeyword" || ast.kindName(node) === "KindFalseKeyword";
+    ast.kindName(node) === "KindUndefinedKeyword" || ast.kindName(node) === "KindTrueKeyword" ||
+    ast.kindName(node) === "KindFalseKeyword";
 }
 
 function isNumericCarrier(type: MojoTargetTypeRef): boolean {

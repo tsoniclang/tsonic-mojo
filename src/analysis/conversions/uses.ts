@@ -3,14 +3,23 @@ import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import {
   BinaryExpression_Left,
   BinaryExpression_Right,
+  ConditionalExpression_Condition,
+  ConditionalExpression_WhenFalse,
+  ConditionalExpression_WhenTrue,
   Node_Expression,
   Node_Initializer,
+  ObjectLiteralProperty_Value,
+  PrefixUnaryExpression_Operand,
   VariableDeclarationList_Declarations,
   VariableStatement_DeclarationList,
 } from "@tsonic/target-api/source";
 import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
-import type { MojoAnalyzedFunction, MojoPropertySelection } from "../program/model.js";
+import type {
+  MojoAnalyzedFunction,
+  MojoElementSelection,
+  MojoPropertySelection,
+} from "../program/model.js";
 import type { MojoConversionIndex } from "./classification.js";
 
 export function recordMojoFunctionConversionUses(
@@ -19,6 +28,7 @@ export function recordMojoFunctionConversionUses(
   bindingTypes: WeakMap<Node, MojoTargetTypeRef>,
   expressionTypes: WeakMap<Node, MojoTargetTypeRef>,
   propertySelections: WeakMap<Node, MojoPropertySelection>,
+  elementSelections: WeakMap<Node, MojoElementSelection>,
   conversions: MojoConversionIndex,
   diagnostics: TargetDiagnostic[],
 ): void {
@@ -51,6 +61,66 @@ export function recordMojoFunctionConversionUses(
       visitExpression(inner);
       return;
     }
+    if (ast.is.IsArrayLiteralExpression(expression)) {
+      const type = expressionTypes.get(expression);
+      const elements = ast.elements(expression);
+      const expected = type?.kind === "list" || type?.kind === "fixed-array"
+        ? elements.map(() => type.element)
+        : type?.kind === "tuple"
+          ? type.elements
+          : type?.kind === "target-named" && type.id === "tsonic.mojo.js.JsArray"
+            ? elements.map(() => type.genericArguments?.[0]?.kind === "type"
+                ? type.genericArguments[0].type
+                : undefined)
+            : [];
+      for (const [index, element] of elements.entries()) {
+        const target = expected[index];
+        if (element !== undefined && target !== undefined && !ast.is.IsSpreadElement(element)) record(element, target);
+        visitExpression(element);
+      }
+      return;
+    }
+    if (ast.is.IsObjectLiteralExpression(expression)) {
+      const type = expressionTypes.get(expression);
+      for (const property of ast.properties(expression)) {
+        const value = ObjectLiteralProperty_Value(ast, property);
+        if (type?.kind === "dictionary") record(value, type.value);
+        visitExpression(value);
+      }
+      return;
+    }
+    if (ast.is.IsConditionalExpression(expression)) {
+      const condition = ConditionalExpression_Condition(ast, expression);
+      const whenTrue = ConditionalExpression_WhenTrue(ast, expression);
+      const whenFalse = ConditionalExpression_WhenFalse(ast, expression);
+      const result = expressionTypes.get(expression);
+      record(condition, { kind: "source-primitive", name: "bool" });
+      if (result !== undefined) {
+        record(whenTrue, result);
+        record(whenFalse, result);
+      }
+      visitExpression(condition);
+      visitExpression(whenTrue);
+      visitExpression(whenFalse);
+      return;
+    }
+    if (ast.is.IsPrefixUnaryExpression(expression)) {
+      const operand = PrefixUnaryExpression_Operand(ast, expression);
+      const expected = ast.operatorKindName(expression) === "KindExclamationToken"
+        ? { kind: "source-primitive" as const, name: "bool" as const }
+        : expressionTypes.get(expression);
+      if (expected !== undefined) record(operand, expected);
+      visitExpression(operand);
+      return;
+    }
+    if (ast.is.IsAsExpression(expression) || ast.is.IsTypeAssertion(expression) ||
+      ast.is.IsNonNullExpression(expression) || ast.is.IsSatisfiesExpression(expression)) {
+      const inner = Node_Expression(ast, expression);
+      const expected = expressionTypes.get(expression);
+      if (expected !== undefined) record(inner, expected);
+      visitExpression(inner);
+      return;
+    }
     if (ast.is.IsBinaryExpression(expression)) {
       const left = BinaryExpression_Left(ast, expression);
       const right = BinaryExpression_Right(ast, expression);
@@ -64,9 +134,11 @@ export function recordMojoFunctionConversionUses(
         operator !== "KindEqualsEqualsEqualsToken" && operator !== "KindExclamationEqualsToken" &&
         operator !== "KindExclamationEqualsEqualsToken") {
         const property = left === undefined ? undefined : propertySelections.get(left);
+        const element = left === undefined ? undefined : elementSelections.get(left);
         const leftType = property?.kind === "provider"
           ? property.writeOperation?.parameterTypes[0]
-          : left === undefined ? undefined : expressionTypes.get(left);
+          : element?.writeType ??
+            (left === undefined ? undefined : expressionTypes.get(left));
         if (leftType !== undefined) record(right, leftType);
       } else if (resultType !== undefined && !isComparison(operator)) {
         record(left, resultType);

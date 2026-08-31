@@ -1,12 +1,21 @@
 import type { AstReader, Node } from "@tsonic/tsts";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import {
+  ForStatement_Condition,
+  ForStatement_Incrementor,
+  ForStatement_Initializer,
   Node_Expression,
   Node_Initializer,
   VariableDeclarationList_Declarations,
   VariableStatement_DeclarationList,
 } from "@tsonic/target-api/source";
-import type { MojoAnalyzedFunction, MojoCallSelection, MojoPropertySelection } from "./model.js";
+import type {
+  MojoAnalyzedFunction,
+  MojoCallSelection,
+  MojoElementSelection,
+  MojoIterationSelection,
+  MojoPropertySelection,
+} from "./model.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 
 const supportedBinaryOperators = new Set([
@@ -23,6 +32,12 @@ const supportedBinaryOperators = new Set([
   "KindGreaterThanEqualsToken",
   "KindAmpersandAmpersandToken",
   "KindBarBarToken",
+  "KindAsteriskAsteriskToken",
+  "KindAmpersandToken",
+  "KindBarToken",
+  "KindCaretToken",
+  "KindLessThanLessThanToken",
+  "KindGreaterThanGreaterThanToken",
   "KindEqualsToken",
   "KindPlusEqualsToken",
   "KindMinusEqualsToken",
@@ -47,6 +62,8 @@ export function validateMojoFunctionSyntax(
   ast: AstReader,
   calls: WeakMap<Node, MojoCallSelection>,
   properties: WeakMap<Node, MojoPropertySelection>,
+  elements: WeakMap<Node, MojoElementSelection>,
+  iterations: WeakMap<Node, MojoIterationSelection>,
   bindings: WeakMap<Node, string>,
   diagnostics: TargetDiagnostic[],
 ): void {
@@ -67,8 +84,74 @@ export function validateMojoFunctionSyntax(
     }
     if (ast.is.IsStringLiteral(expression) || ast.is.IsNoSubstitutionTemplateLiteral(expression) ||
       ast.is.IsNumericLiteral(expression) || ast.kindName(expression) === "KindTrueKeyword" ||
-      ast.kindName(expression) === "KindFalseKeyword") return;
+      ast.kindName(expression) === "KindFalseKeyword" || ast.kindName(expression) === "KindNullKeyword" ||
+      ast.kindName(expression) === "KindUndefinedKeyword") return;
+    if (ast.is.IsArrayLiteralExpression(expression)) {
+      for (const element of ast.elements(expression)) {
+        if (element === undefined) continue;
+        if (ast.is.IsSpreadElement(element)) {
+          diagnostics.push(diagnostic(
+            "MOJO_ARRAY_SPREAD_UNSUPPORTED",
+            "Array spread requires an exact sealed expansion plan.",
+            element,
+          ));
+        } else {
+          validateExpression(element);
+        }
+      }
+      return;
+    }
+    if (ast.is.IsObjectLiteralExpression(expression)) {
+      for (const property of ast.properties(expression)) {
+        if (property === undefined ||
+          (!ast.is.IsPropertyAssignment(property) && !ast.is.IsShorthandPropertyAssignment(property))) {
+          diagnostics.push(diagnostic(
+            "MOJO_OBJECT_MEMBER_UNSUPPORTED",
+            "Object literal member requires a sealed target object-shape operation.",
+            property ?? expression,
+          ));
+          continue;
+        }
+        validateExpression(Node_Initializer(ast, property) ?? ast.name(property));
+      }
+      return;
+    }
     if (ast.is.IsParenthesizedExpression(expression)) {
+      validateExpression(Node_Expression(ast, expression));
+      return;
+    }
+    if (ast.is.IsPrefixUnaryExpression(expression) || ast.is.IsPostfixUnaryExpression(expression)) {
+      const operator = ast.operatorKindName(expression);
+      const update = operator === "KindPlusPlusToken" || operator === "KindMinusMinusToken";
+      if (update && !assignmentAllowed) {
+        diagnostics.push(diagnostic(
+          "MOJO_UPDATE_POSITION_UNSUPPORTED",
+          "Increment and decrement are supported only where their expression result is discarded.",
+          expression,
+        ));
+      } else if (!update && ast.is.IsPostfixUnaryExpression(expression)) {
+        diagnostics.push(diagnostic(
+          "MOJO_POSTFIX_OPERATOR_UNSUPPORTED",
+          `Postfix operator '${operator}' has no certified Mojo lowering.`,
+          expression,
+        ));
+      }
+      const operand = ast.is.IsPrefixUnaryExpression(expression)
+        ? ast.as.AsPrefixUnaryExpression(expression)?.Operand
+        : ast.as.AsPostfixUnaryExpression(expression)?.Operand;
+      validateExpression(operand);
+      return;
+    }
+    if (ast.is.IsConditionalExpression(expression)) {
+      const conditional = ast.as.AsConditionalExpression(expression);
+      validateExpression(conditional?.Condition);
+      validateExpression(conditional?.WhenTrue);
+      validateExpression(conditional?.WhenFalse);
+      return;
+    }
+    if (ast.is.IsAwaitExpression(expression) || ast.is.IsAsExpression(expression) ||
+      ast.is.IsTypeAssertion(expression) || ast.is.IsNonNullExpression(expression) ||
+      ast.is.IsSatisfiesExpression(expression)) {
       validateExpression(Node_Expression(ast, expression));
       return;
     }
@@ -106,6 +189,19 @@ export function validateMojoFunctionSyntax(
         ));
       }
       validateExpression(Node_Expression(ast, expression));
+      return;
+    }
+    if (ast.is.IsElementAccessExpression(expression)) {
+      if (elements.get(expression) === undefined) {
+        diagnostics.push(diagnostic(
+          "MOJO_ELEMENT_SELECTION_UNRESOLVED",
+          "Element expression has no sealed Mojo operation.",
+          expression,
+        ));
+      }
+      const selected = ast.as.AsElementAccessExpression(expression);
+      validateExpression(selected?.Expression);
+      validateExpression(selected?.ArgumentExpression);
       return;
     }
     diagnostics.push(diagnostic(
@@ -149,6 +245,52 @@ export function validateMojoFunctionSyntax(
     if (ast.is.IsWhileStatement(statement)) {
       validateExpression(Node_Expression(ast, statement));
       validateStatement(ast.as.AsWhileStatement(statement)?.Statement);
+      return;
+    }
+    if (ast.is.IsDoStatement(statement)) {
+      validateExpression(Node_Expression(ast, statement));
+      validateStatement(ast.as.AsDoStatement(statement)?.Statement);
+      return;
+    }
+    if (ast.is.IsForOfStatement(statement) || ast.is.IsForInStatement(statement)) {
+      if (iterations.get(statement) === undefined) {
+        diagnostics.push(diagnostic(
+          "MOJO_ITERATION_SELECTION_UNRESOLVED",
+          "Iteration statement has no sealed Mojo iteration operation.",
+          statement,
+        ));
+      }
+      validateExpression(Node_Expression(ast, statement));
+      validateStatement(ast.as.AsForInOrOfStatement(statement)?.Statement);
+      return;
+    }
+    if (ast.is.IsForStatement(statement)) {
+      const initializer = ForStatement_Initializer(ast, statement);
+      if (initializer !== undefined) {
+        if (ast.is.IsVariableDeclarationList(initializer)) {
+          for (const declaration of VariableDeclarationList_Declarations(ast, initializer) ?? []) {
+            validateExpression(Node_Initializer(ast, declaration));
+          }
+        } else {
+          validateExpression(initializer, true);
+        }
+      }
+      validateExpression(ForStatement_Condition(ast, statement));
+      validateExpression(ForStatement_Incrementor(ast, statement), true);
+      validateStatement(ast.as.AsForStatement(statement)?.Statement);
+      return;
+    }
+    if (ast.is.IsBreakStatement(statement) || ast.is.IsContinueStatement(statement)) {
+      const label = ast.is.IsBreakStatement(statement)
+        ? ast.as.AsBreakStatement(statement)?.Label
+        : ast.as.AsContinueStatement(statement)?.Label;
+      if (label !== undefined) {
+        diagnostics.push(diagnostic(
+          "MOJO_LABELED_COMPLETION_UNSUPPORTED",
+          "Labeled break and continue require a sealed target completion-flow plan.",
+          statement,
+        ));
+      }
       return;
     }
     diagnostics.push(diagnostic(
