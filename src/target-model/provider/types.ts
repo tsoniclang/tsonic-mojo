@@ -14,6 +14,30 @@ export function mojoUnitTargetType(): MojoTargetTypeRef {
   return Object.freeze({ kind: "unit" });
 }
 
+export function mojoNeverTargetType(): MojoTargetTypeRef {
+  return Object.freeze({ kind: "never" });
+}
+
+export function mojoNullTargetType(): MojoTargetTypeRef {
+  return Object.freeze({ kind: "null" });
+}
+
+export function mojoUndefinedTargetType(): MojoTargetTypeRef {
+  return Object.freeze({ kind: "undefined" });
+}
+
+export function mojoDynamicTargetType(domain: "source" | "js"): MojoTargetTypeRef {
+  return Object.freeze({ kind: "dynamic", domain });
+}
+
+export function mojoBigIntTargetType(): MojoTargetTypeRef {
+  return Object.freeze({ kind: "bigint" });
+}
+
+export function mojoSymbolTargetType(): MojoTargetTypeRef {
+  return Object.freeze({ kind: "symbol" });
+}
+
 export function mojoNamedTargetType(
   id: string,
   modulePath: readonly string[],
@@ -39,6 +63,24 @@ export function mojoListTargetType(element: MojoTargetTypeRef): MojoTargetTypeRe
   return Object.freeze({ kind: "list", element });
 }
 
+export function mojoFixedArrayTargetType(
+  element: MojoTargetTypeRef,
+  length: import("./model.js").MojoTargetConstArgument,
+): MojoTargetTypeRef {
+  return Object.freeze({ kind: "fixed-array", element, length });
+}
+
+export function mojoDictionaryTargetType(
+  key: MojoTargetTypeRef,
+  value: MojoTargetTypeRef,
+): MojoTargetTypeRef {
+  return Object.freeze({ kind: "dictionary", key, value });
+}
+
 export function mojoOptionalTargetType(value: MojoTargetTypeRef): MojoTargetTypeRef {
   return Object.freeze({ kind: "optional", value });
+}
+
+export function mojoUnionTargetType(members: readonly MojoTargetTypeRef[]): MojoTargetTypeRef {
+  return Object.freeze({ kind: "union", members: Object.freeze([...members]) });
 }

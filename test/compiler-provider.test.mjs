@@ -713,7 +713,7 @@ test("runtime package artifacts retain the exact analyzed Mojo sources", () => {
       compilerProvider: configuration(),
       toolchainVersion: "1.1.0.dev2026083005",
     },
-    module: { imports: [], functions: [] },
+    module: { imports: [], declarations: [] },
     runtimePackages: [packagePlan],
   });
   assert.deepEqual(

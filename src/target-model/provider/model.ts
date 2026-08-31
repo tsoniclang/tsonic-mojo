@@ -4,6 +4,12 @@ export type MojoTargetTypeRef =
   | { readonly kind: "source-primitive"; readonly name: SourcePrimitiveKind }
   | { readonly kind: "native-string" }
   | { readonly kind: "unit" }
+  | { readonly kind: "never" }
+  | { readonly kind: "null" }
+  | { readonly kind: "undefined" }
+  | { readonly kind: "dynamic"; readonly domain: "source" | "js" }
+  | { readonly kind: "bigint" }
+  | { readonly kind: "symbol" }
   | { readonly kind: "type-parameter"; readonly name: string }
   | {
       readonly kind: "target-named";
@@ -13,7 +19,18 @@ export type MojoTargetTypeRef =
       readonly genericArguments?: readonly MojoTargetGenericArgument[];
     }
   | { readonly kind: "list"; readonly element: MojoTargetTypeRef }
+  | {
+      readonly kind: "fixed-array";
+      readonly element: MojoTargetTypeRef;
+      readonly length: MojoTargetConstArgument;
+    }
+  | {
+      readonly kind: "dictionary";
+      readonly key: MojoTargetTypeRef;
+      readonly value: MojoTargetTypeRef;
+    }
   | { readonly kind: "optional"; readonly value: MojoTargetTypeRef }
+  | { readonly kind: "union"; readonly members: readonly MojoTargetTypeRef[] }
   | { readonly kind: "tuple"; readonly elements: readonly MojoTargetTypeRef[] }
   | {
       readonly kind: "associated";
@@ -38,6 +55,11 @@ export type MojoTargetTypeRef =
       readonly errorType?: MojoTargetTypeRef;
       readonly capture?: string;
     };
+
+export type MojoTargetConstArgument =
+  | { readonly kind: "integer"; readonly value: string }
+  | { readonly kind: "boolean"; readonly value: boolean }
+  | { readonly kind: "parameter"; readonly name: string };
 
 export type MojoTargetGenericArgument =
   | { readonly kind: "type"; readonly name?: string; readonly type: MojoTargetTypeRef }

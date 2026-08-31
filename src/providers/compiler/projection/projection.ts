@@ -198,6 +198,12 @@ function projectTypeDeclaration(
   }, context);
   types.push(Object.freeze({
     exportId,
+    sourceGenericParameters: Object.freeze((declaration.kind === "struct"
+      ? declaration.genericParameters
+      : []).map((parameter) => Object.freeze({
+        targetName: parameter.name,
+        targetKind: parameter.kind,
+      }))),
     targetType: ownerType.target,
     ...(declaration.aliases.length === 0
       ? {}
@@ -434,7 +440,12 @@ function projectAlias(
       throw new Error(`Mojo type alias '${declaration.name}' has no exact target type.`);
     }
     const projected = projectMojoCompilerType(declaration.targetType, context);
-    types.push(Object.freeze({ exportId, targetType: projected.target }));
+    types.push(Object.freeze({
+      exportId,
+      sourceGenericParameters: Object.freeze(declaration.genericParameters.map((parameter) =>
+        Object.freeze({ targetName: parameter.name, targetKind: parameter.kind }))),
+      targetType: projected.target,
+    }));
     return Object.freeze({
       id: exportId,
       name: declaration.name,

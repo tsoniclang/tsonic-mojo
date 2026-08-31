@@ -4,6 +4,7 @@ import type { TargetSourceSyntaxProgram } from "@tsonic/target-api/analysis";
 import type { MojoProviderOperationRow, MojoProviderSemantics } from "../../providers/packages/model.js";
 import type { MojoTargetConfiguration } from "../../target-model/project/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
+import type { MojoProjectTypeCatalog } from "../types/project-catalog.js";
 
 export interface MojoTargetAnalysisRequest {
   readonly input: TargetCompileInput;
@@ -62,6 +63,7 @@ export interface MojoRuntimePackagePlan {
 export interface MojoTargetProgram {
   readonly configuration: MojoTargetConfiguration;
   readonly source: TargetSourceSyntaxProgram;
+  readonly projectTypes: MojoProjectTypeCatalog;
   readonly functions: readonly MojoAnalyzedFunction[];
   readonly queries: MojoProgramQueries;
   readonly runtimePackages: readonly MojoRuntimePackagePlan[];

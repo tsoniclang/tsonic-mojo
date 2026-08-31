@@ -4,11 +4,12 @@ import {
   BinaryExpression_Right,
   Node_Expression,
 } from "@tsonic/target-api/source";
-import { mojoTypeEquals } from "../../analysis/types/resolution.js";
+import { mojoTargetTypeEquals } from "../../target-model/provider/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
 import type { MojoExpression } from "../target-ast/nodes.js";
 import type { MojoCallArgument } from "../target-ast/nodes.js";
 import { appendMojoPlanningDiagnostic } from "./context.js";
+import { registerMojoModuleImport } from "./context.js";
 import type { MojoPlanningContext } from "./context.js";
 import { registerMojoTypeImports } from "./types/render.js";
 
@@ -115,7 +116,7 @@ export function planMojoExpression(
   const actualType = context.program.queries.expressionType(node);
   if ((ast.is.IsStringLiteral(node) || ast.is.IsNoSubstitutionTemplateLiteral(node)) &&
     actualType !== undefined && isJsString(actualType)) {
-    context.imports.add("tsonic_js");
+    registerMojoModuleImport(context, ["tsonic_js"]);
     planned = { kind: "construct", type: actualType, arguments: Object.freeze([{ value: planned }]) };
   }
   return expectedType === undefined || actualType === undefined
@@ -170,7 +171,7 @@ function planCall(node: Node, context: MojoPlanningContext): MojoExpression | un
   }
   let call: MojoExpression;
   if (target.kind === "function-call") {
-    if (target.modulePath.length > 0) context.imports.add(target.modulePath.join("."));
+    registerMojoModuleImport(context, target.modulePath);
     call = {
       kind: "call",
       callee: { kind: "path", path: [...target.modulePath, ...(target.ownerPath ?? []), target.name].join(".") },
@@ -204,13 +205,13 @@ function convertMojoExpression(
   context: MojoPlanningContext,
   sourceNode: Node,
 ): MojoExpression | undefined {
-  if (mojoTypeEquals(actual, expected)) return expression;
+  if (mojoTargetTypeEquals(actual, expected)) return expression;
   if (isJsString(actual) && expected.kind === "native-string") {
-    context.imports.add("tsonic_js");
+    registerMojoModuleImport(context, ["tsonic_js"]);
     return { kind: "method-call", receiver: expression, name: "to_native_strict", arguments: Object.freeze([]) };
   }
   if (actual.kind === "native-string" && isJsString(expected)) {
-    context.imports.add("tsonic_js");
+    registerMojoModuleImport(context, ["tsonic_js"]);
     return { kind: "construct", type: expected, arguments: Object.freeze([{ value: expression }]) };
   }
   if (actual.kind === "source-primitive" && expected.kind === "source-primitive") {

@@ -113,6 +113,15 @@ export function validateMojoProviderPackageDefinition(
       throw new Error(`Provider type relation '${type.exportId}' is duplicated.`);
     }
     typeExports.add(type.exportId);
+    const sourceGenericNames = new Set<string>();
+    for (const parameter of type.sourceGenericParameters) {
+      if (!identifierPattern.test(parameter.targetName) || sourceGenericNames.has(parameter.targetName)) {
+        throw new Error(
+          `Provider type '${type.exportId}' has invalid or duplicate target generic parameter '${parameter.targetName}'.`,
+        );
+      }
+      sourceGenericNames.add(parameter.targetName);
+    }
     validateType(type.targetType);
     for (const conformance of type.conformances ?? []) {
       validateType(conformance.trait);
@@ -286,6 +295,13 @@ function validateType(type: MojoTargetTypeRef): void {
       return;
     case "native-string":
     case "unit":
+    case "never":
+    case "null":
+    case "undefined":
+    case "bigint":
+    case "symbol":
+      return;
+    case "dynamic":
       return;
     case "compiler-expression":
       requireText(type.expression, "Mojo compiler-owned type expression");
@@ -305,8 +321,28 @@ function validateType(type: MojoTargetTypeRef): void {
     case "list":
       validateType(type.element);
       return;
+    case "fixed-array":
+      validateType(type.element);
+      if (type.length.kind === "integer") {
+        if (!/^(?:0|[1-9][0-9]*)$/u.test(type.length.value)) {
+          throw new Error(`Mojo fixed-array length '${type.length.value}' is not a canonical non-negative integer.`);
+        }
+      } else if (type.length.kind === "parameter" && !identifierPattern.test(type.length.name)) {
+        throw new Error(`Mojo fixed-array length parameter '${type.length.name}' is invalid.`);
+      }
+      return;
+    case "dictionary":
+      validateType(type.key);
+      validateType(type.value);
+      return;
     case "optional":
       validateType(type.value);
+      return;
+    case "union":
+      if (type.members.length < 2) {
+        throw new Error("Mojo union target type requires at least two member carriers.");
+      }
+      for (const member of type.members) validateType(member);
       return;
     case "tuple":
       for (const element of type.elements) validateType(element);

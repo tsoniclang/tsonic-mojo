@@ -5,10 +5,13 @@ import { printMojoModule } from "../dist/backend/emission/printer.js";
 test("printer emits assignment as a statement and keeps expressions structured", () => {
   const module = {
     imports: [],
-    functions: [{
+    declarations: [{
+      kind: "function",
       name: "increment",
+      genericParameters: [],
       parameters: [{ name: "value", type: { kind: "source-primitive", name: "int32" } }],
       resultType: { kind: "source-primitive", name: "int32" },
+      asynchronous: false,
       raises: false,
       statements: [
         {
@@ -40,11 +43,14 @@ test("printer emits explicit JS string construction", () => {
     name: "JsString",
   };
   const module = {
-    imports: ["tsonic_js"],
-    functions: [{
+    imports: [{ kind: "module", modulePath: ["tsonic_js"] }],
+    declarations: [{
+      kind: "function",
       name: "message",
+      genericParameters: [],
       parameters: [],
       resultType: jsString,
+      asynchronous: false,
       raises: false,
       statements: [{
         kind: "return",
@@ -57,4 +63,54 @@ test("printer emits explicit JS string construction", () => {
     }],
   };
   assert.match(printMojoModule(module), /return tsonic_js\.JsString\("hello"\)/u);
+});
+
+test("printer emits typed declarations and structured control flow", () => {
+  const int32 = { kind: "source-primitive", name: "int32" };
+  const module = {
+    imports: [{
+      kind: "symbols",
+      modulePath: ["std", "collections"],
+      symbols: [{ name: "List" }, { name: "Optional", alias: "Maybe" }],
+    }],
+    declarations: [{
+      kind: "struct",
+      name: "Counter",
+      genericParameters: [],
+      conformances: [],
+      fields: [{ name: "value", type: int32, compileTime: false }],
+      methods: [{
+        kind: "function",
+        name: "increment",
+        genericParameters: [],
+        parameters: [{ name: "self", type: { kind: "target-named", id: "counter", modulePath: [], name: "Counter" }, convention: "mut" }],
+        resultType: int32,
+        asynchronous: false,
+        raises: false,
+        statements: [{
+          kind: "assignment",
+          operator: "+=",
+          left: { kind: "member", receiver: { kind: "path", path: "self" }, name: "value" },
+          right: { kind: "number-literal", text: "1" },
+        }, {
+          kind: "return",
+          expression: { kind: "member", receiver: { kind: "path", path: "self" }, name: "value" },
+        }],
+      }],
+    }],
+  };
+  assert.equal(
+    printMojoModule(module),
+    [
+      "from std.collections import List, Optional as Maybe",
+      "",
+      "struct Counter:",
+      "    var value: Int32",
+      "",
+      "    def increment(mut self: Counter) -> Int32:",
+      "        self.value += 1",
+      "        return self.value",
+      "",
+    ].join("\n"),
+  );
 });

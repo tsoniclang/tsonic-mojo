@@ -20,6 +20,7 @@ import { analyzeMojoRuntimePackages } from "../runtime/references.js";
 import {
   resolveMojoTargetType,
 } from "../types/resolution.js";
+import { createMojoProjectTypeCatalog } from "../types/project-catalog.js";
 import {
   providerCallRequiresRaisingConversion,
   propagateRaisingEffects,
@@ -57,6 +58,7 @@ export function analyzeMojoTargetProgram(
   const directRaises = new Map<Node, boolean>();
   const projectDependencies = new Map<Node, Set<Node>>();
   const globalNames = createMojoNameAllocator();
+  const globalNameByDeclaration = new WeakMap<Node, string>();
   const functionDrafts: {
     readonly declaration: Node;
     readonly sourceFile: SourceFile;
@@ -64,6 +66,24 @@ export function analyzeMojoTargetProgram(
     readonly body: Node;
     readonly localNames: (sourceName: string) => string;
   }[] = [];
+
+  for (const sourceFile of sourceFiles) {
+    for (const statement of ast.statements(sourceFile)) {
+      if (statement === undefined) continue;
+      const nameNode = ast.name(statement);
+      if (nameNode !== undefined && ast.is.IsIdentifier(nameNode)) {
+        globalNameByDeclaration.set(statement, globalNames(ast.text(nameNode)));
+      }
+    }
+  }
+  const projectTypes = createMojoProjectTypeCatalog(
+    input.source,
+    sourceFiles,
+    (declaration, sourceName) => globalNameByDeclaration.get(declaration) ?? globalNames(sourceName),
+  );
+  for (const issue of projectTypes.issues) {
+    diagnostics.push(diagnostic(issue.code, issue.message, issue.node));
+  }
 
   for (const sourceFile of sourceFiles) {
     for (const statement of ast.statements(sourceFile)) {
@@ -90,7 +110,7 @@ export function analyzeMojoTargetProgram(
         ));
         continue;
       }
-      const name = globalNames(ast.text(nameNode));
+      const name = globalNameByDeclaration.get(statement) ?? globalNames(ast.text(nameNode));
       bindingNames.set(statement, name);
       functionDrafts.push(Object.freeze({
         declaration: statement,
@@ -140,7 +160,7 @@ export function analyzeMojoTargetProgram(
       const typeResolution = resolveMojoTargetType(
         selected.type,
         ast.typeNode(parameter),
-        { semantics, sourceFacts: input.source.sourceFacts, providerSemantics, jsEnabled },
+        { ast, semantics, sourceFacts: input.source.sourceFacts, providerSemantics, projectTypes, jsEnabled },
       );
       if (typeResolution.kind === "unsupported") {
         diagnostics.push(typeDiagnostic(parameter, typeResolution.reason));
@@ -158,7 +178,7 @@ export function analyzeMojoTargetProgram(
     const resultResolution = resolveMojoTargetType(
       callable.result.selectedType,
       callable.result.authoredTypeNode ?? ast.typeNode(draft.declaration),
-      { semantics, sourceFacts: input.source.sourceFacts, providerSemantics, jsEnabled },
+      { ast, semantics, sourceFacts: input.source.sourceFacts, providerSemantics, projectTypes, jsEnabled },
     );
     if (resultResolution.kind === "unsupported") {
       diagnostics.push(typeDiagnostic(draft.declaration, resultResolution.reason));
@@ -194,7 +214,7 @@ export function analyzeMojoTargetProgram(
         const resolved = resolveMojoTargetType(
           selected,
           ast.typeNode(node),
-          { semantics, sourceFacts: input.source.sourceFacts, providerSemantics, jsEnabled },
+          { ast, semantics, sourceFacts: input.source.sourceFacts, providerSemantics, projectTypes, jsEnabled },
         );
         if (resolved.kind === "unsupported") {
           diagnostics.push(typeDiagnostic(node, resolved.reason));
@@ -218,7 +238,7 @@ export function analyzeMojoTargetProgram(
           ? resolveMojoTargetType(
               selectedType,
               undefined,
-              { semantics, sourceFacts: input.source.sourceFacts, providerSemantics, jsEnabled },
+              { ast, semantics, sourceFacts: input.source.sourceFacts, providerSemantics, projectTypes, jsEnabled },
             )
           : { kind: "resolved" as const, type: referencedType };
         if (resolved.kind === "resolved") expressionTypes.set(node, resolved.type);
@@ -339,6 +359,7 @@ export function analyzeMojoTargetProgram(
   return resolvedTargetStage(Object.freeze({
     configuration,
     source: targetSourceSyntaxProgram(input.source),
+    projectTypes,
     functions: Object.freeze(finalizedFunctions),
     queries,
     runtimePackages: analyzeMojoRuntimePackages(input.runtimeReferences),

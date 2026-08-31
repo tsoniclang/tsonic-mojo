@@ -1,27 +1,52 @@
 import type { MojoTargetTypeRef } from "../../../target-model/provider/model.js";
 import type { MojoPlanningContext } from "../context.js";
+import { registerMojoModuleImport, registerMojoSymbolImport } from "../context.js";
 
 export function registerMojoTypeImports(type: MojoTargetTypeRef, context: MojoPlanningContext): void {
   switch (type.kind) {
     case "source-primitive":
     case "native-string":
     case "unit":
+    case "never":
     case "type-parameter":
     case "compiler-expression":
       return;
+    case "null":
+    case "undefined":
+    case "bigint":
+      registerMojoModuleImport(context, ["tsonic_runtime"]);
+      return;
+    case "dynamic":
+      registerMojoModuleImport(context, [type.domain === "js" ? "tsonic_js" : "tsonic_runtime"]);
+      return;
+    case "symbol":
+      registerMojoModuleImport(context, ["tsonic_js"]);
+      return;
     case "target-named":
-      if (type.modulePath.length > 0) context.imports.add(type.modulePath.join("."));
+      registerMojoModuleImport(context, type.modulePath);
       for (const argument of type.genericArguments ?? []) {
         if (argument.kind === "type") registerMojoTypeImports(argument.type, context);
       }
       return;
     case "list":
-      context.imports.add("std.collections.List");
+      registerMojoSymbolImport(context, ["std", "collections"], "List");
       registerMojoTypeImports(type.element, context);
       return;
-    case "optional":
-      context.imports.add("std.collections.Optional");
+    case "fixed-array":
+      registerMojoTypeImports(type.element, context);
+      return;
+    case "dictionary":
+      registerMojoSymbolImport(context, ["std", "collections"], "Dict");
+      registerMojoTypeImports(type.key, context);
       registerMojoTypeImports(type.value, context);
+      return;
+    case "optional":
+      registerMojoSymbolImport(context, ["std", "collections"], "Optional");
+      registerMojoTypeImports(type.value, context);
+      return;
+    case "union":
+      registerMojoSymbolImport(context, ["std", "utils"], "Variant");
+      for (const member of type.members) registerMojoTypeImports(member, context);
       return;
     case "tuple":
       for (const element of type.elements) registerMojoTypeImports(element, context);
@@ -53,6 +78,12 @@ export function mojoTypeName(type: MojoTargetTypeRef): string | undefined {
   switch (type.kind) {
     case "native-string": return "String";
     case "unit": return undefined;
+    case "never": return "Never";
+    case "null": return "tsonic_runtime.Null";
+    case "undefined": return "tsonic_runtime.Undefined";
+    case "dynamic": return type.domain === "js" ? "tsonic_js.JsValue" : "tsonic_runtime.TsValue";
+    case "bigint": return "tsonic_runtime.BigInt";
+    case "symbol": return "tsonic_js.JsSymbol";
     case "type-parameter": return type.name;
     case "source-primitive":
       switch (type.name) {
@@ -71,9 +102,9 @@ export function mojoTypeName(type: MojoTargetTypeRef): string | undefined {
         case "float16": return "Float16";
         case "float32": return "Float32";
         case "float64": return "Float64";
-        case "decimal":
-        case "int128":
-        case "uint128": return undefined;
+        case "int128": return "Int128";
+        case "uint128": return "UInt128";
+        case "decimal": return undefined;
       }
     case "target-named": {
       const base = [...type.modulePath, type.name].join(".");
@@ -83,7 +114,10 @@ export function mojoTypeName(type: MojoTargetTypeRef): string | undefined {
         : `${base}[${arguments_.map(renderGenericArgument).join(", ")}]`;
     }
     case "list": return `List[${requiredTypeName(type.element)}]`;
+    case "fixed-array": return `Array[${requiredTypeName(type.element)}, ${renderConstArgument(type.length)}]`;
+    case "dictionary": return `Dict[${requiredTypeName(type.key)}, ${requiredTypeName(type.value)}]`;
     case "optional": return `Optional[${requiredTypeName(type.value)}]`;
+    case "union": return `Variant[${type.members.map(requiredTypeName).join(", ")}]`;
     case "tuple": return `(${type.elements.map(requiredTypeName).join(", ")})`;
     case "associated": {
       const base = `${requiredTypeName(type.owner)}.${type.memberPath.join(".")}`;
@@ -94,7 +128,7 @@ export function mojoTypeName(type: MojoTargetTypeRef): string | undefined {
     case "compiler-expression": return type.expression;
     case "reference": return `ref[${type.origin}] ${requiredTypeName(type.value)}`;
     case "function": {
-      const generics = renderGenericParameters(type.genericParameters);
+      const generics = mojoGenericParametersText(type.genericParameters);
       const parameters = type.parameters.map(renderFunctionParameter).join(", ");
       const result = mojoTypeName(type.result) ?? "None";
       const capture = type.capture === undefined
@@ -107,6 +141,16 @@ export function mojoTypeName(type: MojoTargetTypeRef): string | undefined {
         type.thin ? " thin" : ""
       }${capture}${type.raises ? ` raises${error}` : ""} -> ${result}`;
     }
+  }
+}
+
+function renderConstArgument(
+  argument: import("../../../target-model/provider/model.js").MojoTargetConstArgument,
+): string {
+  switch (argument.kind) {
+    case "integer": return argument.value;
+    case "boolean": return argument.value ? "True" : "False";
+    case "parameter": return argument.name;
   }
 }
 
@@ -125,7 +169,7 @@ function renderFunctionParameter(
     : `${convention}${parameter.name}: ${requiredTypeName(parameter.type)}`;
 }
 
-function renderGenericParameters(
+export function mojoGenericParametersText(
   parameters: readonly import("../../../target-model/provider/model.js").MojoProviderTargetGenericParameter[],
 ): string {
   if (parameters.length === 0) return "";

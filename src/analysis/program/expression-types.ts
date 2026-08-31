@@ -4,7 +4,7 @@ import {
   BinaryExpression_Right,
   Node_Expression,
 } from "@tsonic/target-api/source";
-import { mojoTypeEquals } from "../types/resolution.js";
+import { mojoTargetTypeEquals } from "../../target-model/provider/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
 import { isMojoAssignmentOperator } from "./syntax-validation.js";
 
@@ -36,7 +36,7 @@ export function inferMojoExpressionType(
   if (leftNode === undefined || rightNode === undefined) return expressionTypes.get(node);
   const left = expressionTypes.get(leftNode);
   const right = expressionTypes.get(rightNode);
-  if (left !== undefined && right !== undefined && mojoTypeEquals(left, right)) return left;
+  if (left !== undefined && right !== undefined && mojoTargetTypeEquals(left, right)) return left;
   if (left !== undefined && ast.is.IsNumericLiteral(rightNode) && isNumericCarrier(left)) return left;
   if (right !== undefined && ast.is.IsNumericLiteral(leftNode) && isNumericCarrier(right)) return right;
   return expressionTypes.get(node);
