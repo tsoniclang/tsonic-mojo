@@ -41,6 +41,10 @@ import {
   classifyMojoAliasWithCompiler,
   classifyMojoGenericParameterWithCompiler,
 } from "./classification/semantic-category.js";
+import {
+  classifyMojoGenericParameterMetadata,
+  mojoNominalHead,
+} from "./classification/metadata-category.js";
 
 const extractionTimeoutMilliseconds = 600_000;
 const maximumDiagnosticBytes = 2_097_152;
@@ -207,24 +211,56 @@ export function createMojoCompilerMetadataLoader(
       if (snapshotRoot === undefined) {
         throw new Error(`Mojo compiler snapshot '${options.snapshot.digest}' is not materialized.`);
       }
+      const resolveTypePath = (name: string, compilerPath?: string): string | undefined => {
+        const paths = new Set<string>();
+        for (const candidatePackage of options.snapshot.packages) {
+          const candidateDocument = loadPackageDocument({
+            snapshot: options.snapshot,
+            package: candidatePackage,
+          });
+          for (const path of candidateDocument.declarationsByName.get(name) ?? []) paths.add(path);
+        }
+        if (compilerPath !== undefined && paths.has(compilerPath)) return compilerPath;
+        if (paths.size > 1) {
+          throw new Error(`Mojo type '${name}' resolves to ${paths.size} compiler-owned declarations.`);
+        }
+        const resolved = paths.values().next().value as string | undefined;
+        if (resolved !== undefined || compilerPath === undefined) return resolved;
+        const owner = compilerPath.split("/").filter((part) => part.length > 0)[0];
+        if (options.snapshot.packages.some(({ packageName }) => packageName === owner)) return compilerPath;
+        throw new Error(`Mojo type path '${compilerPath}' has no configured compiler package owner.`);
+      };
+      const resolveParameter = (parameter: MojoDocParameter): MojoDocParameter => {
+        const path = resolveTypePath(mojoNominalHead(parameter.type), parameter.path);
+        const traits = parameter.traits?.map((trait) => {
+          const traitPath = resolveTypePath(mojoNominalHead(trait.type), trait.path);
+          return traitPath === undefined ? trait : Object.freeze({ ...trait, path: traitPath });
+        });
+        return Object.freeze({
+          ...parameter,
+          ...(path === undefined ? {} : { path }),
+          ...(traits === undefined ? {} : { traits: Object.freeze(traits) }),
+        });
+      };
       const model = normalizeMojoDocModule({
         package: options.package,
         modulePath: options.module.modulePath,
         sourceDigest: options.module.digest,
         document,
         ...(requestedExports === undefined ? {} : { requestedExports }),
-        classifyGenericParameter: (request) => classifyGenericParameter({
+        resolveTypePath,
+        classifyGenericParameter: (request) => classifyMojoGenericParameterMetadata({
           snapshot: options.snapshot,
-          parameter: request.parameter,
+          parameter: resolveParameter(request.parameter),
           loadDocument,
           classifyAmbiguous: () => classifyMojoGenericParameterWithCompiler({
             cacheRoot,
             snapshot: options.snapshot,
             package: options.package,
             module: options.module,
-            parameter: request.parameter,
-            parentParameters: request.parentParameters,
-            precedingParameters: request.precedingParameters,
+            parameter: resolveParameter(request.parameter),
+            parentParameters: request.parentParameters.map(resolveParameter),
+            precedingParameters: request.precedingParameters.map(resolveParameter),
             includeRoots: options.snapshot.packages.map((package_) =>
               stagedImportRoot(snapshotRoot, package_)),
             verifySnapshot: () => {
@@ -460,95 +496,6 @@ function packageDocumentIdentity(
   package_: MojoCompilerPackageSnapshot,
 ): string {
   return `${snapshot.digest}\0${package_.id}`;
-}
-
-function classifyGenericParameter(options: {
-  readonly snapshot: MojoCompilerProjectSnapshot;
-  readonly parameter: MojoDocParameter;
-  readonly loadDocument: (options: {
-    readonly snapshot: MojoCompilerProjectSnapshot;
-    readonly package: MojoCompilerPackageSnapshot;
-    readonly module: MojoCompilerModuleSource;
-  }) => MojoDocDocument;
-  readonly classifyAmbiguous: () => "type" | "value" | "origin";
-}): "type" | "value" | "origin" {
-  const { snapshot, parameter, loadDocument } = options;
-  if (parameter.traits !== undefined) {
-    if (parameter.traits.length === 0) {
-      throw new Error(`Mojo generic parameter '${parameter.name}' has an empty trait constraint set.`);
-    }
-    for (const trait of parameter.traits) {
-      if (trait.path === undefined || declarationKind(snapshot, trait.path, loadDocument) !== "trait") {
-        throw new Error(
-          `Mojo generic parameter '${parameter.name}' has a non-trait compiler constraint '${trait.path ?? trait.type}'.`,
-        );
-      }
-    }
-    return "type";
-  }
-  if (parameter.path === undefined) return "value";
-  const location = declarationLocation(snapshot, parameter.path);
-  const kind = declarationKind(snapshot, parameter.path, loadDocument);
-  if (kind === "trait") return "type";
-  if (kind === "alias") return options.classifyAmbiguous();
-  if (location.package.kind === "standard-library" &&
-    location.module.modulePath.length === 1 &&
-    location.module.modulePath[0] === "origin" &&
-    location.exportName === "Origin") {
-    return "origin";
-  }
-  return "value";
-}
-
-function declarationKind(
-  snapshot: MojoCompilerProjectSnapshot,
-  path: string,
-  loadDocument: (options: {
-    readonly snapshot: MojoCompilerProjectSnapshot;
-    readonly package: MojoCompilerPackageSnapshot;
-    readonly module: MojoCompilerModuleSource;
-  }) => MojoDocDocument,
-): "trait" | "struct" | "alias" {
-  const location = declarationLocation(snapshot, path);
-  const document = loadDocument({ snapshot, package: location.package, module: location.module });
-  const traits = document.decl.traits.filter(({ name }) => name === location.exportName);
-  const structs = document.decl.structs.filter(({ name }) => name === location.exportName);
-  const aliases = document.decl.aliases.filter((alias) => alias.path === path);
-  const matches = traits.length + structs.length + aliases.length;
-  if (matches !== 1) {
-    throw new Error(`Mojo declaration path '${path}' resolves to ${matches} declarations.`);
-  }
-  return traits.length === 1 ? "trait" : structs.length === 1 ? "struct" : "alias";
-}
-
-function declarationLocation(
-  snapshot: MojoCompilerProjectSnapshot,
-  path: string,
-): {
-  readonly package: MojoCompilerPackageSnapshot;
-  readonly module: MojoCompilerModuleSource;
-  readonly exportName: string;
-} {
-  const segments = path.split("/").filter((segment) => segment.length > 0);
-  if (segments.length < 3) {
-    throw new Error(`Mojo declaration path '${path}' is not an absolute package declaration path.`);
-  }
-  const package_ = snapshot.packages.find(({ packageName }) => packageName === segments[0]);
-  if (package_ === undefined) {
-    throw new Error(`Mojo declaration path '${path}' has no configured package owner.`);
-  }
-  const exportName = segments[segments.length - 1]!.replace(/^#/u, "");
-  const modulePath = segments.slice(1, -1);
-  const module = package_.modules.find((candidate) =>
-    samePath(candidate.modulePath, modulePath));
-  if (module === undefined) {
-    throw new Error(`Mojo declaration path '${path}' has no exact configured module owner.`);
-  }
-  return { package: package_, module, exportName };
-}
-
-function samePath(left: readonly string[], right: readonly string[]): boolean {
-  return left.length === right.length && left.every((part, index) => part === right[index]);
 }
 
 function isSnapshotMarker(value: unknown, digest: string): boolean {

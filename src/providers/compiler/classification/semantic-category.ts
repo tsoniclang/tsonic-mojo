@@ -241,26 +241,90 @@ function genericParameterClassificationSource(
 ): string {
   const identity = key.slice(0, 20);
   const memberName = `__tsonic_classify_${category}_${identity}`;
-  const memberParameters = renderParameterClause([
+  const classificationParameters = [
     ...options.parentParameters,
     ...options.precedingParameters,
     Object.freeze({ ...options.parameter, name: "__TsonicCandidate" }),
-  ]);
+  ];
+  const memberParameters = renderParameterClause(classificationParameters);
   const body = category === "type"
     ? "    var __tsonic_value: __TsonicCandidate\n"
     : category === "origin"
       ? "    var __tsonic_value: Pointer[Int, __TsonicCandidate]\n"
       : "    comptime __tsonic_value = __TsonicCandidate\n";
-  const pointerImport = samePath(options.module.modulePath, ["memory", "pointer"])
+  const parameterImports = renderParameterImports(
+    classificationParameters,
+    options.package.packageName,
+    options.module.modulePath,
+  );
+  const pointerImport = samePath(options.module.modulePath, ["memory", "pointer"]) ||
+    parameterImports.includes(" import Pointer\n")
     ? ""
     : "from std.memory.pointer import Pointer\n\n";
-  return `${moduleSource}\n\n${pointerImport}` +
+  return `${moduleSource}\n\n${parameterImports}${pointerImport}` +
     `def ${memberName}${memberParameters}():\n${body}`;
+}
+
+function renderParameterImports(
+  parameters: readonly MojoDocParameter[],
+  packageName: string,
+  modulePath: readonly string[],
+): string {
+  const imports = new Set<string>();
+  for (const parameter of parameters) {
+    for (const candidate of [parameter, ...(parameter.traits ?? [])]) {
+      if (candidate.path === undefined) continue;
+      const segments = candidate.path.split("/").filter((part) => part.length > 0);
+      if (segments.length < 3) {
+        throw new Error(`Mojo semantic classification path '${candidate.path}' is not a declaration path.`);
+      }
+      const ownerPackage = segments[0]!;
+      const ownerModule = segments.slice(1, -1);
+      const name = /^[_A-Za-z][_A-Za-z0-9]*/u.exec(candidate.type.trim())?.[0];
+      if (name === undefined) {
+        throw new Error(`Mojo semantic classification type '${candidate.type}' has no importable head.`);
+      }
+      if (ownerPackage === packageName && samePath(ownerModule, modulePath)) continue;
+      imports.add(`from ${[ownerPackage, ...ownerModule].join(".")} import ${name}\n`);
+    }
+  }
+  return imports.size === 0 ? "" : `${[...imports].sort().join("")}\n`;
 }
 
 function renderParameterClause(parameters: readonly MojoDocParameter[]): string {
   if (parameters.length === 0) return "";
-  return `[${parameters.map((parameter) => `${parameter.name}: ${parameter.type}`).join(", ")}]`;
+  const names = new Set<string>();
+  for (const parameter of parameters) {
+    if (names.has(parameter.name)) {
+      throw new Error(`Mojo semantic classification parameters duplicate '${parameter.name}'.`);
+    }
+    names.add(parameter.name);
+  }
+  const ordered = [...parameters].sort((left, right) =>
+    parameterPosition(left.passingKind) - parameterPosition(right.passingKind));
+  const parts: string[] = [];
+  for (const [index, parameter] of ordered.entries()) {
+    if (parameter.passingKind === "kw" && ordered[index - 1]?.passingKind !== "kw") {
+      parts.push("*");
+    }
+    parts.push(`${parameter.name}: ${parameter.type}`);
+    const next = ordered[index + 1];
+    if (parameter.passingKind === "inferred" && next?.passingKind !== "inferred") {
+      parts.push("//");
+    } else if (parameter.passingKind === "pos" && next?.passingKind !== "pos") {
+      parts.push("/");
+    }
+  }
+  return `[${parts.join(", ")}]`;
+}
+
+function parameterPosition(kind: MojoDocParameter["passingKind"]): number {
+  switch (kind) {
+    case "inferred": return 0;
+    case "pos": return 1;
+    case "pos_or_kw": return 2;
+    case "kw": return 3;
+  }
 }
 
 function aliasClassificationSource(
@@ -282,6 +346,11 @@ function aliasClassificationSource(
       }]
     : options.owner?.parameters ?? [];
   const parameters = renderParameterClause([...parameterPrefix, ...options.alias.parameters]);
+  const parameterImports = renderParameterImports(
+    [...parameterPrefix, ...options.alias.parameters],
+    options.package.packageName,
+    options.module.modulePath,
+  );
   const ownerArguments = renderGenericArguments(options.owner?.genericParameters ?? []);
   const aliasArguments = renderGenericArguments(options.genericParameters);
   const owner = options.owner === undefined
@@ -295,16 +364,17 @@ function aliasClassificationSource(
     : category === "origin"
       ? `    var __tsonic_value: Pointer[Int, ${alias}]\n`
       : `    comptime __tsonic_value = ${alias}\n`;
-  const pointerImport = samePath(options.module.modulePath, ["memory", "pointer"])
+  const pointerImport = samePath(options.module.modulePath, ["memory", "pointer"]) ||
+    parameterImports.includes(" import Pointer\n")
     ? ""
     : "from std.memory.pointer import Pointer\n\n";
-  return `${moduleSource}\n\n${pointerImport}` +
+  return `${moduleSource}\n\n${parameterImports}${pointerImport}` +
     `def ${memberName}${parameters}():\n${body}`;
 }
 
 function aliasClassificationKey(options: MojoAliasClassificationOptions): string {
   return createHash("sha256").update(JSON.stringify({
-    contractVersion: 1,
+    contractVersion: 3,
     subjectKind: "alias",
     snapshotDigest: options.snapshot.digest,
     packageId: options.package.id,
@@ -316,15 +386,17 @@ function aliasClassificationKey(options: MojoAliasClassificationOptions): string
 }
 
 function renderGenericArguments(parameters: readonly MojoCompilerGenericParameter[]): string {
-  if (parameters.length === 0) return "";
-  return `[${parameters.map(({ name }) => `${name}=${name}`).join(", ")}]`;
+  const arguments_ = parameters
+    .filter(({ passingKind }) => passingKind !== "inferred")
+    .map(({ name, passingKind }) => passingKind === "keyword" ? `${name}=${name}` : name);
+  return arguments_.length === 0 ? "" : `[${arguments_.join(", ")}]`;
 }
 
 function genericParameterClassificationKey(
   options: MojoGenericParameterClassificationOptions,
 ): string {
   return createHash("sha256").update(JSON.stringify({
-    contractVersion: 4,
+    contractVersion: 9,
     subjectKind: "generic-parameter",
     snapshotDigest: options.snapshot.digest,
     packageId: options.package.id,

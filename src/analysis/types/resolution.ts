@@ -132,15 +132,38 @@ export function mojoTypeEquals(left: MojoTargetTypeRef, right: MojoTargetTypeRef
       return right.kind === "associated" && mojoTypeEquals(left.owner, right.owner) &&
         arrayEquals(left.memberPath, right.memberPath, (a, b) => a === b) &&
         genericArgumentsEqual(left.genericArguments, right.genericArguments);
+    case "compiler-expression":
+      return right.kind === "compiler-expression" && left.expression === right.expression;
     case "reference":
       return right.kind === "reference" && left.origin === right.origin &&
         mojoTypeEquals(left.value, right.value);
     case "function":
       return right.kind === "function" && left.thin === right.thin &&
+        left.asynchronous === right.asynchronous &&
         left.raises === right.raises &&
-        arrayEquals(left.parameters, right.parameters, mojoTypeEquals) &&
-        mojoTypeEquals(left.result, right.result);
+        left.capture === right.capture &&
+        arrayEquals(left.genericParameters, right.genericParameters, genericParametersEqual) &&
+        arrayEquals(left.parameters, right.parameters, (parameter, other) =>
+          parameter.name === other.name && parameter.convention === other.convention &&
+          mojoTypeEquals(parameter.type, other.type)) &&
+        mojoTypeEquals(left.result, right.result) &&
+        (left.errorType === undefined
+          ? right.errorType === undefined
+          : right.errorType !== undefined && mojoTypeEquals(left.errorType, right.errorType));
   }
+}
+
+function genericParametersEqual(
+  left: import("../../target-model/provider/model.js").MojoProviderTargetGenericParameter,
+  right: import("../../target-model/provider/model.js").MojoProviderTargetGenericParameter,
+): boolean {
+  return left.kind === right.kind && left.name === right.name && left.position === right.position &&
+    left.variadic === right.variadic &&
+    arrayEquals(left.constraints, right.constraints, mojoTypeEquals) &&
+    genericArgumentsEqual(
+      left.defaultArgument === undefined ? [] : [left.defaultArgument],
+      right.defaultArgument === undefined ? [] : [right.defaultArgument],
+    );
 }
 
 function genericArgumentsEqual(
@@ -153,6 +176,8 @@ function genericArgumentsEqual(
     switch (argument.kind) {
       case "type": return other.kind === "type" && mojoTypeEquals(argument.type, other.type);
       case "type-expression": return other.kind === "type-expression" && argument.expression === other.expression;
+      case "compiler-expression": return other.kind === "compiler-expression" &&
+        argument.expression === other.expression;
       case "value": return other.kind === "value" && argument.expression === other.expression;
       case "unbound": return true;
     }

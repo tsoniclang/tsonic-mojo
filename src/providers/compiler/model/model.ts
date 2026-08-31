@@ -46,30 +46,67 @@ export interface MojoCompilerNamedPath {
   readonly condition?: MojoCompilerConformanceCondition;
 }
 
-export interface MojoCompilerConformanceCondition {
-  readonly kind: "conforms-to";
-  readonly parameterName: string;
-  readonly traitNames: readonly string[];
-}
+export type MojoCompilerConformanceCondition =
+  | { readonly kind: "boolean"; readonly value: boolean }
+  | { readonly kind: "conforms-to"; readonly subject: string; readonly traitNames: readonly string[] }
+  | { readonly kind: "predicate"; readonly value: MojoCompilerConditionValue }
+  | {
+      readonly kind: "equals";
+      readonly left: MojoCompilerConditionValue;
+      readonly right: MojoCompilerConditionValue;
+    }
+  | { readonly kind: "not"; readonly operand: MojoCompilerConformanceCondition }
+  | { readonly kind: "all" | "any"; readonly operands: readonly MojoCompilerConformanceCondition[] }
+  | {
+      readonly kind: "conditional";
+      readonly condition: MojoCompilerConformanceCondition;
+      readonly whenTrue: MojoCompilerConformanceCondition;
+      readonly whenFalse: MojoCompilerConformanceCondition;
+    };
+
+export type MojoCompilerConditionValue =
+  | { readonly kind: "path"; readonly segments: readonly string[] }
+  | {
+      readonly kind: "generic-call";
+      readonly receiver: readonly string[];
+      readonly typeArguments: readonly string[];
+    };
 
 export type MojoCompilerType =
   | { readonly kind: "named"; readonly name: string; readonly path?: string; readonly arguments: readonly MojoCompilerTypeArgument[] }
   | { readonly kind: "type-parameter"; readonly name: string }
   | { readonly kind: "self"; readonly memberPath: readonly string[]; readonly arguments: readonly MojoCompilerTypeArgument[] }
+  | {
+      readonly kind: "associated";
+      readonly owner: MojoCompilerType;
+      readonly memberPath: readonly string[];
+      readonly arguments: readonly MojoCompilerTypeArgument[];
+    }
   | { readonly kind: "tuple"; readonly elements: readonly MojoCompilerType[] }
   | { readonly kind: "reference"; readonly origin: string; readonly target: MojoCompilerType }
+  | { readonly kind: "compiler-expression"; readonly expression: string }
   | {
       readonly kind: "function";
-      readonly parameters: readonly MojoCompilerType[];
+      readonly genericParameters: readonly MojoCompilerGenericParameter[];
+      readonly parameters: readonly MojoCompilerCallableParameter[];
       readonly result?: MojoCompilerType;
+      readonly asynchronous: boolean;
       readonly thin: boolean;
       readonly raises: boolean;
       readonly errorType?: MojoCompilerType;
+      readonly capture?: string;
     };
+
+export interface MojoCompilerCallableParameter {
+  readonly name?: string;
+  readonly convention: MojoCallArgumentConvention;
+  readonly type: MojoCompilerType;
+}
 
 export type MojoCompilerTypeArgument =
   | { readonly kind: "type"; readonly name?: string; readonly type: MojoCompilerType }
   | { readonly kind: "type-expression"; readonly name?: string; readonly sourceType: MojoCompilerType; readonly expression: string }
+  | { readonly kind: "compiler-expression"; readonly name?: string; readonly expression: string }
   | { readonly kind: "value"; readonly name?: string; readonly expression: string }
   | { readonly kind: "unbound"; readonly name?: string };
 
@@ -117,9 +154,10 @@ export interface MojoCompilerAssociatedAlias {
   readonly name: string;
   readonly genericParameters: readonly MojoCompilerGenericParameter[];
   readonly category: "type" | "value" | "origin";
+  readonly abstract: boolean;
   readonly targetType?: MojoCompilerType;
   readonly valueType?: MojoCompilerType;
-  readonly valueExpression: string;
+  readonly valueExpression?: string;
   readonly documentation?: string;
 }
 

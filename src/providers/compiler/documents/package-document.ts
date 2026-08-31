@@ -19,6 +19,7 @@ export const maximumMojoPackageDocumentBytes = 268_435_456;
 
 export interface IndexedMojoPackageDocument {
   readonly modules: ReadonlyMap<string, MojoDocDocument>;
+  readonly declarationsByName: ReadonlyMap<string, readonly string[]>;
 }
 
 export function readCachedMojoPackageDocument(
@@ -77,6 +78,7 @@ export function indexMojoPackageDocument(
     );
   }
   const modules = new Map<string, MojoDocDocument>();
+  const declarationsByName = new Map<string, string[]>();
   const visit = (packageDocument: MojoDocPackage, prefix: readonly string[]): void => {
     for (const module of packageDocument.modules) {
       const modulePath = module.name === "__init__" ? prefix : [...prefix, module.name];
@@ -85,6 +87,14 @@ export function indexMojoPackageDocument(
         throw new Error(`Mojo package document contains duplicate module '${modulePath.join(".")}'.`);
       }
       modules.set(identity, Object.freeze({ version: document.version, decl: module }));
+      for (const declaration of [...module.structs, ...module.traits, ...module.aliases]) {
+        const path = declaration.kind === "alias" && declaration.path !== undefined
+          ? declaration.path
+          : `/${package_.packageName}/${[...modulePath, declaration.name].join("/")}`;
+        const existing = declarationsByName.get(declaration.name) ?? [];
+        if (!existing.includes(path)) existing.push(path);
+        declarationsByName.set(declaration.name, existing);
+      }
     }
     for (const nested of packageDocument.packages) visit(nested, [...prefix, nested.name]);
   };
@@ -96,7 +106,11 @@ export function indexMojoPackageDocument(
       `Mojo package '${package_.id}' documentation contains ${unexpected.length} module(s) absent from its immutable source snapshot.`,
     );
   }
-  return Object.freeze({ modules });
+  return Object.freeze({
+    modules,
+    declarationsByName: new Map([...declarationsByName.entries()].map(([name, paths]) =>
+      [name, Object.freeze([...paths].sort())] as const)),
+  });
 }
 
 export function mojoModulePathIdentity(modulePath: readonly string[]): string {

@@ -12,6 +12,7 @@ import { createMojoCompilerMetadataLoader } from "../dist/providers/compiler/moj
 import { createMojoCompilerProjectSnapshot } from "../dist/providers/compiler/snapshot/source-snapshot.js";
 import { projectMojoCompilerModule } from "../dist/providers/compiler/projection/projection.js";
 import { mojoCompilerModuleSpecifier } from "../dist/providers/compiler/projection/module-specifier.js";
+import { parseMojoCompilerConformanceCondition } from "../dist/providers/compiler/model/condition-parser.js";
 import { parseMojoCompilerType } from "../dist/providers/compiler/model/type-parser.js";
 import { analyzeMojoRuntimePackages } from "../dist/analysis/runtime/references.js";
 import { materializeMojoOutputPlan } from "../dist/backend/emission/materialize.js";
@@ -141,7 +142,7 @@ test("compiler metadata extraction normalizes exact conventions, keywords, const
     const bucket = projection.types.find(({ exportId }) => exportId.endsWith("export:struct:Bucket"));
     assert.deepEqual(bucket.conformances.map(({ condition }) => condition), [
       undefined,
-      { kind: "conforms-to", parameterName: "T", traitNames: ["Copyable"] },
+      { kind: "conforms-to", subject: "T", traitNames: ["Copyable"] },
     ]);
     assert.equal(bucket.associatedAliases[0].name, "Element");
     assert.equal(bucket.associatedAliases[0].category, "type");
@@ -255,11 +256,11 @@ test("incremental compiler-provider slices isolate unrelated unsupported exports
           module: source,
           requestedExports: ["BrokenAlias"],
         }),
-        /not classified by machine-readable metadata/u,
+        /Unbalanced Mojo compiler expression/u,
       );
       assert.throws(
         () => loader.module({ snapshot, package: package_, module: source }),
-        /not classified by machine-readable metadata/u,
+        /Unbalanced Mojo compiler expression/u,
       );
 
       const session = createMojoCompilerProviderSession({
@@ -331,17 +332,140 @@ test("compiler type parser preserves references, origins, generic values, and fu
     parseMojoCompilerType("def(Int32) thin raises Error -> String", undefined),
     {
       kind: "function",
-      parameters: [{ kind: "named", name: "Int32", arguments: [] }],
+      genericParameters: [],
+      parameters: [{
+        convention: "imm",
+        type: { kind: "named", name: "Int32", arguments: [] },
+      }],
       result: { kind: "named", name: "String", arguments: [] },
+      asynchronous: false,
       thin: true,
       raises: true,
       errorType: { kind: "named", name: "Error", arguments: [] },
+    },
+  );
+  assert.deepEqual(
+    parseMojoCompilerType(
+      "def[mut: Bool, //, T: AnyType, width: Int = 4, *, origin: Origin](ref[a] value: T, var T) capturing[_] -> SIMD[.bool, width]",
+      undefined,
+    ),
+    {
+      kind: "function",
+      genericParameters: [
+        {
+          kind: "value",
+          name: "mut",
+          passingKind: "inferred",
+          variadic: false,
+          constraints: [{ kind: "named", name: "Bool", arguments: [] }],
+        },
+        {
+          kind: "type",
+          name: "T",
+          passingKind: "positional-or-keyword",
+          variadic: false,
+          constraints: [{ kind: "named", name: "AnyType", arguments: [] }],
+        },
+        {
+          kind: "value",
+          name: "width",
+          passingKind: "positional-or-keyword",
+          variadic: false,
+          constraints: [{ kind: "named", name: "Int", arguments: [] }],
+          defaultArgument: { kind: "value", expression: "4" },
+        },
+        {
+          kind: "origin",
+          name: "origin",
+          passingKind: "keyword",
+          variadic: false,
+          constraints: [{ kind: "named", name: "Origin", arguments: [] }],
+        },
+      ],
+      parameters: [
+        {
+          name: "value",
+          convention: "ref",
+          type: {
+            kind: "reference",
+            origin: "a",
+            target: { kind: "type-parameter", name: "T" },
+          },
+        },
+        {
+          convention: "var",
+          type: { kind: "type-parameter", name: "T" },
+        },
+      ],
+      result: {
+        kind: "named",
+        name: "SIMD",
+        arguments: [
+          { kind: "value", expression: ".bool" },
+          { kind: "value", expression: "width" },
+        ],
+      },
+      asynchronous: false,
+      thin: false,
+      raises: false,
+      capture: "_",
+    },
+  );
+  assert.deepEqual(
+    parseMojoCompilerType(
+      "IterableType.IteratorType[iterable_is_mut, origin_of(iterable), origin_of(iterable)].Element",
+      undefined,
+      {
+        typeParameters: new Set(["IterableType"]),
+        valueParameters: new Set(["iterable_is_mut"]),
+      },
+    ),
+    {
+      kind: "associated",
+      owner: {
+        kind: "associated",
+        owner: { kind: "type-parameter", name: "IterableType" },
+        memberPath: ["IteratorType"],
+        arguments: [
+          { kind: "value", expression: "iterable_is_mut" },
+          { kind: "value", expression: "origin_of(iterable)" },
+          { kind: "value", expression: "origin_of(iterable)" },
+        ],
+      },
+      memberPath: ["Element"],
+      arguments: [],
     },
   );
   assert.throws(
     () => parseMojoCompilerType("External[Unclassified]", "/external/External"),
     /not classified by machine-readable metadata/u,
   );
+});
+
+test("compiler condition parser retains boolean, conditional, comparison, and predicate structure", () => {
+  const scope = { typeParameters: new Set(["K", "T", "V"]) };
+  assert.deepEqual(
+    parseMojoCompilerConformanceCondition(
+      "conforms_to(K, Copyable) and conforms_to(V, Copyable)",
+      scope,
+    ),
+    {
+      kind: "all",
+      operands: [
+        { kind: "conforms-to", subject: "K", traitNames: ["Copyable"] },
+        { kind: "conforms-to", subject: "V", traitNames: ["Copyable"] },
+      ],
+    },
+  );
+  for (const condition of [
+    "True if conforms_to(T, Copyable) else conforms_to(T, Copyable)",
+    "conforms_to(T, Writable) and (address_space == AddressSpace.GENERIC)",
+    "conforms_to(T, TrivialRegisterPassable) or T.__move_ctor_is_trivial if conforms_to(T, Movable) else conforms_to(T, Movable)",
+    "TypeList.all_conforms_to[Writable]()",
+    "not is_owned",
+  ]) {
+    assert.equal(Object.isFrozen(parseMojoCompilerConformanceCondition(condition, scope)), true);
+  }
 });
 
 test("compiler metadata uses the exact snapshotted environment and persistent document cache", () => {
@@ -367,11 +491,15 @@ test("compiler metadata uses the exact snapshotted environment and persistent do
     const first = createMojoCompilerMetadataLoader(cacheRoot);
     try {
       assert.equal(first.module({ snapshot, package: package_, module: source }).functions[0].name, "sum");
-      assert.equal(first.module({ snapshot, package: package_, module: traits }).declarations.length, 3);
+      const traitModel = first.module({ snapshot, package: package_, module: traits });
+      assert.equal(traitModel.declarations.length, 4);
+      const iterator = traitModel.declarations.find(({ name }) => name === "Iterator");
+      assert.equal(iterator.aliases[0].abstract, true);
+      assert.equal(iterator.aliases[0].targetType, undefined);
     } finally {
       first.close();
     }
-    assert.equal(readFileSync(logPath, "utf8"), "doc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\n");
+    assert.equal(readFileSync(logPath, "utf8"), "doc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\n");
 
     const second = createMojoCompilerMetadataLoader(cacheRoot);
     try {
@@ -381,7 +509,7 @@ test("compiler metadata uses the exact snapshotted environment and persistent do
     }
     assert.equal(
       readFileSync(logPath, "utf8"),
-      "doc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\n",
+      "doc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\n",
       "the exact cached package document and classifications avoid compiler re-entry",
     );
 
@@ -402,7 +530,7 @@ test("compiler metadata uses the exact snapshotted environment and persistent do
     }
     assert.equal(
       readFileSync(logPath, "utf8"),
-      "doc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\n",
+      "doc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\n",
       "corrupt cache data is regenerated exactly once",
     );
   } finally {

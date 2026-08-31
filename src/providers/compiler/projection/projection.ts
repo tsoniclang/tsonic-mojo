@@ -1,15 +1,14 @@
 import type {
-  ArgumentPassingMode,
   ProviderExportDeclaration,
   ProviderImportDeclaration,
   ProviderMemberDeclaration,
   ProviderParameterDeclaration,
   ProviderSignatureDeclaration,
 } from "@tsonic/tsts";
+import { projectMojoPassingMode } from "./call-conventions.js";
 import type {
   MojoCompilerAlias,
   MojoCompilerFunction,
-  MojoCompilerGenericParameter,
   MojoCompilerModuleModel,
   MojoCompilerPackageSnapshot,
   MojoCompilerProjectSnapshot,
@@ -27,6 +26,7 @@ import type { MojoCompilerProviderProjection } from "./model.js";
 import {
   projectMojoCompilerType,
   projectMojoGenericParameters,
+  projectMojoTargetGenericParameters,
 } from "./types.js";
 import type { MojoCompilerTypeProjectionContext } from "./types.js";
 
@@ -114,7 +114,7 @@ function projectFunctionExport(
         name,
         ...(function_.genericParameters.length === 0
           ? {}
-          : { genericParameters: targetGenericParameters(function_.genericParameters, context) }),
+          : { genericParameters: projectMojoTargetGenericParameters(function_.genericParameters, context) }),
         arguments: projected.targetArguments,
       }),
       resultType: projected.resultTarget,
@@ -188,15 +188,16 @@ function projectTypeDeclaration(
       : {
           associatedAliases: Object.freeze(declaration.aliases.map((alias) => Object.freeze({
             name: alias.name,
-            genericParameters: targetGenericParameters(alias.genericParameters, context),
+            genericParameters: projectMojoTargetGenericParameters(alias.genericParameters, context),
             category: alias.category,
+            abstract: alias.abstract,
             ...(alias.targetType === undefined
               ? {}
               : { targetType: projectMojoCompilerType(alias.targetType, context).target }),
             ...(alias.valueType === undefined
               ? {}
               : { valueType: projectMojoCompilerType(alias.valueType, context).target }),
-            valueExpression: alias.valueExpression,
+            ...(alias.valueExpression === undefined ? {} : { valueExpression: alias.valueExpression }),
           }))),
         }),
     ...(projectedConformances.length === 0
@@ -289,7 +290,7 @@ function projectStructMembers(
               name: constructor ? declaration.name : name,
               ...(function_.genericParameters.length === 0
                 ? {}
-                : { genericParameters: targetGenericParameters(function_.genericParameters, context) }),
+          : { genericParameters: projectMojoTargetGenericParameters(function_.genericParameters, context) }),
               arguments: projected.targetArguments,
             })
           : Object.freeze({
@@ -298,7 +299,7 @@ function projectStructMembers(
               receiver: receiver!.convention,
               ...(function_.genericParameters.length === 0
                 ? {}
-                : { genericParameters: targetGenericParameters(function_.genericParameters, context) }),
+                : { genericParameters: projectMojoTargetGenericParameters(function_.genericParameters, context) }),
               arguments: projected.targetArguments,
             }),
         ...(constructor || function_.static ? {} : { receiverType: ownerTarget }),
@@ -373,7 +374,7 @@ function projectTraitMembers(
               name,
               ...(function_.genericParameters.length === 0
                 ? {}
-                : { genericParameters: targetGenericParameters(function_.genericParameters, context) }),
+                : { genericParameters: projectMojoTargetGenericParameters(function_.genericParameters, context) }),
               arguments: projected.targetArguments,
             })
           : Object.freeze({
@@ -382,7 +383,7 @@ function projectTraitMembers(
               receiver: receiver!.convention,
               ...(function_.genericParameters.length === 0
                 ? {}
-                : { genericParameters: targetGenericParameters(function_.genericParameters, context) }),
+                : { genericParameters: projectMojoTargetGenericParameters(function_.genericParameters, context) }),
               arguments: projected.targetArguments,
             }),
         ...(function_.static ? {} : { receiverType: ownerTarget }),
@@ -472,7 +473,7 @@ function projectFunctionSignature(
     Object.freeze({
       name: argument.name,
       type: type.source,
-      passingMode: passingMode(argument.convention),
+      passingMode: projectMojoPassingMode(argument.convention),
       ...(argument.defaultValue === undefined ? {} : { optional: true }),
       ...(argument.variadic ? { rest: true } : {}),
     }));
@@ -499,50 +500,6 @@ function projectFunctionSignature(
     parameterTargets: Object.freeze(projectedArguments.map(({ type }) => type.target)),
     resultTarget: result.target,
   });
-}
-
-function targetGenericParameters(
-  parameters: readonly MojoCompilerGenericParameter[],
-  context: MojoCompilerTypeProjectionContext,
-) {
-  return Object.freeze(parameters.map((parameter) => Object.freeze({
-    kind: parameter.kind,
-    name: parameter.name,
-    position: parameter.passingKind,
-    variadic: parameter.variadic,
-    constraints: Object.freeze(parameter.constraints.map((constraint) =>
-      projectMojoCompilerType(constraint, context).target)),
-    ...(parameter.defaultArgument === undefined
-      ? {}
-      : { defaultArgument: projectTargetGenericArgument(parameter.defaultArgument, context) }),
-  })));
-}
-
-function projectTargetGenericArgument(
-  argument: import("../model/model.js").MojoCompilerTypeArgument,
-  context: MojoCompilerTypeProjectionContext,
-): import("../../../target-model/provider/model.js").MojoTargetGenericArgument {
-  if (argument.kind === "type") {
-    return Object.freeze({ kind: "type", type: projectMojoCompilerType(argument.type, context).target });
-  }
-  if (argument.kind === "value") {
-    return Object.freeze({ kind: "value", expression: argument.expression });
-  }
-  if (argument.kind === "type-expression") {
-    return Object.freeze({ kind: "type-expression", expression: argument.expression });
-  }
-  return Object.freeze({ kind: "unbound" });
-}
-
-function passingMode(convention: MojoCompilerFunction["arguments"][number]["convention"]): ArgumentPassingMode {
-  switch (convention) {
-    case "imm": return "byref-readonly";
-    case "mut": return "byref-readwrite";
-    case "var": return "move";
-    case "ref": return "borrow-shared";
-    case "out": return "byref-writeonly-must-init";
-    case "deinit": return "move";
-  }
 }
 
 function moduleIdentity(context: MojoCompilerTypeProjectionContext): string {

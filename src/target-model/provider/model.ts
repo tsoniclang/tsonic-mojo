@@ -21,18 +21,28 @@ export type MojoTargetTypeRef =
       readonly memberPath: readonly string[];
       readonly genericArguments: readonly MojoTargetGenericArgument[];
     }
+  | { readonly kind: "compiler-expression"; readonly expression: string }
   | { readonly kind: "reference"; readonly origin: string; readonly value: MojoTargetTypeRef }
   | {
       readonly kind: "function";
-      readonly parameters: readonly MojoTargetTypeRef[];
+      readonly genericParameters: readonly MojoProviderTargetGenericParameter[];
+      readonly parameters: readonly {
+        readonly name?: string;
+        readonly convention: MojoCallArgumentConvention;
+        readonly type: MojoTargetTypeRef;
+      }[];
       readonly result: MojoTargetTypeRef;
+      readonly asynchronous: boolean;
       readonly thin: boolean;
       readonly raises: boolean;
+      readonly errorType?: MojoTargetTypeRef;
+      readonly capture?: string;
     };
 
 export type MojoTargetGenericArgument =
   | { readonly kind: "type"; readonly name?: string; readonly type: MojoTargetTypeRef }
   | { readonly kind: "type-expression"; readonly name?: string; readonly expression: string }
+  | { readonly kind: "compiler-expression"; readonly name?: string; readonly expression: string }
   | { readonly kind: "value"; readonly name?: string; readonly expression: string }
   | { readonly kind: "unbound"; readonly name?: string };
 
@@ -65,11 +75,31 @@ export interface MojoProviderTargetGenericParameter {
   readonly defaultArgument?: MojoTargetGenericArgument;
 }
 
-export interface MojoTargetConformanceCondition {
-  readonly kind: "conforms-to";
-  readonly parameterName: string;
-  readonly traitNames: readonly string[];
-}
+export type MojoTargetConformanceCondition =
+  | { readonly kind: "boolean"; readonly value: boolean }
+  | { readonly kind: "conforms-to"; readonly subject: string; readonly traitNames: readonly string[] }
+  | { readonly kind: "predicate"; readonly value: MojoTargetConditionValue }
+  | {
+      readonly kind: "equals";
+      readonly left: MojoTargetConditionValue;
+      readonly right: MojoTargetConditionValue;
+    }
+  | { readonly kind: "not"; readonly operand: MojoTargetConformanceCondition }
+  | { readonly kind: "all" | "any"; readonly operands: readonly MojoTargetConformanceCondition[] }
+  | {
+      readonly kind: "conditional";
+      readonly condition: MojoTargetConformanceCondition;
+      readonly whenTrue: MojoTargetConformanceCondition;
+      readonly whenFalse: MojoTargetConformanceCondition;
+    };
+
+export type MojoTargetConditionValue =
+  | { readonly kind: "path"; readonly segments: readonly string[] }
+  | {
+      readonly kind: "generic-call";
+      readonly receiver: readonly string[];
+      readonly typeArguments: readonly string[];
+    };
 
 export type MojoProviderOperationForm =
   | {

@@ -117,12 +117,7 @@ export function validateMojoProviderPackageDefinition(
     for (const conformance of type.conformances ?? []) {
       validateType(conformance.trait);
       if (conformance.condition !== undefined) {
-        if (conformance.condition.kind !== "conforms-to" ||
-          !identifierPattern.test(conformance.condition.parameterName) ||
-          conformance.condition.traitNames.length === 0 ||
-          conformance.condition.traitNames.some((name) => !identifierPattern.test(name))) {
-          throw new Error(`Provider type '${type.exportId}' has an invalid target conformance condition.`);
-        }
+        validateConformanceCondition(conformance.condition, type.exportId);
       }
     }
     for (const alias of type.associatedAliases ?? []) {
@@ -139,15 +134,26 @@ export function validateMojoProviderPackageDefinition(
       if (alias.category !== "type" && alias.category !== "value" && alias.category !== "origin") {
         throw new Error(`Provider type '${type.exportId}' has an invalid associated alias category.`);
       }
-      if (alias.category === "type" && (alias.targetType === undefined || alias.valueType !== undefined)) {
+      if (alias.abstract && (alias.category !== "type" || alias.targetType !== undefined ||
+        alias.valueType !== undefined || alias.valueExpression !== undefined)) {
+        throw new Error(`Provider type '${type.exportId}' has an invalid abstract associated alias.`);
+      }
+      if (!alias.abstract && alias.category === "type" &&
+        (alias.targetType === undefined || alias.valueType !== undefined)) {
         throw new Error(`Provider type '${type.exportId}' has an incomplete type-alias contract.`);
       }
-      if (alias.category !== "type" && (alias.targetType !== undefined || alias.valueType === undefined)) {
+      if (!alias.abstract && alias.category !== "type" &&
+        (alias.targetType !== undefined || alias.valueType === undefined)) {
         throw new Error(`Provider type '${type.exportId}' has an incomplete value-alias contract.`);
       }
       if (alias.targetType !== undefined) validateType(alias.targetType);
       if (alias.valueType !== undefined) validateType(alias.valueType);
-      requireText(alias.valueExpression, `associated alias value on '${type.exportId}'`);
+      if (!alias.abstract) {
+        if (alias.valueExpression === undefined) {
+          throw new Error(`Provider type '${type.exportId}' has no associated alias value.`);
+        }
+        requireText(alias.valueExpression, `associated alias value on '${type.exportId}'`);
+      }
     }
   }
   const runtimeNames = new Set<string>();
@@ -281,6 +287,9 @@ function validateType(type: MojoTargetTypeRef): void {
     case "native-string":
     case "unit":
       return;
+    case "compiler-expression":
+      requireText(type.expression, "Mojo compiler-owned type expression");
+      return;
     case "type-parameter":
       if (!identifierPattern.test(type.name)) throw new Error(`Invalid Mojo type parameter '${type.name}'.`);
       return;
@@ -316,9 +325,72 @@ function validateType(type: MojoTargetTypeRef): void {
       validateType(type.value);
       return;
     case "function":
-      for (const parameter of type.parameters) validateType(parameter);
+      for (const parameter of type.genericParameters) {
+        if (!identifierPattern.test(parameter.name)) {
+          throw new Error(`Invalid Mojo function generic parameter '${parameter.name}'.`);
+        }
+        for (const constraint of parameter.constraints) validateType(constraint);
+        if (parameter.defaultArgument !== undefined) validateGenericArgument(parameter.defaultArgument);
+      }
+      for (const parameter of type.parameters) {
+        if (parameter.name !== undefined && !identifierPattern.test(parameter.name)) {
+          throw new Error(`Invalid Mojo function parameter '${parameter.name}'.`);
+        }
+        validateType(parameter.type);
+      }
       validateType(type.result);
+      if (type.errorType !== undefined) validateType(type.errorType);
+      if (type.capture !== undefined) requireText(type.capture, "function capture origin");
       return;
+  }
+}
+
+function validateConformanceCondition(
+  condition: import("../../target-model/provider/model.js").MojoTargetConformanceCondition,
+  exportId: string,
+): void {
+  switch (condition.kind) {
+    case "boolean": return;
+    case "conforms-to":
+      if (!identifierPattern.test(condition.subject) || condition.traitNames.length === 0 ||
+        condition.traitNames.some((name) => !identifierPattern.test(name))) {
+        throw new Error(`Provider type '${exportId}' has an invalid conforms-to condition.`);
+      }
+      return;
+    case "predicate":
+      validateConditionValue(condition.value, exportId);
+      return;
+    case "equals":
+      validateConditionValue(condition.left, exportId);
+      validateConditionValue(condition.right, exportId);
+      return;
+    case "not":
+      validateConformanceCondition(condition.operand, exportId);
+      return;
+    case "all":
+    case "any":
+      if (condition.operands.length < 2) {
+        throw new Error(`Provider type '${exportId}' has a degenerate boolean conformance condition.`);
+      }
+      for (const operand of condition.operands) validateConformanceCondition(operand, exportId);
+      return;
+    case "conditional":
+      validateConformanceCondition(condition.condition, exportId);
+      validateConformanceCondition(condition.whenTrue, exportId);
+      validateConformanceCondition(condition.whenFalse, exportId);
+      return;
+  }
+}
+
+function validateConditionValue(
+  value: import("../../target-model/provider/model.js").MojoTargetConditionValue,
+  exportId: string,
+): void {
+  const path = value.kind === "path" ? value.segments : value.receiver;
+  if (path.length === 0 || path.some((part) => !identifierPattern.test(part)) ||
+    (value.kind === "generic-call" &&
+      (value.typeArguments.length === 0 || value.typeArguments.some((part) => !identifierPattern.test(part))))) {
+    throw new Error(`Provider type '${exportId}' has an invalid conformance condition value.`);
   }
 }
 
@@ -327,7 +399,8 @@ function validateGenericArgument(argument: MojoTargetGenericArgument, owner = "p
     throw new Error(`Mojo ${owner} has an invalid named generic argument.`);
   }
   if (argument.kind === "type") validateType(argument.type);
-  else if (argument.kind === "value" || argument.kind === "type-expression") {
+  else if (argument.kind === "value" || argument.kind === "type-expression" ||
+    argument.kind === "compiler-expression") {
     requireText(argument.expression, "target generic value");
   }
 }

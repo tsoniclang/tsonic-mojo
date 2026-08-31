@@ -11,11 +11,13 @@ import type {
   MojoCompilerTypeArgument,
 } from "../model/model.js";
 import type {
+  MojoProviderTargetGenericParameter,
   MojoTargetGenericArgument,
   MojoTargetTypeRef,
 } from "../../../target-model/provider/model.js";
 import { compilerModuleIdentity } from "../model/normalization.js";
 import { mojoCompilerModuleSpecifier } from "./module-specifier.js";
+import { projectMojoPassingMode } from "./call-conventions.js";
 
 export interface MojoCompilerTypeProjection {
   readonly source: ProviderTypeExpression;
@@ -87,6 +89,19 @@ export function projectMojoCompilerType(
         target: ownerTarget,
       });
     }
+    case "associated": {
+      const owner = projectMojoCompilerType(type.owner, context);
+      const arguments_ = type.arguments.map((argument) => projectGenericArgument(argument, context));
+      return Object.freeze({
+        source: Object.freeze({ kind: "object" }),
+        target: Object.freeze({
+          kind: "associated",
+          owner: owner.target,
+          memberPath: type.memberPath,
+          genericArguments: Object.freeze(arguments_.map(({ target }) => target)),
+        }),
+      });
+    }
     case "tuple": {
       const elements = type.elements.map((element) => projectMojoCompilerType(element, context));
       return Object.freeze({
@@ -101,31 +116,92 @@ export function projectMojoCompilerType(
         target: Object.freeze({ kind: "reference", origin: type.origin, value: target.target }),
       });
     }
+    case "compiler-expression": return Object.freeze({
+      source: Object.freeze({ kind: "object" }),
+      target: Object.freeze({ kind: "compiler-expression", expression: type.expression }),
+    });
     case "function": {
-      const parameters = type.parameters.map((parameter) => projectMojoCompilerType(parameter, context));
+      const parameters = type.parameters.map((parameter) => Object.freeze({
+        parameter,
+        projected: projectMojoCompilerType(parameter.type, context),
+      }));
       const result = type.result === undefined
         ? unitProjection
         : projectMojoCompilerType(type.result, context);
+      const errorType = type.errorType === undefined
+        ? undefined
+        : projectMojoCompilerType(type.errorType, context);
       const id = `mojo-function:${JSON.stringify(type)}`;
       return Object.freeze({
         source: Object.freeze({
           kind: "function",
           id,
-          parameters: Object.freeze(parameters.map(({ source }, index): ProviderParameterDeclaration =>
-            Object.freeze({ name: `argument${index}`, type: source }))),
+          parameters: Object.freeze(parameters.map(({ parameter, projected }, index): ProviderParameterDeclaration =>
+            Object.freeze({
+              name: parameter.name ?? `argument${index}`,
+              type: projected.source,
+              passingMode: projectMojoPassingMode(parameter.convention),
+            }))),
           returnType: result.source,
+          ...(type.genericParameters.length === 0
+            ? {}
+            : { typeParameters: projectMojoGenericParameters(type.genericParameters, context) }),
         }),
         target: Object.freeze({
           kind: "function",
-          parameters: Object.freeze(parameters.map(({ target }) => target)),
+          genericParameters: projectMojoTargetGenericParameters(type.genericParameters, context),
+          parameters: Object.freeze(parameters.map(({ parameter, projected }) => Object.freeze({
+            ...(parameter.name === undefined ? {} : { name: parameter.name }),
+            convention: parameter.convention,
+            type: projected.target,
+          }))),
           result: result.target,
+          asynchronous: type.asynchronous,
           thin: type.thin,
           raises: type.raises,
+          ...(errorType === undefined ? {} : { errorType: errorType.target }),
+          ...(type.capture === undefined ? {} : { capture: type.capture }),
         }),
       });
     }
     case "named": return projectNamedType(type, context);
   }
+}
+
+export function projectMojoTargetGenericParameters(
+  parameters: readonly MojoCompilerGenericParameter[],
+  context: MojoCompilerTypeProjectionContext,
+): readonly MojoProviderTargetGenericParameter[] {
+  return Object.freeze(parameters.map((parameter): MojoProviderTargetGenericParameter => Object.freeze({
+    kind: parameter.kind,
+    name: parameter.name,
+    position: parameter.passingKind,
+    variadic: parameter.variadic,
+    constraints: Object.freeze(parameter.constraints.map((constraint) =>
+      projectMojoCompilerType(constraint, context).target)),
+    ...(parameter.defaultArgument === undefined
+      ? {}
+      : { defaultArgument: projectTargetGenericArgument(parameter.defaultArgument, context) }),
+  })));
+}
+
+function projectTargetGenericArgument(
+  argument: MojoCompilerTypeArgument,
+  context: MojoCompilerTypeProjectionContext,
+): MojoTargetGenericArgument {
+  if (argument.kind === "type") {
+    return Object.freeze({ kind: "type", type: projectMojoCompilerType(argument.type, context).target });
+  }
+  if (argument.kind === "value") {
+    return Object.freeze({ kind: "value", expression: argument.expression });
+  }
+  if (argument.kind === "type-expression") {
+    return Object.freeze({ kind: "type-expression", expression: argument.expression });
+  }
+  if (argument.kind === "compiler-expression") {
+    return Object.freeze({ kind: "compiler-expression", expression: argument.expression });
+  }
+  return Object.freeze({ kind: "unbound" });
 }
 
 export function projectMojoGenericParameters(
@@ -219,6 +295,14 @@ function projectGenericArgument(
         }),
       });
     }
+    case "compiler-expression": return Object.freeze({
+      source: Object.freeze({ kind: "object" }),
+      target: Object.freeze({
+        kind: "compiler-expression",
+        ...(argument.name === undefined ? {} : { name: argument.name }),
+        expression: argument.expression,
+      }),
+    });
     case "value": {
       const source = sourceValueArgument(argument.expression);
       return Object.freeze({

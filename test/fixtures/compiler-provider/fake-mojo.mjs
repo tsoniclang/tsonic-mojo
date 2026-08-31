@@ -41,9 +41,11 @@ if (probeCategory === "type" || probeCategory === "origin" || probeCategory === 
     : subject?.includes("ValueAlias") === true
       ? "value"
       : subject?.includes("TypeAlias") === true || subject?.includes("BrokenAlias") === true ||
-          subject?.includes(".Element") === true
+          subject?.includes(".Element") === true || subject?.startsWith("def(") === true
         ? "type"
-        : undefined;
+        : subject === "T"
+          ? "value"
+          : undefined;
   if (probeCategory !== expected) {
     process.stderr.write(`fixture rejects ${probeCategory} classification for ${subject ?? "unknown"}\n`);
     process.exit(1);
@@ -87,7 +89,7 @@ const overload = (name, args_, returns, extras = {}) => ({
 const group = (name, overloads) => ({ kind: "function", name, overloads });
 const int32 = "/std/builtin/simd/#int32";
 
-const trait = (name) => ({
+const trait = (name, extras = {}) => ({
   aliases: [],
   deprecated: "",
   description: "",
@@ -100,6 +102,7 @@ const trait = (name) => ({
   parentTraits: [],
   sinceVersion: "",
   summary: "",
+  ...extras,
 });
 const struct = (name, extras = {}) => ({
   aliases: [],
@@ -139,7 +142,7 @@ const alias = (name, type, value, path) => ({
 const apiModule = {
     aliases: process.env.TSONIC_MOJO_PROVIDER_BROKEN_EXPORT === undefined
       ? []
-      : [alias("BrokenAlias", "AnyType", "External[Unclassified]", "/probe/api/BrokenAlias")],
+      : [alias("BrokenAlias", "AnyType", "External[Unclassified", "/probe/api/BrokenAlias")],
     description: "",
     functions: [
       group("sum", [overload("sum", [
@@ -278,7 +281,13 @@ const traitsModule = {
   name: "traits",
   structs: [struct("Flag")],
   summary: "",
-  traits: [trait("Sequence"), trait("Copyable")],
+  traits: [
+    trait("Sequence"),
+    trait("Copyable"),
+    trait("Iterator", {
+      aliases: [alias("Element", "AnyType", "", "/probe/traits/#element")],
+    }),
+  ],
 };
 const privateAlias = (name, type, value) =>
   alias(name, type, value, `/probe/_private/${name}`);

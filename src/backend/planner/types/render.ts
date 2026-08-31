@@ -7,6 +7,7 @@ export function registerMojoTypeImports(type: MojoTargetTypeRef, context: MojoPl
     case "native-string":
     case "unit":
     case "type-parameter":
+    case "compiler-expression":
       return;
     case "target-named":
       if (type.modulePath.length > 0) context.imports.add(type.modulePath.join("."));
@@ -35,8 +36,15 @@ export function registerMojoTypeImports(type: MojoTargetTypeRef, context: MojoPl
       registerMojoTypeImports(type.value, context);
       return;
     case "function":
-      for (const parameter of type.parameters) registerMojoTypeImports(parameter, context);
+      for (const parameter of type.genericParameters) {
+        for (const constraint of parameter.constraints) registerMojoTypeImports(constraint, context);
+        if (parameter.defaultArgument?.kind === "type") {
+          registerMojoTypeImports(parameter.defaultArgument.type, context);
+        }
+      }
+      for (const parameter of type.parameters) registerMojoTypeImports(parameter.type, context);
       registerMojoTypeImports(type.result, context);
+      if (type.errorType !== undefined) registerMojoTypeImports(type.errorType, context);
       return;
   }
 }
@@ -83,13 +91,60 @@ export function mojoTypeName(type: MojoTargetTypeRef): string | undefined {
         ? base
         : `${base}[${type.genericArguments.map(renderGenericArgument).join(", ")}]`;
     }
+    case "compiler-expression": return type.expression;
     case "reference": return `ref[${type.origin}] ${requiredTypeName(type.value)}`;
     case "function": {
-      const parameters = type.parameters.map(requiredTypeName).join(", ");
-      const result = requiredTypeName(type.result);
-      return `def(${parameters})${type.thin ? " thin" : ""}${type.raises ? " raises" : ""} -> ${result}`;
+      const generics = renderGenericParameters(type.genericParameters);
+      const parameters = type.parameters.map(renderFunctionParameter).join(", ");
+      const result = mojoTypeName(type.result) ?? "None";
+      const capture = type.capture === undefined
+        ? ""
+        : type.capture === "*"
+          ? " capturing"
+          : ` capturing[${type.capture}]`;
+      const error = type.errorType === undefined ? "" : ` ${requiredTypeName(type.errorType)}`;
+      return `${type.asynchronous ? "async " : ""}def${generics}(${parameters})${
+        type.thin ? " thin" : ""
+      }${capture}${type.raises ? ` raises${error}` : ""} -> ${result}`;
     }
   }
+}
+
+function renderFunctionParameter(
+  parameter: Extract<MojoTargetTypeRef, { readonly kind: "function" }>["parameters"][number],
+): string {
+  if (parameter.convention === "ref" && parameter.type.kind === "reference") {
+    const prefix = `ref[${parameter.type.origin}]`;
+    return parameter.name === undefined
+      ? `${prefix} ${requiredTypeName(parameter.type.value)}`
+      : `${prefix} ${parameter.name}: ${requiredTypeName(parameter.type.value)}`;
+  }
+  const convention = parameter.convention === "imm" ? "" : `${parameter.convention} `;
+  return parameter.name === undefined
+    ? `${convention}${requiredTypeName(parameter.type)}`
+    : `${convention}${parameter.name}: ${requiredTypeName(parameter.type)}`;
+}
+
+function renderGenericParameters(
+  parameters: readonly import("../../../target-model/provider/model.js").MojoProviderTargetGenericParameter[],
+): string {
+  if (parameters.length === 0) return "";
+  const parts: string[] = [];
+  for (const [index, parameter] of parameters.entries()) {
+    if (parameter.position === "keyword" && parameters[index - 1]?.position !== "keyword") {
+      parts.push("*");
+    }
+    const name = `${parameter.variadic ? "*" : ""}${parameter.name}`;
+    const constraints = parameter.constraints.map(requiredTypeName).join(" & ");
+    const defaultArgument = parameter.defaultArgument === undefined
+      ? ""
+      : ` = ${renderGenericArgument(parameter.defaultArgument)}`;
+    parts.push(`${name}: ${constraints}${defaultArgument}`);
+    const next = parameters[index + 1];
+    if (parameter.position === "inferred" && next?.position !== "inferred") parts.push("//");
+    else if (parameter.position === "positional" && next?.position !== "positional") parts.push("/");
+  }
+  return `[${parts.join(", ")}]`;
 }
 
 function renderGenericArgument(
@@ -97,7 +152,7 @@ function renderGenericArgument(
 ): string {
   const value = argument.kind === "type"
     ? requiredTypeName(argument.type)
-    : argument.kind === "value" || argument.kind === "type-expression"
+    : argument.kind === "value" || argument.kind === "type-expression" || argument.kind === "compiler-expression"
       ? argument.expression
       : "_";
   return argument.name === undefined ? value : `${argument.name}=${value}`;
