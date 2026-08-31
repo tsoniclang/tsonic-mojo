@@ -357,6 +357,51 @@ test("compiler provider resolves public re-exports through exact language-server
   }
 });
 
+test("compiler export ownership and enumeration persist only for the exact snapshot", () => {
+  const cacheRoot = join(repositoryRoot, ".temp", `compiler-provider-resolution-cache-${process.pid}`);
+  const logPath = join(cacheRoot, "language-server.log");
+  mkdirSync(cacheRoot, { recursive: true });
+  const previousLog = process.env.TSONIC_MOJO_LSP_LOG;
+  process.env.TSONIC_MOJO_LSP_LOG = logPath;
+  try {
+    const providerConfiguration = configuration();
+    const snapshot = createMojoCompilerProjectSnapshot(providerConfiguration, "1.1.0.dev2026083005");
+    const package_ = snapshot.packages[0];
+    const api = package_.modules.find(({ modulePath }) => modulePath.join(".") === "api");
+    const surface = package_.modules.find(({ modulePath }) => modulePath.join(".") === "surface");
+    assert.ok(api);
+    assert.ok(surface);
+
+    for (let iteration = 0; iteration < 2; iteration += 1) {
+      const loader = createMojoCompilerMetadataLoader(cacheRoot);
+      try {
+        assert.deepEqual(loader.listExports({ snapshot, package: package_, module: api }), [
+          "Bucket",
+          "Counter",
+          "classify",
+          "collect",
+          "sum",
+        ]);
+        assert.equal(loader.resolveExports({
+          snapshot,
+          package: package_,
+          module: surface,
+          exportNames: ["PublicCounter"],
+        })[0].declarationName, "Counter");
+      } finally {
+        loader.close();
+      }
+    }
+    assert.equal(
+      readFileSync(logPath, "utf8"),
+      "exports\ndefinitions\n",
+      "a second loader consumes exact snapshot-bound resolution records without LSP re-entry",
+    );
+  } finally {
+    restoreEnvironment("TSONIC_MOJO_LSP_LOG", previousLog);
+  }
+});
+
 test("compiler type parser preserves references, origins, generic values, and function effects", () => {
   assert.deepEqual(
     parseMojoCompilerType("Origin[mut=origin.mut]", undefined, {

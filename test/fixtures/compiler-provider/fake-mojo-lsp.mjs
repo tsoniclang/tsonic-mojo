@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -50,14 +50,18 @@ function handle(message) {
     process.exit(0);
   }
   if (message.method === "textDocument/completion") {
+    recordOperation("exports");
     respond(message.id, [
-      { label: "BrokenAlias", kind: 7 },
+      ...(process.env.TSONIC_MOJO_PROVIDER_BROKEN_EXPORT === "1"
+        ? [{ label: "BrokenAlias", kind: 7 }]
+        : []),
       { label: "Counter", kind: 22 },
       { label: "sum", kind: 3 },
     ]);
     return;
   }
   if (message.method !== "textDocument/definition") return;
+  recordOperation("definitions");
   const line = Number(message.params.position.line);
   const text = openedText.split("\n")[line] ?? "";
   const imported = /\bimport\s+([_A-Za-z][_A-Za-z0-9]*)\s+as\b/u.exec(text)?.[1];
@@ -75,6 +79,11 @@ function handle(message) {
       end: { line: sourceLine, character: character + "Counter".length },
     },
   }]);
+}
+
+function recordOperation(kind) {
+  const path = process.env.TSONIC_MOJO_LSP_LOG;
+  if (path !== undefined) appendFileSync(path, `${kind}\n`);
 }
 
 function respond(id, result) {

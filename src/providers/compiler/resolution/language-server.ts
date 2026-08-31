@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { readFileSync, statSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 import type {
@@ -70,34 +70,41 @@ export function enumerateMojoCompilerModuleExports(options: {
   readonly package: MojoCompilerPackageSnapshot;
   readonly module: MojoCompilerModuleSource;
 }): readonly string[] {
-  if (options.module.modulePath.length === 0) {
-    throw new Error(`Mojo root package '${options.package.packageName}' cannot be enumerated through a parent module.`);
-  }
-  const parentPath = options.module.modulePath.slice(0, -1);
-  const parent = options.package.modules.find((candidate) => samePath(candidate.modulePath, parentPath));
-  if (parent === undefined) {
-    throw new Error(`Mojo module '${options.module.modulePath.join(".")}' has no compiler-visible parent package.`);
-  }
   verifyLanguageServer(options.snapshot);
   const moduleName = [options.package.packageName, ...options.module.modulePath].join(".");
+  const requestIdentity = createHash("sha256").update(JSON.stringify({
+    snapshotDigest: options.snapshot.digest,
+    packageId: options.package.id,
+    modulePath: options.module.modulePath,
+  })).digest("hex");
+  const queryPath = resolve(
+    options.snapshotRoot,
+    "queries",
+    `exports-${requestIdentity}.mojo`,
+  );
+  ensureQueryDocument(queryPath);
   const response = parseCompletionResponse(runLanguageServerWorker(
     options.snapshotRoot,
     options.snapshot,
     moduleName,
     {
       kind: "exports",
-      documentUri: pathToFileURL(stagedSourcePath(
-        options.snapshotRoot,
-        options.package,
-        parent,
-      )).href,
-      relativeModuleName: options.module.modulePath[options.module.modulePath.length - 1]!,
+      documentUri: pathToFileURL(queryPath).href,
     },
   ));
   const names = response
     .filter(({ kind, name }) => publicCompletionKinds.has(kind) && !name.startsWith("_"))
     .map(({ name }) => name);
   return canonicalExportNames(names);
+}
+
+function ensureQueryDocument(path: string): void {
+  const source = "def __tsonic_compiler_query():\n    pass\n";
+  if (existsSync(path) && readFileSync(path, "utf8") === source) return;
+  mkdirSync(dirname(path), { recursive: true });
+  const temporary = `${path}.${process.pid}.tmp`;
+  writeFileSync(temporary, source);
+  renameSync(temporary, path);
 }
 
 function runLanguageServerWorker(

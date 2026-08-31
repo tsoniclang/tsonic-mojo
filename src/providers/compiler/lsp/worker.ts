@@ -27,7 +27,6 @@ interface DefinitionWorkerRequest extends WorkerRequestBase {
 
 interface CompletionWorkerRequest extends WorkerRequestBase {
   readonly kind: "exports";
-  readonly relativeModuleName: string;
 }
 
 type WorkerRequest = DefinitionWorkerRequest | CompletionWorkerRequest;
@@ -124,7 +123,7 @@ function definitionSource(request: DefinitionWorkerRequest): string {
 }
 
 function completionSource(request: CompletionWorkerRequest): string {
-  return `from . import ${request.relativeModuleName} as __TsonicResolvedModule\n\ndef __tsonic_complete_exports():\n    __TsonicResolvedModule.\n`;
+  return `import ${request.moduleName} as __TsonicResolvedModule\n\ndef __tsonic_complete_exports():\n    __TsonicResolvedModule.\n`;
 }
 
 async function resolveDefinitions(
@@ -267,7 +266,7 @@ function parseWorkerRequest(value: unknown): WorkerRequest {
     "kind",
     "moduleName",
     "workingDirectory",
-    ...(record.kind === "definitions" ? ["exportNames"] : ["relativeModuleName"]),
+    ...(record.kind === "definitions" ? ["exportNames"] : []),
   ], "language-server request");
   if (record.contractVersion !== 1) throw new Error("Unsupported Mojo language-server worker contract.");
   const environmentRecord = requireRecord(record.environment, "environment");
@@ -292,9 +291,7 @@ function parseWorkerRequest(value: unknown): WorkerRequest {
     return Object.freeze({ ...base, kind: "definitions", exportNames: Object.freeze(exportNames) });
   }
   if (record.kind !== "exports") throw new Error("Unsupported Mojo language-server worker operation.");
-  const relativeModuleName = requireString(record.relativeModuleName, "relativeModuleName");
-  requireIdentifier(relativeModuleName, "relative module name");
-  return Object.freeze({ ...base, kind: "exports", relativeModuleName });
+  return Object.freeze({ ...base, kind: "exports" });
 }
 
 function parseLocations(value: unknown, exportName: string): readonly Location[] {

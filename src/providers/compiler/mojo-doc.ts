@@ -46,6 +46,12 @@ import {
 } from "./resolution/language-server.js";
 import type { MojoCompilerResolvedExport } from "./resolution/language-server.js";
 import {
+  readCachedMojoModuleExports,
+  readCachedMojoResolvedExport,
+  writeCachedMojoModuleExports,
+  writeCachedMojoResolvedExport,
+} from "./resolution/cache.js";
+import {
   stagedImportRoot,
   stagedPackageRoot,
 } from "./snapshot/materialized-paths.js";
@@ -340,7 +346,15 @@ export function createMojoCompilerMetadataLoader(
             module: options.module,
           }));
         } else {
-          unresolved.push(exportName);
+          const cached = readCachedMojoResolvedExport(
+            cacheRoot,
+            options.snapshot,
+            options.package,
+            options.module,
+            exportName,
+          );
+          if (cached === undefined) unresolved.push(exportName);
+          else resolvedExports.set(identity, cached);
         }
       }
       if (unresolved.length > 0) {
@@ -355,6 +369,13 @@ export function createMojoCompilerMetadataLoader(
           module: options.module,
           exportNames: unresolved,
         })) {
+          writeCachedMojoResolvedExport(
+            cacheRoot,
+            options.snapshot,
+            options.package,
+            options.module,
+            resolved,
+          );
           resolvedExports.set(resolvedExportIdentity(
             options.snapshot,
             options.package,
@@ -386,7 +407,15 @@ export function createMojoCompilerMetadataLoader(
       if (direct === undefined) {
         throw new Error(`Mojo package metadata has no module '${options.module.modulePath.join(".")}'.`);
       }
-      if (options.module.modulePath.length === 0) return Object.freeze([...direct].sort(compareText));
+      const cached = readCachedMojoModuleExports(
+        cacheRoot,
+        options.snapshot,
+        options.package,
+        options.module,
+      );
+      if (cached !== undefined) {
+        return Object.freeze([...new Set([...direct, ...cached])].sort(compareText));
+      }
       const snapshotRoot = materializedSnapshots.get(options.snapshot.digest);
       if (snapshotRoot === undefined) {
         throw new Error(`Mojo compiler snapshot '${options.snapshot.digest}' is not materialized.`);
@@ -397,6 +426,13 @@ export function createMojoCompilerMetadataLoader(
         package: options.package,
         module: options.module,
       });
+      writeCachedMojoModuleExports(
+        cacheRoot,
+        options.snapshot,
+        options.package,
+        options.module,
+        discovered,
+      );
       return Object.freeze([...new Set([...direct, ...discovered])].sort(compareText));
     },
     close(): void {
