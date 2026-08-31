@@ -2,7 +2,10 @@ import type {
   MojoProviderOperationDefinition,
   MojoProviderPackageDefinition,
 } from "./model.js";
-import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
+import type {
+  MojoTargetGenericArgument,
+  MojoTargetTypeRef,
+} from "../../target-model/provider/model.js";
 import type {
   ProviderExportDeclaration,
   ProviderMemberDeclaration,
@@ -131,8 +134,20 @@ export function validateMojoProviderPackageDefinition(
           throw new Error(`Provider type '${type.exportId}' has an invalid associated alias generic parameter.`);
         }
         for (const constraint of parameter.constraints) validateType(constraint);
+        if (parameter.defaultArgument !== undefined) validateGenericArgument(parameter.defaultArgument);
       }
+      if (alias.category !== "type" && alias.category !== "value" && alias.category !== "origin") {
+        throw new Error(`Provider type '${type.exportId}' has an invalid associated alias category.`);
+      }
+      if (alias.category === "type" && (alias.targetType === undefined || alias.valueType !== undefined)) {
+        throw new Error(`Provider type '${type.exportId}' has an incomplete type-alias contract.`);
+      }
+      if (alias.category !== "type" && (alias.targetType !== undefined || alias.valueType === undefined)) {
+        throw new Error(`Provider type '${type.exportId}' has an incomplete value-alias contract.`);
+      }
+      if (alias.targetType !== undefined) validateType(alias.targetType);
       if (alias.valueType !== undefined) validateType(alias.valueType);
+      requireText(alias.valueExpression, `associated alias value on '${type.exportId}'`);
     }
   }
   const runtimeNames = new Set<string>();
@@ -185,8 +200,17 @@ function validateOperation(
       throw new Error(`Provider ${operation.operationKind} '${operation.signatureId}' has inconsistent source, target, and ABI arity.`);
     }
   } else if (operation.operationKind === "property") {
-    if (operation.memberId === undefined || operation.target.kind !== "property-read" ||
-      operation.receiverType === undefined) {
+    const memberProperty = operation.memberId !== undefined &&
+      operation.target.kind === "property-read" &&
+      operation.receiverType !== undefined;
+    const exported = declarations.exports.get(operation.exportId)!;
+    const moduleConstant = operation.memberId === undefined &&
+      operation.signatureId === undefined &&
+      operation.target.kind === "constant" &&
+      operation.receiverType === undefined &&
+      (operation.parameterTypes ?? []).length === 0 &&
+      exported.kind === "value";
+    if (!memberProperty && !moduleConstant) {
       throw new Error(`Provider property '${operation.exportId}' requires an exact member, receiver, and property-read target.`);
     }
   } else if (operation.operationKind === "property-set") {
@@ -201,7 +225,7 @@ function validateOperation(
     (operation.memberId === undefined || operation.receiverType === undefined)) {
     throw new Error(`Provider instance call '${operation.exportId}' requires an exact source member and receiver carrier.`);
   }
-  if (operation.target.kind === "function-call") {
+  if (operation.target.kind === "function-call" || operation.target.kind === "constant") {
     if (operation.target.modulePath.length === 0) {
       throw new Error(`Provider operation '${operation.exportId}' has an empty Mojo module path.`);
     }
@@ -210,9 +234,11 @@ function validateOperation(
         throw new Error(`Provider operation '${operation.exportId}' has invalid Mojo module segment '${segment}'.`);
       }
     }
-    for (const segment of operation.target.ownerPath ?? []) {
-      if (!identifierPattern.test(segment)) {
-        throw new Error(`Provider operation '${operation.exportId}' has invalid Mojo owner segment '${segment}'.`);
+    if (operation.target.kind === "function-call") {
+      for (const segment of operation.target.ownerPath ?? []) {
+        if (!identifierPattern.test(segment)) {
+          throw new Error(`Provider operation '${operation.exportId}' has invalid Mojo owner segment '${segment}'.`);
+        }
       }
     }
   }
@@ -226,6 +252,7 @@ function validateOperation(
         throw new Error(`Provider operation '${operation.exportId}' has invalid or duplicate Mojo generic parameter '${parameter.name}'.`);
       }
       for (const constraint of parameter.constraints) validateType(constraint);
+      if (parameter.defaultArgument !== undefined) validateGenericArgument(parameter.defaultArgument);
       genericNames.add(parameter.name);
     }
     for (const argument of operation.target.arguments) {
@@ -263,13 +290,7 @@ function validateType(type: MojoTargetTypeRef): void {
         throw new Error(`Target type '${type.id}' has an invalid Mojo path.`);
       }
       for (const argument of type.genericArguments ?? []) {
-        if (argument.name !== undefined && !identifierPattern.test(argument.name)) {
-          throw new Error(`Target type '${type.id}' has an invalid named generic argument.`);
-        }
-        if (argument.kind === "type") validateType(argument.type);
-        else if (argument.kind === "value" || argument.kind === "type-expression") {
-          requireText(argument.expression, "target generic value");
-        }
+        validateGenericArgument(argument, `target type '${type.id}'`);
       }
       return;
     case "list":
@@ -287,13 +308,7 @@ function validateType(type: MojoTargetTypeRef): void {
         throw new Error("Mojo associated target type has an invalid member path.");
       }
       for (const argument of type.genericArguments) {
-        if (argument.name !== undefined && !identifierPattern.test(argument.name)) {
-          throw new Error("Mojo associated target type has an invalid named generic argument.");
-        }
-        if (argument.kind === "type") validateType(argument.type);
-        else if (argument.kind === "value" || argument.kind === "type-expression") {
-          requireText(argument.expression, "associated target generic value");
-        }
+        validateGenericArgument(argument, "associated target type");
       }
       return;
     case "reference":
@@ -304,6 +319,16 @@ function validateType(type: MojoTargetTypeRef): void {
       for (const parameter of type.parameters) validateType(parameter);
       validateType(type.result);
       return;
+  }
+}
+
+function validateGenericArgument(argument: MojoTargetGenericArgument, owner = "provider operation"): void {
+  if (argument.name !== undefined && !identifierPattern.test(argument.name)) {
+    throw new Error(`Mojo ${owner} has an invalid named generic argument.`);
+  }
+  if (argument.kind === "type") validateType(argument.type);
+  else if (argument.kind === "value" || argument.kind === "type-expression") {
+    requireText(argument.expression, "target generic value");
   }
 }
 

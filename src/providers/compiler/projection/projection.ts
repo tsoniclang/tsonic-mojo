@@ -139,7 +139,9 @@ function projectTypeDeclaration(
   operations: MojoProviderOperationDefinition[],
   types: MojoProviderTypeDefinition[],
 ): ProviderExportDeclaration {
-  if (declaration.kind === "alias") return projectAlias(declaration, parentContext, types);
+  if (declaration.kind === "alias") {
+    return projectAlias(declaration, parentContext, operations, types);
+  }
   const exportId = `${moduleIdentity(parentContext)}::export:${declaration.kind}:${declaration.name}`;
   const context: MojoCompilerTypeProjectionContext = {
     ...parentContext,
@@ -188,9 +190,14 @@ function projectTypeDeclaration(
           associatedAliases: Object.freeze(declaration.aliases.map((alias) => Object.freeze({
             name: alias.name,
             genericParameters: targetGenericParameters(alias.genericParameters, context),
+            category: alias.category,
+            ...(alias.targetType === undefined
+              ? {}
+              : { targetType: projectMojoCompilerType(alias.targetType, context).target }),
             ...(alias.valueType === undefined
               ? {}
               : { valueType: projectMojoCompilerType(alias.valueType, context).target }),
+            valueExpression: alias.valueExpression,
           }))),
         }),
     ...(projectedConformances.length === 0
@@ -400,22 +407,46 @@ function projectTraitMembers(
 function projectAlias(
   declaration: MojoCompilerAlias,
   context: MojoCompilerTypeProjectionContext,
+  operations: MojoProviderOperationDefinition[],
   types: MojoProviderTypeDefinition[],
 ): ProviderExportDeclaration {
-  if (declaration.type === undefined || declaration.value !== undefined && declaration.value.length > 0) {
-    throw new Error(`Mojo alias '${declaration.name}' is not a concrete type alias.`);
-  }
   const exportId = `${moduleIdentity(context)}::export:alias:${declaration.name}`;
-  const projected = projectMojoCompilerType(declaration.type, context);
-  types.push(Object.freeze({ exportId, targetType: projected.target }));
+  if (declaration.category === "type") {
+    if (declaration.targetType === undefined) {
+      throw new Error(`Mojo type alias '${declaration.name}' has no exact target type.`);
+    }
+    const projected = projectMojoCompilerType(declaration.targetType, context);
+    types.push(Object.freeze({ exportId, targetType: projected.target }));
+    return Object.freeze({
+      id: exportId,
+      name: declaration.name,
+      kind: "type",
+      type: projected.source,
+      ...(declaration.genericParameters.length === 0
+        ? {}
+        : { typeParameters: projectMojoGenericParameters(declaration.genericParameters, context) }),
+      ...documentation(declaration.documentation),
+    });
+  }
+  if (declaration.valueType === undefined) {
+    throw new Error(`Mojo value alias '${declaration.name}' has no compiler-retained value type.`);
+  }
+  const projected = projectMojoCompilerType(declaration.valueType, context);
+  operations.push(Object.freeze({
+    exportId,
+    operationKind: "property",
+    target: Object.freeze({
+      kind: "constant",
+      modulePath: Object.freeze([context.package.packageName, ...context.modulePath]),
+      name: declaration.name,
+    }),
+    resultType: projected.target,
+  }));
   return Object.freeze({
     id: exportId,
     name: declaration.name,
-    kind: "type",
+    kind: "value",
     type: projected.source,
-    ...(declaration.genericParameters.length === 0
-      ? {}
-      : { typeParameters: projectMojoGenericParameters(declaration.genericParameters, context) }),
     ...documentation(declaration.documentation),
   });
 }
@@ -482,7 +513,26 @@ function targetGenericParameters(
     variadic: parameter.variadic,
     constraints: Object.freeze(parameter.constraints.map((constraint) =>
       projectMojoCompilerType(constraint, context).target)),
+    ...(parameter.defaultArgument === undefined
+      ? {}
+      : { defaultArgument: projectTargetGenericArgument(parameter.defaultArgument, context) }),
   })));
+}
+
+function projectTargetGenericArgument(
+  argument: import("../model/model.js").MojoCompilerTypeArgument,
+  context: MojoCompilerTypeProjectionContext,
+): import("../../../target-model/provider/model.js").MojoTargetGenericArgument {
+  if (argument.kind === "type") {
+    return Object.freeze({ kind: "type", type: projectMojoCompilerType(argument.type, context).target });
+  }
+  if (argument.kind === "value") {
+    return Object.freeze({ kind: "value", expression: argument.expression });
+  }
+  if (argument.kind === "type-expression") {
+    return Object.freeze({ kind: "type-expression", expression: argument.expression });
+  }
+  return Object.freeze({ kind: "unbound" });
 }
 
 function passingMode(convention: MojoCompilerFunction["arguments"][number]["convention"]): ArgumentPassingMode {

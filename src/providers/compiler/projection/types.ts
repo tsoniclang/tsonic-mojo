@@ -143,9 +143,16 @@ export function projectMojoGenericParameters(
             : Object.freeze({ kind: "intersection" as const, types: Object.freeze(constraints) }),
         })]
       : constraints;
+    const defaultArgument = parameter.defaultArgument === undefined
+      ? undefined
+      : projectGenericArgument(parameter.defaultArgument, context);
+    if (defaultArgument !== undefined && defaultArgument.source === undefined) {
+      throw new Error(`Mojo generic parameter '${parameter.name}' has an unbound default argument.`);
+    }
     return Object.freeze({
       name: parameter.name,
       constraints: Object.freeze(sourceConstraints),
+      ...(defaultArgument?.source === undefined ? {} : { defaultType: defaultArgument.source }),
     });
   }));
 }
@@ -160,17 +167,6 @@ function projectNamedType(
   const sourceArguments = projectedArguments.map(({ source }) => source);
   if (sourceArguments.some((argument) => argument === undefined)) {
     throw new Error(`Mojo type '${type.name}' contains an unbound generic argument.`);
-  }
-  if (type.path === undefined && !context.localDeclarations.has(type.name)) {
-    return Object.freeze({
-      source: Object.freeze({ kind: "object" }),
-      target: namedTargetType(
-        context.package,
-        context.modulePath,
-        type.name,
-        projectedArguments.map(({ target }) => target),
-      ),
-    });
   }
   const location = resolveTypeLocation(type, context);
   const moduleSpecifier = mojoCompilerModuleSpecifier(location.package, location.modulePath);

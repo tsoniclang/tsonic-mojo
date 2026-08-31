@@ -12,6 +12,7 @@ import type {
   MojoCompilerStruct,
   MojoCompilerTrait,
   MojoCompilerType,
+  MojoCompilerTypeArgument,
 } from "./model.js";
 import { mojoCompilerProviderProtocolVersion } from "./model.js";
 import type {
@@ -41,6 +42,9 @@ export function normalizeMojoDocModule(options: {
   readonly classifyGenericParameter: (
     request: MojoGenericParameterClassificationRequest,
   ) => "type" | "value" | "origin";
+  readonly classifyAlias: (
+    request: MojoAliasClassificationRequest,
+  ) => "type" | "value" | "origin";
 }): MojoCompilerModuleModel {
   const moduleIdentity = compilerModuleIdentity(options.package, options.modulePath);
   const functions = normalizeFunctionGroups(
@@ -55,11 +59,13 @@ export function normalizeMojoDocModule(options: {
       declaration,
       moduleIdentity,
       options.classifyGenericParameter,
+      options.classifyAlias,
     )),
     ...options.document.decl.traits.map((declaration) => normalizeTrait(
       declaration,
       moduleIdentity,
       options.classifyGenericParameter,
+      options.classifyAlias,
     )),
     ...options.document.decl.aliases.map((declaration) => normalizeAlias(
       declaration,
@@ -67,6 +73,7 @@ export function normalizeMojoDocModule(options: {
       emptyScope,
       emptyParameters,
       options.classifyGenericParameter,
+      options.classifyAlias,
     )),
   ];
   requireUnique(functions, ({ identity }) => identity, "function overload");
@@ -92,12 +99,24 @@ export interface MojoGenericParameterClassificationRequest {
   readonly precedingParameters: readonly MojoDocParameter[];
 }
 
+export interface MojoAliasClassificationRequest {
+  readonly declaration: MojoDocAlias;
+  readonly genericParameters: readonly MojoCompilerGenericParameter[];
+  readonly owner?: {
+    readonly kind: "struct" | "trait";
+    readonly name: string;
+    readonly parameters: readonly MojoDocParameter[];
+    readonly genericParameters: readonly MojoCompilerGenericParameter[];
+  };
+}
+
 function normalizeStruct(
   declaration: MojoDocStruct,
   moduleIdentity: string,
   classifyGenericParameter: (
     request: MojoGenericParameterClassificationRequest,
   ) => "type" | "value" | "origin",
+  classifyAlias: (request: MojoAliasClassificationRequest) => "type" | "value" | "origin",
 ): MojoCompilerStruct {
   const identity = `${moduleIdentity}::struct:${declaration.name}`;
   const genericParameters = normalizeGenericParameters(
@@ -115,12 +134,20 @@ function normalizeStruct(
     declaration.parameters,
     classifyGenericParameter,
   );
+  const owner = Object.freeze({
+    kind: "struct" as const,
+    name: declaration.name,
+    parameters: declaration.parameters,
+    genericParameters,
+  });
   const aliases = declaration.aliases.map((alias) => normalizeAssociatedAlias(
     alias,
     identity,
     scope,
     declaration.parameters,
     classifyGenericParameter,
+    classifyAlias,
+    owner,
   ));
   requireUnique(fields, ({ name }) => name, `field on '${identity}'`);
   requireUnique(aliases, ({ name }) => name, `associated alias on '${identity}'`);
@@ -145,6 +172,7 @@ function normalizeTrait(
   classifyGenericParameter: (
     request: MojoGenericParameterClassificationRequest,
   ) => "type" | "value" | "origin",
+  classifyAlias: (request: MojoAliasClassificationRequest) => "type" | "value" | "origin",
 ): MojoCompilerTrait {
   const identity = `${moduleIdentity}::trait:${declaration.name}`;
   const fields = declaration.fields.map((field) => normalizeField(field, identity, selfScope));
@@ -155,12 +183,20 @@ function normalizeTrait(
     emptyParameters,
     classifyGenericParameter,
   );
+  const owner = Object.freeze({
+    kind: "trait" as const,
+    name: declaration.name,
+    parameters: emptyParameters,
+    genericParameters: Object.freeze([]),
+  });
   const aliases = declaration.aliases.map((alias) => normalizeAssociatedAlias(
     alias,
     identity,
     selfScope,
     emptyParameters,
     classifyGenericParameter,
+    classifyAlias,
+    owner,
   ));
   requireUnique(fields, ({ name }) => name, `field on '${identity}'`);
   requireUnique(aliases, ({ name }) => name, `associated alias on '${identity}'`);
@@ -185,6 +221,8 @@ function normalizeAlias(
   classifyGenericParameter: (
     request: MojoGenericParameterClassificationRequest,
   ) => "type" | "value" | "origin",
+  classifyAlias: (request: MojoAliasClassificationRequest) => "type" | "value" | "origin",
+  owner?: MojoAliasClassificationRequest["owner"],
 ): MojoCompilerAlias {
   const identity = `${ownerIdentity}::alias:${declaration.name}`;
   const genericParameters = normalizeGenericParameters(
@@ -194,15 +232,22 @@ function normalizeAlias(
     classifyGenericParameter,
   );
   const scope = mergeScope(parentScope, scopeFor(genericParameters));
+  const category = classifyAlias(Object.freeze({ declaration, genericParameters, ...(owner === undefined ? {} : { owner }) }));
+  if (declaration.value === undefined) {
+    throw new Error(`Mojo alias '${declaration.name}' has no compiler-retained value expression.`);
+  }
   return Object.freeze({
     kind: "alias",
     identity,
     name: declaration.name,
     genericParameters,
-    ...(declaration.type === undefined
-      ? {}
-      : { type: parseMojoCompilerType(declaration.type, declaration.path, scope) }),
-    ...(declaration.value === undefined ? {} : { value: declaration.value }),
+    category,
+    ...(category === "type"
+      ? { targetType: parseMojoCompilerType(declaration.value, undefined, scope) }
+      : declaration.type === undefined || declaration.type.trim().length === 0
+        ? {}
+        : { valueType: parseMojoCompilerType(declaration.type, undefined, scope) }),
+    valueExpression: declaration.value,
     ...documentationOf(declaration),
   });
 }
@@ -215,6 +260,8 @@ function normalizeAssociatedAlias(
   classifyGenericParameter: (
     request: MojoGenericParameterClassificationRequest,
   ) => "type" | "value" | "origin",
+  classifyAlias: (request: MojoAliasClassificationRequest) => "type" | "value" | "origin",
+  owner: NonNullable<MojoAliasClassificationRequest["owner"]>,
 ): MojoCompilerAssociatedAlias {
   const identity = `${ownerIdentity}::alias:${declaration.name}`;
   const genericParameters = normalizeGenericParameters(
@@ -224,16 +271,21 @@ function normalizeAssociatedAlias(
     classifyGenericParameter,
   );
   const scope = mergeScope(parentScope, scopeFor(genericParameters));
+  const category = classifyAlias(Object.freeze({ declaration, genericParameters, owner }));
+  if (declaration.value === undefined) {
+    throw new Error(`Mojo associated alias '${declaration.name}' has no compiler-retained value expression.`);
+  }
   return Object.freeze({
     identity,
     name: declaration.name,
     genericParameters,
-    ...(declaration.type === undefined
-      ? {}
-      : { type: parseMojoCompilerType(declaration.type, undefined, scope) }),
-    ...(declaration.value === undefined
-      ? {}
-      : { valueType: parseMojoCompilerType(declaration.value, undefined, scope) }),
+    category,
+    ...(category === "type"
+      ? { targetType: parseMojoCompilerType(declaration.value, undefined, scope) }
+      : declaration.type === undefined || declaration.type.trim().length === 0
+        ? {}
+        : { valueType: parseMojoCompilerType(declaration.type, undefined, scope) }),
+    valueExpression: declaration.value,
     ...documentationOf(declaration),
   });
 }
@@ -369,6 +421,9 @@ function normalizeGenericParameters(
       variadic,
       constraints: Object.freeze((parameter.traits ?? [parameter]).map((constraint) =>
         parseTypeValue(constraint, scope))),
+      ...(parameter.default === undefined
+        ? {}
+        : { defaultArgument: normalizeGenericDefault(parameter.default, kind, scope) }),
     });
     result.push(normalized);
     if (kind === "type") knownTypes.add(name);
@@ -377,6 +432,16 @@ function normalizeGenericParameters(
   }
   requireUnique(result, ({ name }) => name, "generic parameter");
   return Object.freeze(result);
+}
+
+function normalizeGenericDefault(
+  expression: string,
+  kind: "type" | "value" | "origin",
+  scope: MojoCompilerTypeScope,
+): MojoCompilerTypeArgument {
+  return kind === "type"
+    ? Object.freeze({ kind: "type", type: parseMojoCompilerType(expression, undefined, scope) })
+    : Object.freeze({ kind: "value", expression });
 }
 
 function parseTypeValue(

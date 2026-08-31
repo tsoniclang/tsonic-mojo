@@ -42,7 +42,10 @@ export interface MojoProviderTypeDefinition {
   readonly associatedAliases?: readonly {
     readonly name: string;
     readonly genericParameters: readonly import("../../target-model/provider/model.js").MojoProviderTargetGenericParameter[];
+    readonly category: "type" | "value" | "origin";
+    readonly targetType?: MojoTargetTypeRef;
     readonly valueType?: MojoTargetTypeRef;
+    readonly valueExpression: string;
   }[];
   readonly objectLiteralConstruction?: "fieldwise";
 }

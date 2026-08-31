@@ -13,29 +13,91 @@ import {
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import type {
+  MojoCompilerGenericParameter,
   MojoCompilerModuleSource,
   MojoCompilerPackageSnapshot,
   MojoCompilerProjectSnapshot,
 } from "../model/model.js";
-import type { MojoDocParameter } from "../model/mojo-doc-schema.js";
+import type { MojoDocAlias, MojoDocParameter } from "../model/mojo-doc-schema.js";
 
-export type MojoGenericParameterCategory = "type" | "value" | "origin";
+export type MojoSemanticCategory = "type" | "value" | "origin";
+export type MojoGenericParameterCategory = MojoSemanticCategory;
 
 const classificationTimeoutMilliseconds = 60_000;
 const maximumDiagnosticBytes = 1_048_576;
 
-export function classifyMojoGenericParameterWithCompiler(options: {
+interface MojoSemanticClassificationContext {
   readonly cacheRoot: string;
   readonly snapshot: MojoCompilerProjectSnapshot;
   readonly package: MojoCompilerPackageSnapshot;
   readonly module: MojoCompilerModuleSource;
+  readonly verifySnapshot: () => void;
+  readonly includeRoots: readonly string[];
+}
+
+interface MojoGenericParameterClassificationOptions extends MojoSemanticClassificationContext {
   readonly parameter: MojoDocParameter;
   readonly parentParameters: readonly MojoDocParameter[];
   readonly precedingParameters: readonly MojoDocParameter[];
-  readonly verifySnapshot: () => void;
-  readonly includeRoots: readonly string[];
-}): MojoGenericParameterCategory {
-  const key = classificationKey(options);
+}
+
+interface MojoAliasClassificationOptions extends MojoSemanticClassificationContext {
+  readonly alias: MojoDocAlias;
+  readonly genericParameters: readonly MojoCompilerGenericParameter[];
+  readonly owner?: {
+    readonly kind: "struct" | "trait";
+    readonly name: string;
+    readonly parameters: readonly MojoDocParameter[];
+    readonly genericParameters: readonly MojoCompilerGenericParameter[];
+  };
+}
+
+export function classifyMojoGenericParameterWithCompiler(
+  options: MojoGenericParameterClassificationOptions,
+): MojoGenericParameterCategory {
+  const key = genericParameterClassificationKey(options);
+  return classifyWithMojoCompiler(
+    options,
+    key,
+    (moduleSource, category) => genericParameterClassificationSource(
+      options,
+      moduleSource,
+      category,
+      key,
+    ),
+  );
+}
+
+export function classifyMojoAliasWithCompiler(
+  options: MojoAliasClassificationOptions,
+): MojoSemanticCategory {
+  if (options.genericParameters.some(({ variadic }) => variadic)) {
+    throw new Error(`Mojo alias '${options.alias.name}' has a variadic generic classification contract.`);
+  }
+  if (options.owner?.genericParameters.some(({ variadic }) => variadic) === true) {
+    throw new Error(`Mojo alias owner '${options.owner.name}' has a variadic generic classification contract.`);
+  }
+  const key = aliasClassificationKey(options);
+  return classifyWithMojoCompiler(
+    options,
+    key,
+    (moduleSource, category) => aliasClassificationSource(
+      options,
+      moduleSource,
+      category,
+      key,
+    ),
+  );
+}
+
+function classifyWithMojoCompiler(
+  options: MojoSemanticClassificationContext,
+  key: string,
+  sourceFor: (
+    moduleSource: string,
+    category: MojoSemanticCategory,
+  ) => string,
+): MojoSemanticCategory {
   const cached = readCachedClassification(options.cacheRoot, options.snapshot.digest, key);
   if (cached !== undefined) return classificationResult(cached);
   options.verifySnapshot();
@@ -48,15 +110,15 @@ export function classifyMojoGenericParameterWithCompiler(options: {
     const probes = Object.freeze([
       Object.freeze({
         category: "type" as const,
-        source: classificationSource(options, sourcePrefix, "type"),
+        source: sourceFor(sourcePrefix, "type"),
       }),
       Object.freeze({
         category: "origin" as const,
-        source: classificationSource(options, sourcePrefix, "origin"),
+        source: sourceFor(sourcePrefix, "origin"),
       }),
       Object.freeze({
         category: "value" as const,
-        source: classificationSource(options, sourcePrefix, "value"),
+        source: sourceFor(sourcePrefix, "value"),
       }),
     ]);
     const diagnostics: string[] = [];
@@ -88,15 +150,15 @@ export function classifyMojoGenericParameterWithCompiler(options: {
 }
 
 type CachedClassification =
-  | { readonly kind: "classified"; readonly category: MojoGenericParameterCategory }
+  | { readonly kind: "classified"; readonly category: MojoSemanticCategory }
   | { readonly kind: "rejected"; readonly diagnostic: string };
 
 function executeProbe(
-  options: Parameters<typeof classifyMojoGenericParameterWithCompiler>[0],
+  options: MojoSemanticClassificationContext,
   requestDirectory: string,
   sourcePath: string,
   includeRoots: readonly string[],
-  category: MojoGenericParameterCategory,
+  category: MojoSemanticCategory,
   source: string,
 ): { readonly accepted: true } | { readonly accepted: false; readonly diagnostic: string } {
   const outputPath = join(requestDirectory, `${category}.json`);
@@ -138,7 +200,7 @@ function executeProbe(
 }
 
 function materializeClassificationWorkspace(
-  options: Parameters<typeof classifyMojoGenericParameterWithCompiler>[0],
+  options: MojoSemanticClassificationContext,
   requestDirectory: string,
 ): { readonly moduleSourcePath: string; readonly includeRoots: readonly string[] } {
   if (options.includeRoots.length !== options.snapshot.packages.length) {
@@ -171,13 +233,14 @@ function materializeClassificationWorkspace(
   return Object.freeze({ moduleSourcePath, includeRoots: Object.freeze(includeRoots) });
 }
 
-function classificationSource(
-  options: Parameters<typeof classifyMojoGenericParameterWithCompiler>[0],
+function genericParameterClassificationSource(
+  options: MojoGenericParameterClassificationOptions,
   moduleSource: string,
-  category: MojoGenericParameterCategory,
+  category: MojoSemanticCategory,
+  key: string,
 ): string {
-  const key = classificationKey(options).slice(0, 20);
-  const memberName = `__tsonic_classify_${category}_${key}`;
+  const identity = key.slice(0, 20);
+  const memberName = `__tsonic_classify_${category}_${identity}`;
   const memberParameters = renderParameterClause([
     ...options.parentParameters,
     ...options.precedingParameters,
@@ -188,7 +251,10 @@ function classificationSource(
     : category === "origin"
       ? "    var __tsonic_value: Pointer[Int, __TsonicCandidate]\n"
       : "    comptime __tsonic_value = __TsonicCandidate\n";
-  return `${moduleSource}\n\nfrom std.memory import Pointer\n\n` +
+  const pointerImport = samePath(options.module.modulePath, ["memory", "pointer"])
+    ? ""
+    : "from std.memory.pointer import Pointer\n\n";
+  return `${moduleSource}\n\n${pointerImport}` +
     `def ${memberName}${memberParameters}():\n${body}`;
 }
 
@@ -197,11 +263,69 @@ function renderParameterClause(parameters: readonly MojoDocParameter[]): string 
   return `[${parameters.map((parameter) => `${parameter.name}: ${parameter.type}`).join(", ")}]`;
 }
 
-function classificationKey(
-  options: Parameters<typeof classifyMojoGenericParameterWithCompiler>[0],
+function aliasClassificationSource(
+  options: MojoAliasClassificationOptions,
+  moduleSource: string,
+  category: MojoSemanticCategory,
+  key: string,
+): string {
+  const identity = key.slice(0, 20);
+  const memberName = `__tsonic_classify_alias_${category}_${identity}`;
+  const traitOwner = options.owner?.kind === "trait";
+  const parameterPrefix = traitOwner
+    ? [{
+        kind: "parameter" as const,
+        name: "__TsonicOwner",
+        passingKind: "pos_or_kw" as const,
+        type: options.owner!.name,
+        description: "",
+      }]
+    : options.owner?.parameters ?? [];
+  const parameters = renderParameterClause([...parameterPrefix, ...options.alias.parameters]);
+  const ownerArguments = renderGenericArguments(options.owner?.genericParameters ?? []);
+  const aliasArguments = renderGenericArguments(options.genericParameters);
+  const owner = options.owner === undefined
+    ? ""
+    : traitOwner
+      ? "__TsonicOwner."
+      : `${options.owner.name}${ownerArguments}.`;
+  const alias = `${owner}${options.alias.name}${aliasArguments}`;
+  const body = category === "type"
+    ? `    var __tsonic_value: ${alias}\n`
+    : category === "origin"
+      ? `    var __tsonic_value: Pointer[Int, ${alias}]\n`
+      : `    comptime __tsonic_value = ${alias}\n`;
+  const pointerImport = samePath(options.module.modulePath, ["memory", "pointer"])
+    ? ""
+    : "from std.memory.pointer import Pointer\n\n";
+  return `${moduleSource}\n\n${pointerImport}` +
+    `def ${memberName}${parameters}():\n${body}`;
+}
+
+function aliasClassificationKey(options: MojoAliasClassificationOptions): string {
+  return createHash("sha256").update(JSON.stringify({
+    contractVersion: 1,
+    subjectKind: "alias",
+    snapshotDigest: options.snapshot.digest,
+    packageId: options.package.id,
+    modulePath: options.module.modulePath,
+    alias: options.alias,
+    genericParameters: options.genericParameters,
+    owner: options.owner,
+  })).digest("hex");
+}
+
+function renderGenericArguments(parameters: readonly MojoCompilerGenericParameter[]): string {
+  if (parameters.length === 0) return "";
+  return `[${parameters.map(({ name }) => `${name}=${name}`).join(", ")}]`;
+}
+
+function genericParameterClassificationKey(
+  options: MojoGenericParameterClassificationOptions,
 ): string {
   return createHash("sha256").update(JSON.stringify({
-    contractVersion: 3,
+    contractVersion: 4,
+    subjectKind: "generic-parameter",
     snapshotDigest: options.snapshot.digest,
     packageId: options.package.id,
     modulePath: options.module.modulePath,
@@ -259,7 +383,7 @@ function classificationPath(cacheRoot: string, snapshotDigest: string, key: stri
   return resolve(cacheRoot, "classifications", snapshotDigest, `${key}.json`);
 }
 
-function classificationResult(result: CachedClassification): MojoGenericParameterCategory {
+function classificationResult(result: CachedClassification): MojoSemanticCategory {
   if (result.kind === "classified") return result.category;
   throw new Error(result.diagnostic);
 }
@@ -267,6 +391,10 @@ function classificationResult(result: CachedClassification): MojoGenericParamete
 function sameModule(left: MojoCompilerModuleSource, right: MojoCompilerModuleSource): boolean {
   return left.digest === right.digest && left.modulePath.length === right.modulePath.length &&
     left.modulePath.every((part, index) => part === right.modulePath[index]);
+}
+
+function samePath(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((part, index) => part === right[index]);
 }
 
 function boundedDiagnostic(value: unknown): string {

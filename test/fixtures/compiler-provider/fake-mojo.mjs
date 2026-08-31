@@ -29,19 +29,22 @@ if (outputIndex < 0 || args[outputIndex + 1] === undefined) {
 
 const inputPath = args[1];
 const inputSource = statSync(inputPath).isFile() ? readFileSync(inputPath, "utf8") : "";
-const probeCategory = /__tsonic_classify_(type|origin|value)_/u.exec(inputSource)?.[1] ??
+const aliasProbe = /__tsonic_classify_alias_(type|origin|value)_/u.exec(inputSource);
+const probeCategory = aliasProbe?.[1] ?? /__tsonic_classify_(type|origin|value)_/u.exec(inputSource)?.[1] ??
   basename(inputPath, ".mojo");
 if (probeCategory === "type" || probeCategory === "origin" || probeCategory === "value") {
-  const constraint = /__TsonicCandidate:\s*([^\]\n]+)/u.exec(inputSource)?.[1]?.trim();
-  const expected = constraint === "TypeAlias"
-    ? "type"
-    : constraint === "OriginAlias"
-      ? "origin"
-      : constraint === "ValueAlias"
-        ? "value"
+  const subject = aliasProbe === null
+    ? /__TsonicCandidate:\s*([^\]\n]+)/u.exec(inputSource)?.[1]?.trim()
+    : inputSource.slice(aliasProbe.index);
+  const expected = subject?.includes("OriginAlias") === true
+    ? "origin"
+    : subject?.includes("ValueAlias") === true
+      ? "value"
+      : subject?.includes("TypeAlias") === true || subject?.includes(".Element") === true
+        ? "type"
         : undefined;
   if (probeCategory !== expected) {
-    process.stderr.write(`fixture rejects ${probeCategory} classification for ${constraint ?? "unknown"}\n`);
+    process.stderr.write(`fixture rejects ${probeCategory} classification for ${subject ?? "unknown"}\n`);
     process.exit(1);
   }
   writeFileSync(args[outputIndex + 1], "{}");
@@ -276,9 +279,9 @@ const privateAlias = (name, type, value) => ({
 });
 const privateModule = {
   aliases: [
-    privateAlias("TypeAlias", "AnyType", "AnyType"),
-    privateAlias("OriginAlias", "Origin", "ImmStaticOrigin"),
-    privateAlias("ValueAlias", "Int", "Int(0)"),
+    privateAlias("TypeAlias", "AnyType", "Int32"),
+    privateAlias("OriginAlias", "Int32", "ImmStaticOrigin"),
+    privateAlias("ValueAlias", "Int32", "Int32(0)"),
   ],
   description: "",
   functions: [],

@@ -79,6 +79,7 @@ export interface MojoCompilerGenericParameter {
   readonly passingKind: "positional" | "positional-or-keyword" | "keyword" | "inferred";
   readonly variadic: boolean;
   readonly constraints: readonly MojoCompilerType[];
+  readonly defaultArgument?: MojoCompilerTypeArgument;
 }
 
 export interface MojoCompilerFunctionArgument {
@@ -115,8 +116,10 @@ export interface MojoCompilerAssociatedAlias {
   readonly identity: string;
   readonly name: string;
   readonly genericParameters: readonly MojoCompilerGenericParameter[];
-  readonly type?: MojoCompilerType;
+  readonly category: "type" | "value" | "origin";
+  readonly targetType?: MojoCompilerType;
   readonly valueType?: MojoCompilerType;
+  readonly valueExpression: string;
   readonly documentation?: string;
 }
 
@@ -149,8 +152,10 @@ export interface MojoCompilerAlias {
   readonly identity: string;
   readonly name: string;
   readonly genericParameters: readonly MojoCompilerGenericParameter[];
-  readonly type?: MojoCompilerType;
-  readonly value?: string;
+  readonly category: "type" | "value" | "origin";
+  readonly targetType?: MojoCompilerType;
+  readonly valueType?: MojoCompilerType;
+  readonly valueExpression: string;
   readonly documentation?: string;
 }
 

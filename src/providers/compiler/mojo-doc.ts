@@ -37,7 +37,10 @@ import {
   writeCachedMojoPackageDocument,
 } from "./documents/package-document.js";
 import type { IndexedMojoPackageDocument } from "./documents/package-document.js";
-import { classifyMojoGenericParameterWithCompiler } from "./classification/generic-parameter.js";
+import {
+  classifyMojoAliasWithCompiler,
+  classifyMojoGenericParameterWithCompiler,
+} from "./classification/semantic-category.js";
 
 const extractionTimeoutMilliseconds = 600_000;
 const maximumDiagnosticBytes = 2_097_152;
@@ -220,6 +223,21 @@ export function createMojoCompilerMetadataLoader(
               verifyMaterializedSnapshot(snapshotRoot, options.snapshot);
             },
           }),
+        }),
+        classifyAlias: (request) => classifyMojoAliasWithCompiler({
+          cacheRoot,
+          snapshot: options.snapshot,
+          package: options.package,
+          module: options.module,
+          alias: request.declaration,
+          genericParameters: request.genericParameters,
+          ...(request.owner === undefined ? {} : { owner: request.owner }),
+          includeRoots: options.snapshot.packages.map((package_) =>
+            stagedImportRoot(snapshotRoot, package_)),
+          verifySnapshot: () => {
+            verifyCompiler(options.snapshot.compiler);
+            verifyMaterializedSnapshot(snapshotRoot, options.snapshot);
+          },
         }),
       });
       modules.set(identity, model);

@@ -15,6 +15,7 @@ import { mojoCompilerModuleSpecifier } from "../dist/providers/compiler/projecti
 import { parseMojoCompilerType } from "../dist/providers/compiler/model/type-parser.js";
 import { analyzeMojoRuntimePackages } from "../dist/analysis/runtime/references.js";
 import { materializeMojoOutputPlan } from "../dist/backend/emission/materialize.js";
+import { collectMojoProviderSemanticsFromDefinitions } from "../dist/providers/packages/semantics.js";
 
 const root = fileURLToPath(new URL("fixtures/compiler-provider", import.meta.url));
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -127,16 +128,79 @@ test("compiler metadata extraction normalizes exact conventions, keywords, const
       { kind: "value", name: "size", position: "keyword", variadic: false },
       { kind: "value", name: "payload", position: "positional-or-keyword", variadic: false },
     ]);
+    assert.deepEqual(classifyOperation.target.genericParameters[2].defaultArgument, {
+      kind: "value",
+      expression: "Int(4)",
+    });
+    const classifyExport = projection.declarationModel.exports.find(({ name }) => name === "classify");
+    assert.deepEqual(classifyExport.signatures[0].typeParameters[2].defaultType, {
+      kind: "literal",
+      value: "Int(4)",
+    });
     const bucket = projection.types.find(({ exportId }) => exportId.endsWith("export:struct:Bucket"));
     assert.deepEqual(bucket.conformances.map(({ condition }) => condition), [
       undefined,
       { kind: "conforms-to", parameterName: "T", traitNames: ["Copyable"] },
     ]);
     assert.equal(bucket.associatedAliases[0].name, "Element");
-    assert.deepEqual(bucket.associatedAliases[0].valueType, { kind: "type-parameter", name: "T" });
+    assert.equal(bucket.associatedAliases[0].category, "type");
+    assert.deepEqual(bucket.associatedAliases[0].targetType, { kind: "type-parameter", name: "T" });
     const itemOperation = projection.operations.find(({ memberId }) =>
       memberId?.endsWith("::method:item") === true);
     assert.equal(itemOperation.resultType.kind, "associated");
+  } finally {
+    loader.close();
+  }
+});
+
+test("compiler aliases retain exact semantic category, target, value type, and constant operation", () => {
+  const snapshot = createMojoCompilerProjectSnapshot(configuration(), "1.1.0.dev2026083005");
+  const package_ = snapshot.packages[0];
+  const source = package_.modules.find(({ modulePath }) => modulePath.join(".") === "_private");
+  assert.ok(source);
+  const loader = createMojoCompilerMetadataLoader(
+    join(repositoryRoot, ".temp", `compiler-provider-alias-${process.pid}`),
+  );
+  try {
+    const model = loader.module({ snapshot, package: package_, module: source });
+    assert.deepEqual(model.declarations.map((declaration) => [
+      declaration.name,
+      declaration.category,
+      declaration.targetType?.kind,
+      declaration.valueType?.kind,
+    ]), [
+      ["TypeAlias", "type", "named", undefined],
+      ["OriginAlias", "origin", undefined, "named"],
+      ["ValueAlias", "value", undefined, "named"],
+    ]);
+    const moduleSpecifier = mojoCompilerModuleSpecifier(package_, ["_private"]);
+    const projection = projectMojoCompilerModule(snapshot, package_, model, {
+      providerModuleId: "fixture-probe:_private",
+      moduleSpecifier,
+    });
+    assert.deepEqual(projection.declarationModel.exports.map(({ name, kind }) => [name, kind]), [
+      ["OriginAlias", "value"],
+      ["TypeAlias", "type"],
+      ["ValueAlias", "value"],
+    ]);
+    assert.deepEqual(projection.operations.map(({ operationKind, target }) => [
+      operationKind,
+      target.kind,
+      target.name,
+    ]), [
+      ["property", "constant", "OriginAlias"],
+      ["property", "constant", "ValueAlias"],
+    ]);
+    const semantics = collectMojoProviderSemanticsFromDefinitions([{
+      id: package_.id,
+      displayName: "Alias fixture",
+      version: package_.version,
+      modules: [projection.declarationModel],
+      types: projection.types,
+      operations: projection.operations,
+      runtimePackages: [],
+    }]);
+    assert.equal(semantics.operations.length, 2);
   } finally {
     loader.close();
   }
@@ -209,7 +273,7 @@ test("compiler metadata uses the exact snapshotted environment and persistent do
     } finally {
       first.close();
     }
-    assert.equal(readFileSync(logPath, "utf8"), "doc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\n");
+    assert.equal(readFileSync(logPath, "utf8"), "doc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\n");
 
     const second = createMojoCompilerMetadataLoader(cacheRoot);
     try {
@@ -219,7 +283,7 @@ test("compiler metadata uses the exact snapshotted environment and persistent do
     }
     assert.equal(
       readFileSync(logPath, "utf8"),
-      "doc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\n",
+      "doc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\n",
       "the exact cached package document and classifications avoid compiler re-entry",
     );
 
@@ -240,7 +304,7 @@ test("compiler metadata uses the exact snapshotted environment and persistent do
     }
     assert.equal(
       readFileSync(logPath, "utf8"),
-      "doc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\n",
+      "doc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\ndoc\n",
       "corrupt cache data is regenerated exactly once",
     );
   } finally {

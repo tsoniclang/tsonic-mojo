@@ -62,6 +62,7 @@ export interface MojoProviderTargetGenericParameter {
   readonly position: "positional" | "positional-or-keyword" | "keyword" | "inferred";
   readonly variadic: boolean;
   readonly constraints: readonly MojoTargetTypeRef[];
+  readonly defaultArgument?: MojoTargetGenericArgument;
 }
 
 export interface MojoTargetConformanceCondition {
