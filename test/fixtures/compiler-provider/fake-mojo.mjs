@@ -40,7 +40,8 @@ if (probeCategory === "type" || probeCategory === "origin" || probeCategory === 
     ? "origin"
     : subject?.includes("ValueAlias") === true
       ? "value"
-      : subject?.includes("TypeAlias") === true || subject?.includes(".Element") === true
+      : subject?.includes("TypeAlias") === true || subject?.includes("BrokenAlias") === true ||
+          subject?.includes(".Element") === true
         ? "type"
         : undefined;
   if (probeCategory !== expected) {
@@ -119,9 +120,26 @@ const struct = (name, extras = {}) => ({
   summary: "",
   ...extras,
 });
+const alias = (name, type, value, path) => ({
+  deprecated: "",
+  description: "",
+  isStabilityTracked: false,
+  isStable: false,
+  kind: "alias",
+  name,
+  parameters: [],
+  path,
+  signature: `comptime ${name}`,
+  sinceVersion: "",
+  summary: "",
+  type,
+  value,
+});
 
 const apiModule = {
-    aliases: [],
+    aliases: process.env.TSONIC_MOJO_PROVIDER_BROKEN_EXPORT === undefined
+      ? []
+      : [alias("BrokenAlias", "AnyType", "External[Unclassified]", "/probe/api/BrokenAlias")],
     description: "",
     functions: [
       group("sum", [overload("sum", [
@@ -262,21 +280,8 @@ const traitsModule = {
   summary: "",
   traits: [trait("Sequence"), trait("Copyable")],
 };
-const privateAlias = (name, type, value) => ({
-  deprecated: "",
-  description: "",
-  isStabilityTracked: false,
-  isStable: false,
-  kind: "alias",
-  name,
-  parameters: [],
-  path: `/probe/_private/${name}`,
-  signature: `comptime ${name}`,
-  sinceVersion: "",
-  summary: "",
-  type,
-  value,
-});
+const privateAlias = (name, type, value) =>
+  alias(name, type, value, `/probe/_private/${name}`);
 const privateModule = {
   aliases: [
     privateAlias("TypeAlias", "AnyType", "Int32"),

@@ -39,6 +39,7 @@ export function normalizeMojoDocModule(options: {
   readonly modulePath: readonly string[];
   readonly sourceDigest: string;
   readonly document: MojoDocDocument;
+  readonly requestedExports?: readonly string[];
   readonly classifyGenericParameter: (
     request: MojoGenericParameterClassificationRequest,
   ) => "type" | "value" | "origin";
@@ -47,34 +48,39 @@ export function normalizeMojoDocModule(options: {
   ) => "type" | "value" | "origin";
 }): MojoCompilerModuleModel {
   const moduleIdentity = compilerModuleIdentity(options.package, options.modulePath);
+  const availableExports = collectAvailableExports(options.document);
+  const selected = selectRequestedExports(availableExports, options.requestedExports);
   const functions = normalizeFunctionGroups(
-    options.document.decl.functions,
+    options.document.decl.functions.filter(({ name }) => selected.has(name)),
     moduleIdentity,
     emptyScope,
     emptyParameters,
     options.classifyGenericParameter,
   );
   const declarations = [
-    ...options.document.decl.structs.map((declaration) => normalizeStruct(
-      declaration,
-      moduleIdentity,
-      options.classifyGenericParameter,
-      options.classifyAlias,
-    )),
-    ...options.document.decl.traits.map((declaration) => normalizeTrait(
-      declaration,
-      moduleIdentity,
-      options.classifyGenericParameter,
-      options.classifyAlias,
-    )),
-    ...options.document.decl.aliases.map((declaration) => normalizeAlias(
-      declaration,
-      moduleIdentity,
-      emptyScope,
-      emptyParameters,
-      options.classifyGenericParameter,
-      options.classifyAlias,
-    )),
+    ...options.document.decl.structs.filter(({ name }) => selected.has(name)).map((declaration) =>
+      normalizeWithContext("struct", declaration.name, () => normalizeStruct(
+        declaration,
+        moduleIdentity,
+        options.classifyGenericParameter,
+        options.classifyAlias,
+      ))),
+    ...options.document.decl.traits.filter(({ name }) => selected.has(name)).map((declaration) =>
+      normalizeWithContext("trait", declaration.name, () => normalizeTrait(
+        declaration,
+        moduleIdentity,
+        options.classifyGenericParameter,
+        options.classifyAlias,
+      ))),
+    ...options.document.decl.aliases.filter(({ name }) => selected.has(name)).map((declaration) =>
+      normalizeWithContext("alias", declaration.name, () => normalizeAlias(
+        declaration,
+        moduleIdentity,
+        emptyScope,
+        emptyParameters,
+        options.classifyGenericParameter,
+        options.classifyAlias,
+      ))),
   ];
   requireUnique(functions, ({ identity }) => identity, "function overload");
   requireUnique(declarations, ({ identity }) => identity, "declaration");
@@ -88,9 +94,53 @@ export function normalizeMojoDocModule(options: {
     moduleIdentity,
     sourceDigest: options.sourceDigest,
     documentVersion: options.document.version,
+    availableExports,
     functions: Object.freeze(functions),
     declarations: Object.freeze(declarations),
   });
+}
+
+function collectAvailableExports(
+  document: MojoDocDocument,
+): readonly { readonly name: string; readonly kind: "function" | "struct" | "trait" | "alias" }[] {
+  const values = [
+    ...document.decl.functions.map(({ name }) => Object.freeze({ name, kind: "function" as const })),
+    ...document.decl.structs.map(({ name }) => Object.freeze({ name, kind: "struct" as const })),
+    ...document.decl.traits.map(({ name }) => Object.freeze({ name, kind: "trait" as const })),
+    ...document.decl.aliases.map(({ name }) => Object.freeze({ name, kind: "alias" as const })),
+  ];
+  requireUnique(values, ({ name }) => name, "module export");
+  return Object.freeze(values.sort(compareExport));
+}
+
+function selectRequestedExports(
+  available: readonly { readonly name: string }[],
+  requested: readonly string[] | undefined,
+): ReadonlySet<string> {
+  const availableNames = new Set(available.map(({ name }) => name));
+  if (requested === undefined) return availableNames;
+  const selected = new Set<string>();
+  for (const name of requested) {
+    if (!availableNames.has(name)) {
+      throw new Error(`Mojo module has no exported declaration '${name}'.`);
+    }
+    selected.add(name);
+  }
+  return selected;
+}
+
+function compareExport(left: { readonly name: string }, right: { readonly name: string }): number {
+  return left.name < right.name ? -1 : left.name > right.name ? 1 : 0;
+}
+
+function normalizeWithContext<T>(kind: string, name: string, action: () => T): T {
+  try {
+    return action();
+  } catch (error) {
+    throw new Error(
+      `Mojo ${kind} '${name}' cannot be normalized: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
 
 export interface MojoGenericParameterClassificationRequest {

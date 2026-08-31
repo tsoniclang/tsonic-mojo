@@ -182,8 +182,13 @@ function createCompilerProvider(options: {
       }
       const module = findModule(package_, resolved.modulePath);
       try {
-        const model = options.loader.module({ snapshot: options.snapshot, package: package_, module });
         const requestedExports = requestedExportNames(request);
+        const model = options.loader.module({
+          snapshot: options.snapshot,
+          package: package_,
+          module,
+          ...(requestedExports === undefined ? {} : { requestedExports }),
+        });
         const projection = projectMojoCompilerModule(options.snapshot, package_, model, {
           providerModuleId: expectedModuleId,
           moduleSpecifier: resolution.moduleSpecifier,
@@ -332,7 +337,7 @@ function requestedExportNames(request: ProviderDeclarationRequest): readonly str
     ...(request.context.importSlice?.requestedExports ?? []).map(({ exportedName }) => exportedName),
     ...request.materialization.completeExports.map(({ exportName }) => exportName),
   ]);
-  return names.size === 0 ? undefined : Object.freeze([...names].sort(compareText));
+  return Object.freeze([...names].sort(compareText));
 }
 
 function findModule(

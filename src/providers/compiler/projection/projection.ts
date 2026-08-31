@@ -51,16 +51,15 @@ export function projectMojoCompilerModule(
     snapshot,
     package: package_,
     modulePath: module.modulePath,
-    localDeclarations: new Set(module.declarations.map(({ name }) => name)),
+    localDeclarations: new Set(module.availableExports
+      .filter(({ kind }) => kind !== "function")
+      .map(({ name }) => name)),
     imports,
   };
   const requested = options.requestedExports === undefined
     ? undefined
     : new Set(options.requestedExports);
-  const available = new Set([
-    ...module.functions.map(({ name }) => name),
-    ...module.declarations.map(({ name }) => name),
-  ]);
+  const available = new Set(module.availableExports.map(({ name }) => name));
   if (requested !== undefined) {
     for (const name of requested) {
       if (!available.has(name)) throw new Error(`Mojo module has no exported declaration '${name}'.`);

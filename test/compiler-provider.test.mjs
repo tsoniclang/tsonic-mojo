@@ -16,6 +16,7 @@ import { parseMojoCompilerType } from "../dist/providers/compiler/model/type-par
 import { analyzeMojoRuntimePackages } from "../dist/analysis/runtime/references.js";
 import { materializeMojoOutputPlan } from "../dist/backend/emission/materialize.js";
 import { collectMojoProviderSemanticsFromDefinitions } from "../dist/providers/packages/semantics.js";
+import { createMojoCompilerProviderSession } from "../dist/providers/compiler/session.js";
 
 const root = fileURLToPath(new URL("fixtures/compiler-provider", import.meta.url));
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -203,6 +204,103 @@ test("compiler aliases retain exact semantic category, target, value type, and c
     assert.equal(semantics.operations.length, 2);
   } finally {
     loader.close();
+  }
+});
+
+test("incremental compiler-provider slices isolate unrelated unsupported exports", () => {
+  const previousBroken = process.env.TSONIC_MOJO_PROVIDER_BROKEN_EXPORT;
+  process.env.TSONIC_MOJO_PROVIDER_BROKEN_EXPORT = "1";
+  const cacheRoot = join(repositoryRoot, ".temp", `compiler-provider-slices-${process.pid}`);
+  try {
+    const providerConfiguration = configuration();
+    const snapshot = createMojoCompilerProjectSnapshot(providerConfiguration, "1.1.0.dev2026083005");
+    const package_ = snapshot.packages[0];
+    const source = package_.modules.find(({ modulePath }) => modulePath.join(".") === "api");
+    assert.ok(source);
+    const loader = createMojoCompilerMetadataLoader(cacheRoot);
+    try {
+      const sumOnly = loader.module({
+        snapshot,
+        package: package_,
+        module: source,
+        requestedExports: ["sum"],
+      });
+      assert.deepEqual(sumOnly.functions.map(({ name }) => name), ["sum"]);
+      assert.deepEqual(sumOnly.declarations, []);
+      assert.equal(sumOnly.availableExports.some(({ name }) => name === "BrokenAlias"), true);
+      const ordered = loader.module({
+        snapshot,
+        package: package_,
+        module: source,
+        requestedExports: ["sum", "Counter"],
+      });
+      const reordered = loader.module({
+        snapshot,
+        package: package_,
+        module: source,
+        requestedExports: ["Counter", "sum", "sum"],
+      });
+      assert.equal(ordered, reordered);
+      const empty = loader.module({
+        snapshot,
+        package: package_,
+        module: source,
+        requestedExports: [],
+      });
+      assert.deepEqual([empty.functions.length, empty.declarations.length], [0, 0]);
+      assert.throws(
+        () => loader.module({
+          snapshot,
+          package: package_,
+          module: source,
+          requestedExports: ["BrokenAlias"],
+        }),
+        /not classified by machine-readable metadata/u,
+      );
+      assert.throws(
+        () => loader.module({ snapshot, package: package_, module: source }),
+        /not classified by machine-readable metadata/u,
+      );
+
+      const session = createMojoCompilerProviderSession({
+        compilerProvider: providerConfiguration,
+        toolchainVersion: "1.1.0.dev2026083005",
+      }, { snapshot, loader });
+      try {
+        const provider = session.sourceProviders[0];
+        const moduleSpecifier = mojoCompilerModuleSpecifier(package_, ["api"]);
+        const resolution = provider.resolveModule(moduleSpecifier, { resolutionMode: "import" });
+        assert.equal(resolution.kind, "virtual");
+        const named = provider.getDeclarationModel(resolution, {
+          context: {
+            resolutionMode: "import",
+            importSlice: {
+              moduleSpecifier,
+              kind: "named",
+              requestedExports: [{ exportedName: "sum", kind: "value" }],
+            },
+          },
+          materialization: { kind: "incremental", completeExports: [] },
+        });
+        assert.equal("exports" in named, true);
+        assert.deepEqual(named.exports.map(({ name }) => name), ["sum"]);
+        const broad = provider.getDeclarationModel(resolution, {
+          context: {
+            resolutionMode: "import",
+            importSlice: { moduleSpecifier, kind: "namespace", broadImport: true },
+          },
+          materialization: { kind: "incremental", completeExports: [] },
+        });
+        assert.equal(broad.extensionCode, "MOJO_COMPILER_PROVIDER_DECLARATION_FAILED");
+        assert.match(broad.message, /BrokenAlias/u);
+      } finally {
+        session.close();
+      }
+    } finally {
+      loader.close();
+    }
+  } finally {
+    restoreEnvironment("TSONIC_MOJO_PROVIDER_BROKEN_EXPORT", previousBroken);
   }
 });
 

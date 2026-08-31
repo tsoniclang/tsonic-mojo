@@ -174,6 +174,10 @@ export interface MojoCompilerModuleModel {
   readonly moduleIdentity: string;
   readonly sourceDigest: string;
   readonly documentVersion: string;
+  readonly availableExports: readonly {
+    readonly name: string;
+    readonly kind: "function" | "struct" | "trait" | "alias";
+  }[];
   readonly functions: readonly MojoCompilerFunction[];
   readonly declarations: readonly MojoCompilerTypeDeclaration[];
 }

@@ -54,6 +54,7 @@ export interface MojoCompilerMetadataLoader {
     readonly snapshot: MojoCompilerProjectSnapshot;
     readonly package: MojoCompilerPackageSnapshot;
     readonly module: MojoCompilerModuleSource;
+    readonly requestedExports?: readonly string[];
   }): MojoCompilerModuleModel;
   close(): void;
 }
@@ -188,10 +189,17 @@ export function createMojoCompilerMetadataLoader(
       readonly snapshot: MojoCompilerProjectSnapshot;
       readonly package: MojoCompilerPackageSnapshot;
       readonly module: MojoCompilerModuleSource;
+      readonly requestedExports?: readonly string[];
     }): MojoCompilerModuleModel {
       if (state === "closed") throw new Error("Mojo compiler metadata loader is closed.");
       validateOwnership(options.snapshot, options.package, options.module);
-      const identity = moduleIdentity(options.snapshot, options.package, options.module);
+      const requestedExports = canonicalRequestedExports(options.requestedExports);
+      const identity = moduleIdentity(
+        options.snapshot,
+        options.package,
+        options.module,
+        requestedExports,
+      );
       const existing = modules.get(identity);
       if (existing !== undefined) return existing;
       const document = loadDocument(options);
@@ -204,6 +212,7 @@ export function createMojoCompilerMetadataLoader(
         modulePath: options.module.modulePath,
         sourceDigest: options.module.digest,
         document,
+        ...(requestedExports === undefined ? {} : { requestedExports }),
         classifyGenericParameter: (request) => classifyGenericParameter({
           snapshot: options.snapshot,
           parameter: request.parameter,
@@ -429,8 +438,21 @@ function moduleIdentity(
   snapshot: MojoCompilerProjectSnapshot,
   package_: MojoCompilerPackageSnapshot,
   module: MojoCompilerModuleSource,
+  requestedExports?: readonly string[],
 ): string {
-  return `${snapshot.digest}\0${package_.id}\0${module.modulePath.join(".")}`;
+  return `${snapshot.digest}\0${package_.id}\0${module.modulePath.join(".")}\0${
+    requestedExports === undefined ? "*" : requestedExports.join("\0")
+  }`;
+}
+
+function canonicalRequestedExports(exports: readonly string[] | undefined): readonly string[] | undefined {
+  return exports === undefined
+    ? undefined
+    : Object.freeze([...new Set(exports)].sort(compareText));
+}
+
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function packageDocumentIdentity(
