@@ -166,6 +166,11 @@ function validateOperation(
       operation.receiverType === undefined) {
       throw new Error(`Provider property '${operation.exportId}' requires an exact member, receiver, and property-read target.`);
     }
+  } else if (operation.operationKind === "property-set") {
+    if (operation.memberId === undefined || operation.target.kind !== "property-write" ||
+      operation.receiverType === undefined || (operation.parameterTypes ?? []).length !== 1) {
+      throw new Error(`Provider property write '${operation.exportId}' requires an exact member, receiver, value, and property-write target.`);
+    }
   } else {
     throw new Error(`Provider operation kind '${operation.operationKind}' has no current Mojo target form.`);
   }
@@ -182,9 +187,36 @@ function validateOperation(
         throw new Error(`Provider operation '${operation.exportId}' has invalid Mojo module segment '${segment}'.`);
       }
     }
+    for (const segment of operation.target.ownerPath ?? []) {
+      if (!identifierPattern.test(segment)) {
+        throw new Error(`Provider operation '${operation.exportId}' has invalid Mojo owner segment '${segment}'.`);
+      }
+    }
   }
   if (!identifierPattern.test(operation.target.name)) {
     throw new Error(`Provider operation '${operation.exportId}' has invalid Mojo name '${operation.target.name}'.`);
+  }
+  if (operation.target.kind === "function-call" || operation.target.kind === "instance-call") {
+    const genericNames = new Set<string>();
+    for (const parameter of operation.target.genericParameters ?? []) {
+      if (!identifierPattern.test(parameter.name) || genericNames.has(parameter.name)) {
+        throw new Error(`Provider operation '${operation.exportId}' has invalid or duplicate Mojo generic parameter '${parameter.name}'.`);
+      }
+      genericNames.add(parameter.name);
+    }
+    for (const argument of operation.target.arguments) {
+      if (argument.position === "keyword" && argument.nativeName === undefined) {
+        throw new Error(`Provider operation '${operation.exportId}' has a keyword argument without its exact Mojo name.`);
+      }
+      if (argument.nativeName !== undefined && !identifierPattern.test(argument.nativeName)) {
+        throw new Error(`Provider operation '${operation.exportId}' has invalid Mojo argument name '${argument.nativeName}'.`);
+      }
+    }
+  }
+  if (operation.target.kind === "property-write") {
+    if (operation.target.value.position === "keyword" && operation.target.value.nativeName === undefined) {
+      throw new Error(`Provider property write '${operation.exportId}' has a keyword value without its exact Mojo name.`);
+    }
   }
 }
 
@@ -206,7 +238,10 @@ function validateType(type: MojoTargetTypeRef): void {
       if (!identifierPattern.test(type.name) || type.modulePath.some((part) => !identifierPattern.test(part))) {
         throw new Error(`Target type '${type.id}' has an invalid Mojo path.`);
       }
-      for (const argument of type.typeArguments ?? []) validateType(argument);
+      for (const argument of type.genericArguments ?? []) {
+        if (argument.kind === "type") validateType(argument.type);
+        else if (argument.kind === "value") requireText(argument.expression, "target generic value");
+      }
       return;
     case "list":
       validateType(type.element);
@@ -216,6 +251,14 @@ function validateType(type: MojoTargetTypeRef): void {
       return;
     case "tuple":
       for (const element of type.elements) validateType(element);
+      return;
+    case "reference":
+      requireText(type.origin, "reference origin");
+      validateType(type.value);
+      return;
+    case "function":
+      for (const parameter of type.parameters) validateType(parameter);
+      validateType(type.result);
       return;
   }
 }

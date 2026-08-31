@@ -11,7 +11,9 @@ import {
   mojoSourceVirtualModulesProviderId,
 } from "../semantics/identity.js";
 
-export function createMojoSourceSemanticsExtension(): CompilerExtension {
+export function createMojoSourceSemanticsExtension(
+  additionalProviders: readonly import("@tsonic/tsts").SourceDeclarationProvider[] = Object.freeze([]),
+): CompilerExtension {
   return Object.freeze({
     identity: Object.freeze({
       id: mojoSourceSemanticsExtensionId,
@@ -44,6 +46,9 @@ export function createMojoSourceSemanticsExtension(): CompilerExtension {
           }),
         }),
       );
+      for (const provider of additionalProviders) {
+        context.registerSourceDeclarationProvider(provider);
+      }
     },
   });
 }

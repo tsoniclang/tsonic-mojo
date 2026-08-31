@@ -51,7 +51,7 @@ test("printer emits explicit JS string construction", () => {
         expression: {
           kind: "construct",
           type: jsString,
-          arguments: [{ kind: "string-literal", value: "hello" }],
+          arguments: [{ value: { kind: "string-literal", value: "hello" } }],
         },
       }],
     }],

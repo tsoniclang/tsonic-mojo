@@ -94,7 +94,7 @@ export function resolveMojoTargetType(
             id: "tsonic.mojo.js.JsArray",
             modulePath: Object.freeze(["tsonic_js"]),
             name: "JsArray",
-            typeArguments: Object.freeze([resolvedElement.type]),
+            genericArguments: Object.freeze([Object.freeze({ kind: "type" as const, type: resolvedElement.type })]),
           },
         }
       : { kind: "resolved", type: { kind: "list", element: resolvedElement.type } };
@@ -120,7 +120,7 @@ export function mojoTypeEquals(left: MojoTargetTypeRef, right: MojoTargetTypeRef
         left.id === right.id &&
         left.name === right.name &&
         arrayEquals(left.modulePath, right.modulePath, (a, b) => a === b) &&
-        arrayEquals(left.typeArguments ?? [], right.typeArguments ?? [], mojoTypeEquals);
+        genericArgumentsEqual(left.genericArguments ?? [], right.genericArguments ?? []);
     case "list":
       return right.kind === "list" && mojoTypeEquals(left.element, right.element);
     case "optional":
@@ -128,7 +128,30 @@ export function mojoTypeEquals(left: MojoTargetTypeRef, right: MojoTargetTypeRef
     case "tuple":
       return right.kind === "tuple" &&
         arrayEquals(left.elements, right.elements, mojoTypeEquals);
+    case "reference":
+      return right.kind === "reference" && left.origin === right.origin &&
+        mojoTypeEquals(left.value, right.value);
+    case "function":
+      return right.kind === "function" && left.thin === right.thin &&
+        left.raises === right.raises &&
+        arrayEquals(left.parameters, right.parameters, mojoTypeEquals) &&
+        mojoTypeEquals(left.result, right.result);
   }
+}
+
+function genericArgumentsEqual(
+  left: readonly import("../../target-model/provider/model.js").MojoTargetGenericArgument[],
+  right: readonly import("../../target-model/provider/model.js").MojoTargetGenericArgument[],
+): boolean {
+  return left.length === right.length && left.every((argument, index) => {
+    const other = right[index];
+    if (other === undefined || argument.kind !== other.kind) return false;
+    switch (argument.kind) {
+      case "type": return other.kind === "type" && mojoTypeEquals(argument.type, other.type);
+      case "value": return other.kind === "value" && argument.expression === other.expression;
+      case "unbound": return true;
+    }
+  });
 }
 
 export function providerOwnerMatches(

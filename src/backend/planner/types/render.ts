@@ -10,7 +10,9 @@ export function registerMojoTypeImports(type: MojoTargetTypeRef, context: MojoPl
       return;
     case "target-named":
       if (type.modulePath.length > 0) context.imports.add(type.modulePath.join("."));
-      for (const argument of type.typeArguments ?? []) registerMojoTypeImports(argument, context);
+      for (const argument of type.genericArguments ?? []) {
+        if (argument.kind === "type") registerMojoTypeImports(argument.type, context);
+      }
       return;
     case "list":
       context.imports.add("std.collections.List");
@@ -22,6 +24,13 @@ export function registerMojoTypeImports(type: MojoTargetTypeRef, context: MojoPl
       return;
     case "tuple":
       for (const element of type.elements) registerMojoTypeImports(element, context);
+      return;
+    case "reference":
+      registerMojoTypeImports(type.value, context);
+      return;
+    case "function":
+      for (const parameter of type.parameters) registerMojoTypeImports(parameter, context);
+      registerMojoTypeImports(type.result, context);
       return;
   }
 }
@@ -54,14 +63,30 @@ export function mojoTypeName(type: MojoTargetTypeRef): string | undefined {
       }
     case "target-named": {
       const base = [...type.modulePath, type.name].join(".");
-      const arguments_ = type.typeArguments ?? [];
+      const arguments_ = type.genericArguments ?? [];
       return arguments_.length === 0
         ? base
-        : `${base}[${arguments_.map(requiredTypeName).join(", ")}]`;
+        : `${base}[${arguments_.map(renderGenericArgument).join(", ")}]`;
     }
     case "list": return `List[${requiredTypeName(type.element)}]`;
     case "optional": return `Optional[${requiredTypeName(type.value)}]`;
     case "tuple": return `(${type.elements.map(requiredTypeName).join(", ")})`;
+    case "reference": return `ref[${type.origin}] ${requiredTypeName(type.value)}`;
+    case "function": {
+      const parameters = type.parameters.map(requiredTypeName).join(", ");
+      const result = requiredTypeName(type.result);
+      return `def(${parameters})${type.thin ? " thin" : ""}${type.raises ? " raises" : ""} -> ${result}`;
+    }
+  }
+}
+
+function renderGenericArgument(
+  argument: NonNullable<Extract<MojoTargetTypeRef, { readonly kind: "target-named" }>['genericArguments']>[number],
+): string {
+  switch (argument.kind) {
+    case "type": return requiredTypeName(argument.type);
+    case "value": return argument.expression;
+    case "unbound": return "_";
   }
 }
 

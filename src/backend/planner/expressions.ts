@@ -7,6 +7,7 @@ import {
 import { mojoTypeEquals } from "../../analysis/types/resolution.js";
 import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
 import type { MojoExpression } from "../target-ast/nodes.js";
+import type { MojoCallArgument } from "../target-ast/nodes.js";
 import { appendMojoPlanningDiagnostic } from "./context.js";
 import type { MojoPlanningContext } from "./context.js";
 import { registerMojoTypeImports } from "./types/render.js";
@@ -115,7 +116,7 @@ export function planMojoExpression(
   if ((ast.is.IsStringLiteral(node) || ast.is.IsNoSubstitutionTemplateLiteral(node)) &&
     actualType !== undefined && isJsString(actualType)) {
     context.imports.add("tsonic_js");
-    planned = { kind: "construct", type: actualType, arguments: Object.freeze([planned]) };
+    planned = { kind: "construct", type: actualType, arguments: Object.freeze([{ value: planned }]) };
   }
   return expectedType === undefined || actualType === undefined
     ? planned
@@ -138,7 +139,7 @@ function planCall(node: Node, context: MojoPlanningContext): MojoExpression | un
     return {
       kind: "call",
       callee: { kind: "path", path: selection.functionName },
-      arguments: Object.freeze(arguments_ as MojoExpression[]),
+      arguments: Object.freeze((arguments_ as MojoExpression[]).map((value) => Object.freeze({ value }))),
     };
   }
   const parameterTypes = selection.operation.parameterTypes ?? [];
@@ -152,20 +153,27 @@ function planCall(node: Node, context: MojoPlanningContext): MojoExpression | un
     );
     return undefined;
   }
-  const arguments_: MojoExpression[] = [];
+  const arguments_: MojoCallArgument[] = [];
   for (const [index, argument] of selection.arguments.entries()) {
     const expected = parameterTypes[index];
     const planned = expected === undefined ? undefined : planMojoExpression(argument, context, expected);
     if (planned === undefined) return undefined;
-    const convention = target.arguments[index];
-    arguments_.push(convention === "transfer" ? { kind: "consume", expression: planned } : planned);
+    const binding = target.arguments[index];
+    if (binding === undefined) return undefined;
+    const value = binding.convention === "var" || binding.convention === "deinit"
+      ? { kind: "consume" as const, expression: planned }
+      : planned;
+    arguments_.push(Object.freeze({
+      value,
+      ...(binding.position === "keyword" ? { name: binding.nativeName! } : {}),
+    }));
   }
   let call: MojoExpression;
   if (target.kind === "function-call") {
     if (target.modulePath.length > 0) context.imports.add(target.modulePath.join("."));
     call = {
       kind: "call",
-      callee: { kind: "path", path: [...target.modulePath, target.name].join(".") },
+      callee: { kind: "path", path: [...target.modulePath, ...(target.ownerPath ?? []), target.name].join(".") },
       arguments: Object.freeze(arguments_),
     };
   } else if (target.kind === "instance-call") {
@@ -174,7 +182,9 @@ function planCall(node: Node, context: MojoPlanningContext): MojoExpression | un
     if (receiver === undefined) return undefined;
     call = {
       kind: "method-call",
-      receiver: target.receiver === "transfer" ? { kind: "consume", expression: receiver } : receiver,
+      receiver: target.receiver === "var" || target.receiver === "deinit"
+        ? { kind: "consume", expression: receiver }
+        : receiver,
       name: target.name,
       arguments: Object.freeze(arguments_),
     };
@@ -201,11 +211,11 @@ function convertMojoExpression(
   }
   if (actual.kind === "native-string" && isJsString(expected)) {
     context.imports.add("tsonic_js");
-    return { kind: "construct", type: expected, arguments: Object.freeze([expression]) };
+    return { kind: "construct", type: expected, arguments: Object.freeze([{ value: expression }]) };
   }
   if (actual.kind === "source-primitive" && expected.kind === "source-primitive") {
     registerMojoTypeImports(expected, context);
-    return { kind: "construct", type: expected, arguments: Object.freeze([expression]) };
+    return { kind: "construct", type: expected, arguments: Object.freeze([{ value: expression }]) };
   }
   appendMojoPlanningDiagnostic(
     context,

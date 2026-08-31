@@ -6,12 +6,17 @@ export type MojoExpression =
   | { readonly kind: "number-literal"; readonly text: string }
   | { readonly kind: "bool-literal"; readonly value: boolean }
   | { readonly kind: "binary"; readonly operator: string; readonly left: MojoExpression; readonly right: MojoExpression }
-  | { readonly kind: "call"; readonly callee: MojoExpression; readonly arguments: readonly MojoExpression[] }
-  | { readonly kind: "method-call"; readonly receiver: MojoExpression; readonly name: string; readonly arguments: readonly MojoExpression[] }
+  | { readonly kind: "call"; readonly callee: MojoExpression; readonly arguments: readonly MojoCallArgument[] }
+  | { readonly kind: "method-call"; readonly receiver: MojoExpression; readonly name: string; readonly arguments: readonly MojoCallArgument[] }
   | { readonly kind: "member"; readonly receiver: MojoExpression; readonly name: string }
-  | { readonly kind: "construct"; readonly type: MojoTargetTypeRef; readonly arguments: readonly MojoExpression[] }
+  | { readonly kind: "construct"; readonly type: MojoTargetTypeRef; readonly arguments: readonly MojoCallArgument[] }
   | { readonly kind: "consume"; readonly expression: MojoExpression }
   | { readonly kind: "parenthesized"; readonly expression: MojoExpression };
+
+export interface MojoCallArgument {
+  readonly value: MojoExpression;
+  readonly name?: string;
+}
 
 export type MojoStatement =
   | { readonly kind: "return"; readonly expression?: MojoExpression }

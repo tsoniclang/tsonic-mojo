@@ -1,5 +1,6 @@
 import type { SourcePrimitiveKind } from "@tsonic/tsts";
 import type { MojoTargetTypeRef } from "./model.js";
+import type { MojoTargetGenericArgument } from "./model.js";
 
 export function mojoPrimitiveTargetType(name: SourcePrimitiveKind): MojoTargetTypeRef {
   return Object.freeze({ kind: "source-primitive", name });
@@ -26,7 +27,11 @@ export function mojoNamedTargetType(
     name,
     ...(typeArguments === undefined
       ? {}
-      : { typeArguments: Object.freeze([...typeArguments]) }),
+      : {
+          genericArguments: Object.freeze(typeArguments.map(
+            (type): MojoTargetGenericArgument => Object.freeze({ kind: "type", type }),
+          )),
+        }),
   });
 }
 

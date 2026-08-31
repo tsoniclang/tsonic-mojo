@@ -59,13 +59,18 @@ function printExpression(expression: MojoExpression): string {
     case "number-literal": return expression.text;
     case "bool-literal": return expression.value ? "True" : "False";
     case "binary": return `(${printExpression(expression.left)} ${expression.operator} ${printExpression(expression.right)})`;
-    case "call": return `${printExpression(expression.callee)}(${expression.arguments.map(printExpression).join(", ")})`;
-    case "method-call": return `${printExpression(expression.receiver)}.${expression.name}(${expression.arguments.map(printExpression).join(", ")})`;
+    case "call": return `${printExpression(expression.callee)}(${expression.arguments.map(printCallArgument).join(", ")})`;
+    case "method-call": return `${printExpression(expression.receiver)}.${expression.name}(${expression.arguments.map(printCallArgument).join(", ")})`;
     case "member": return `${printExpression(expression.receiver)}.${expression.name}`;
-    case "construct": return `${requiredTypeName(expression.type)}(${expression.arguments.map(printExpression).join(", ")})`;
+    case "construct": return `${requiredTypeName(expression.type)}(${expression.arguments.map(printCallArgument).join(", ")})`;
     case "consume": return `${printExpression(expression.expression)}^`;
     case "parenthesized": return `(${printExpression(expression.expression)})`;
   }
+}
+
+function printCallArgument(argument: import("../target-ast/nodes.js").MojoCallArgument): string {
+  const value = printExpression(argument.value);
+  return argument.name === undefined ? value : `${argument.name}=${value}`;
 }
 
 function requiredTypeName(type: Parameters<typeof mojoTypeName>[0]): string {

@@ -13,7 +13,11 @@ import type {
 import type { TargetSourceProfileContributions } from "@tsonic/target-api/provider";
 import { compileMojoTarget } from "../backend/compile.js";
 import { createMojoTargetConfiguration } from "../options/mojo-target-options.js";
-import { collectMojoProviderSemantics } from "../providers/packages/semantics.js";
+import {
+  collectMojoProviderSemantics,
+  mergeMojoProviderSemantics,
+} from "../providers/packages/semantics.js";
+import { createMojoCompilerProviderSession } from "../providers/compiler/session.js";
 import { createMojoSourceSemanticsExtension } from "../source/extension/source-extension.js";
 import { mojoSourceSemanticsModules } from "../source/profiles/source-modules.js";
 import {
@@ -21,6 +25,10 @@ import {
   mojoNativeSourceProfileContributions,
 } from "../source/profiles/declarations.js";
 import { mojoRuntimePackageReference } from "./runtime-references.js";
+import {
+  mojoPackageNameAttribute,
+  mojoPackagePathReferenceKind,
+} from "../target-model/project/runtime-reference.js";
 
 type SessionState =
   | "created"
@@ -39,6 +47,7 @@ export function createMojoCompilationSession(
     context.paths.targetOutputRoot,
   );
   const providerSemantics = collectMojoProviderSemantics(context.capabilities);
+  const compilerProviderSession = createMojoCompilerProviderSession(configuration);
   const jsEnabled = context.selectedSurfaceIds.includes(mojoJsSourceProfileOwnerId);
   let state: SessionState = "created";
   return Object.freeze({
@@ -54,7 +63,9 @@ export function createMojoCompilationSession(
       state = "compiler-contributed";
       return Object.freeze({
         semanticsModules: mojoSourceSemanticsModules(),
-        extensions: Object.freeze([createMojoSourceSemanticsExtension()]),
+        extensions: Object.freeze([
+          createMojoSourceSemanticsExtension(compilerProviderSession.sourceProviders),
+        ]),
       });
     },
     runtimeContributions(): TargetRuntimeContributions {
@@ -63,6 +74,11 @@ export function createMojoCompilationSession(
       return Object.freeze({
         references: Object.freeze([
           mojoRuntimePackageReference(context, "@tsonic/mojo-runtime", "tsonic_runtime"),
+          ...compilerProviderSession.runtimePackages.map((runtime) => Object.freeze({
+            kind: mojoPackagePathReferenceKind,
+            include: runtime.packagePath,
+            attributes: Object.freeze({ [mojoPackageNameAttribute]: runtime.packageName }),
+          })),
         ]),
       });
     },
@@ -72,11 +88,15 @@ export function createMojoCompilationSession(
       return compileMojoTarget(Object.freeze({
         input,
         configuration,
-        providerSemantics,
+        providerSemantics: mergeMojoProviderSemantics(
+          providerSemantics,
+          compilerProviderSession.semantics(),
+        ),
         jsEnabled,
       }));
     },
     close(): void {
+      compilerProviderSession.close();
       state = "closed";
     },
   });

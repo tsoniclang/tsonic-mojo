@@ -34,7 +34,10 @@ function definition(overrides = {}) {
         kind: "function-call",
         modulePath: ["fixture_math"],
         name: "sum",
-        arguments: ["immutable-reference", "immutable-reference"],
+        arguments: [
+          { convention: "imm", position: "positional-or-keyword" },
+          { convention: "imm", position: "positional-or-keyword" },
+        ],
       },
       parameterTypes: [
         { kind: "source-primitive", name: "float64" },
