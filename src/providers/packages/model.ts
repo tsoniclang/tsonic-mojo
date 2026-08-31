@@ -1,0 +1,112 @@
+import type {
+  ProviderDeclarationKind,
+  ProviderExportDeclaration,
+} from "@tsonic/tsts";
+import type {
+  TargetCapabilityContribution,
+  TargetCapabilityImplementation,
+} from "@tsonic/target-api/provider";
+import type {
+  MojoProviderOperationForm,
+  MojoTargetTypeRef,
+} from "../../target-model/provider/model.js";
+
+export interface MojoProviderModuleDefinition {
+  readonly moduleSpecifier: string;
+  readonly providerModuleId: string;
+  readonly imports?: readonly {
+    readonly moduleSpecifier: string;
+    readonly namedImports: readonly { readonly exportedName: string }[];
+  }[];
+  readonly exports: readonly ProviderExportDeclaration[];
+}
+
+export interface MojoProviderModuleAlias {
+  readonly moduleSpecifier: string;
+  readonly canonicalModuleSpecifier: string;
+}
+
+export interface MojoProviderRuntimePackage {
+  readonly packageName: string;
+  readonly packagePath: string;
+}
+
+export interface MojoProviderTypeDefinition {
+  readonly exportId: string;
+  readonly targetType: MojoTargetTypeRef;
+  readonly objectLiteralConstruction?: "fieldwise";
+}
+
+export type MojoProviderOperationKind =
+  | "call"
+  | "constructor"
+  | "property"
+  | "property-set"
+  | "indexer"
+  | "index-set";
+
+export interface MojoProviderOperationDefinition {
+  readonly exportId: string;
+  readonly memberId?: string;
+  readonly signatureId?: string;
+  readonly operationKind: MojoProviderOperationKind;
+  readonly target: MojoProviderOperationForm;
+  readonly resultType: MojoTargetTypeRef;
+  readonly parameterTypes?: readonly MojoTargetTypeRef[];
+  readonly receiverType?: MojoTargetTypeRef;
+  readonly raises?: boolean;
+}
+
+export interface MojoProviderPackageDefinition {
+  readonly id: string;
+  readonly displayName: string;
+  readonly version: string;
+  readonly requiredSurfaces?: readonly string[];
+  readonly moduleAliases?: readonly MojoProviderModuleAlias[];
+  readonly modules: readonly MojoProviderModuleDefinition[];
+  readonly types?: readonly MojoProviderTypeDefinition[];
+  readonly operations: readonly MojoProviderOperationDefinition[];
+  readonly runtimePackages: readonly MojoProviderRuntimePackage[];
+}
+
+export interface MojoProviderExportRow {
+  readonly exportId: string;
+  readonly declarationKind: ProviderDeclarationKind;
+  readonly providerPackageId: string;
+  readonly providerId: string;
+  readonly providerVersion: string;
+  readonly providerModuleId: string;
+  readonly moduleSpecifier: string;
+}
+
+export type MojoProviderOperationRow = MojoProviderOperationDefinition & {
+  readonly providerPackageId: string;
+  readonly providerId: string;
+  readonly providerVersion: string;
+  readonly providerModuleId: string;
+  readonly moduleSpecifier: string;
+};
+
+export type MojoProviderTypeRow = MojoProviderTypeDefinition & {
+  readonly providerPackageId: string;
+  readonly providerId: string;
+  readonly providerVersion: string;
+  readonly providerModuleId: string;
+  readonly moduleSpecifier: string;
+};
+
+export interface MojoProviderSemantics {
+  readonly exports: readonly MojoProviderExportRow[];
+  readonly operations: readonly MojoProviderOperationRow[];
+  readonly types: readonly MojoProviderTypeRow[];
+}
+
+export const mojoProviderPolicyContributionKind = "mojo-provider-policy";
+
+export interface MojoProviderPolicyContribution extends TargetCapabilityContribution {
+  readonly kind: typeof mojoProviderPolicyContributionKind;
+  readonly contractVersion: 1;
+  readonly definition: MojoProviderPackageDefinition;
+}
+
+export type MojoProviderPackageImplementation = TargetCapabilityImplementation;

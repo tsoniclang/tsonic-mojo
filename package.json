@@ -1,0 +1,37 @@
+{
+  "name": "@tsonic/target-mojo",
+  "version": "0.0.1",
+  "description": "Mojo target pack for Tsonic",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["LICENSE", "README.md", "dist"],
+  "exports": {
+    ".": "./dist/index.js",
+    "./provider": "./dist/public/provider.js",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "bash scripts/build.sh",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "prepack": "npm run build"
+  },
+  "peerDependencies": {
+    "@tsonic/js-source-profile": "0.0.1",
+    "@tsonic/source-core": "0.0.1",
+    "@tsonic/target-api": "0.0.1",
+    "@tsonic/tsts": "0.0.0",
+    "@tsonic/mojo-runtime": "0.0.1",
+    "@tsonic/mojo-js": "0.0.1"
+  },
+  "devDependencies": {
+    "@tsonic/js-source-profile": "file:../tsonic/packages/js-source-profile",
+    "@tsonic/source-core": "file:../tsonic/packages/source-core",
+    "@tsonic/target-api": "file:../tsonic/packages/target-api",
+    "@tsonic/tsts": "file:../tsonic/packages/tsts",
+    "@tsonic/mojo-runtime": "file:../mojo-runtime",
+    "@tsonic/mojo-js": "file:../mojo-js"
+  },
+  "engines": { "node": ">=22.0.0" },
+  "tsonic": { "kind": "plugin", "contractVersion": 1, "entry": "." }
+}

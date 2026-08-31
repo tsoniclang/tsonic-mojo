@@ -1,0 +1,40 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2020"],
+    "types": ["node"],
+    "typeRoots": ["../tsonic/node_modules/@types"],
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "resolveJsonModule": true,
+    "allowJs": false,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "esModuleInterop": true,
+    "paths": {
+      "@tsonic/tsts": ["../tsonic/packages/tsts/dist/src/index.d.ts"],
+      "@tsonic/js-source-profile": ["../tsonic/packages/js-source-profile/dist/index.d.ts"],
+      "@tsonic/target-api": ["../tsonic/packages/target-api/dist/public/index.d.ts"],
+      "@tsonic/target-api/*": ["../tsonic/packages/target-api/dist/public/*.d.ts"],
+      "@tsonic/source-core": ["../tsonic/packages/source-core/dist/public/index.d.ts"],
+      "@tsonic/source-core/*": ["../tsonic/packages/source-core/dist/public/*.d.ts"]
+    }
+  },
+  "exclude": ["node_modules", "dist", "build", "coverage", ".tsonic", "out"]
+}
