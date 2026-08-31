@@ -6,7 +6,7 @@ import {
   VariableDeclarationList_Declarations,
   VariableStatement_DeclarationList,
 } from "@tsonic/target-api/source";
-import type { MojoAnalyzedFunction, MojoCallSelection } from "./model.js";
+import type { MojoAnalyzedFunction, MojoCallSelection, MojoPropertySelection } from "./model.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 
 const supportedBinaryOperators = new Set([
@@ -46,6 +46,7 @@ export function validateMojoFunctionSyntax(
   function_: MojoAnalyzedFunction,
   ast: AstReader,
   calls: WeakMap<Node, MojoCallSelection>,
+  properties: WeakMap<Node, MojoPropertySelection>,
   bindings: WeakMap<Node, string>,
   diagnostics: TargetDiagnostic[],
 ): void {
@@ -54,7 +55,7 @@ export function validateMojoFunctionSyntax(
     assignmentAllowed = false,
   ): void => {
     if (expression === undefined) return;
-    if (ast.is.IsIdentifier(expression)) {
+    if (ast.is.IsIdentifier(expression) || ast.kindName(expression) === "KindThisKeyword") {
       if (bindings.get(expression) === undefined) {
         diagnostics.push(diagnostic(
           "MOJO_IDENTIFIER_BINDING_UNRESOLVED",
@@ -91,9 +92,20 @@ export function validateMojoFunctionSyntax(
       validateExpression(binary?.Right);
       return;
     }
-    if (ast.is.IsCallExpression(expression)) {
+    if (ast.is.IsCallExpression(expression) || ast.is.IsNewExpression(expression)) {
       if (calls.get(expression) === undefined) return;
       for (const argument of ast.arguments(expression)) validateExpression(argument);
+      return;
+    }
+    if (ast.is.IsPropertyAccessExpression(expression)) {
+      if (properties.get(expression) === undefined) {
+        diagnostics.push(diagnostic(
+          "MOJO_PROPERTY_SELECTION_UNRESOLVED",
+          "Property expression has no sealed Mojo operation.",
+          expression,
+        ));
+      }
+      validateExpression(Node_Expression(ast, expression));
       return;
     }
     diagnostics.push(diagnostic(

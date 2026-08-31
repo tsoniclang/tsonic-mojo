@@ -3,6 +3,7 @@ import type { Node, SourceFile, Type } from "@tsonic/tsts";
 import { Node_Initializer } from "@tsonic/target-api/source";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
+import type { SourceCallableTypeEvidence } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
 import type { MojoProjectTypeCatalog } from "../types/project-catalog.js";
@@ -27,6 +28,11 @@ export interface MojoFunctionSignatureInput {
   readonly bindingNames: WeakMap<Node, string>;
   readonly bindingTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly diagnostics: TargetDiagnostic[];
+  readonly kind?: MojoAnalyzedFunction["kind"];
+  readonly owner?: MojoAnalyzedFunction["owner"];
+  readonly static?: boolean;
+  readonly callable?: SourceCallableTypeEvidence;
+  readonly resultType?: MojoTargetTypeRef;
 }
 
 export function analyzeMojoFunctionSignature(
@@ -36,7 +42,8 @@ export function analyzeMojoFunctionSignature(
   const { ast } = source;
   const semantics = source.semantics.forFile(sourceFile);
   const callableType = semantics.declarations.declaredValueType(declaration);
-  const callable = callableType === undefined ? undefined : semantics.types.callable(callableType);
+  const callable = input.callable ??
+    (callableType === undefined ? undefined : semantics.types.callable(callableType));
   if (callable === undefined) {
     append(input, "MOJO_FUNCTION_SIGNATURE_NOT_PROVEN", "The checker supplied no exact callable signature.", declaration);
     return undefined;
@@ -47,7 +54,7 @@ export function analyzeMojoFunctionSignature(
     append(input, "MOJO_FUNCTION_PARAMETER_EVIDENCE_MISMATCH", "Function syntax and checker parameter evidence do not align exactly.", declaration);
     return undefined;
   }
-  const typeParameters = analyzeTypeParameters(input);
+  const typeParameters = analyzeMojoTypeParameters(input);
   if (typeParameters === undefined) return undefined;
   const parameters: MojoAnalyzedParameter[] = [];
   for (const [index, parameter] of (sourceParameters as readonly Node[]).entries()) {
@@ -84,14 +91,14 @@ export function analyzeMojoFunctionSignature(
         : { initializer: Node_Initializer(ast, parameter)! }),
     }));
   }
-  const resultType = resolve(
+  const resultType = input.resultType ?? resolve(
     input,
     callable.result.selectedType,
     callable.result.authoredTypeNode ?? ast.typeNode(declaration),
   );
   if (resultType === undefined) return undefined;
   return Object.freeze({
-    kind: "function",
+    kind: input.kind ?? "function",
     declaration,
     sourceFile,
     name: input.name,
@@ -101,10 +108,12 @@ export function analyzeMojoFunctionSignature(
     body: input.body,
     asynchronous: ast.hasModifierKind(declaration, "async"),
     raises: false,
+    ...(input.static === undefined ? {} : { static: input.static }),
+    ...(input.owner === undefined ? {} : { owner: input.owner }),
   });
 }
 
-function analyzeTypeParameters(
+export function analyzeMojoTypeParameters(
   input: MojoFunctionSignatureInput,
 ): readonly MojoAnalyzedTypeParameter[] | undefined {
   const { ast } = input.source;

@@ -96,6 +96,34 @@ export function instantiateMojoProviderOperation(
   };
 }
 
+export function instantiateMojoProviderPropertyOperation(
+  row: MojoProviderOperationRow,
+  receiver: MojoTargetTypeRef,
+): MojoProviderOperationInstantiation {
+  if (row.receiverType === undefined) {
+    return { kind: "unsupported", reason: "selected provider property has no receiver carrier pattern" };
+  }
+  const typeSubstitutions = new Map<string, MojoTargetTypeRef>();
+  const mismatch = bindTargetTypePattern(row.receiverType, receiver, typeSubstitutions);
+  if (mismatch !== undefined) {
+    return { kind: "unsupported", reason: `the selected provider property receiver does not close its Mojo ABI: ${mismatch}` };
+  }
+  const substitutions = { types: typeSubstitutions, constants: new Map<string, never>() };
+  return {
+    kind: "resolved",
+    operation: Object.freeze({
+      target: substituteOperationForm(row.target, substitutions),
+      receiverType: substituteMojoTargetType(row.receiverType, substitutions),
+      parameterTypes: Object.freeze((row.parameterTypes ?? []).map((type) =>
+        substituteMojoTargetType(type, substitutions))),
+      resultType: substituteMojoTargetType(row.resultType, substitutions),
+      genericArguments: Object.freeze([]),
+      genericParameters: Object.freeze([]),
+      raises: row.raises === true,
+    }),
+  };
+}
+
 function substituteOperationForm(
   target: MojoProviderOperationForm,
   substitutions: Parameters<typeof substituteMojoTargetType>[1],
@@ -123,7 +151,7 @@ function substituteOperationForm(
   });
 }
 
-function bindTargetTypePattern(
+export function bindTargetTypePattern(
   pattern: MojoTargetTypeRef,
   actual: MojoTargetTypeRef,
   bindings: Map<string, MojoTargetTypeRef>,

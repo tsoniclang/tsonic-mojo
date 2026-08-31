@@ -72,6 +72,21 @@ function selectedProviderIdentity(
   return merged;
 }
 
+export function selectedProviderDeclarationIdentity(
+  source: TargetSourceProgram,
+  subjects: readonly (ExtensionFactSubject | Node | undefined)[],
+): ProviderDeclarationIdentity | undefined {
+  let merged: ProviderDeclarationIdentity | undefined;
+  for (const subject of subjects) {
+    if (subject === undefined) continue;
+    const identity = source.sourceFacts.getFact(subject, providerVirtualDeclarationFactKey);
+    if (identity === undefined) continue;
+    merged = merged === undefined ? identity : mergeIdentity(merged, identity);
+    if (merged === undefined) return undefined;
+  }
+  return merged;
+}
+
 function appendSubject(
   subjects: ExtensionFactSubject[],
   subject: ExtensionFactSubject | Node | undefined,

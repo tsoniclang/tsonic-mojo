@@ -15,9 +15,14 @@ import {
 } from "@tsonic/target-api/source";
 import { createMojoNameAllocator } from "../names/identifiers.js";
 import { analyzeMojoFunctionSignature } from "../callables/signatures.js";
+import { analyzeMojoClass } from "../declarations/classes.js";
 import { createMojoConversionIndex } from "../conversions/classification.js";
 import { recordMojoFunctionConversionUses } from "../conversions/uses.js";
 import { analyzeMojoCall } from "../operations/calls.js";
+import {
+  analyzeMojoProjectProperty,
+  analyzeMojoProviderProperty,
+} from "../operations/properties.js";
 import { analyzeMojoRuntimePackages } from "../runtime/references.js";
 import {
   resolveMojoTargetType,
@@ -29,8 +34,12 @@ import {
 } from "./effects.js";
 import { inferMojoExpressionType, isMojoExpressionNode } from "./expression-types.js";
 import type {
+  MojoAnalyzedClass,
+  MojoAnalyzedClassField,
+  MojoAnalyzedDeclaration,
   MojoAnalyzedFunction,
   MojoCallSelection,
+  MojoPropertySelection,
   MojoProgramQueries,
   MojoTargetAnalysisRequest,
   MojoTargetProgram,
@@ -55,8 +64,12 @@ export function analyzeMojoTargetProgram(
   const bindingTypes = new WeakMap<Node, MojoTargetTypeRef>();
   const expressionTypes = new WeakMap<Node, MojoTargetTypeRef>();
   const callSelections = new WeakMap<Node, MojoCallSelection>();
+  const propertySelections = new WeakMap<Node, MojoPropertySelection>();
   const conversions = createMojoConversionIndex();
   const functionByDeclaration = new WeakMap<Node, MojoAnalyzedFunction>();
+  const classByDeclaration = new WeakMap<Node, MojoAnalyzedClass>();
+  const classByTypeId = new Map<string, MojoAnalyzedClass>();
+  const fieldByDeclaration = new WeakMap<Node, MojoAnalyzedClassField>();
   const directRaises = new Map<Node, boolean>();
   const projectDependencies = new Map<Node, Set<Node>>();
   const globalNames = createMojoNameAllocator();
@@ -67,6 +80,12 @@ export function analyzeMojoTargetProgram(
     readonly name: string;
     readonly body: Node;
     readonly localNames: (sourceName: string) => string;
+  }[] = [];
+  const classDrafts: {
+    readonly declaration: Node;
+    readonly sourceFile: SourceFile;
+    readonly name: string;
+    readonly stateName: string;
   }[] = [];
 
   for (const sourceFile of sourceFiles) {
@@ -94,10 +113,30 @@ export function analyzeMojoTargetProgram(
         ast.is.IsInterfaceDeclaration(statement)) {
         continue;
       }
+      if (ast.is.IsClassDeclaration(statement)) {
+        const nameNode = ast.name(statement);
+        if (nameNode === undefined || !ast.is.IsIdentifier(nameNode)) {
+          diagnostics.push(diagnostic(
+            "MOJO_CLASS_SHAPE_UNSUPPORTED",
+            "Mojo classes require one exact named class declaration.",
+            statement,
+          ));
+          continue;
+        }
+        const name = globalNameByDeclaration.get(statement) ?? globalNames(ast.text(nameNode));
+        bindingNames.set(statement, name);
+        classDrafts.push(Object.freeze({
+          declaration: statement,
+          sourceFile,
+          name,
+          stateName: globalNames(`${name}State`),
+        }));
+        continue;
+      }
       if (!ast.is.IsFunctionDeclaration(statement)) {
         diagnostics.push(diagnostic(
           "MOJO_TOP_LEVEL_DECLARATION_UNSUPPORTED",
-          "Mojo foundation currently requires executable project declarations to be top-level functions.",
+          "Executable project declarations require a supported top-level function or class form.",
           statement,
         ));
         continue;
@@ -125,6 +164,7 @@ export function analyzeMojoTargetProgram(
   }
 
   const functions: MojoAnalyzedFunction[] = [];
+  const classes: MojoAnalyzedClass[] = [];
   for (const draft of functionDrafts) {
     const function_ = analyzeMojoFunctionSignature({
       source: input.source,
@@ -150,6 +190,67 @@ export function analyzeMojoTargetProgram(
       ast,
       diagnostics,
     );
+  }
+
+  for (const draft of classDrafts) {
+    const analyzed = analyzeMojoClass({
+      source: input.source,
+      providerSemantics,
+      projectTypes,
+      jsEnabled,
+      declaration: draft.declaration,
+      sourceFile: draft.sourceFile,
+      name: draft.name,
+      stateName: draft.stateName,
+      bindingNames,
+      bindingTypes,
+      diagnostics,
+      allocateLocalBindings(body, allocate) {
+        allocateLocalBindings(body, allocate, bindingNames, ast, diagnostics);
+      },
+    });
+    if (analyzed === undefined) continue;
+    classes.push(analyzed.class_);
+    classByDeclaration.set(draft.declaration, analyzed.class_);
+    if (analyzed.class_.targetType.kind === "target-named") {
+      classByTypeId.set(analyzed.class_.targetType.id, analyzed.class_);
+    }
+    for (const field of analyzed.fields) fieldByDeclaration.set(field.declaration, field);
+    for (const callable of analyzed.callables) {
+      functions.push(callable);
+      functionByDeclaration.set(callable.declaration, callable);
+    }
+  }
+
+  for (const class_ of classes) {
+    const semantics = input.source.semantics.forFile(class_.sourceFile);
+    for (const field of class_.fields) {
+      walkSourceTreePostOrder(field.initializer, ast, (node): void => {
+        if (!isMojoExpressionNode(node, ast)) return;
+        const selectedType = semantics.types.expressionType(node);
+        const resolved = resolveMojoTargetType(
+          selectedType,
+          undefined,
+          { ast, semantics, sourceFacts: input.source.sourceFacts, providerSemantics, projectTypes, jsEnabled },
+        );
+        if (resolved.kind === "resolved") expressionTypes.set(node, resolved.type);
+        const inferred = inferMojoExpressionType(node, ast, expressionTypes);
+        if (inferred !== undefined) expressionTypes.set(node, inferred);
+      });
+      const actual = expressionTypes.get(field.initializer);
+      if (actual === undefined) {
+        diagnostics.push(diagnostic(
+          "MOJO_CLASS_FIELD_INITIALIZER_CARRIER_NOT_CLOSED",
+          "Class field initializer has no sealed Mojo carrier.",
+          field.initializer,
+        ));
+        continue;
+      }
+      const conversion = conversions.record(field.initializer, actual, field.type);
+      if (conversion.kind === "unsupported") {
+        diagnostics.push(diagnostic("MOJO_VALUE_CONVERSION_UNPROVEN", conversion.reason, field.initializer));
+      }
+    }
   }
 
   for (const function_ of functions) {
@@ -190,8 +291,46 @@ export function analyzeMojoTargetProgram(
             )
           : { kind: "resolved" as const, type: referencedType };
         if (resolved.kind === "resolved") expressionTypes.set(node, resolved.type);
+        if (ast.kindName(node) === "KindThisKeyword" && function_.owner !== undefined) {
+          bindingNames.set(node, "self");
+          expressionTypes.set(node, function_.owner.type);
+        }
       }
-      if (!ast.is.IsCallExpression(node)) return;
+      if (ast.is.IsPropertyAccessExpression(node)) {
+        const selectedProperty = semantics.operations.propertyAccess(node);
+        if (selectedProperty === undefined) {
+          diagnostics.push(diagnostic(
+            "MOJO_PROPERTY_EVIDENCE_MISSING",
+            "Property lowering requires one exact checker-selected access.",
+            node,
+          ));
+        } else {
+          const projectProperty = analyzeMojoProjectProperty(selectedProperty, fieldByDeclaration);
+          const resolvePropertyType = (type: Type): MojoTargetTypeRef | undefined => {
+            const resolved = resolveMojoTargetType(
+              type,
+              undefined,
+              { ast, semantics, sourceFacts: input.source.sourceFacts, providerSemantics, projectTypes, jsEnabled },
+            );
+            return resolved.kind === "resolved" ? resolved.type : undefined;
+          };
+          const property = projectProperty.kind === "not-project-field"
+            ? analyzeMojoProviderProperty(selectedProperty, {
+                source: input.source,
+                providerSemantics,
+                conversions,
+                resolveType: resolvePropertyType,
+              })
+            : projectProperty;
+          if (property.kind === "unsupported") {
+            diagnostics.push(diagnostic(property.code, property.reason, node));
+          } else if (property.kind === "resolved") {
+            propertySelections.set(node, property.selection);
+            expressionTypes.set(node, property.expressionType);
+          }
+        }
+      }
+      if (!ast.is.IsCallExpression(node) && !ast.is.IsNewExpression(node)) return;
       const selectedCall = semantics.operations.call(node);
       if (selectedCall === undefined || selectedCall.sourceSelectedSignatureKind !== "resolved") {
         diagnostics.push(diagnostic(
@@ -209,6 +348,8 @@ export function analyzeMojoTargetProgram(
         expressionTypes,
         conversions,
         functionByDeclaration,
+        classByDeclaration,
+        classByTypeId,
       });
       if (analyzedCall.kind === "unsupported") {
         diagnostics.push(diagnostic(analyzedCall.code, analyzedCall.reason, node));
@@ -227,16 +368,28 @@ export function analyzeMojoTargetProgram(
       ast,
       bindingTypes,
       expressionTypes,
+      propertySelections,
       conversions,
       diagnostics,
     );
     let functionRaises = false;
     walkSourceTree(function_.body, ast, (node): void => {
-      if (!ast.is.IsCallExpression(node)) return;
-      const selection = callSelections.get(node);
-      if (selection?.kind !== "provider") return;
-      functionRaises = functionRaises || selection.operation.raises === true ||
-        providerCallRequiresRaisingConversion(selection);
+      if (ast.is.IsCallExpression(node) || ast.is.IsNewExpression(node)) {
+        const selection = callSelections.get(node);
+        if (selection?.kind === "provider") {
+          functionRaises = functionRaises || selection.operation.raises === true ||
+            providerCallRequiresRaisingConversion(selection);
+        }
+      }
+      if (ast.is.IsPropertyAccessExpression(node)) {
+        const selection = propertySelections.get(node);
+        if (selection?.kind === "provider") {
+          functionRaises = functionRaises || selection.readOperation?.raises === true ||
+            selection.writeOperation?.raises === true ||
+            selection.receiverConversion?.kind === "js-to-native-string" ||
+            selection.readResultConversion?.kind === "js-to-native-string";
+        }
+      }
     });
     directRaises.set(function_.declaration, functionRaises);
   }
@@ -250,9 +403,24 @@ export function analyzeMojoTargetProgram(
     ...function_,
     raises: raisesByDeclaration.get(function_.declaration) === true,
   }));
+  const finalizedByDeclaration = new WeakMap<Node, MojoAnalyzedFunction>();
+  for (const function_ of finalizedFunctions) finalizedByDeclaration.set(function_.declaration, function_);
+  const finalizedClasses = classes.map((class_) => Object.freeze({
+    ...class_,
+    methods: Object.freeze(class_.methods.map((method) => finalizedByDeclaration.get(method.declaration) ?? method)),
+    constructors: Object.freeze(class_.constructors.map((constructor) =>
+      finalizedByDeclaration.get(constructor.declaration) ?? constructor)),
+  }));
 
   for (const function_ of finalizedFunctions) {
-    validateMojoFunctionSyntax(function_, ast, callSelections, bindingNames, diagnostics);
+    validateMojoFunctionSyntax(
+      function_,
+      ast,
+      callSelections,
+      propertySelections,
+      bindingNames,
+      diagnostics,
+    );
   }
   if (diagnostics.length > 0) return rejectedTargetStage(diagnostics);
 
@@ -272,12 +440,17 @@ export function analyzeMojoTargetProgram(
     callSelection(call: Node): MojoCallSelection | undefined {
       return callSelections.get(call);
     },
+    propertySelection(access: Node): MojoPropertySelection | undefined {
+      return propertySelections.get(access);
+    },
   });
+  const topLevelFunctions = finalizedFunctions.filter((function_) => function_.kind === "function");
+  const declarations: MojoAnalyzedDeclaration[] = [...topLevelFunctions, ...finalizedClasses];
   return resolvedTargetStage(Object.freeze({
     configuration,
     source: targetSourceSyntaxProgram(input.source),
     projectTypes,
-    declarations: Object.freeze(finalizedFunctions),
+    declarations: Object.freeze(declarations),
     queries,
     runtimePackages: analyzeMojoRuntimePackages(input.runtimeReferences),
   }));

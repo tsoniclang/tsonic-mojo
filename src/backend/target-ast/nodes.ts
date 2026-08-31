@@ -72,6 +72,7 @@ export type MojoExpression =
       readonly arguments: readonly MojoCallArgument[];
     }
   | { readonly kind: "consume"; readonly expression: MojoExpression }
+  | { readonly kind: "postfix-deref"; readonly expression: MojoExpression }
   | { readonly kind: "await"; readonly expression: MojoExpression }
   | { readonly kind: "parenthesized"; readonly expression: MojoExpression }
   | { readonly kind: "lambda"; readonly parameters: readonly MojoParameter[]; readonly expression: MojoExpression };
@@ -150,6 +151,7 @@ export interface MojoFunctionDeclaration {
   readonly raises: boolean;
   readonly statements?: readonly MojoStatement[];
   readonly decorators?: readonly string[];
+  readonly self?: "self" | "mut self" | "out self" | "owned self";
 }
 
 export interface MojoFieldDeclaration {

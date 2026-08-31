@@ -10,7 +10,7 @@ import {
 } from "@tsonic/target-api/source";
 import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
-import type { MojoAnalyzedFunction } from "../program/model.js";
+import type { MojoAnalyzedFunction, MojoPropertySelection } from "../program/model.js";
 import type { MojoConversionIndex } from "./classification.js";
 
 export function recordMojoFunctionConversionUses(
@@ -18,6 +18,7 @@ export function recordMojoFunctionConversionUses(
   ast: AstReader,
   bindingTypes: WeakMap<Node, MojoTargetTypeRef>,
   expressionTypes: WeakMap<Node, MojoTargetTypeRef>,
+  propertySelections: WeakMap<Node, MojoPropertySelection>,
   conversions: MojoConversionIndex,
   diagnostics: TargetDiagnostic[],
 ): void {
@@ -62,7 +63,10 @@ export function recordMojoFunctionConversionUses(
       } else if (operator?.endsWith("EqualsToken") === true && operator !== "KindEqualsEqualsToken" &&
         operator !== "KindEqualsEqualsEqualsToken" && operator !== "KindExclamationEqualsToken" &&
         operator !== "KindExclamationEqualsEqualsToken") {
-        const leftType = left === undefined ? undefined : expressionTypes.get(left);
+        const property = left === undefined ? undefined : propertySelections.get(left);
+        const leftType = property?.kind === "provider"
+          ? property.writeOperation?.parameterTypes[0]
+          : left === undefined ? undefined : expressionTypes.get(left);
         if (leftType !== undefined) record(right, leftType);
       } else if (resultType !== undefined && !isComparison(operator)) {
         record(left, resultType);

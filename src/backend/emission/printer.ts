@@ -56,7 +56,10 @@ function printDeclaration(declaration: MojoDeclaration): string[] {
 function printFunction(function_: MojoFunctionDeclaration, depth: number): string[] {
   const indent = "    ".repeat(depth);
   const decorators = (function_.decorators ?? []).map((decorator) => `${indent}@${decorator}`);
-  const parameters = function_.parameters.map(printParameter).join(", ");
+  const parameters = [
+    ...(function_.self === undefined ? [] : [function_.self]),
+    ...function_.parameters.map(printParameter),
+  ].join(", ");
   const result = mojoTypeName(function_.resultType);
   const signature = `${indent}${function_.asynchronous ? "async " : ""}def ${function_.name}${
     mojoGenericParametersText(function_.genericParameters)
@@ -174,6 +177,7 @@ function printExpression(expression: MojoExpression): string {
     case "slice": return `${printExpression(expression.receiver)}[${expression.start === undefined ? "" : printExpression(expression.start)}:${expression.end === undefined ? "" : printExpression(expression.end)}${expression.step === undefined ? "" : `:${printExpression(expression.step)}`}]`;
     case "construct": return `${requiredTypeName(expression.type)}${printCallGenericArguments(expression.genericArguments)}(${expression.arguments.map(printCallArgument).join(", ")})`;
     case "consume": return `${printExpression(expression.expression)}^`;
+    case "postfix-deref": return `${printExpression(expression.expression)}[]`;
     case "await": return `await ${printExpression(expression.expression)}`;
     case "parenthesized": return `(${printExpression(expression.expression)})`;
     case "lambda": return `lambda (${expression.parameters.map(printParameter).join(", ")}): ${printExpression(expression.expression)}`;

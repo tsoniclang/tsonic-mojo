@@ -10,6 +10,7 @@ import { classifyMojoValueConversion } from "../conversions/classification.js";
 import { selectMojoProviderCall } from "./provider-selection.js";
 import { instantiateMojoProviderOperation } from "./provider-instantiation.js";
 import type {
+  MojoAnalyzedClass,
   MojoAnalyzedCallArgument,
   MojoAnalyzedFunction,
   MojoCallSelection,
@@ -27,6 +28,8 @@ export interface MojoCallAnalysisContext {
   readonly expressionTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly conversions: MojoConversionIndex;
   readonly functionByDeclaration: WeakMap<Node, MojoAnalyzedFunction>;
+  readonly classByDeclaration: WeakMap<Node, MojoAnalyzedClass>;
+  readonly classByTypeId: ReadonlyMap<string, MojoAnalyzedClass>;
 }
 
 export function analyzeMojoCall(
@@ -53,6 +56,19 @@ export function analyzeMojoCall(
     : context.functionByDeclaration.get(selectedDeclaration);
   if (projectFunction !== undefined) {
     return analyzeProjectCall(callNode, sourceCall, projectFunction, resolve, context);
+  }
+  const directlySelectedClass = selectedDeclaration === undefined
+    ? undefined
+    : context.classByDeclaration.get(selectedDeclaration);
+  const selectedResultCarrier = context.source.ast.is.IsNewExpression(callNode)
+    ? resolve(sourceCall.sourceResultType)
+    : undefined;
+  const projectClass = directlySelectedClass ??
+    (selectedResultCarrier?.kind === "target-named"
+      ? context.classByTypeId.get(selectedResultCarrier.id)
+      : undefined);
+  if (projectClass !== undefined) {
+    return analyzeImplicitProjectConstruction(callNode, sourceCall, projectClass, resolve, context);
   }
 
   const selectedProvider = selectMojoProviderCall(context.source, sourceCall, context.providerSemantics);
@@ -166,9 +182,105 @@ function analyzeProjectCall(
   const arguments_ = analyzeArguments(sourceCall, parameterTypes, targetArguments, resolve);
   if (arguments_.kind === "unsupported") return arguments_;
   const targetResult = substituteMojoTargetType(function_.resultType, substitutions);
+  const callResult = function_.kind === "constructor"
+    ? function_.owner?.type
+    : targetResult;
+  if (callResult === undefined) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_PROJECT_CONSTRUCTOR_OWNER_MISSING",
+      reason: "Project constructor has no exact owning class carrier.",
+    };
+  }
   const result = closeResultConversion(
     callNode,
-    targetResult,
+    callResult,
+    sourceCall.sourceResultType,
+    resolve,
+    context.conversions,
+  );
+  if (result.kind === "unsupported") return result;
+  const target = projectCallTarget(function_, sourceCall, callResult);
+  if (target.kind === "unsupported") return target;
+  return {
+    kind: "resolved",
+    dependency: function_.declaration,
+    selection: Object.freeze({
+      kind: "project",
+      target: target.target,
+      genericArguments: Object.freeze(genericArguments),
+      arguments: arguments_.arguments,
+      resultType: callResult,
+      resultConversion: result.conversion,
+    }),
+  };
+}
+
+function projectCallTarget(
+  function_: MojoAnalyzedFunction,
+  sourceCall: ResolvedSourceCallInfo,
+  resultType: MojoTargetTypeRef,
+): { readonly kind: "resolved"; readonly target: Extract<MojoCallSelection, { kind: "project" }>["target"] } |
+  { readonly kind: "unsupported"; readonly code: string; readonly reason: string } {
+  if (function_.kind === "constructor") {
+    return { kind: "resolved", target: Object.freeze({ kind: "constructor", type: resultType }) };
+  }
+  if (function_.kind === "function") {
+    return { kind: "resolved", target: Object.freeze({ kind: "function", name: function_.name }) };
+  }
+  if (function_.static === true) {
+    if (function_.owner === undefined) {
+      return {
+        kind: "unsupported",
+        code: "MOJO_PROJECT_STATIC_METHOD_OWNER_MISSING",
+        reason: "Static project method has no exact owning class carrier.",
+      };
+    }
+    return {
+      kind: "resolved",
+      target: Object.freeze({ kind: "static-method", owner: function_.owner.type, name: function_.name }),
+    };
+  }
+  const receiver = sourceCall.sourceReceiver?.expression;
+  if (receiver === undefined) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_PROJECT_METHOD_RECEIVER_MISSING",
+      reason: "Selected project instance method has no exact source receiver.",
+    };
+  }
+  return {
+    kind: "resolved",
+    target: Object.freeze({ kind: "method", name: function_.name, receiver }),
+  };
+}
+
+function analyzeImplicitProjectConstruction(
+  callNode: Node,
+  sourceCall: ResolvedSourceCallInfo,
+  class_: MojoAnalyzedClass,
+  resolve: (type: Type) => MojoTargetTypeRef | undefined,
+  context: MojoCallAnalysisContext,
+): MojoCallAnalysis {
+  if (class_.constructors.length !== 0 || sourceCall.sourceArguments.length !== 0) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_PROJECT_CONSTRUCTOR_SELECTION_UNRESOLVED",
+      reason: "An implicit project constructor requires an exact zero-argument source signature.",
+    };
+  }
+  const sourceResult = resolve(sourceCall.sourceResultType);
+  if (sourceResult === undefined || sourceResult.kind !== "target-named" ||
+    class_.targetType.kind !== "target-named" || sourceResult.id !== class_.targetType.id) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_PROJECT_CONSTRUCTOR_RESULT_NOT_CLOSED",
+      reason: "Implicit project construction has no exact closed class result carrier.",
+    };
+  }
+  const result = closeResultConversion(
+    callNode,
+    sourceResult,
     sourceCall.sourceResultType,
     resolve,
     context.conversions,
@@ -176,13 +288,13 @@ function analyzeProjectCall(
   if (result.kind === "unsupported") return result;
   return {
     kind: "resolved",
-    dependency: function_.declaration,
+    dependency: class_.declaration,
     selection: Object.freeze({
       kind: "project",
-      functionName: function_.name,
-      genericArguments: Object.freeze(genericArguments),
-      arguments: arguments_.arguments,
-      resultType: targetResult,
+      target: Object.freeze({ kind: "constructor", type: sourceResult }),
+      genericArguments: Object.freeze([]),
+      arguments: Object.freeze([]),
+      resultType: sourceResult,
       resultConversion: result.conversion,
     }),
   };
