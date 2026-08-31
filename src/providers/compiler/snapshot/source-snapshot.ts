@@ -23,6 +23,7 @@ const maximumSourceFiles = 100_000;
 const maximumSourceBytes = 1_073_741_824;
 const maximumVersionOutputBytes = 65_536;
 const compilerIdentityTimeoutMilliseconds = 30_000;
+const nonSemanticShellEnvironment = new Set(["_", "OLDPWD", "PWD", "SHLVL"]);
 
 export function createMojoCompilerProjectSnapshot(
   configuration: MojoCompilerProviderConfiguration,
@@ -63,22 +64,28 @@ function createCompilerIdentity(
     configuration.command.workingDirectory,
   );
   const executableBytes = readFileSync(executable);
+  const executableDigest = createHash("sha256").update(executableBytes).digest("hex");
+  const workingDirectory = realpathSync(configuration.command.workingDirectory);
+  const arguments_ = Object.freeze([...configuration.command.arguments]);
+  const environment = Object.freeze(Object.fromEntries(Object.entries(process.env)
+    .filter((entry): entry is [string, string] =>
+      entry[1] !== undefined && !nonSemanticShellEnvironment.has(entry[0]))
+    .sort(([left], [right]) => compareText(left, right))));
   const commandDigest = stableDigest({
     executable,
-    executableDigest: createHash("sha256").update(executableBytes).digest("hex"),
-    arguments: configuration.command.arguments,
-    workingDirectory: configuration.command.workingDirectory,
+    executableByteLength: executableBytes.byteLength,
+    executableDigest,
+    arguments: arguments_,
+    workingDirectory,
   });
-  const environmentDigest = stableDigest(Object.entries(process.env)
-    .filter((entry): entry is [string, string] => entry[1] !== undefined)
-    .sort(([left], [right]) => compareText(left, right)));
+  const environmentDigest = stableDigest(environment);
   const result = spawnSync(
-    configuration.command.executable,
-    [...configuration.command.arguments, "--version"],
+    executable,
+    [...arguments_, "--version"],
     {
-      cwd: configuration.command.workingDirectory,
+      cwd: workingDirectory,
       encoding: "utf8",
-      env: process.env,
+      env: environment,
       timeout: compilerIdentityTimeoutMilliseconds,
       maxBuffer: maximumVersionOutputBytes,
       windowsHide: true,
@@ -95,7 +102,17 @@ function createCompilerIdentity(
       `Mojo compiler version '${version}' does not match required '${requiredVersion}'.`,
     );
   }
-  return Object.freeze({ version, commandDigest, environmentDigest });
+  return Object.freeze({
+    version,
+    executablePath: executable,
+    executableByteLength: executableBytes.byteLength,
+    executableDigest,
+    arguments: arguments_,
+    workingDirectory,
+    environment,
+    commandDigest,
+    environmentDigest,
+  });
 }
 
 function createPackageSnapshot(

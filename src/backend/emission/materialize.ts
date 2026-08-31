@@ -14,6 +14,16 @@ export function materializeMojoOutputPlan(plan: MojoOutputPlan): TargetCompileOu
       text: printMojoModule(plan.module),
     }),
   ];
+  for (const runtime of plan.runtimePackages) {
+    for (const source of runtime.sources) {
+      artifacts.push(Object.freeze<TargetSourceFile>({
+        kind: "source",
+        language: "mojo",
+        path: `packages/${runtime.packageName}/${source.path}`,
+        text: source.text,
+      }));
+    }
+  }
   if (plan.configuration.project.kind === "generated") {
     artifacts.push(Object.freeze({
       kind: "project",
@@ -25,9 +35,7 @@ export function materializeMojoOutputPlan(plan: MojoOutputPlan): TargetCompileOu
 }
 
 function printPixiProject(plan: MojoOutputPlan, sourcePath: string): string {
-  const includeArguments = plan.runtimePackages
-    .map((runtime) => `-I ${shellQuote(runtime.packagePath)}`)
-    .join(" ");
+  const includeArguments = plan.runtimePackages.length === 0 ? "" : "-I 'packages'";
   const output = plan.configuration.outputType === "bin"
     ? `build/${plan.configuration.packageName}`
     : `build/${plan.configuration.packageName}.mojoc`;

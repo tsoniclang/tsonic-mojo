@@ -51,7 +51,12 @@ export interface MojoProgramQueries {
 
 export interface MojoRuntimePackagePlan {
   readonly packageName: string;
-  readonly packagePath: string;
+  readonly digest: string;
+  readonly sources: readonly {
+    readonly path: string;
+    readonly digest: string;
+    readonly text: string;
+  }[];
 }
 
 export interface MojoTargetProgram {

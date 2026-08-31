@@ -64,7 +64,7 @@ export function createMojoCompilerProviderSession(
     configuration.compilerProvider,
     configuration.toolchainVersion,
   );
-  const loader = dependencies.loader ?? createMojoCompilerMetadataLoader(configuration.compilerProvider);
+  const loader = dependencies.loader ?? createMojoCompilerMetadataLoader();
   const registries = snapshot.packages.map((package_) => createProjectionRegistry(snapshot, package_));
   const sourceProviders = snapshot.packages.map((package_, index) => createCompilerProvider({
     snapshot,
@@ -80,7 +80,7 @@ export function createMojoCompilerProviderSession(
       .filter(({ kind }) => kind === "package")
       .map((package_) => Object.freeze({
         packageName: package_.packageName,
-        packagePath: package_.importRoot,
+        packagePath: loader.runtimeImportRoot({ snapshot, package: package_ }),
       }))),
     semantics(): MojoProviderSemantics {
       if (state === "closed") throw new Error("Mojo compiler-provider session is closed.");
@@ -229,6 +229,21 @@ function createProjectionRegistry(
       if (current !== undefined && current.providerModuleId !== model.providerModuleId) {
         throw new Error(`Mojo compiler module '${model.moduleSpecifier}' has conflicting identities.`);
       }
+      validateExactBatch(
+        current?.exports ?? new Map(),
+        model.exports.map((value) => [value.id, value] as const),
+        "export",
+      );
+      validateExactBatch(
+        operations,
+        projection.operations.map((value) => [operationIdentity(value), value] as const),
+        "operation",
+      );
+      validateExactBatch(
+        types,
+        projection.types.map((value) => [value.exportId, value] as const),
+        "type",
+      );
       const module = current ?? {
         providerModuleId: model.providerModuleId,
         exports: new Map(),
@@ -274,9 +289,7 @@ function createProjectionRegistry(
           }))),
         types: Object.freeze([...types.values()]),
         operations: Object.freeze([...operations.values()]),
-        runtimePackages: Object.freeze(package_.kind === "standard-library"
-          ? []
-          : [{ packageName: package_.packageName, packagePath: package_.importRoot }]),
+        runtimePackages: Object.freeze([]),
       });
       sealed = collectMojoProviderSemanticsFromDefinitions([definition]);
       return sealed;
@@ -294,6 +307,21 @@ function createProjectionRegistry(
       state = "closed";
     },
   });
+}
+
+function validateExactBatch<T>(
+  existing: ReadonlyMap<string, T>,
+  values: readonly (readonly [string, T])[],
+  kind: string,
+): void {
+  const pending = new Map<string, T>();
+  for (const [identity, value] of values) {
+    const prior = pending.get(identity) ?? existing.get(identity);
+    if (prior !== undefined && JSON.stringify(prior) !== JSON.stringify(value)) {
+      throw new Error(`Mojo compiler-provider ${kind} '${identity}' has conflicting projections.`);
+    }
+    pending.set(identity, value);
+  }
 }
 
 function requestedExportNames(request: ProviderDeclarationRequest): readonly string[] | undefined {

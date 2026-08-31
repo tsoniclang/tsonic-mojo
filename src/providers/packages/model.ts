@@ -8,6 +8,7 @@ import type {
 } from "@tsonic/target-api/provider";
 import type {
   MojoProviderOperationForm,
+  MojoTargetConformanceCondition,
   MojoTargetTypeRef,
 } from "../../target-model/provider/model.js";
 
@@ -34,6 +35,15 @@ export interface MojoProviderRuntimePackage {
 export interface MojoProviderTypeDefinition {
   readonly exportId: string;
   readonly targetType: MojoTargetTypeRef;
+  readonly conformances?: readonly {
+    readonly trait: MojoTargetTypeRef;
+    readonly condition?: MojoTargetConformanceCondition;
+  }[];
+  readonly associatedAliases?: readonly {
+    readonly name: string;
+    readonly genericParameters: readonly import("../../target-model/provider/model.js").MojoProviderTargetGenericParameter[];
+    readonly valueType?: MojoTargetTypeRef;
+  }[];
   readonly objectLiteralConstruction?: "fieldwise";
 }
 

@@ -111,6 +111,29 @@ export function validateMojoProviderPackageDefinition(
     }
     typeExports.add(type.exportId);
     validateType(type.targetType);
+    for (const conformance of type.conformances ?? []) {
+      validateType(conformance.trait);
+      if (conformance.condition !== undefined) {
+        if (conformance.condition.kind !== "conforms-to" ||
+          !identifierPattern.test(conformance.condition.parameterName) ||
+          conformance.condition.traitNames.length === 0 ||
+          conformance.condition.traitNames.some((name) => !identifierPattern.test(name))) {
+          throw new Error(`Provider type '${type.exportId}' has an invalid target conformance condition.`);
+        }
+      }
+    }
+    for (const alias of type.associatedAliases ?? []) {
+      if (!identifierPattern.test(alias.name)) {
+        throw new Error(`Provider type '${type.exportId}' has an invalid associated alias.`);
+      }
+      for (const parameter of alias.genericParameters) {
+        if (!identifierPattern.test(parameter.name)) {
+          throw new Error(`Provider type '${type.exportId}' has an invalid associated alias generic parameter.`);
+        }
+        for (const constraint of parameter.constraints) validateType(constraint);
+      }
+      if (alias.valueType !== undefined) validateType(alias.valueType);
+    }
   }
   const runtimeNames = new Set<string>();
   for (const runtime of definition.runtimePackages) {
@@ -202,6 +225,7 @@ function validateOperation(
       if (!identifierPattern.test(parameter.name) || genericNames.has(parameter.name)) {
         throw new Error(`Provider operation '${operation.exportId}' has invalid or duplicate Mojo generic parameter '${parameter.name}'.`);
       }
+      for (const constraint of parameter.constraints) validateType(constraint);
       genericNames.add(parameter.name);
     }
     for (const argument of operation.target.arguments) {
@@ -239,8 +263,13 @@ function validateType(type: MojoTargetTypeRef): void {
         throw new Error(`Target type '${type.id}' has an invalid Mojo path.`);
       }
       for (const argument of type.genericArguments ?? []) {
+        if (argument.name !== undefined && !identifierPattern.test(argument.name)) {
+          throw new Error(`Target type '${type.id}' has an invalid named generic argument.`);
+        }
         if (argument.kind === "type") validateType(argument.type);
-        else if (argument.kind === "value") requireText(argument.expression, "target generic value");
+        else if (argument.kind === "value" || argument.kind === "type-expression") {
+          requireText(argument.expression, "target generic value");
+        }
       }
       return;
     case "list":
@@ -251,6 +280,21 @@ function validateType(type: MojoTargetTypeRef): void {
       return;
     case "tuple":
       for (const element of type.elements) validateType(element);
+      return;
+    case "associated":
+      validateType(type.owner);
+      if (type.memberPath.length === 0 || type.memberPath.some((part) => !identifierPattern.test(part))) {
+        throw new Error("Mojo associated target type has an invalid member path.");
+      }
+      for (const argument of type.genericArguments) {
+        if (argument.name !== undefined && !identifierPattern.test(argument.name)) {
+          throw new Error("Mojo associated target type has an invalid named generic argument.");
+        }
+        if (argument.kind === "type") validateType(argument.type);
+        else if (argument.kind === "value" || argument.kind === "type-expression") {
+          requireText(argument.expression, "associated target generic value");
+        }
+      }
       return;
     case "reference":
       requireText(type.origin, "reference origin");

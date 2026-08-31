@@ -51,6 +51,7 @@ export function projectMojoCompilerModule(
     snapshot,
     package: package_,
     modulePath: module.modulePath,
+    localDeclarations: new Set(module.declarations.map(({ name }) => name)),
     imports,
   };
   const requested = options.requestedExports === undefined
@@ -114,7 +115,7 @@ function projectFunctionExport(
         name,
         ...(function_.genericParameters.length === 0
           ? {}
-          : { genericParameters: targetGenericParameters(function_.genericParameters) }),
+          : { genericParameters: targetGenericParameters(function_.genericParameters, context) }),
         arguments: projected.targetArguments,
       }),
       resultType: projected.resultTarget,
@@ -151,20 +152,21 @@ function projectTypeDeclaration(
   const typeParameters = declaration.kind === "struct"
     ? projectMojoGenericParameters(declaration.genericParameters, context)
     : Object.freeze([]);
-  const heritage = declaration.parentTraits
-    .filter(({ condition }) => condition === undefined || condition.length === 0)
-    .map((trait) => Object.freeze({
-      kind: declaration.kind === "struct" ? "implements" as const : "extends" as const,
-      type: projectMojoCompilerType({
+  const projectedConformances = declaration.parentTraits.map((trait) => {
+    const projected = projectMojoCompilerType({
         kind: "named",
         name: trait.name,
         ...(trait.path === undefined ? {} : { path: trait.path }),
         arguments: Object.freeze([]),
-      }, context).source,
+      }, context);
+    return Object.freeze({ trait, projected });
+  });
+  const heritage = projectedConformances
+    .filter(({ trait }) => trait.condition === undefined)
+    .map(({ projected }) => Object.freeze({
+      kind: declaration.kind === "struct" ? "implements" as const : "extends" as const,
+      type: projected.source,
     }));
-  if (declaration.parentTraits.some(({ condition }) => condition !== undefined && condition.length > 0)) {
-    throw new Error(`Mojo declaration '${declaration.name}' has conditional conformance not expressible by the source provider contract.`);
-  }
   const members = declaration.kind === "struct"
     ? projectStructMembers(declaration, exportId, context, operations)
     : projectTraitMembers(declaration, exportId, context, operations);
@@ -177,7 +179,29 @@ function projectTypeDeclaration(
           : Object.freeze({ kind: "value" as const, expression: parameter.name }))
       : Object.freeze([]),
   }, context);
-  types.push(Object.freeze({ exportId, targetType: ownerType.target }));
+  types.push(Object.freeze({
+    exportId,
+    targetType: ownerType.target,
+    ...(declaration.aliases.length === 0
+      ? {}
+      : {
+          associatedAliases: Object.freeze(declaration.aliases.map((alias) => Object.freeze({
+            name: alias.name,
+            genericParameters: targetGenericParameters(alias.genericParameters, context),
+            ...(alias.valueType === undefined
+              ? {}
+              : { valueType: projectMojoCompilerType(alias.valueType, context).target }),
+          }))),
+        }),
+    ...(projectedConformances.length === 0
+      ? {}
+      : {
+          conformances: Object.freeze(projectedConformances.map(({ trait, projected }) => Object.freeze({
+            trait: projected.target,
+            ...(trait.condition === undefined ? {} : { condition: trait.condition }),
+          }))),
+        }),
+  }));
   return Object.freeze({
     id: exportId,
     name: declaration.name,
@@ -195,11 +219,12 @@ function projectStructMembers(
   context: MojoCompilerTypeProjectionContext,
   operations: MojoProviderOperationDefinition[],
 ): ProviderMemberDeclaration[] {
-  if (declaration.aliases.length > 0) {
-    throw new Error(`Mojo struct '${declaration.name}' associated aliases require a source associated-type contract.`);
-  }
   const members: ProviderMemberDeclaration[] = [];
-  const ownerTarget = projectMojoCompilerType({ kind: "self", memberPath: Object.freeze([]) }, context).target;
+  const ownerTarget = projectMojoCompilerType({
+    kind: "self",
+    memberPath: Object.freeze([]),
+    arguments: Object.freeze([]),
+  }, context).target;
   for (const field of declaration.fields) {
     const memberId = `${exportId}::field:${field.name}`;
     const projected = projectMojoCompilerType(field.type, context);
@@ -258,7 +283,7 @@ function projectStructMembers(
               name: constructor ? declaration.name : name,
               ...(function_.genericParameters.length === 0
                 ? {}
-                : { genericParameters: targetGenericParameters(function_.genericParameters) }),
+                : { genericParameters: targetGenericParameters(function_.genericParameters, context) }),
               arguments: projected.targetArguments,
             })
           : Object.freeze({
@@ -267,7 +292,7 @@ function projectStructMembers(
               receiver: receiver!.convention,
               ...(function_.genericParameters.length === 0
                 ? {}
-                : { genericParameters: targetGenericParameters(function_.genericParameters) }),
+                : { genericParameters: targetGenericParameters(function_.genericParameters, context) }),
               arguments: projected.targetArguments,
             }),
         ...(constructor || function_.static ? {} : { receiverType: ownerTarget }),
@@ -294,10 +319,11 @@ function projectTraitMembers(
   context: MojoCompilerTypeProjectionContext,
   operations: MojoProviderOperationDefinition[],
 ): ProviderMemberDeclaration[] {
-  if (declaration.aliases.length > 0) {
-    throw new Error(`Mojo trait '${declaration.name}' associated aliases require a source associated-type contract.`);
-  }
-  const ownerTarget = projectMojoCompilerType({ kind: "self", memberPath: Object.freeze([]) }, context).target;
+  const ownerTarget = projectMojoCompilerType({
+    kind: "self",
+    memberPath: Object.freeze([]),
+    arguments: Object.freeze([]),
+  }, context).target;
   const members: ProviderMemberDeclaration[] = declaration.fields.map((field) => {
     const memberId = `${exportId}::field:${field.name}`;
     const projected = projectMojoCompilerType(field.type, context);
@@ -341,7 +367,7 @@ function projectTraitMembers(
               name,
               ...(function_.genericParameters.length === 0
                 ? {}
-                : { genericParameters: targetGenericParameters(function_.genericParameters) }),
+                : { genericParameters: targetGenericParameters(function_.genericParameters, context) }),
               arguments: projected.targetArguments,
             })
           : Object.freeze({
@@ -350,7 +376,7 @@ function projectTraitMembers(
               receiver: receiver!.convention,
               ...(function_.genericParameters.length === 0
                 ? {}
-                : { genericParameters: targetGenericParameters(function_.genericParameters) }),
+                : { genericParameters: targetGenericParameters(function_.genericParameters, context) }),
               arguments: projected.targetArguments,
             }),
         ...(function_.static ? {} : { receiverType: ownerTarget }),
@@ -445,11 +471,17 @@ function projectFunctionSignature(
   });
 }
 
-function targetGenericParameters(parameters: readonly MojoCompilerGenericParameter[]) {
+function targetGenericParameters(
+  parameters: readonly MojoCompilerGenericParameter[],
+  context: MojoCompilerTypeProjectionContext,
+) {
   return Object.freeze(parameters.map((parameter) => Object.freeze({
     kind: parameter.kind,
     name: parameter.name,
-    inferred: parameter.passingKind === "inferred",
+    position: parameter.passingKind,
+    variadic: parameter.variadic,
+    constraints: Object.freeze(parameter.constraints.map((constraint) =>
+      projectMojoCompilerType(constraint, context).target)),
   })));
 }
 

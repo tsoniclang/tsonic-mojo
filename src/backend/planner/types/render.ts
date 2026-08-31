@@ -25,6 +25,12 @@ export function registerMojoTypeImports(type: MojoTargetTypeRef, context: MojoPl
     case "tuple":
       for (const element of type.elements) registerMojoTypeImports(element, context);
       return;
+    case "associated":
+      registerMojoTypeImports(type.owner, context);
+      for (const argument of type.genericArguments) {
+        if (argument.kind === "type") registerMojoTypeImports(argument.type, context);
+      }
+      return;
     case "reference":
       registerMojoTypeImports(type.value, context);
       return;
@@ -71,6 +77,12 @@ export function mojoTypeName(type: MojoTargetTypeRef): string | undefined {
     case "list": return `List[${requiredTypeName(type.element)}]`;
     case "optional": return `Optional[${requiredTypeName(type.value)}]`;
     case "tuple": return `(${type.elements.map(requiredTypeName).join(", ")})`;
+    case "associated": {
+      const base = `${requiredTypeName(type.owner)}.${type.memberPath.join(".")}`;
+      return type.genericArguments.length === 0
+        ? base
+        : `${base}[${type.genericArguments.map(renderGenericArgument).join(", ")}]`;
+    }
     case "reference": return `ref[${type.origin}] ${requiredTypeName(type.value)}`;
     case "function": {
       const parameters = type.parameters.map(requiredTypeName).join(", ");
@@ -83,11 +95,12 @@ export function mojoTypeName(type: MojoTargetTypeRef): string | undefined {
 function renderGenericArgument(
   argument: NonNullable<Extract<MojoTargetTypeRef, { readonly kind: "target-named" }>['genericArguments']>[number],
 ): string {
-  switch (argument.kind) {
-    case "type": return requiredTypeName(argument.type);
-    case "value": return argument.expression;
-    case "unbound": return "_";
-  }
+  const value = argument.kind === "type"
+    ? requiredTypeName(argument.type)
+    : argument.kind === "value" || argument.kind === "type-expression"
+      ? argument.expression
+      : "_";
+  return argument.name === undefined ? value : `${argument.name}=${value}`;
 }
 
 function requiredTypeName(type: MojoTargetTypeRef): string {

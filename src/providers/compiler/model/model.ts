@@ -4,6 +4,12 @@ export const mojoCompilerProviderProtocolVersion = 1;
 
 export interface MojoCompilerIdentity {
   readonly version: string;
+  readonly executablePath: string;
+  readonly executableByteLength: number;
+  readonly executableDigest: string;
+  readonly arguments: readonly string[];
+  readonly workingDirectory: string;
+  readonly environment: Readonly<Record<string, string>>;
   readonly commandDigest: string;
   readonly environmentDigest: string;
 }
@@ -37,13 +43,19 @@ export interface MojoCompilerProjectSnapshot {
 export interface MojoCompilerNamedPath {
   readonly name: string;
   readonly path?: string;
-  readonly condition?: string;
+  readonly condition?: MojoCompilerConformanceCondition;
+}
+
+export interface MojoCompilerConformanceCondition {
+  readonly kind: "conforms-to";
+  readonly parameterName: string;
+  readonly traitNames: readonly string[];
 }
 
 export type MojoCompilerType =
   | { readonly kind: "named"; readonly name: string; readonly path?: string; readonly arguments: readonly MojoCompilerTypeArgument[] }
   | { readonly kind: "type-parameter"; readonly name: string }
-  | { readonly kind: "self"; readonly memberPath: readonly string[] }
+  | { readonly kind: "self"; readonly memberPath: readonly string[]; readonly arguments: readonly MojoCompilerTypeArgument[] }
   | { readonly kind: "tuple"; readonly elements: readonly MojoCompilerType[] }
   | { readonly kind: "reference"; readonly origin: string; readonly target: MojoCompilerType }
   | {
@@ -56,15 +68,17 @@ export type MojoCompilerType =
     };
 
 export type MojoCompilerTypeArgument =
-  | { readonly kind: "type"; readonly type: MojoCompilerType }
-  | { readonly kind: "value"; readonly expression: string }
-  | { readonly kind: "unbound" };
+  | { readonly kind: "type"; readonly name?: string; readonly type: MojoCompilerType }
+  | { readonly kind: "type-expression"; readonly name?: string; readonly sourceType: MojoCompilerType; readonly expression: string }
+  | { readonly kind: "value"; readonly name?: string; readonly expression: string }
+  | { readonly kind: "unbound"; readonly name?: string };
 
 export interface MojoCompilerGenericParameter {
   readonly kind: "type" | "value" | "origin";
   readonly name: string;
-  readonly passingKind: "positional" | "positional-or-keyword" | "inferred";
-  readonly constraint: MojoCompilerType;
+  readonly passingKind: "positional" | "positional-or-keyword" | "keyword" | "inferred";
+  readonly variadic: boolean;
+  readonly constraints: readonly MojoCompilerType[];
 }
 
 export interface MojoCompilerFunctionArgument {
@@ -102,7 +116,7 @@ export interface MojoCompilerAssociatedAlias {
   readonly name: string;
   readonly genericParameters: readonly MojoCompilerGenericParameter[];
   readonly type?: MojoCompilerType;
-  readonly value?: string;
+  readonly valueType?: MojoCompilerType;
   readonly documentation?: string;
 }
 

@@ -26,6 +26,7 @@ export interface MojoCompilerTypeProjectionContext {
   readonly snapshot: MojoCompilerProjectSnapshot;
   readonly package: MojoCompilerPackageSnapshot;
   readonly modulePath: readonly string[];
+  readonly localDeclarations: ReadonlySet<string>;
   readonly owner?: {
     readonly name: string;
     readonly exportId: string;
@@ -45,7 +46,7 @@ export function projectMojoCompilerType(
         target: Object.freeze({ kind: "type-parameter", name: type.name }),
       });
     case "self": {
-      if (type.memberPath.length > 0 || context.owner === undefined) {
+      if (context.owner === undefined) {
         throw new Error(`Mojo associated self type '${["Self", ...type.memberPath].join(".")}' is not representable.`);
       }
       const moduleSpecifier = mojoCompilerModuleSpecifier(context.package, context.modulePath);
@@ -53,6 +54,24 @@ export function projectMojoCompilerType(
         parameter.kind === "type"
           ? Object.freeze({ kind: "type", type: Object.freeze({ kind: "type-parameter", name: parameter.name }) })
           : Object.freeze({ kind: "value", expression: parameter.name }));
+      const ownerTarget = namedTargetType(
+        context.package,
+        context.modulePath,
+        context.owner.name,
+        genericArguments,
+      );
+      if (type.memberPath.length > 0) {
+        const projectedArguments = type.arguments.map((argument) => projectGenericArgument(argument, context));
+        return Object.freeze({
+          source: Object.freeze({ kind: "object" }),
+          target: Object.freeze({
+            kind: "associated",
+            owner: ownerTarget,
+            memberPath: type.memberPath,
+            genericArguments: Object.freeze(projectedArguments.map(({ target }) => target)),
+          }),
+        });
+      }
       return Object.freeze({
         source: Object.freeze({
           kind: "provider-ref",
@@ -65,12 +84,7 @@ export function projectMojoCompilerType(
                   Object.freeze({ kind: "type-parameter" as const, name: parameter.name }))),
               }),
         }),
-        target: namedTargetType(
-          context.package,
-          context.modulePath,
-          context.owner.name,
-          genericArguments,
-        ),
+        target: ownerTarget,
       });
     }
     case "tuple": {
@@ -119,10 +133,19 @@ export function projectMojoGenericParameters(
   context: MojoCompilerTypeProjectionContext,
 ): readonly ProviderTypeParameterDeclaration[] {
   return Object.freeze(parameters.map((parameter): ProviderTypeParameterDeclaration => {
-    const constraint = projectMojoCompilerType(parameter.constraint, context).source;
+    const constraints = parameter.constraints.map((constraint) =>
+      projectMojoCompilerType(constraint, context).source);
+    const sourceConstraints = parameter.variadic
+      ? [Object.freeze({
+          kind: "array" as const,
+          elementType: constraints.length === 1
+            ? constraints[0]!
+            : Object.freeze({ kind: "intersection" as const, types: Object.freeze(constraints) }),
+        })]
+      : constraints;
     return Object.freeze({
       name: parameter.name,
-      constraints: Object.freeze([constraint]),
+      constraints: Object.freeze(sourceConstraints),
     });
   }));
 }
@@ -133,12 +156,23 @@ function projectNamedType(
 ): MojoCompilerTypeProjection {
   const primitive = primitiveProjection(type.name);
   if (primitive !== undefined && type.arguments.length === 0) return primitive;
-  const location = resolveTypeLocation(type, context);
   const projectedArguments = type.arguments.map((argument) => projectGenericArgument(argument, context));
   const sourceArguments = projectedArguments.map(({ source }) => source);
   if (sourceArguments.some((argument) => argument === undefined)) {
     throw new Error(`Mojo type '${type.name}' contains an unbound generic argument.`);
   }
+  if (type.path === undefined && !context.localDeclarations.has(type.name)) {
+    return Object.freeze({
+      source: Object.freeze({ kind: "object" }),
+      target: namedTargetType(
+        context.package,
+        context.modulePath,
+        type.name,
+        projectedArguments.map(({ target }) => target),
+      ),
+    });
+  }
+  const location = resolveTypeLocation(type, context);
   const moduleSpecifier = mojoCompilerModuleSpecifier(location.package, location.modulePath);
   addImport(context.imports, moduleSpecifier, location.exportName);
   return Object.freeze({
@@ -164,19 +198,40 @@ function projectGenericArgument(
   context: MojoCompilerTypeProjectionContext,
 ): { readonly source?: ProviderTypeExpression; readonly target: MojoTargetGenericArgument } {
   switch (argument.kind) {
-    case "unbound": return Object.freeze({ target: Object.freeze({ kind: "unbound" }) });
+    case "unbound": return Object.freeze({
+      target: Object.freeze({ kind: "unbound", ...(argument.name === undefined ? {} : { name: argument.name }) }),
+    });
     case "type": {
       const projected = projectMojoCompilerType(argument.type, context);
       return Object.freeze({
         source: projected.source,
-        target: Object.freeze({ kind: "type", type: projected.target }),
+        target: Object.freeze({
+          kind: "type",
+          ...(argument.name === undefined ? {} : { name: argument.name }),
+          type: projected.target,
+        }),
+      });
+    }
+    case "type-expression": {
+      const projected = projectMojoCompilerType(argument.sourceType, context);
+      return Object.freeze({
+        source: projected.source,
+        target: Object.freeze({
+          kind: "type-expression",
+          ...(argument.name === undefined ? {} : { name: argument.name }),
+          expression: argument.expression,
+        }),
       });
     }
     case "value": {
       const source = sourceValueArgument(argument.expression);
       return Object.freeze({
         source,
-        target: Object.freeze({ kind: "value", expression: argument.expression }),
+        target: Object.freeze({
+          kind: "value",
+          ...(argument.name === undefined ? {} : { name: argument.name }),
+          expression: argument.expression,
+        }),
       });
     }
   }
@@ -193,7 +248,7 @@ function sourceValueArgument(expression: string): ProviderTypeExpression {
   if (/^[_A-Za-z][_A-Za-z0-9]*$/u.test(expression)) {
     return Object.freeze({ kind: "type-parameter", name: expression });
   }
-  throw new Error(`Mojo value generic '${expression}' has no exact TypeScript type-level representation.`);
+  return Object.freeze({ kind: "literal", value: expression });
 }
 
 function resolveTypeLocation(
@@ -205,8 +260,7 @@ function resolveTypeLocation(
   readonly exportName: string;
 } {
   if (type.path === undefined) {
-    const localNames = context.owner?.name === type.name;
-    if (localNames) {
+    if (context.localDeclarations.has(type.name)) {
       return { package: context.package, modulePath: context.modulePath, exportName: type.name };
     }
     throw new Error(`Mojo type '${type.name}' has no compiler-owned declaration path.`);

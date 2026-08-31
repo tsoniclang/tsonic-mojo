@@ -27,7 +27,10 @@ import type {
   MojoDocTrait,
   MojoDocTypeValue,
 } from "./mojo-doc-schema.js";
-import { parseMojoCompilerType } from "./type-parser.js";
+import {
+  parseMojoCompilerConformanceCondition,
+  parseMojoCompilerType,
+} from "./type-parser.js";
 import type { MojoCompilerTypeScope } from "./type-parser.js";
 
 export function normalizeMojoDocModule(options: {
@@ -35,17 +38,34 @@ export function normalizeMojoDocModule(options: {
   readonly modulePath: readonly string[];
   readonly sourceDigest: string;
   readonly document: MojoDocDocument;
+  readonly classifyGenericParameter: (
+    parameter: MojoDocParameter,
+  ) => "type" | "value" | "origin";
 }): MojoCompilerModuleModel {
   const moduleIdentity = compilerModuleIdentity(options.package, options.modulePath);
   const functions = normalizeFunctionGroups(
     options.document.decl.functions,
     moduleIdentity,
     emptyScope,
+    options.classifyGenericParameter,
   );
   const declarations = [
-    ...options.document.decl.structs.map((declaration) => normalizeStruct(declaration, moduleIdentity)),
-    ...options.document.decl.traits.map((declaration) => normalizeTrait(declaration, moduleIdentity)),
-    ...options.document.decl.aliases.map((declaration) => normalizeAlias(declaration, moduleIdentity, emptyScope)),
+    ...options.document.decl.structs.map((declaration) => normalizeStruct(
+      declaration,
+      moduleIdentity,
+      options.classifyGenericParameter,
+    )),
+    ...options.document.decl.traits.map((declaration) => normalizeTrait(
+      declaration,
+      moduleIdentity,
+      options.classifyGenericParameter,
+    )),
+    ...options.document.decl.aliases.map((declaration) => normalizeAlias(
+      declaration,
+      moduleIdentity,
+      emptyScope,
+      options.classifyGenericParameter,
+    )),
   ];
   requireUnique(functions, ({ identity }) => identity, "function overload");
   requireUnique(declarations, ({ identity }) => identity, "declaration");
@@ -67,13 +87,28 @@ export function normalizeMojoDocModule(options: {
 function normalizeStruct(
   declaration: MojoDocStruct,
   moduleIdentity: string,
+  classifyGenericParameter: (parameter: MojoDocParameter) => "type" | "value" | "origin",
 ): MojoCompilerStruct {
   const identity = `${moduleIdentity}::struct:${declaration.name}`;
-  const genericParameters = normalizeGenericParameters(declaration.parameters, emptyScope);
+  const genericParameters = normalizeGenericParameters(
+    declaration.parameters,
+    emptyScope,
+    classifyGenericParameter,
+  );
   const scope = scopeFor(genericParameters);
   const fields = declaration.fields.map((field) => normalizeField(field, identity, scope));
-  const functions = normalizeFunctionGroups(declaration.functions, identity, scope);
-  const aliases = declaration.aliases.map((alias) => normalizeAssociatedAlias(alias, identity, scope));
+  const functions = normalizeFunctionGroups(
+    declaration.functions,
+    identity,
+    scope,
+    classifyGenericParameter,
+  );
+  const aliases = declaration.aliases.map((alias) => normalizeAssociatedAlias(
+    alias,
+    identity,
+    scope,
+    classifyGenericParameter,
+  ));
   requireUnique(fields, ({ name }) => name, `field on '${identity}'`);
   requireUnique(aliases, ({ name }) => name, `associated alias on '${identity}'`);
   return Object.freeze({
@@ -82,7 +117,8 @@ function normalizeStruct(
     name: declaration.name,
     genericParameters,
     convention: declaration.convention,
-    parentTraits: Object.freeze(declaration.parentTraits.map(normalizeNamedPath)),
+    parentTraits: Object.freeze(declaration.parentTraits.map((trait) =>
+      normalizeNamedPath(trait, scope))),
     aliases: Object.freeze(aliases),
     fields: Object.freeze(fields),
     functions: Object.freeze(functions),
@@ -93,18 +129,30 @@ function normalizeStruct(
 function normalizeTrait(
   declaration: MojoDocTrait,
   moduleIdentity: string,
+  classifyGenericParameter: (parameter: MojoDocParameter) => "type" | "value" | "origin",
 ): MojoCompilerTrait {
   const identity = `${moduleIdentity}::trait:${declaration.name}`;
   const fields = declaration.fields.map((field) => normalizeField(field, identity, selfScope));
-  const functions = normalizeFunctionGroups(declaration.functions, identity, selfScope);
-  const aliases = declaration.aliases.map((alias) => normalizeAssociatedAlias(alias, identity, selfScope));
+  const functions = normalizeFunctionGroups(
+    declaration.functions,
+    identity,
+    selfScope,
+    classifyGenericParameter,
+  );
+  const aliases = declaration.aliases.map((alias) => normalizeAssociatedAlias(
+    alias,
+    identity,
+    selfScope,
+    classifyGenericParameter,
+  ));
   requireUnique(fields, ({ name }) => name, `field on '${identity}'`);
   requireUnique(aliases, ({ name }) => name, `associated alias on '${identity}'`);
   return Object.freeze({
     kind: "trait",
     identity,
     name: declaration.name,
-    parentTraits: Object.freeze(declaration.parentTraits.map(normalizeNamedPath)),
+    parentTraits: Object.freeze(declaration.parentTraits.map((trait) =>
+      normalizeNamedPath(trait, selfScope))),
     aliases: Object.freeze(aliases),
     fields: Object.freeze(fields),
     functions: Object.freeze(functions),
@@ -116,9 +164,14 @@ function normalizeAlias(
   declaration: MojoDocAlias,
   ownerIdentity: string,
   parentScope: MojoCompilerTypeScope,
+  classifyGenericParameter: (parameter: MojoDocParameter) => "type" | "value" | "origin",
 ): MojoCompilerAlias {
   const identity = `${ownerIdentity}::alias:${declaration.name}`;
-  const genericParameters = normalizeGenericParameters(declaration.parameters, parentScope);
+  const genericParameters = normalizeGenericParameters(
+    declaration.parameters,
+    parentScope,
+    classifyGenericParameter,
+  );
   const scope = mergeScope(parentScope, scopeFor(genericParameters));
   return Object.freeze({
     kind: "alias",
@@ -137,10 +190,27 @@ function normalizeAssociatedAlias(
   declaration: MojoDocAlias,
   ownerIdentity: string,
   parentScope: MojoCompilerTypeScope,
+  classifyGenericParameter: (parameter: MojoDocParameter) => "type" | "value" | "origin",
 ): MojoCompilerAssociatedAlias {
-  const alias = normalizeAlias(declaration, ownerIdentity, parentScope);
-  const { kind: _kind, ...associated } = alias;
-  return Object.freeze(associated);
+  const identity = `${ownerIdentity}::alias:${declaration.name}`;
+  const genericParameters = normalizeGenericParameters(
+    declaration.parameters,
+    parentScope,
+    classifyGenericParameter,
+  );
+  const scope = mergeScope(parentScope, scopeFor(genericParameters));
+  return Object.freeze({
+    identity,
+    name: declaration.name,
+    genericParameters,
+    ...(declaration.type === undefined
+      ? {}
+      : { type: parseMojoCompilerType(declaration.type, undefined, scope) }),
+    ...(declaration.value === undefined
+      ? {}
+      : { valueType: parseMojoCompilerType(declaration.value, undefined, scope) }),
+    ...documentationOf(declaration),
+  });
 }
 
 function normalizeField(
@@ -160,17 +230,23 @@ function normalizeFunctionGroups(
   groups: readonly MojoDocFunctionGroup[],
   ownerIdentity: string,
   parentScope: MojoCompilerTypeScope,
+  classifyGenericParameter: (parameter: MojoDocParameter) => "type" | "value" | "origin",
 ): MojoCompilerFunction[] {
   return groups.flatMap((group) => group.overloads.map((overload) =>
-    normalizeFunction(overload, ownerIdentity, parentScope)));
+    normalizeFunction(overload, ownerIdentity, parentScope, classifyGenericParameter)));
 }
 
 function normalizeFunction(
   overload: MojoDocFunctionOverload,
   ownerIdentity: string,
   parentScope: MojoCompilerTypeScope,
+  classifyGenericParameter: (parameter: MojoDocParameter) => "type" | "value" | "origin",
 ): MojoCompilerFunction {
-  const genericParameters = normalizeGenericParameters(overload.parameters, parentScope);
+  const genericParameters = normalizeGenericParameters(
+    overload.parameters,
+    parentScope,
+    classifyGenericParameter,
+  );
   const scope = mergeScope(parentScope, scopeFor(genericParameters));
   const arguments_ = overload.args.map((argument) => normalizeArgument(argument, scope));
   const semanticIdentity = stableDigest({
@@ -220,13 +296,16 @@ function normalizeArgument(
 function normalizeGenericParameters(
   parameters: readonly MojoDocParameter[],
   parentScope: MojoCompilerTypeScope,
+  classifyGenericParameter: (parameter: MojoDocParameter) => "type" | "value" | "origin",
 ): readonly MojoCompilerGenericParameter[] {
   const knownTypes = new Set(parentScope.typeParameters ?? []);
   const knownValues = new Set(parentScope.valueParameters ?? []);
   const knownOrigins = new Set(parentScope.originParameters ?? []);
   const result: MojoCompilerGenericParameter[] = [];
   for (const parameter of parameters) {
-    const kind = genericParameterKind(parameter);
+    const variadic = parameter.name.startsWith("*");
+    const name = variadic ? parameter.name.slice(1) : parameter.name;
+    const kind = classifyGenericParameter(parameter);
     const scope = {
       typeParameters: knownTypes,
       valueParameters: knownValues,
@@ -234,27 +313,25 @@ function normalizeGenericParameters(
     };
     const normalized = Object.freeze({
       kind,
-      name: parameter.name,
+      name,
       passingKind: parameter.passingKind === "inferred"
         ? "inferred" as const
         : parameter.passingKind === "pos"
           ? "positional" as const
-          : "positional-or-keyword" as const,
-      constraint: parseTypeValue(parameter, scope),
+          : parameter.passingKind === "kw"
+            ? "keyword" as const
+            : "positional-or-keyword" as const,
+      variadic,
+      constraints: Object.freeze((parameter.traits ?? [parameter]).map((constraint) =>
+        parseTypeValue(constraint, scope))),
     });
     result.push(normalized);
-    if (kind === "type") knownTypes.add(parameter.name);
-    else if (kind === "value") knownValues.add(parameter.name);
-    else knownOrigins.add(parameter.name);
+    if (kind === "type") knownTypes.add(name);
+    else if (kind === "value") knownValues.add(name);
+    else knownOrigins.add(name);
   }
   requireUnique(result, ({ name }) => name, "generic parameter");
   return Object.freeze(result);
-}
-
-function genericParameterKind(parameter: MojoDocParameter): "type" | "value" | "origin" {
-  if (parameter.type === "Origin" || parameter.path?.includes("/origin/") === true) return "origin";
-  if (parameter.type === "AnyType" || parameter.path?.includes("/traits/") === true) return "type";
-  return "value";
 }
 
 function parseTypeValue(
@@ -264,11 +341,16 @@ function parseTypeValue(
   return parseMojoCompilerType(value.type, value.path, scope);
 }
 
-function normalizeNamedPath(value: MojoDocNamedPath): MojoCompilerNamedPath {
+function normalizeNamedPath(
+  value: MojoDocNamedPath,
+  scope: MojoCompilerTypeScope,
+): MojoCompilerNamedPath {
   return Object.freeze({
     name: value.name,
     ...(value.path === undefined ? {} : { path: value.path }),
-    ...(value.condition === undefined ? {} : { condition: value.condition }),
+    ...(value.condition === undefined
+      ? {}
+      : { condition: parseMojoCompilerConformanceCondition(value.condition, scope) }),
   });
 }
 

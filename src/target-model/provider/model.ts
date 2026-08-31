@@ -15,6 +15,12 @@ export type MojoTargetTypeRef =
   | { readonly kind: "list"; readonly element: MojoTargetTypeRef }
   | { readonly kind: "optional"; readonly value: MojoTargetTypeRef }
   | { readonly kind: "tuple"; readonly elements: readonly MojoTargetTypeRef[] }
+  | {
+      readonly kind: "associated";
+      readonly owner: MojoTargetTypeRef;
+      readonly memberPath: readonly string[];
+      readonly genericArguments: readonly MojoTargetGenericArgument[];
+    }
   | { readonly kind: "reference"; readonly origin: string; readonly value: MojoTargetTypeRef }
   | {
       readonly kind: "function";
@@ -25,9 +31,10 @@ export type MojoTargetTypeRef =
     };
 
 export type MojoTargetGenericArgument =
-  | { readonly kind: "type"; readonly type: MojoTargetTypeRef }
-  | { readonly kind: "value"; readonly expression: string }
-  | { readonly kind: "unbound" };
+  | { readonly kind: "type"; readonly name?: string; readonly type: MojoTargetTypeRef }
+  | { readonly kind: "type-expression"; readonly name?: string; readonly expression: string }
+  | { readonly kind: "value"; readonly name?: string; readonly expression: string }
+  | { readonly kind: "unbound"; readonly name?: string };
 
 export type MojoCallArgumentConvention =
   | "imm"
@@ -52,7 +59,15 @@ export interface MojoProviderTargetArgument {
 export interface MojoProviderTargetGenericParameter {
   readonly kind: "type" | "value" | "origin";
   readonly name: string;
-  readonly inferred: boolean;
+  readonly position: "positional" | "positional-or-keyword" | "keyword" | "inferred";
+  readonly variadic: boolean;
+  readonly constraints: readonly MojoTargetTypeRef[];
+}
+
+export interface MojoTargetConformanceCondition {
+  readonly kind: "conforms-to";
+  readonly parameterName: string;
+  readonly traitNames: readonly string[];
 }
 
 export type MojoProviderOperationForm =

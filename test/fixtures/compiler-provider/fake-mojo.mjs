@@ -1,4 +1,5 @@
-import { writeFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
+import { basename } from "node:path";
 
 const args = process.argv.slice(2);
 if (args.length === 1 && args[0] === "--version") {
@@ -9,6 +10,15 @@ if (args.length === 1 && args[0] === "--version") {
 if (args[0] !== "doc") {
   process.stderr.write(`unsupported fake Mojo command: ${args.join(" ")}\n`);
   process.exit(2);
+}
+
+if (process.env.TSONIC_MOJO_PROVIDER_EXPECT_ENV !== undefined &&
+  process.env.TSONIC_MOJO_PROVIDER_ENV !== process.env.TSONIC_MOJO_PROVIDER_EXPECT_ENV) {
+  process.stderr.write("compiler environment changed after snapshot\n");
+  process.exit(3);
+}
+if (process.env.TSONIC_MOJO_PROVIDER_LOG !== undefined) {
+  appendFileSync(process.env.TSONIC_MOJO_PROVIDER_LOG, "doc\n");
 }
 
 const outputIndex = args.indexOf("-o");
@@ -52,14 +62,89 @@ const overload = (name, args_, returns, extras = {}) => ({
 const group = (name, overloads) => ({ kind: "function", name, overloads });
 const int32 = "/std/builtin/simd/#int32";
 
+const trait = (name) => ({
+  aliases: [],
+  deprecated: "",
+  description: "",
+  fields: [],
+  functions: [],
+  isStabilityTracked: false,
+  isStable: false,
+  kind: "trait",
+  name,
+  parentTraits: [],
+  sinceVersion: "",
+  summary: "",
+});
+const struct = (name, extras = {}) => ({
+  aliases: [],
+  constraints: "",
+  convention: "memory_only",
+  deprecated: "",
+  description: "",
+  fields: [],
+  functions: [],
+  isStabilityTracked: false,
+  isStable: false,
+  kind: "struct",
+  name,
+  parameters: [],
+  parentTraits: [],
+  signature: `struct ${name}`,
+  sinceVersion: "",
+  summary: "",
+  ...extras,
+});
+
+if (basename(args[1]) === "traits.mojo") {
+  writeFileSync(args[outputIndex + 1], JSON.stringify({
+    decl: {
+      aliases: [],
+      description: "",
+      functions: [],
+      kind: "module",
+      name: "traits",
+      structs: [struct("Flag")],
+      summary: "",
+      traits: [trait("Sequence"), trait("Copyable")],
+    },
+    version: "1.1.0.dev2026083005",
+  }));
+  process.exit(0);
+}
+
 writeFileSync(args[outputIndex + 1], JSON.stringify({
   decl: {
     aliases: [],
     description: "",
-    functions: [group("sum", [overload("sum", [
-      argument("left", "imm", "pos_or_kw", "Int32", int32),
-      argument("right", "imm", "kw", "Int32", int32, "Int32(0)"),
-    ], typeValue("Int32", int32))])],
+    functions: [
+      group("sum", [overload("sum", [
+        argument("left", "imm", "pos_or_kw", "Int32", int32),
+        argument("right", "imm", "kw", "Int32", int32, "Int32(0)"),
+      ], typeValue("Int32", int32))]),
+      group("collect", [overload("collect", [], typeValue("Int32", int32), {
+        parameters: [
+          {
+            description: "",
+            kind: "parameter",
+            name: "*Ts",
+            passingKind: "pos_or_kw",
+            traits: [
+              typeValue("Sequence", "/probe/traits/Sequence"),
+              typeValue("Copyable", "/probe/traits/Copyable"),
+            ],
+            type: "Sequence & Copyable",
+          },
+          {
+            description: "",
+            kind: "parameter",
+            name: "flag",
+            passingKind: "kw",
+            ...typeValue("Flag", "/probe/traits/Flag"),
+          },
+        ],
+      })]),
+    ],
     kind: "module",
     name: "api",
     structs: [{
@@ -88,7 +173,43 @@ writeFileSync(args[outputIndex + 1], JSON.stringify({
       signature: "struct Counter",
       sinceVersion: "",
       summary: "",
-    }],
+    }, struct("Bucket", {
+      aliases: [{
+        deprecated: "",
+        description: "",
+        isStabilityTracked: false,
+        isStable: false,
+        kind: "alias",
+        name: "Element",
+        parameters: [],
+        path: "/probe/api/#element",
+        signature: "comptime Element",
+        sinceVersion: "",
+        summary: "",
+        type: "AnyType",
+        value: "T",
+      }],
+      fields: [{ description: "", kind: "field", name: "value", summary: "", type: "T" }],
+      functions: [group("item", [overload("item", [
+        argument("self", "ref", "pos_or_kw", "Self"),
+      ], typeValue("Self.Element"))])],
+      parameters: [{
+        description: "",
+        kind: "parameter",
+        name: "T",
+        passingKind: "pos",
+        ...typeValue("Sequence", "/probe/traits/Sequence"),
+      }],
+      parentTraits: [
+        { name: "Sequence", path: "/probe/traits/Sequence" },
+        {
+          condition: "conforms_to(T, Copyable)",
+          name: "Copyable",
+          path: "/probe/traits/Copyable",
+        },
+      ],
+      signature: "struct Bucket[T: Sequence]",
+    })],
     summary: "",
     traits: [],
   },

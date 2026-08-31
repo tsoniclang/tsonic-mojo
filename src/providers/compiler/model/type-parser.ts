@@ -1,4 +1,5 @@
 import type {
+  MojoCompilerConformanceCondition,
   MojoCompilerType,
   MojoCompilerTypeArgument,
 } from "./model.js";
@@ -73,12 +74,17 @@ export function parseMojoCompilerType(
     throw new Error(`Mojo compiler type '${text}' has an unsupported nominal head '${name}'.`);
   }
   if (name === "Self" || name === "_Self" || name.startsWith("Self.") || name.startsWith("_Self.")) {
-    if (bracket !== undefined) {
-      throw new Error(`Mojo compiler self type '${text}' cannot carry unclassified arguments.`);
+    const close = bracket === undefined ? undefined : matchingDelimiter(text, bracket, "[", "]");
+    if (close !== undefined && close !== text.length - 1) {
+      throw new Error(`Mojo compiler self type '${text}' has trailing data after its type arguments.`);
     }
+    const arguments_ = bracket === undefined
+      ? []
+      : splitTopLevel(text.slice(bracket + 1, close)).map((part) => parseTypeArgument(part, scope));
     return Object.freeze({
       kind: "self",
       memberPath: Object.freeze(name.split(".").slice(1)),
+      arguments: Object.freeze(arguments_),
     });
   }
   if (bracket === undefined) {
@@ -100,6 +106,29 @@ export function parseMojoCompilerType(
     name,
     ...(path === undefined ? {} : { path }),
     arguments: Object.freeze(arguments_),
+  });
+}
+
+export function parseMojoCompilerConformanceCondition(
+  expression: string,
+  scope: MojoCompilerTypeScope,
+): MojoCompilerConformanceCondition {
+  const text = expression.trim();
+  const match = /^conforms_to\(([_A-Za-z][_A-Za-z0-9]*),\s*([_A-Za-z][_A-Za-z0-9]*(?:\s*&\s*[_A-Za-z][_A-Za-z0-9]*)*)\)$/u.exec(text);
+  if (match === null) {
+    throw new Error(`Mojo compiler conformance condition '${text}' is not structurally supported.`);
+  }
+  const parameterName = match[1]!;
+  if (parameterName !== "Self" && scope.typeParameters?.has(parameterName) !== true) {
+    throw new Error(
+      `Mojo compiler conformance condition '${text}' does not name an exact type parameter.`,
+    );
+  }
+  const traitNames = match[2]!.split("&").map((part) => part.trim());
+  return Object.freeze({
+    kind: "conforms-to",
+    parameterName,
+    traitNames: Object.freeze(traitNames),
   });
 }
 
@@ -153,23 +182,67 @@ function parseTypeArgument(
   scope: MojoCompilerTypeScope,
 ): MojoCompilerTypeArgument {
   const text = expression.trim();
-  if (text === "_" || text === "...") return Object.freeze({ kind: "unbound" });
-  if (scope.typeParameters?.has(text) === true || builtinTypes.has(text) ||
-    text.startsWith("Self") || text.startsWith("_Self") || text.startsWith("ref[") ||
-    text.startsWith("def(") || text.startsWith("(")) {
-    return Object.freeze({ kind: "type", type: parseMojoCompilerType(text, undefined, scope) });
+  const assignment = namedArgument(text);
+  const name = assignment?.name;
+  const value = assignment?.value ?? text;
+  if (value === "_" || value === "...") {
+    return Object.freeze({ kind: "unbound", ...(name === undefined ? {} : { name }) });
   }
-  if (scope.valueParameters?.has(text) === true || scope.originParameters?.has(text) === true ||
-    isUnambiguousValueExpression(text, scope)) {
-    return Object.freeze({ kind: "value", expression: text });
+  const constrainedType = /^([_A-Za-z][_A-Za-z0-9]*)\((.+)\)$/u.exec(value);
+  if (constrainedType !== null && scope.typeParameters?.has(constrainedType[1]!) === true &&
+    isBalancedExpression(constrainedType[2]!)) {
+    return Object.freeze({
+      kind: "type-expression",
+      ...(name === undefined ? {} : { name }),
+      sourceType: Object.freeze({ kind: "type-parameter", name: constrainedType[1]! }),
+      expression: value,
+    });
   }
-  const nestedBracket = firstTopLevelDelimiter(text, "[");
+  if (scope.typeParameters?.has(value) === true || builtinTypes.has(value) ||
+    value.startsWith("Self") || value.startsWith("_Self") || value.startsWith("ref[") ||
+    value.startsWith("def(") || value.startsWith("(")) {
+    return Object.freeze({
+      kind: "type",
+      ...(name === undefined ? {} : { name }),
+      type: parseMojoCompilerType(value, undefined, scope),
+    });
+  }
+  if (scope.valueParameters?.has(value) === true || scope.originParameters?.has(value) === true ||
+    isUnambiguousValueExpression(value, scope)) {
+    return Object.freeze({ kind: "value", ...(name === undefined ? {} : { name }), expression: value });
+  }
+  const nestedBracket = firstTopLevelDelimiter(value, "[");
   if (nestedBracket !== undefined) {
-    return Object.freeze({ kind: "type", type: parseMojoCompilerType(text, undefined, scope) });
+    return Object.freeze({
+      kind: "type",
+      ...(name === undefined ? {} : { name }),
+      type: parseMojoCompilerType(value, undefined, scope),
+    });
   }
   throw new Error(
-    `Mojo compiler generic argument '${text}' is not classified by machine-readable metadata.`,
+    `Mojo compiler generic argument '${value}' is not classified by machine-readable metadata.`,
   );
+}
+
+function namedArgument(text: string): { readonly name: string; readonly value: string } | undefined {
+  let square = 0;
+  let round = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index]!;
+    if (character === "[") square += 1;
+    else if (character === "]") square -= 1;
+    else if (character === "(") round += 1;
+    else if (character === ")") round -= 1;
+    else if (character === "=" && square === 0 && round === 0) {
+      const name = text.slice(0, index).trim();
+      const value = text.slice(index + 1).trim();
+      if (!identifierPattern.test(name) || value.length === 0) {
+        throw new Error(`Mojo compiler generic argument '${text}' has an invalid named binding.`);
+      }
+      return { name, value };
+    }
+  }
+  return undefined;
 }
 
 function isUnambiguousValueExpression(
@@ -177,10 +250,11 @@ function isUnambiguousValueExpression(
   scope: MojoCompilerTypeScope,
 ): boolean {
   if (/^(?:True|False|None|-?[0-9]+(?:\.[0-9]+)?|"(?:[^"\\]|\\.)*")$/u.test(text)) return true;
-  if (!isBalancedExpression(text) || !/^[A-Za-z0-9_., +*/%()\[\]-]+$/u.test(text)) return false;
+  if (!isBalancedExpression(text) || !/^[A-Za-z0-9_., +*/%()\[\]"'-]+$/u.test(text)) return false;
   const first = /^[_A-Za-z][_A-Za-z0-9]*/u.exec(text)?.[0];
   return first !== undefined &&
-    (scope.valueParameters?.has(first) === true || scope.originParameters?.has(first) === true || text.includes("."));
+    (scope.valueParameters?.has(first) === true || scope.originParameters?.has(first) === true ||
+      text.includes(".") || /^[_A-Za-z][_A-Za-z0-9]*\(/u.test(text));
 }
 
 function splitTopLevel(text: string): string[] {

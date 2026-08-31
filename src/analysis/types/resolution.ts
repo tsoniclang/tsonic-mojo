@@ -128,6 +128,10 @@ export function mojoTypeEquals(left: MojoTargetTypeRef, right: MojoTargetTypeRef
     case "tuple":
       return right.kind === "tuple" &&
         arrayEquals(left.elements, right.elements, mojoTypeEquals);
+    case "associated":
+      return right.kind === "associated" && mojoTypeEquals(left.owner, right.owner) &&
+        arrayEquals(left.memberPath, right.memberPath, (a, b) => a === b) &&
+        genericArgumentsEqual(left.genericArguments, right.genericArguments);
     case "reference":
       return right.kind === "reference" && left.origin === right.origin &&
         mojoTypeEquals(left.value, right.value);
@@ -145,9 +149,10 @@ function genericArgumentsEqual(
 ): boolean {
   return left.length === right.length && left.every((argument, index) => {
     const other = right[index];
-    if (other === undefined || argument.kind !== other.kind) return false;
+    if (other === undefined || argument.kind !== other.kind || argument.name !== other.name) return false;
     switch (argument.kind) {
       case "type": return other.kind === "type" && mojoTypeEquals(argument.type, other.type);
+      case "type-expression": return other.kind === "type-expression" && argument.expression === other.expression;
       case "value": return other.kind === "value" && argument.expression === other.expression;
       case "unbound": return true;
     }

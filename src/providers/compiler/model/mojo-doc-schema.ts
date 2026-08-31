@@ -16,7 +16,8 @@ export interface MojoDocArgument extends MojoDocTypeValue {
 export interface MojoDocParameter extends MojoDocTypeValue {
   readonly kind: "parameter";
   readonly name: string;
-  readonly passingKind: "pos" | "pos_or_kw" | "inferred";
+  readonly passingKind: "pos" | "pos_or_kw" | "kw" | "inferred";
+  readonly traits?: readonly MojoDocTypeValue[];
   readonly description: string;
 }
 
@@ -116,7 +117,7 @@ const overloadKeys = [
   "raisesDoc", "returns", "signature", "sinceVersion", "summary",
 ];
 const argumentKeys = ["convention", "default", "description", "kind", "name", "passingKind", "path", "type"];
-const parameterKeys = ["description", "kind", "name", "passingKind", "path", "type"];
+const parameterKeys = ["description", "kind", "name", "passingKind", "path", "traits", "type"];
 const structKeys = [
   "aliases", "constraints", "convention", "deprecated", "description", "fields",
   "functions", "isStabilityTracked", "isStable", "kind", "name", "parameters",
@@ -214,9 +215,12 @@ function parseParameter(value: unknown, field: string): MojoDocParameter {
   literal(input.kind, "parameter", `${field}.kind`);
   return Object.freeze({
     kind: "parameter",
-    name: identifier(input.name, `${field}.name`),
-    passingKind: oneOf(input.passingKind, ["pos", "pos_or_kw", "inferred"], `${field}.passingKind`),
+    name: parameterName(input.name, `${field}.name`),
+    passingKind: oneOf(input.passingKind, ["pos", "pos_or_kw", "kw", "inferred"], `${field}.passingKind`),
     ...parseTypeValue(input, field),
+    ...(input.traits === undefined
+      ? {}
+      : { traits: parseArray(input.traits, `${field}.traits`, parseTypeValue) }),
     description: text(input.description, `${field}.description`),
   });
 }
@@ -347,6 +351,15 @@ function argumentName(value: unknown, field: string): string {
   const unwrapped = result.startsWith("*") ? result.slice(1) : result;
   if (!/^[_A-Za-z][_A-Za-z0-9]*$/u.test(unwrapped)) {
     throw new Error(`Mojo documentation '${field}' is not an argument name.`);
+  }
+  return result;
+}
+
+function parameterName(value: unknown, field: string): string {
+  const result = text(value, field);
+  const unwrapped = result.startsWith("*") ? result.slice(1) : result;
+  if (!/^[_A-Za-z][_A-Za-z0-9]*$/u.test(unwrapped)) {
+    throw new Error(`Mojo documentation '${field}' is not a parameter name.`);
   }
   return result;
 }
