@@ -1,0 +1,1668 @@
+{
+  "contractVersion": 1,
+  "benchmark": {
+    "repository": "tsonic-rust",
+    "commit": "6f2191662cc2a7b46003066c3644bdb88a694683",
+    "languageInventory": {
+      "path": "test/fixtures/support/csharp-parity-lanes.json",
+      "sha256": "722e214f8388a639fc395cecc2041b61e9cf21ed92446553d397a959b48863ec",
+      "rowCount": 61
+    },
+    "javascriptNodeInventory": {
+      "path": "test/fixtures/support/javascript-node-lanes.json",
+      "sha256": "7a3b859a4748dadbb650be05931bb2adeb2010571651eb8b7b9efab5d46f4e64",
+      "rowCount": 153
+    }
+  },
+  "statusVocabulary": [
+    "pending",
+    "partial",
+    "matched",
+    "matched-rejection",
+    "mojo-limit"
+  ],
+  "language": [
+    {
+      "id": "modules.named-linkage",
+      "area": "modules",
+      "source": "export function value(): number { return 1; }",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain exact source-reference linkage",
+      "status": "partial",
+      "note": "Foundation coverage exists but does not satisfy the complete mature-target lane."
+    },
+    {
+      "id": "modules.side-effect-imports",
+      "area": "modules",
+      "source": "import \"./setup.js\";",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain dependency-ordered module initialization",
+      "status": "pending"
+    },
+    {
+      "id": "modules.top-level-await",
+      "area": "modules",
+      "source": "const value = await load();",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain asynchronous crate startup",
+      "status": "pending"
+    },
+    {
+      "id": "modules.default-expression-export",
+      "area": "modules",
+      "source": "export default makeValue();",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain one source-ordered immutable module binding and exact default-import identity",
+      "status": "pending"
+    },
+    {
+      "id": "modules.runtime-cycles",
+      "area": "modules",
+      "source": "import { b } from \"./b.js\"; export const a = b;",
+      "benchmarkClassification": "shared-rejection",
+      "benchmarkAction": "retain deterministic rejection until shared live-binding and temporal-dead-zone evidence exists",
+      "status": "pending"
+    },
+    {
+      "id": "declarations.functions",
+      "area": "declarations",
+      "source": "export function identity<T>(value: T): T { return value; }",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain exact generic callable contracts",
+      "status": "partial",
+      "note": "Foundation coverage exists but does not satisfy the complete mature-target lane."
+    },
+    {
+      "id": "declarations.classes",
+      "area": "declarations",
+      "source": "class Counter { value = 0; increment(): void { this.value++; } }",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain generated state and impl separation",
+      "status": "pending"
+    },
+    {
+      "id": "declarations.private-fields",
+      "area": "declarations",
+      "source": "class Box { #value = 1; read(): number { return this.#value; } }",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain declaration-identity-backed storage",
+      "status": "pending"
+    },
+    {
+      "id": "declarations.static-fields",
+      "area": "declarations",
+      "source": "class Counter { static total = mark(1); }",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain source-order module-cell initialization",
+      "status": "pending"
+    },
+    {
+      "id": "declarations.static-fields-default-initializer",
+      "area": "declarations",
+      "source": "class Counter { static total: number; }",
+      "benchmarkClassification": "shared-rejection",
+      "benchmarkAction": "retain the exact rejection; use an explicit initializer or defaultValue<T>() instead of silently replacing TypeScript undefined with a target-native default",
+      "status": "pending"
+    },
+    {
+      "id": "declarations.class-static-blocks",
+      "area": "declarations",
+      "source": "class Registry { static { register(); } }",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain one source-ordered class initialization plan for static fields and blocks",
+      "status": "pending"
+    },
+    {
+      "id": "declarations.inheritance",
+      "area": "declarations",
+      "source": "class Derived extends Base implements Named {}",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain closed-world state and dispatch planning",
+      "status": "pending"
+    },
+    {
+      "id": "declarations.generic-virtual-methods",
+      "area": "declarations",
+      "source": "const base: Base = new Derived(); base.identity<int32>(1); base.identity<string>(\"one\");",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain exact finite specialization across virtual, interface, override, and super dispatch",
+      "status": "pending"
+    },
+    {
+      "id": "declarations.open-generic-virtual-callers",
+      "area": "declarations",
+      "source": "function call<T>(base: Base, value: T): T { return base.identity<T>(value); }",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain finite caller-specialization propagation through the callable dependency graph before closing dynamic-dispatch slots",
+      "status": "pending"
+    },
+    {
+      "id": "declarations.interface-properties-methods",
+      "area": "declarations",
+      "source": "interface Counter { value: number; increment(): number; }",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain record and polymorphic interface plans",
+      "status": "pending"
+    },
+    {
+      "id": "declarations.interface-heritage",
+      "area": "declarations",
+      "source": "interface Child extends Parent { value: number; }",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain exact project heritage",
+      "status": "pending"
+    },
+    {
+      "id": "declarations.interface-index-signatures",
+      "area": "declarations",
+      "source": "interface Values { [key: string]: number; }",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain exact map-backed index storage, selected key/value carriers, source-ordered construction, and copy-or-clone reads",
+      "status": "pending"
+    },
+    {
+      "id": "declarations.enums",
+      "area": "declarations",
+      "source": "enum Mode { Off, On = 4 }",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain checker-evaluated discriminants",
+      "status": "pending"
+    },
+    {
+      "id": "declarations.closed-unions",
+      "area": "declarations",
+      "source": "type Shape = { kind: \"circle\"; radius: number } | { kind: \"square\"; size: number };",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain exact tagged Rust enum carriers",
+      "status": "pending"
+    },
+    {
+      "id": "objects.explicit-properties",
+      "area": "objects",
+      "source": "const point: Point = { x: 1, y: 2 };",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain finalized ordered record fields",
+      "status": "pending"
+    },
+    {
+      "id": "objects.spread",
+      "area": "objects",
+      "source": "const next: Point = { ...previous, x: 2 };",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "record each spread projection and override in source evaluation order, evaluating every source expression once",
+      "status": "pending"
+    },
+    {
+      "id": "objects.contextual-method-declarations",
+      "area": "objects",
+      "source": "const counter: Counter = { value: 1, next() { return this.value + 1; } };",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain exact contextual declarations, this identity, captures, inheritance, recursion, and finite generic specializations",
+      "status": "pending"
+    },
+    {
+      "id": "objects.callable-property-values",
+      "area": "objects",
+      "source": "const counter: Counter = { value: 1, next: function () { return this.value + 1; } };",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain exact contextual method identity while preserving dynamic this for function expressions and lexical receiver semantics for arrows",
+      "status": "pending"
+    },
+    {
+      "id": "objects.method-value-operations",
+      "area": "objects",
+      "source": "const next = counter.next; counter.next = replacement;",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain exact bound-callable reads and independently replaceable method-property storage",
+      "status": "pending"
+    },
+    {
+      "id": "objects.method-spread",
+      "area": "objects",
+      "source": "const derived: Counter = { ...counter, value: 2 };",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain exact callable-property projection alongside data fields in source evaluation order",
+      "status": "pending"
+    },
+    {
+      "id": "objects.overloaded-method-declarations",
+      "area": "objects",
+      "source": "const parser: Parser = { parse(value: string, radix?: int32) { return radix === undefined ? value : value + \"-radix\"; } };",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain one authored implementation carrier and one exact adapter for each selected overload ABI",
+      "status": "pending"
+    },
+    {
+      "id": "objects.accessor-members",
+      "area": "objects",
+      "source": "const value = { get count() { return 1; } };",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain exact getter and setter evidence, mutable storage, receiver identity, and project-interface dispatch",
+      "status": "pending"
+    },
+    {
+      "id": "bindings.destructuring",
+      "area": "bindings",
+      "source": "const { left, ...rest } = pair; const [first, ...tail] = values;",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain exact single-evaluation projections",
+      "status": "pending"
+    },
+    {
+      "id": "control.statements",
+      "area": "control-flow",
+      "source": "for (let i = 0; i < 3; i++) { if (i === 1) continue; }",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain structured control-flow planning",
+      "status": "partial",
+      "note": "Foundation coverage exists but does not satisfy the complete mature-target lane."
+    },
+    {
+      "id": "control.switch-fallthrough",
+      "area": "control-flow",
+      "source": "switch (value) { case 1: hit(); default: finish(); }",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain strict selection and source fallthrough",
+      "status": "pending"
+    },
+    {
+      "id": "control.try-catch-finally",
+      "area": "control-flow",
+      "source": "try { run(); } catch (error) { recover(error); } finally { close(); }",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain explicit result and completion-flow lowering",
+      "status": "pending"
+    },
+    {
+      "id": "iteration.sync-async",
+      "area": "iteration",
+      "source": "for await (const value of values) { consume(value); }",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain selected iterator protocol evidence",
+      "status": "pending"
+    },
+    {
+      "id": "generators.bidirectional",
+      "area": "generators",
+      "source": "function* values(): Generator<number, string, number> { const next = yield 1; return String(next); }",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain yield next return throw and delegation protocol",
+      "status": "pending"
+    },
+    {
+      "id": "generators.async",
+      "area": "generators",
+      "source": "async function* values() { yield await load(); }",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain asynchronous generator protocol",
+      "status": "pending"
+    },
+    {
+      "id": "generators.resource-suspension",
+      "area": "generators",
+      "source": "function* values() { using resource = open(); yield resource.value; }",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain lexical disposal and suppressed-error composition across synchronous and asynchronous generator suspension",
+      "status": "pending"
+    },
+    {
+      "id": "resources.sync-async",
+      "area": "resources",
+      "source": "using file = open(); await using connection = await connect();",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain exact disposal selection and abrupt-completion cleanup",
+      "status": "pending"
+    },
+    {
+      "id": "expressions.optional-nullish",
+      "area": "expressions",
+      "source": "return value?.item?.count ?? 0;",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain selected Option projections",
+      "status": "pending"
+    },
+    {
+      "id": "expressions.assertions-narrowing",
+      "area": "expressions",
+      "source": "if (value instanceof Dog) return (value as Dog).name;",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain checker-selected conversions and generated downcast routes",
+      "status": "pending"
+    },
+    {
+      "id": "expressions.callable-values",
+      "area": "expressions",
+      "source": "const operation = condition ? add : subtract; return operation(2, 1);",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain exact capture and callable ABI facts",
+      "status": "pending"
+    },
+    {
+      "id": "types.primitives-aliases",
+      "area": "types",
+      "source": "const value: int32 = 1; const byte: uint8 = 2;",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain authored primitive identity",
+      "status": "partial",
+      "note": "Foundation coverage exists but does not satisfy the complete mature-target lane."
+    },
+    {
+      "id": "types.arrays-tuples-fixed",
+      "area": "types",
+      "source": "const tuple: [number, string] = [1, \"one\"];",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain exact tuple and homogeneous fixed-array carriers",
+      "status": "partial",
+      "note": "Foundation coverage exists but does not satisfy the complete mature-target lane."
+    },
+    {
+      "id": "types.fixed-array-lengths",
+      "area": "types",
+      "source": "declare const bytes: FixedArray<uint8, 32>;",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain exact source-core FixedArray<T, N> facts and native target array lowering without syntax or name inference",
+      "status": "pending"
+    },
+    {
+      "id": "types.open-dynamic-values",
+      "area": "types",
+      "source": "return value[name];",
+      "benchmarkClassification": "shared-rejection",
+      "benchmarkAction": "retain fail-closed behavior without reflection or dynamic dispatch",
+      "status": "pending"
+    },
+    {
+      "id": "safety.typed-locations",
+      "area": "safety",
+      "source": "const location = addressOf(value); storePointer(location, loadPointer(location) + 1);",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain exact storage identity and alias proofs",
+      "status": "pending"
+    },
+    {
+      "id": "safety.raw-pointers",
+      "area": "safety",
+      "source": "unsafe(() => loadPointer(rawPointerAs<uint8>(address)));",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain explicit unsafe contracts and native pointer carriers",
+      "status": "pending"
+    },
+    {
+      "id": "providers.cargo-dependencies",
+      "area": "providers",
+      "source": "import { Widget } from \"@tsonic/rust/crates/widget_alias/index.js\";",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain rustdoc-backed exact provider declarations",
+      "status": "pending"
+    },
+    {
+      "id": "providers.standard-library-breadth",
+      "area": "providers",
+      "source": "import { PathBuf } from \"@tsonic/rust/std/path.js\";",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain requested compiler-backed public standard-library exports",
+      "status": "pending"
+    },
+    {
+      "id": "providers.generic-bounds",
+      "area": "providers",
+      "source": "import { constrained } from \"@tsonic/rust/crates/library/index.js\";",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain exact Clone and Copy provider bounds through declaration models and generated generic requirements",
+      "status": "pending"
+    },
+    {
+      "id": "providers.copy-static-borrowed-results",
+      "area": "providers",
+      "source": "const name = item.staticName(); const copied = item.borrowedCount();",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain exact static-string and Copy-value projections from compiler-selected borrowed results",
+      "status": "pending"
+    },
+    {
+      "id": "providers.escaping-borrowed-results",
+      "area": "providers",
+      "source": "const view = buffer.asSlice();",
+      "benchmarkClassification": "target-limit",
+      "benchmarkAction": "reject escaping borrowed views because TypeScript has no lifetime-bearing view type; retain exact Copy and owned-string projections",
+      "status": "pending"
+    },
+    {
+      "id": "providers.owned-custom-receivers",
+      "area": "providers",
+      "source": "const value = boxed.consume();",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain exact owned custom receiver projection such as Box<Self> through provider-selected UFCS",
+      "status": "pending"
+    },
+    {
+      "id": "providers.borrowed-custom-receivers",
+      "area": "providers",
+      "source": "pinned.poll(context);",
+      "benchmarkClassification": "target-limit",
+      "benchmarkAction": "reject nested borrowed custom receivers before source projection; retain owned custom receivers such as Box<Self>",
+      "status": "pending"
+    },
+    {
+      "id": "providers.c-variadics",
+      "area": "providers",
+      "source": "unsafe(() => variadic(format, first, second));",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain C variadic tails as an explicit unsafe provider ABI without treating them as ordinary Rust rest parameters",
+      "status": "pending"
+    },
+    {
+      "id": "providers.mutable-statics",
+      "area": "providers",
+      "source": "unsafe(() => externalCounter.value++);",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain exact unsafe read and write operations over the selected mutable static identity",
+      "status": "pending"
+    },
+    {
+      "id": "providers.closed-trait-associated-items",
+      "area": "providers",
+      "source": "const value = iterator.next();",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain exact trait methods, associated constants, and concrete associated-type substitutions",
+      "status": "pending"
+    },
+    {
+      "id": "providers.open-associated-types",
+      "area": "providers",
+      "source": "const value: Family<T>::Item<U> = family.make(input);",
+      "benchmarkClassification": "target-limit",
+      "benchmarkAction": "reject open associated and generic-associated projections because TypeScript has no higher-kinded projection type; retain compiler-resolved concrete substitutions",
+      "status": "pending"
+    },
+    {
+      "id": "providers.rust-unions",
+      "area": "providers",
+      "source": "unsafe(() => payload.integer);",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain union fields as explicit unsafe selected operations over exact provider identities",
+      "status": "pending"
+    },
+    {
+      "id": "providers.macros",
+      "area": "providers",
+      "source": "externalMacro(value);",
+      "benchmarkClassification": "target-limit",
+      "benchmarkAction": "require a library-owned function wrapper because rustdoc does not provide an ordinary callable macro ABI",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.detailed-surface",
+      "area": "surfaces",
+      "source": "console.log(values.map(value => value + 1));",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain every implemented detailed lane and each exact hard rejection or Rust target limit in the dedicated JS and Node inventory",
+      "status": "partial",
+      "note": "Foundation coverage exists but does not satisfy the complete mature-target lane."
+    },
+    {
+      "id": "output.generated-cargo",
+      "area": "output",
+      "source": "export function main(): void {}",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain deterministic Cargo artifacts",
+      "status": "matched",
+      "proof": "test/printer.test.mjs",
+      "note": "Equivalent generated Pixi/Mojo project lane."
+    },
+    {
+      "id": "output.user-owned-cargo",
+      "area": "output",
+      "source": "import { Widget } from \"@tsonic/rust/crates/widget_alias/index.js\";",
+      "benchmarkClassification": "implemented",
+      "benchmarkAction": "retain source-only publication without mutating Cargo.toml",
+      "status": "matched",
+      "proof": "test/options.test.mjs",
+      "note": "Equivalent user-owned pixi.toml lane."
+    }
+  ],
+  "javascriptNode": [
+    {
+      "id": "js-node.001",
+      "area": "Array",
+      "lane": "Array.prototype.push",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.002",
+      "area": "Array",
+      "lane": "Array.prototype.pop",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.003",
+      "area": "Array",
+      "lane": "Array.prototype.shift",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.004",
+      "area": "Array",
+      "lane": "Array.prototype.unshift",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.005",
+      "area": "Array",
+      "lane": "Array.prototype.splice",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.006",
+      "area": "Array",
+      "lane": "Array.prototype.reverse",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.007",
+      "area": "Array",
+      "lane": "Array.prototype.sort",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.008",
+      "area": "Array",
+      "lane": "Array.prototype.fill",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.009",
+      "area": "Array",
+      "lane": "Array.prototype.copyWithin",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.010",
+      "area": "Array",
+      "lane": "Array.prototype.includes",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.011",
+      "area": "Array",
+      "lane": "Array.prototype.indexOf",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.012",
+      "area": "Array",
+      "lane": "Array.prototype.lastIndexOf",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.013",
+      "area": "Array",
+      "lane": "Array.prototype.join",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.014",
+      "area": "Array",
+      "lane": "Array.prototype.slice",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.015",
+      "area": "Array",
+      "lane": "Array.prototype.map",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.016",
+      "area": "Array",
+      "lane": "Array.prototype.forEach",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.017",
+      "area": "Array",
+      "lane": "Array.prototype.filter",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.018",
+      "area": "Array",
+      "lane": "Array.prototype.reduce",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.019",
+      "area": "Array",
+      "lane": "Array.prototype.some",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.020",
+      "area": "Array",
+      "lane": "Array.prototype.every",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.021",
+      "area": "Array",
+      "lane": "Array.prototype.find",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.022",
+      "area": "Array",
+      "lane": "Array.prototype.findIndex",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.023",
+      "area": "Array",
+      "lane": "Array.prototype.findLast",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.024",
+      "area": "Array",
+      "lane": "Array.prototype.findLastIndex",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.025",
+      "area": "Array",
+      "lane": "Array.prototype.at",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.026",
+      "area": "String",
+      "lane": "String.prototype.toUpperCase",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.027",
+      "area": "String",
+      "lane": "String.prototype.toLowerCase",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.028",
+      "area": "String",
+      "lane": "String.prototype.includes",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.029",
+      "area": "String",
+      "lane": "String.prototype.startsWith",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.030",
+      "area": "String",
+      "lane": "String.prototype.endsWith",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.031",
+      "area": "String",
+      "lane": "String.prototype.indexOf",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.032",
+      "area": "String",
+      "lane": "String.prototype.lastIndexOf",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.033",
+      "area": "String",
+      "lane": "String.prototype.slice",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.034",
+      "area": "String",
+      "lane": "String.prototype.at",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.035",
+      "area": "String",
+      "lane": "String.prototype.charAt",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.036",
+      "area": "String",
+      "lane": "String.prototype.charCodeAt",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.037",
+      "area": "String",
+      "lane": "String.prototype.codePointAt",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.038",
+      "area": "String",
+      "lane": "String.prototype.padStart",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.039",
+      "area": "String",
+      "lane": "String.prototype.padEnd",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.040",
+      "area": "String",
+      "lane": "String.prototype.repeat",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.041",
+      "area": "String",
+      "lane": "String.prototype.trim",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.042",
+      "area": "String",
+      "lane": "String.prototype.trimStart",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.043",
+      "area": "String",
+      "lane": "String.prototype.trimEnd",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.044",
+      "area": "String",
+      "lane": "String.prototype.trimLeft / trimRight",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.045",
+      "area": "String",
+      "lane": "String.prototype.substring / substr",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.046",
+      "area": "String",
+      "lane": "String.prototype.split",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.047",
+      "area": "String",
+      "lane": "String.prototype.replace",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.048",
+      "area": "String",
+      "lane": "String.prototype.replaceAll",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.049",
+      "area": "String",
+      "lane": "String.prototype.concat",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.050",
+      "area": "String",
+      "lane": "String.prototype.valueOf",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.051",
+      "area": "String",
+      "lane": "String.fromCharCode / String.fromCodePoint",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.052",
+      "area": "String",
+      "lane": "String.prototype.search",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.053",
+      "area": "String",
+      "lane": "String.prototype.match",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.054",
+      "area": "String",
+      "lane": "String.prototype.matchAll",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.055",
+      "area": "Math",
+      "lane": "Math.floor",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.056",
+      "area": "Math",
+      "lane": "Math.ceil",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.057",
+      "area": "Math",
+      "lane": "Math.trunc",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.058",
+      "area": "Math",
+      "lane": "Math.abs",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.059",
+      "area": "Math",
+      "lane": "Math constants",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.060",
+      "area": "Math",
+      "lane": "Math.acos/acosh/asin/asinh/atan/atanh",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.061",
+      "area": "Math",
+      "lane": "Math.atan2",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.062",
+      "area": "Math",
+      "lane": "Math.cbrt",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.063",
+      "area": "Math",
+      "lane": "Math.clz32",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.064",
+      "area": "Math",
+      "lane": "Math.cos/cosh/sin/sinh/tan/tanh",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.065",
+      "area": "Math",
+      "lane": "Math.exp/expm1",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.066",
+      "area": "Math",
+      "lane": "Math.fround",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.067",
+      "area": "Math",
+      "lane": "Math.hypot",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.068",
+      "area": "Math",
+      "lane": "Math.imul",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.069",
+      "area": "Math",
+      "lane": "Math.log/log1p/log10/log2",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.070",
+      "area": "Math",
+      "lane": "Math.sign",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.071",
+      "area": "Math",
+      "lane": "Math.sqrt",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.072",
+      "area": "Math",
+      "lane": "Math.pow",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.073",
+      "area": "Math",
+      "lane": "Math.round",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.074",
+      "area": "Math",
+      "lane": "Math.min",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.075",
+      "area": "Math",
+      "lane": "Math.max",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.076",
+      "area": "Math",
+      "lane": "Math.random",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.077",
+      "area": "JSON",
+      "lane": "JSON.parse",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.078",
+      "area": "JSON",
+      "lane": "JSON.stringify",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.079",
+      "area": "Map",
+      "lane": "Map empty constructor",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.080",
+      "area": "Map",
+      "lane": "ReadonlyMap/Map.prototype.size",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.081",
+      "area": "Map",
+      "lane": "Map.prototype.get",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.082",
+      "area": "Map",
+      "lane": "Map.prototype.set",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.083",
+      "area": "Map",
+      "lane": "Map.prototype.has",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.084",
+      "area": "Map",
+      "lane": "Map.prototype.delete",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.085",
+      "area": "Map",
+      "lane": "Map.prototype.clear",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.086",
+      "area": "Map",
+      "lane": "ReadonlyMap/Map.prototype.keys",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.087",
+      "area": "Map",
+      "lane": "ReadonlyMap/Map.prototype.values",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.088",
+      "area": "Map",
+      "lane": "ReadonlyMap/Map.prototype.entries",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.089",
+      "area": "Map",
+      "lane": "ReadonlyMap/Map.prototype.forEach",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.090",
+      "area": "Map",
+      "lane": "ReadonlyMap/Map direct iteration",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.091",
+      "area": "Set",
+      "lane": "Set empty constructor",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.092",
+      "area": "Set",
+      "lane": "ReadonlySet/Set.prototype.size",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.093",
+      "area": "Set",
+      "lane": "Set.prototype.add",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.094",
+      "area": "Set",
+      "lane": "Set.prototype.has",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.095",
+      "area": "Set",
+      "lane": "Set.prototype.delete",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.096",
+      "area": "Set",
+      "lane": "Set.prototype.clear",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.097",
+      "area": "Set",
+      "lane": "ReadonlySet/Set.prototype.keys",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.098",
+      "area": "Set",
+      "lane": "ReadonlySet/Set.prototype.values",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.099",
+      "area": "Set",
+      "lane": "ReadonlySet/Set.prototype.entries",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.100",
+      "area": "Set",
+      "lane": "ReadonlySet/Set.prototype.forEach",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.101",
+      "area": "Set",
+      "lane": "ReadonlySet/Set direct iteration",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.102",
+      "area": "Set",
+      "lane": "Set.prototype.union",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.103",
+      "area": "Set",
+      "lane": "Set.prototype.intersection",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.104",
+      "area": "Set",
+      "lane": "Set.prototype.difference",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.105",
+      "area": "Set",
+      "lane": "Set.prototype.symmetricDifference",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.106",
+      "area": "Set",
+      "lane": "Set.prototype.isSubsetOf",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.107",
+      "area": "Set",
+      "lane": "Set.prototype.isSupersetOf",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.108",
+      "area": "Set",
+      "lane": "Set.prototype.isDisjointFrom",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.109",
+      "area": "Date",
+      "lane": "Date.parse",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.110",
+      "area": "Date",
+      "lane": "Date.UTC",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.111",
+      "area": "Date",
+      "lane": "Date.now",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.112",
+      "area": "Date",
+      "lane": "Date.prototype.toISOString",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.113",
+      "area": "Date",
+      "lane": "Date.prototype.toJSON",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.114",
+      "area": "Date",
+      "lane": "Date.prototype.valueOf",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.115",
+      "area": "Date",
+      "lane": "Date.prototype.getTime",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.116",
+      "area": "RegExp",
+      "lane": "RegExp.prototype.test",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.117",
+      "area": "RegExp",
+      "lane": "RegExp.prototype.exec",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.118",
+      "area": "RegExp",
+      "lane": "RegExp.prototype.source",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.119",
+      "area": "RegExp",
+      "lane": "RegExp.prototype.flags",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.120",
+      "area": "RegExp",
+      "lane": "RegExp.prototype.global",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.121",
+      "area": "RegExp",
+      "lane": "RegExp.prototype.ignoreCase",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.122",
+      "area": "RegExp",
+      "lane": "RegExp.prototype.multiline",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.123",
+      "area": "RegExp",
+      "lane": "RegExp.prototype.lastIndex",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.124",
+      "area": "RegExp",
+      "lane": "dynamic patterns and out-of-subset constructs",
+      "benchmarkClassification": "hard-rejected",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.125",
+      "area": "JSON",
+      "lane": "replacer functions and custom toJSON",
+      "benchmarkClassification": "hard-rejected",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.126",
+      "area": "Reflection",
+      "lane": "open reflection, dynamic member access, eval",
+      "benchmarkClassification": "hard-rejected",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.127",
+      "area": "Object",
+      "lane": "Object.keys/values/entries",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.128",
+      "area": "Object",
+      "lane": "Object.assign",
+      "benchmarkClassification": "target-limit",
+      "benchmarkReason": "shape-changing assignment cannot preserve one JavaScript object identity across distinct static Rust record layouts without replacing the closed carrier with dynamic reflection",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.129",
+      "area": "Object",
+      "lane": "Object.hasOwn",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.130",
+      "area": "Object",
+      "lane": "Object.is",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.131",
+      "area": "Number",
+      "lane": "Number.parseInt / parseFloat",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.132",
+      "area": "Number",
+      "lane": "Number.isNaN / isFinite / isInteger / isSafeInteger",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.133",
+      "area": "Number",
+      "lane": "Number.prototype.toFixed and formatting",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.134",
+      "area": "Boolean",
+      "lane": "Boolean primitive toString and valueOf",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.135",
+      "area": "Boolean",
+      "lane": "Boolean wrapper-object construction",
+      "benchmarkClassification": "hard-rejected",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.136",
+      "area": "console",
+      "lane": "console.log/error/warn/info/debug with closed primitive arguments",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.137",
+      "area": "console",
+      "lane": "console methods with open or structural object arguments",
+      "benchmarkClassification": "target-limit",
+      "benchmarkReason": "open values require runtime reflection and structural values require a cycle- and identity-preserving generated object graph contract that the closed Rust value carrier deliberately does not provide",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.138",
+      "area": "Date",
+      "lane": "local-time getters/setters and locale strings",
+      "benchmarkClassification": "target-limit",
+      "benchmarkReason": "the deterministic Rust runtime has no selected timezone database or locale-data version and does not defer source semantics to machine-dependent host defaults",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.139",
+      "area": "Date",
+      "lane": "UTC setters and remaining string methods",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.140",
+      "area": "String",
+      "lane": "String.normalize and well-formed methods",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.141",
+      "area": "String",
+      "lane": "localeCompare and locale case conversion",
+      "benchmarkClassification": "target-limit",
+      "benchmarkReason": "the deterministic Rust runtime has no selected ICU locale, collation options, or locale-data version",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.142",
+      "area": "RegExp",
+      "lane": "exec/match result consumption",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.143",
+      "area": "String",
+      "lane": "matchAll result consumption",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.144",
+      "area": "Unions",
+      "lane": "discriminated object unions",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.145",
+      "area": "Arrays",
+      "lane": "fixed-size arrays beyond homogeneous tuples",
+      "benchmarkClassification": "implemented",
+      "status": "pending"
+    },
+    {
+      "id": "js-node.146",
+      "area": "Node",
+      "lane": "node:assert",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.147",
+      "area": "Node",
+      "lane": "bare module aliases (fs vs node:fs)",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.148",
+      "area": "Node",
+      "lane": "streams and fs.watch",
+      "benchmarkClassification": "target-limit",
+      "benchmarkReason": "Node stream and watch semantics require an asynchronous event, cancellation, backpressure, and resource-lifetime scheduler that is not part of the closed Rust Node capability",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.149",
+      "area": "Node",
+      "lane": "process identity and metrics (argv0, hrtime, memoryUsage)",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.150",
+      "area": "Node",
+      "lane": "process stdio stdout/stderr output",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.151",
+      "area": "Node",
+      "lane": "process stdio stdin and stream events",
+      "benchmarkClassification": "target-limit",
+      "benchmarkReason": "stdin and stream event semantics require the asynchronous stream scheduler omitted by the closed Rust Node capability; direct stdout and stderr output remains exact",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.152",
+      "area": "Node",
+      "lane": "buffer extras (copy, slice views, swap, typed reads)",
+      "benchmarkClassification": "implemented",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    },
+    {
+      "id": "js-node.153",
+      "area": "Node",
+      "lane": "util.inspect/format beyond closed carriers",
+      "benchmarkClassification": "hard-rejected",
+      "status": "partial",
+      "note": "A foundation carrier or small API subset exists; the complete lane is not yet proved."
+    }
+  ]
+}
