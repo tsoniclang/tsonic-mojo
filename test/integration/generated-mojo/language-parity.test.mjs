@@ -494,6 +494,22 @@ test("mutable captures share one explicit Location across retained callable invo
   assert.match(source.text, /total_location\.read\(\)/u);
 });
 
+test("discarded non-unit calls retain effects without native unused-result warnings", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        "function value(): i32 { return 1; }",
+        "export function main(): void { value(); }",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("def tsonic_main"));
+  assert.ok(source);
+  assert.match(source.text, /_ = value\(\)/u);
+});
+
 test("binding patterns retain exact single-evaluation aggregate projections", () => {
   const result = compileMojo({
     files: {

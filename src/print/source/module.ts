@@ -137,6 +137,7 @@ function printStatement(
     }
     case "assignment": return [`${indent}${printExpression(statement.left, modulePath)} ${statement.operator} ${printExpression(statement.right, modulePath)}`];
     case "expression": return [`${indent}${printExpression(statement.expression, modulePath)}`];
+    case "discard": return [`${indent}_ = ${printExpression(statement.expression, modulePath)}`];
     case "if": {
       const lines = [`${indent}if ${printExpression(statement.condition, modulePath)}:`, ...printBody(statement.thenStatements, depth + 1, modulePath)];
       if (statement.elseStatements !== undefined) lines.push(`${indent}else:`, ...printBody(statement.elseStatements, depth + 1, modulePath));

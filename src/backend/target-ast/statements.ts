@@ -26,6 +26,7 @@ export type MojoStatement =
       readonly right: MojoExpression;
     }
   | { readonly kind: "expression"; readonly expression: MojoExpression }
+  | { readonly kind: "discard"; readonly expression: MojoExpression }
   | {
       readonly kind: "if";
       readonly condition: MojoExpression;

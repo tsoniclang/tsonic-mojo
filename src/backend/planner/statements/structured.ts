@@ -32,6 +32,7 @@ import { allocateMojoSyntheticName, appendMojoPlanningDiagnostic } from "../prog
 import { planMojoAssignment, planMojoValue, planMojoUpdate } from "../expressions/value.js";
 import { registerMojoTypeImports } from "../types/render.js";
 import { planMojoBindingPattern } from "../bindings/patterns.js";
+import { planDiscardedMojoExpression } from "./discarded-expression.js";
 import { planForIncrement } from "./for-increment.js";
 
 export function planMojoFunctionStatements(
@@ -128,10 +129,9 @@ function planStatement(
       ...update.before,
       update.statement,
     ]);
-    const expression = sourceExpression === undefined ? undefined : planMojoValue(sourceExpression, context);
-    return expression === undefined
+    return sourceExpression === undefined
       ? undefined
-      : Object.freeze([...expression.before, { kind: "expression", expression: expression.value }]);
+      : planDiscardedMojoExpression(sourceExpression, context);
   }
   if (ast.is.IsThrowStatement(node)) {
     const sourceExpression = Node_Expression(ast, node);
