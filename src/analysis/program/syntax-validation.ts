@@ -245,14 +245,20 @@ export function validateMojoFunctionSyntax(
       return;
     }
     if (ast.is.IsPropertyAccessExpression(expression)) {
-      if (properties.get(expression) === undefined) {
+      const selection = properties.get(expression);
+      if (selection === undefined) {
         diagnostics.push(diagnostic(
           "MOJO_PROPERTY_SELECTION_UNRESOLVED",
           "Property expression has no sealed Mojo operation.",
           expression,
         ));
       }
-      validateExpression(Node_Expression(ast, expression));
+      if (selection?.kind !== "provider-constant" &&
+        selection?.kind !== "project-enum-member" &&
+        selection?.kind !== "project-static-field" &&
+        selection?.kind !== "provider-static") {
+        validateExpression(Node_Expression(ast, expression));
+      }
       return;
     }
     if (ast.is.IsElementAccessExpression(expression)) {

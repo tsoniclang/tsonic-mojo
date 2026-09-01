@@ -174,6 +174,29 @@ const jsStaticRows = (
   });
 });
 
+const jsReceiverFunctionRow = (
+  owner: string,
+  member: string,
+  name: string,
+  argumentCount: number,
+  parameterContract: readonly MojoSourceProfileParameterContract[],
+  raises = false,
+): MojoSourceProfileCallRow => Object.freeze({
+  profile: "js",
+  kind: "call",
+  owner,
+  member,
+  argumentCount,
+  parameterContract: Object.freeze([...parameterContract]),
+  target: Object.freeze({
+    kind: "function",
+    modulePath: Object.freeze(["tsonic_js"]),
+    name,
+    receiver: "imm",
+  }),
+  ...(raises ? { raises: true } : {}),
+});
+
 const jsConstructorRows: readonly MojoSourceProfileCallRow[] = Object.freeze([
   Object.freeze({
     profile: "js",
@@ -389,6 +412,22 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
       receiver: "imm",
     }),
   }),
+  jsReceiverFunctionRow("Number", "toString", "number_to_string", 0, []),
+  jsReceiverFunctionRow("Number", "valueOf", "number_value_of", 0, []),
+  jsReceiverFunctionRow("Number", "toFixed", "number_to_fixed", 0, [], true),
+  jsReceiverFunctionRow("Number", "toFixed", "number_to_fixed", 1, ["float64"], true),
+  jsReceiverFunctionRow(
+    "Number", "toExponential", "number_to_exponential_default", 0, [],
+  ),
+  jsReceiverFunctionRow(
+    "Number", "toExponential", "number_to_exponential_digits", 1, ["float64"], true,
+  ),
+  jsReceiverFunctionRow(
+    "Number", "toPrecision", "number_to_precision_default", 0, [],
+  ),
+  jsReceiverFunctionRow(
+    "Number", "toPrecision", "number_to_precision_digits", 1, ["float64"], true,
+  ),
   ...jsStaticRows("StringConstructor", ["fromCharCode", ["fromCodePoint", "string_from_code_point", true]]),
   ...jsStaticRows("DateConstructor", ["now", "parse", ["UTC", "date_utc"]]),
   Object.freeze({
@@ -433,6 +472,21 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
       kind: "function",
       modulePath: Object.freeze(["tsonic_js"]),
       name: "object_has_own",
+    }),
+    raises: true,
+  }),
+  Object.freeze({
+    profile: "js",
+    kind: "call",
+    owner: "Object",
+    member: "hasOwnProperty",
+    argumentCount: 1,
+    parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["js-string"]),
+    target: Object.freeze({
+      kind: "function",
+      modulePath: Object.freeze(["tsonic_js"]),
+      name: "object_has_own",
+      receiver: "imm",
     }),
     raises: true,
   }),

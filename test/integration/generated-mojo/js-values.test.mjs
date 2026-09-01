@@ -23,6 +23,7 @@ test("closed JSON values retain exact parse stringify and Object operations", ()
         "  Object.values(record);",
         "  Object.entries(record);",
         "  Object.hasOwn(record, 'plain');",
+        "  record.hasOwnProperty('plain');",
         "}",
       ].join("\n"),
     },
