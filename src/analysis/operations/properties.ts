@@ -410,7 +410,7 @@ function analyzeSourceProfileProperty(
         }),
         receiverType,
         parameterTypes: Object.freeze([]),
-        resultType: readType,
+        resultType: access.resultType ?? readType,
         genericArguments: Object.freeze([]),
         genericParameters: Object.freeze([]),
         raises: false,
@@ -433,7 +433,11 @@ function analyzeSourceProfileProperty(
       });
   const readResultConversion = readType === undefined
     ? undefined
-    : context.conversions.record(source.expression, readType, readType);
+    : context.conversions.record(
+        source.expression,
+        access.resultType ?? readType,
+        readType,
+      );
   if (readResultConversion?.kind === "unsupported") {
     return { kind: "unsupported", code: "MOJO_SOURCE_PROFILE_PROPERTY_READ_CONVERSION_UNPROVEN", reason: readResultConversion.reason };
   }
@@ -457,13 +461,25 @@ function sourceProfilePropertyAccess(
   profile: "native" | "js",
   owner: string,
   member: string,
-): { readonly kind: "member" | "method"; readonly name: string } | undefined {
+): {
+  readonly kind: "member" | "method";
+  readonly name: string;
+  readonly resultType?: MojoTargetTypeRef;
+} | undefined {
   if (profile === "native") {
-    if ((owner === "Array" || owner === "ReadonlyArray") && member === "length") {
-      return { kind: "method", name: "__len__" };
+    if ((owner === "String" || owner === "Array" || owner === "ReadonlyArray") && member === "length") {
+      return {
+        kind: "method",
+        name: "__len__",
+        resultType: Object.freeze({ kind: "source-primitive", name: "native-int" }),
+      };
     }
     if ((owner === "Map" || owner === "ReadonlyMap" || owner === "Set" || owner === "ReadonlySet") && member === "size") {
-      return { kind: "method", name: "__len__" };
+      return {
+        kind: "method",
+        name: "__len__",
+        resultType: Object.freeze({ kind: "source-primitive", name: "native-int" }),
+      };
     }
     return undefined;
   }

@@ -22,7 +22,9 @@ interface IArguments {
 }
 interface Boolean {}
 interface Number {}
-interface String {}
+interface String {
+  readonly length: number;
+}
 interface RegExp {}
 
 interface Error {

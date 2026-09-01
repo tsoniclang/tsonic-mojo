@@ -94,14 +94,17 @@ test("JavaScript core collection date and math operations use sealed runtime row
     surfaces: ["js"],
     files: {
       "index.ts": [
+        "import type { int32 } from '@tsonic/core/types.js';",
         "export function main(): void {",
         "  const keyed = new Map<string, number>();",
         "  keyed.set(\"one\", 1);",
         "  keyed.get(\"one\");",
         "  keyed.has(\"one\");",
         "  keyed.keys(); keyed.values(); keyed.entries(); keyed.delete(\"one\"); keyed.clear();",
+        "  for (const entry of keyed) { entry[0]; entry[1]; }",
         "  const unique = new Set<number>();",
         "  unique.add(1); unique.has(1); unique.values(); unique.entries(); unique.delete(1); unique.clear();",
+        "  for (const value of unique) { value; }",
         "  unique.union(new Set<number>()); unique.intersection(new Set<number>());",
         "  unique.difference(new Set<number>()); unique.symmetricDifference(new Set<number>());",
         "  unique.isSubsetOf(new Set<number>()); unique.isSupersetOf(new Set<number>()); unique.isDisjointFrom(new Set<number>());",
@@ -123,6 +126,10 @@ test("JavaScript core collection date and math operations use sealed runtime row
         "  Number.isInteger(1); Number.isSafeInteger(1); Number.EPSILON; Number.MAX_SAFE_INTEGER; Number.MIN_SAFE_INTEGER;",
         "  (123.456).toFixed(2); (77).toExponential(); (77).toExponential(2);",
         "  (12345).toPrecision(3); (12.5).toString(); (12.5).valueOf();",
+        "  const radixValue: int32 = 255; radixValue.toString(16);",
+        "  (true).toString(); (false).valueOf();",
+        "  console.log('value', 1, true); console.info('info'); console.warn('warn');",
+        "  console.error('error'); console.debug('debug');",
         "}",
       ].join("\n"),
     },
@@ -139,6 +146,9 @@ test("JavaScript core collection date and math operations use sealed runtime row
     "number_is_integer", "number_is_safe_integer",
     "number_to_fixed", "number_to_exponential_default", "number_to_exponential_digits",
     "number_to_precision_digits", "number_to_string", "number_value_of",
+    "number_to_string_radix",
+    "boolean_to_string", "boolean_value_of", "console_log", "console_info",
+    "console_warn", "console_error", "console_debug",
   ]) assert.match(source, new RegExp(`tsonic_js\\.${operation}`, "u"));
   for (const method of [
     "set", "get", "has", "keys", "values", "entries", "delete", "clear", "add",
@@ -149,6 +159,23 @@ test("JavaScript core collection date and math operations use sealed runtime row
     "set_utc_seconds", "set_utc_minutes", "set_utc_hours", "set_utc_date", "set_utc_month",
     "set_utc_full_year", "to_json", "to_utc_string", "to_string", "value_of",
   ]) assert.match(source, new RegExp(`\\.${method}\\(`, "u"));
+});
+
+test("JavaScript radix formatting requires an exact integral receiver", () => {
+  const result = compileMojo({
+    surfaces: ["js"],
+    files: {
+      "index.ts": [
+        "export function main(): void {",
+        "  (12.5).toString(16);",
+        "}",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.artifacts, []);
+  assert.deepEqual(result.diagnostics.map(({ code }) => code), [
+    "MOJO_SOURCE_PROFILE_RECEIVER_CAPABILITY_UNPROVEN",
+  ]);
 });
 
 test("JavaScript string and array operations retain exact source-profile selection", () => {

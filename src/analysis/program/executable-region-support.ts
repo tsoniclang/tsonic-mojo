@@ -5,7 +5,11 @@ import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import { resolveMojoTargetType } from "../../policy/types/resolution.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
+import { analyzeMojoProviderValue } from "../operations/values.js";
 import type { MojoExecutableRegionAnalysisInput } from "./executable-regions.js";
+import type { MojoCallSelection, MojoPropertySelection } from "./model.js";
+import { providerCallRequiresRaisingConversion } from "./effects.js";
+import { walkSourceTree } from "./traversal.js";
 
 export function descendWithinExecutableRegion(
   node: Node,
@@ -50,13 +54,52 @@ export function declaredOrInitializerType(
 export function providerValueReferenceRole(
   node: Node,
   ast: TargetSourceProgram["ast"],
+  calls: WeakMap<Node, MojoCallSelection>,
+  properties: WeakMap<Node, MojoPropertySelection>,
 ): boolean {
   const parent = ast.parent(node);
   if (parent === undefined) return true;
   if ((ast.is.IsCallExpression(parent) || ast.is.IsNewExpression(parent)) &&
     Node_Expression(ast, parent) === node) return false;
-  if (ast.is.IsPropertyAccessExpression(parent)) return false;
+  if (ast.is.IsPropertyAccessExpression(parent)) {
+    const property = properties.get(parent);
+    if ((property?.kind === "provider" || property?.kind === "project-field") &&
+      property.receiver === node) return true;
+    const callNode = ast.parent(parent);
+    if ((callNode === undefined || (!ast.is.IsCallExpression(callNode) && !ast.is.IsNewExpression(callNode))) ||
+      Node_Expression(ast, callNode) !== parent) return false;
+    const call = calls.get(callNode);
+    if (call?.kind === "provider") return call.receiver === node;
+    return call?.kind === "project" && call.target.kind === "method" &&
+      call.target.receiver === node;
+  }
   return true;
+}
+
+export function analyzeExecutableRegionProviderValues(
+  root: Node,
+  input: MojoExecutableRegionAnalysisInput,
+): void {
+  const ast = input.source.ast;
+  walkSourceTree(root, ast, (node): void => {
+    if (!ast.is.IsIdentifier(node) || !isRuntimeValueOccurrence(node, input) ||
+      input.bindingNames.get(node) !== undefined || input.valueSelections.get(node) !== undefined ||
+      !providerValueReferenceRole(node, ast, input.callSelections, input.propertySelections)) return;
+    const selectedType = input.expressionTypes.get(node);
+    if (selectedType === undefined) return;
+    const value = analyzeMojoProviderValue(
+      node,
+      selectedType,
+      input.source,
+      input.providerSemantics,
+      input.conversions,
+    );
+    if (value.kind === "unsupported") {
+      input.diagnostics.push(diagnostic(value.code, value.reason, node));
+    } else if (value.kind === "resolved") {
+      input.valueSelections.set(node, value.selection);
+    }
+  }, (node, regionRoot) => descendWithinExecutableRegion(node, regionRoot, ast));
 }
 
 export function isRuntimeValueOccurrence(
@@ -84,6 +127,40 @@ export function targetTypeDiagnostic(node: Node, reason: string): TargetDiagnost
     `Selected source type cannot be represented exactly in Mojo: ${reason}.`,
     node,
   );
+}
+
+export function executableRegionRaises(
+  root: Node,
+  input: MojoExecutableRegionAnalysisInput,
+): boolean {
+  let raises = false;
+  walkSourceTree(root, input.source.ast, (node): void => {
+    if (input.source.ast.is.IsCallExpression(node) || input.source.ast.is.IsNewExpression(node)) {
+      const selection = input.callSelections.get(node);
+      if (selection?.kind === "provider") {
+        raises = raises || selection.operation.raises || providerCallRequiresRaisingConversion(selection);
+      }
+    }
+    if (input.source.ast.is.IsThrowStatement(node)) raises = true;
+    if (input.source.ast.is.IsPropertyAccessExpression(node)) {
+      const selection = input.propertySelections.get(node);
+      if (selection?.kind === "provider") {
+        raises = raises || selection.readOperation?.raises === true ||
+          selection.writeOperation?.raises === true ||
+          selection.receiverConversion?.kind === "js-to-native-string" ||
+          selection.readResultConversion?.kind === "js-to-native-string";
+      } else if (selection?.kind === "provider-constant") {
+        raises = raises || selection.operation.raises ||
+          selection.readResultConversion.kind === "js-to-native-string";
+      }
+    }
+    if (input.source.ast.is.IsIdentifier(node)) {
+      const selection = input.valueSelections.get(node);
+      raises = raises || selection?.operation.raises === true ||
+        selection?.resultConversion.kind === "js-to-native-string";
+    }
+  }, (node, regionRoot) => descendWithinExecutableRegion(node, regionRoot, input.source.ast));
+  return raises;
 }
 
 function isCallableBoundary(node: Node, ast: TargetSourceProgram["ast"]): boolean {

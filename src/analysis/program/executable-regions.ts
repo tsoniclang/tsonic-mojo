@@ -21,12 +21,10 @@ import {
   analyzeMojoProjectProperty,
   analyzeMojoProviderProperty,
 } from "../operations/properties.js";
-import { analyzeMojoProviderValue } from "../operations/values.js";
 import { analyzeMojoObjectLiteral } from "../objects/object-literals.js";
 import { analyzeMojoProviderRecordLiteral } from "../objects/provider-records.js";
 import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
 import type { MojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
-import { providerCallRequiresRaisingConversion } from "./effects.js";
 import { inferMojoExpressionType, isMojoExpressionNode } from "./expression-types.js";
 import type {
   MojoAnalyzedClass,
@@ -47,10 +45,11 @@ import { walkSourceTree, walkSourceTreePostOrder } from "./traversal.js";
 import type { MojoSourceModuleCatalog } from "../source-modules/model.js";
 import { expectedExpressionType } from "./expected-types.js";
 import {
+  analyzeExecutableRegionProviderValues,
   declaredOrInitializerType,
   descendWithinExecutableRegion,
+  executableRegionRaises,
   isRuntimeValueOccurrence,
-  providerValueReferenceRole,
   resolveExecutableRegionType as resolveType,
   targetTypeDiagnostic as typeDiagnostic,
 } from "./executable-region-support.js";
@@ -280,7 +279,8 @@ export function analyzeMojoExecutableRegion(
       input.iterationSelections.set(node, iteration.selection);
     }
   }
-  return Object.freeze({ dependencies, raises: regionRaises(root, input) });
+  analyzeExecutableRegionProviderValues(root, input);
+  return Object.freeze({ dependencies, raises: executableRegionRaises(root, input) });
 }
 
 function analyzeCall(
@@ -349,21 +349,6 @@ function analyzeExpressionCarrier(
   const resolved = selectedOccurrenceType ?? referencedType ?? erasedCarrier ?? contextualExpected ??
     resolveType(semantics.types.expressionType(node), undefined, input, semantics);
   if (resolved !== undefined) input.expressionTypes.set(node, resolved);
-  if (ast.is.IsIdentifier(node) && referencedName === undefined && resolved !== undefined &&
-    providerValueReferenceRole(node, ast)) {
-    const value = analyzeMojoProviderValue(
-      node,
-      resolved,
-      input.source,
-      input.providerSemantics,
-      input.conversions,
-    );
-    if (value.kind === "unsupported") {
-      input.diagnostics.push(diagnostic(value.code, value.reason, node));
-    } else if (value.kind === "resolved") {
-      input.valueSelections.set(node, value.selection);
-    }
-  }
   if (ast.kindName(node) === "KindThisKeyword" && input.owner !== undefined) {
     input.bindingNames.set(node, "self");
     input.expressionTypes.set(node, input.owner.type);
@@ -587,35 +572,4 @@ function analyzeElement(
     input.elementSelections.set(node, element.selection);
     input.expressionTypes.set(node, element.expressionType);
   }
-}
-
-function regionRaises(root: Node, input: MojoExecutableRegionAnalysisInput): boolean {
-  let raises = false;
-  walkSourceTree(root, input.source.ast, (node): void => {
-    if (input.source.ast.is.IsCallExpression(node) || input.source.ast.is.IsNewExpression(node)) {
-      const selection = input.callSelections.get(node);
-      if (selection?.kind === "provider") {
-        raises = raises || selection.operation.raises || providerCallRequiresRaisingConversion(selection);
-      }
-    }
-    if (input.source.ast.is.IsThrowStatement(node)) raises = true;
-    if (input.source.ast.is.IsPropertyAccessExpression(node)) {
-      const selection = input.propertySelections.get(node);
-      if (selection?.kind === "provider") {
-        raises = raises || selection.readOperation?.raises === true ||
-          selection.writeOperation?.raises === true ||
-          selection.receiverConversion?.kind === "js-to-native-string" ||
-          selection.readResultConversion?.kind === "js-to-native-string";
-      } else if (selection?.kind === "provider-constant") {
-        raises = raises || selection.operation.raises ||
-          selection.readResultConversion.kind === "js-to-native-string";
-      }
-    }
-    if (input.source.ast.is.IsIdentifier(node)) {
-      const selection = input.valueSelections.get(node);
-      raises = raises || selection?.operation.raises === true ||
-        selection?.resultConversion.kind === "js-to-native-string";
-    }
-  }, (node, regionRoot) => descendWithinExecutableRegion(node, regionRoot, input.source.ast));
-  return raises;
 }

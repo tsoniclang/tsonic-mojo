@@ -192,7 +192,14 @@ export function analyzeMojoCall(
   let sourceReceiverType;
   if (instantiated.operation.receiverType !== undefined) {
     const receiver = sourceCall.sourceReceiver;
-    const actual = receiver === undefined ? undefined : resolve(receiver.type);
+    const actual = receiver === undefined
+      ? undefined
+      : resolve(
+          receiver.type,
+          receiver.authoredTypeNode ?? (receiver.declaration === undefined
+            ? undefined
+            : context.source.ast.typeNode(receiver.declaration)),
+        );
     if (receiver === undefined || actual === undefined) {
       return {
         kind: "unsupported",
@@ -213,7 +220,9 @@ export function analyzeMojoCall(
       kind: "provider",
       operation: instantiated.operation,
       arguments: arguments_.arguments,
-      ...(sourceCall.sourceReceiver === undefined ? {} : { receiver: sourceCall.sourceReceiver.expression }),
+      ...(sourceReceiverType === undefined
+        ? {}
+        : { receiver: sourceCall.sourceReceiver!.expression }),
       ...(sourceReceiverType === undefined ? {} : { sourceReceiverType }),
       ...(receiverConversion === undefined ? {} : { receiverConversion }),
       resultConversion: result.conversion,
@@ -360,12 +369,27 @@ function analyzeSourceProfileCall(
   let receiverConversion;
   if (selected.row.target.kind === "instance" || selected.row.target.receiver !== undefined) {
     const sourceReceiver = sourceCall.sourceReceiver;
-    sourceReceiverType = sourceReceiver === undefined ? undefined : resolve(sourceReceiver.type);
+    sourceReceiverType = sourceReceiver === undefined
+      ? undefined
+      : resolve(
+          sourceReceiver.type,
+          sourceReceiver.authoredTypeNode ?? (sourceReceiver.declaration === undefined
+            ? undefined
+            : context.source.ast.typeNode(sourceReceiver.declaration)),
+        );
     if (sourceReceiver === undefined || sourceReceiverType === undefined) {
       return {
         kind: "unsupported",
         code: "MOJO_SOURCE_PROFILE_RECEIVER_NOT_CLOSED",
         reason: "The selected source-profile instance call has no exact receiver carrier.",
+      };
+    }
+    if (selected.row.receiverCapability === "integer" &&
+      !isExactMojoIntegerCarrier(sourceReceiverType)) {
+      return {
+        kind: "unsupported",
+        code: "MOJO_SOURCE_PROFILE_RECEIVER_CAPABILITY_UNPROVEN",
+        reason: `The exact source-profile call '${selected.row.owner}.${selected.row.member}' requires an integral receiver carrier.`,
       };
     }
     receiver = sourceReceiver.expression;
@@ -398,6 +422,32 @@ function analyzeSourceProfileCall(
       optionalChain: sourceCall.optionalChain,
     }),
   };
+}
+
+function isExactMojoIntegerCarrier(type: MojoTargetTypeRef): boolean {
+  if (type.kind !== "source-primitive") return false;
+  switch (type.name) {
+    case "int8":
+    case "uint8":
+    case "int16":
+    case "uint16":
+    case "int32":
+    case "uint32":
+    case "int64":
+    case "uint64":
+    case "native-int":
+    case "native-uint":
+      return true;
+    case "bool":
+    case "char":
+    case "float16":
+    case "float32":
+    case "float64":
+    case "int128":
+    case "uint128":
+    case "decimal":
+      return false;
+  }
 }
 
 function sourceProfileParameterType(

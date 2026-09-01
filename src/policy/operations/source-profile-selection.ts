@@ -12,6 +12,7 @@ export interface MojoSourceProfileCallRow {
   readonly member: string;
   readonly argumentCount?: number;
   readonly parameterContract?: readonly MojoSourceProfileParameterContract[];
+  readonly receiverCapability?: "integer";
   readonly target:
     | {
         readonly kind: "instance";
@@ -413,6 +414,12 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     }),
   }),
   jsReceiverFunctionRow("Number", "toString", "number_to_string", 0, []),
+  Object.freeze({
+    ...jsReceiverFunctionRow(
+      "Number", "toString", "number_to_string_radix", 1, ["float64"], true,
+    ),
+    receiverCapability: "integer",
+  }),
   jsReceiverFunctionRow("Number", "valueOf", "number_value_of", 0, []),
   jsReceiverFunctionRow("Number", "toFixed", "number_to_fixed", 0, [], true),
   jsReceiverFunctionRow("Number", "toFixed", "number_to_fixed", 1, ["float64"], true),

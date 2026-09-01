@@ -600,3 +600,23 @@ test("asynchronous iteration rejects at the pinned Mojo language boundary", () =
   assert.equal(result.artifacts.length, 0);
   assert.ok(result.diagnostics.some(({ code }) => code === "MOJO_ASYNC_ITERATION_NATIVE_LIMIT"));
 });
+
+test("native length reads retain their exact numeric conversion in comparisons", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        "export function main(): void {",
+        "  const text = 'value';",
+        "  const values = [1, 2, 3];",
+        "  if (text.length >= 0 && values.length <= 3) return;",
+        "}",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("def tsonic_main"));
+  assert.ok(source);
+  assert.equal((source.text.match(/\.__len__\(\)/gu) ?? []).length, 2);
+  assert.match(source.text, /Float64\([^\n]*\.__len__\(\)\) >= 0/u);
+  assert.match(source.text, /Float64\([^\n]*\.__len__\(\)\) <= 3/u);
+});

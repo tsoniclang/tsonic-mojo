@@ -294,7 +294,7 @@ export function requiredConversion(
     appendMojoPlanningDiagnostic(
       context,
       "MOJO_VALUE_CONVERSION_PLAN_MISSING",
-      "Expression use has no sealed Mojo conversion classification.",
+      `Expression '${context.program.source.ast.kindName(expression)}' has no sealed Mojo conversion classification for '${JSON.stringify(expectedType)}'.`,
       expression,
     );
   }

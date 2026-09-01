@@ -30,6 +30,7 @@ import type {
   MojoPropertySelection,
 } from "../program/model.js";
 import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
+import { isMojoAssignmentOperator } from "../program/syntax-validation.js";
 
 export function recordMojoExecutableRegionConversionUses(
   root: Node,
@@ -154,6 +155,11 @@ export function recordMojoExecutableRegionConversionUses(
       visitExpression(inner);
       return;
     }
+    if (ast.is.IsCallExpression(expression) || ast.is.IsNewExpression(expression)) {
+      visitExpression(Node_Expression(ast, expression));
+      for (const argument of ast.arguments(expression)) visitExpression(argument);
+      return;
+    }
     if (ast.is.IsBinaryExpression(expression)) {
       const left = BinaryExpression_Left(ast, expression);
       const right = BinaryExpression_Right(ast, expression);
@@ -165,9 +171,7 @@ export function recordMojoExecutableRegionConversionUses(
         const bool: MojoTargetTypeRef = { kind: "source-primitive", name: "bool" };
         record(left, bool);
         record(right, bool);
-      } else if (operator?.endsWith("EqualsToken") === true && operator !== "KindEqualsEqualsToken" &&
-        operator !== "KindEqualsEqualsEqualsToken" && operator !== "KindExclamationEqualsToken" &&
-        operator !== "KindExclamationEqualsEqualsToken") {
+      } else if (operator !== undefined && isMojoAssignmentOperator(operator)) {
         const property = left === undefined ? undefined : propertySelections.get(left);
         const element = left === undefined ? undefined : elementSelections.get(left);
         const leftType = property?.kind === "provider"
