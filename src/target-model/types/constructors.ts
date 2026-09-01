@@ -98,6 +98,7 @@ export function mojoCallableTargetType(
   parameters: readonly MojoTargetCallableParameter[],
   result: MojoTargetTypeRef,
   raises = false,
+  errorType?: MojoTargetTypeRef,
 ): MojoTargetTypeRef {
   return Object.freeze({
     kind: "callable",
@@ -106,6 +107,7 @@ export function mojoCallableTargetType(
     }))),
     result,
     raises,
+    ...(errorType === undefined ? {} : { errorType }),
   });
 }
 

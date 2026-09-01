@@ -12,6 +12,7 @@ export interface MojoSourceProfileCallRow {
   readonly member: string;
   readonly argumentCount?: number;
   readonly parameterContract?: readonly MojoSourceProfileParameterContract[];
+  readonly parameterContractMode?: "exact" | "overrides";
   readonly receiverCapability?: "integer";
   readonly target:
     | {
@@ -185,6 +186,7 @@ const jsInstanceParameterRow = (
   owner,
   member,
   parameterContract: Object.freeze([...parameterContract]),
+  parameterContractMode: "overrides",
   target: Object.freeze({ kind: "instance", name: snakeCase(member), receiver }),
 });
 

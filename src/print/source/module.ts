@@ -62,9 +62,12 @@ function printFunction(
   const decorators = (function_.decorators ?? []).map((decorator) => `${indent}@${decorator}`);
   const parameters = printParameters(function_, modulePath);
   const result = mojoTypeName(function_.resultType, modulePath);
+  const error = function_.errorType === undefined
+    ? ""
+    : ` ${requiredTypeName(function_.errorType, modulePath)}`;
   const signature = `${indent}${function_.asynchronous ? "async " : ""}def ${function_.name}${
     mojoGenericParametersText(function_.genericParameters, modulePath)
-  }(${parameters})${function_.raises ? " raises" : ""}${result === undefined ? "" : ` -> ${result}`}:`;
+  }(${parameters})${function_.raises ? ` raises${error}` : ""}${result === undefined ? "" : ` -> ${result}`}:`;
   const body = function_.statements === undefined
     ? [`${indent}    ...`]
     : printBody(function_.statements, depth + 1, modulePath);

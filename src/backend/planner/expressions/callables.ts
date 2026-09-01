@@ -203,6 +203,7 @@ function planCallableEnvironment(
     resultType: selection.resultType,
     asynchronous: false,
     raises: selection.raises || widenRaises,
+    ...(selection.errorType === undefined ? {} : { errorType: selection.errorType }),
     decorators: Object.freeze(["staticmethod"]),
     statements: Object.freeze([
       Object.freeze({
@@ -279,6 +280,7 @@ function planCallableBody(
       body: selection.body,
       asynchronous: false,
       raises: selection.raises,
+      ...(selection.errorType === undefined ? {} : { errorType: selection.errorType }),
     }), context);
   }
   const body = planValue(selection.body, context, selection.resultType);

@@ -309,7 +309,15 @@ export function planMojoTypeTest(
     );
   }
   const operand = planValue(selection.operand, context);
-  if (operand === undefined) return undefined;
+  if (operand === undefined) {
+    appendMojoPlanningDiagnostic(
+      context,
+      "MOJO_TYPE_TEST_OPERAND_NOT_PLANNED",
+      "A checked type test requires one exact sealed Mojo operand plan.",
+      selection.operand,
+    );
+    return undefined;
+  }
   if (selection.kind === "constant") {
     return withMojoValue(
       Object.freeze([

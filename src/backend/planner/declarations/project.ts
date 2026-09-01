@@ -20,9 +20,10 @@ import {
   planMojoParameterPrelude,
 } from "./parameters.js";
 import {
-  mojoReferenceCopyInitializer,
+  mojoReferenceErrorWritableMethod,
   mojoReferenceIdentityEqualityMethod,
 } from "./reference-wrapper.js";
+import { mojoStateStorageType } from "./state-storage.js";
 
 export function planMojoProjectFunction(
   function_: MojoAnalyzedFunction,
@@ -30,6 +31,7 @@ export function planMojoProjectFunction(
   self?: MojoFunctionDeclaration["self"],
 ): MojoFunctionDeclaration | undefined {
   registerMojoTypeImports(function_.resultType, context);
+  if (function_.errorType !== undefined) registerMojoTypeImports(function_.errorType, context);
   const parameterPrelude = planMojoParameterPrelude(
     function_.parameters,
     context,
@@ -53,6 +55,7 @@ export function planMojoProjectFunction(
     resultType: function_.resultType,
     asynchronous: function_.asynchronous,
     raises: function_.raises,
+    ...(function_.errorType === undefined ? {} : { errorType: function_.errorType }),
     statements,
     ...(self === undefined ? {} : { self }),
   });
@@ -74,15 +77,12 @@ export function planMojoProjectClass(
     name: class_.stateName,
     ...(genericArguments.length === 0 ? {} : { genericArguments: Object.freeze(genericArguments) }),
   });
-  const arcType: MojoTargetTypeRef = Object.freeze({
-    kind: "target-named",
-    id: "mojo.std.memory.ArcPointer",
-    modulePath: Object.freeze(["std", "memory"]),
-    name: "ArcPointer",
-    genericArguments: Object.freeze([{ kind: "type" as const, type: stateType }]),
-  });
+  const arcType = mojoStateStorageType(stateType, class_.stateStorage);
   registerMojoTypeImports(arcType, context);
   for (const field of class_.fields) registerMojoTypeImports(field.type, context);
+  if (class_.initializationErrorType !== undefined) {
+    registerMojoTypeImports(class_.initializationErrorType, context);
+  }
   const sourceConstructor = class_.constructors[0];
   const stateContext = withMojoStateInitialization(context, class_.targetType, stateType);
   const stateInitializationStatements: MojoStatement[] = [];
@@ -117,7 +117,10 @@ export function planMojoProjectClass(
       planMojoParameterDeclaration(parameter, stateContext))),
     resultType: Object.freeze({ kind: "unit" }),
     asynchronous: false,
-    raises: sourceConstructor?.raises === true,
+    raises: sourceConstructor?.raises === true || class_.initializationErrorType !== undefined,
+    ...(sourceConstructor?.errorType === undefined && class_.initializationErrorType === undefined
+      ? {}
+      : { errorType: sourceConstructor?.errorType ?? class_.initializationErrorType }),
     self: "out self",
     statements: Object.freeze([
       ...stateParameterPrelude,
@@ -170,14 +173,24 @@ export function planMojoProjectClass(
       planMojoParameterDeclaration(parameter, context))),
     resultType: Object.freeze({ kind: "unit" }),
     asynchronous: false,
-    raises: sourceConstructor?.raises === true,
+    raises: sourceConstructor?.raises === true || class_.initializationErrorType !== undefined,
+    ...(sourceConstructor?.errorType === undefined && class_.initializationErrorType === undefined
+      ? {}
+      : { errorType: sourceConstructor?.errorType ?? class_.initializationErrorType }),
     self: "out self",
     statements: Object.freeze([initializeState]),
   });
   const methods: MojoFunctionDeclaration[] = [
     constructor,
-    mojoReferenceCopyInitializer(),
     mojoReferenceIdentityEqualityMethod(class_.targetType),
+    ...(class_.errorRole === "typed"
+      ? [mojoReferenceErrorWritableMethod(
+          class_.name,
+          class_.fields.find((field) => field.sourceName === "message" &&
+            (field.type.kind === "native-string" ||
+              (field.type.kind === "target-named" && field.type.id === "tsonic.mojo.js.JsString")))?.name,
+        )]
+      : []),
   ];
   for (const method of class_.methods) {
     const planned = planMojoProjectFunction(method, context, method.static === true ? undefined : "self");
@@ -200,7 +213,12 @@ export function planMojoProjectClass(
       id: "mojo.builtin.Equatable",
       modulePath: Object.freeze([]),
       name: "Equatable",
-    })]),
+    }), ...(class_.errorRole === "typed" ? [Object.freeze({
+      kind: "target-named" as const,
+      id: "mojo.builtin.Writable",
+      modulePath: Object.freeze([]),
+      name: "Writable",
+    })] : [])]),
     fields: Object.freeze([Object.freeze({
       name: "_state",
       type: arcType,

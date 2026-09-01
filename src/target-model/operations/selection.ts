@@ -13,4 +13,5 @@ export interface MojoSelectedProviderOperation {
   readonly genericArguments: readonly MojoTargetGenericArgument[];
   readonly genericParameters: readonly MojoProviderTargetGenericParameter[];
   readonly raises: boolean;
+  readonly errorType?: MojoTargetTypeRef;
 }

@@ -288,8 +288,9 @@ function analyzeSourceProfileCall(
     readonly passing: "plain";
   }[] = [];
   const parameterContract = selected.row.parameterContract;
+  const parameterContractMode = selected.row.parameterContractMode ?? "exact";
   const sourceReceiver = sourceCall.sourceReceiver;
-  const sourceReceiverType = sourceReceiver === undefined
+  const exactReceiverType = sourceReceiver === undefined
     ? undefined
     : context.expressionTypes.get(sourceReceiver.expression) ?? resolve(
         sourceReceiver.type,
@@ -297,6 +298,9 @@ function analyzeSourceProfileCall(
           ? undefined
           : context.source.ast.typeNode(sourceReceiver.declaration)),
       );
+  const sourceReceiverType = sourceCall.optionalChain && exactReceiverType?.kind === "optional"
+    ? exactReceiverType.value
+    : exactReceiverType;
   const callback = selected.row.callback === undefined
     ? undefined
     : selectMojoSourceProfileCallback(
@@ -306,7 +310,19 @@ function analyzeSourceProfileCall(
         context.expressionTypes,
       );
   if (callback?.kind === "unsupported") return callback;
-  const selectedParameters = sourceCall.sourceSelectedSignatureParameters;
+  if (parameterContractMode === "exact" && parameterContract !== undefined &&
+    (parameterContract.length > sourceCall.sourceSelectedSignatureParameters.length ||
+      sourceCall.sourceArgumentBindings.some((binding) =>
+        binding.sourceParameterIndex >= parameterContract.length))) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_SOURCE_PROFILE_PARAMETER_CONTRACT_INVALID",
+      reason: `The exact source-profile overload '${selected.row.owner}.${selected.row.member}' cannot be represented by its Mojo runtime parameter contract.`,
+    };
+  }
+  const selectedParameters = parameterContractMode === "exact" && parameterContract !== undefined
+    ? sourceCall.sourceSelectedSignatureParameters.slice(0, parameterContract.length)
+    : sourceCall.sourceSelectedSignatureParameters;
   for (const [parameterIndex, parameter] of selectedParameters.entries()) {
     const explicitContract = parameterContract?.[parameterIndex];
     const resolved = callback?.parameterIndex === parameterIndex
@@ -324,22 +340,32 @@ function analyzeSourceProfileCall(
     const presentType = resolved === undefined
       ? undefined
       : sourceProfilePresentArgumentType(parameter.acceptsOmission, resolved);
-    const target = parameter.rest === true && presentType !== undefined
+    const target = parameter.rest === true && presentType !== undefined && explicitContract === undefined
       ? restCallableElementType(presentType)
       : presentType;
     if (target === undefined) {
       return {
         kind: "unsupported",
         code: "MOJO_SOURCE_PROFILE_PARAMETER_NOT_CLOSED",
-        reason: `Source-profile parameter ${parameter.parameterIndex} has no exact Mojo carrier.`,
+        reason: `Source-profile parameter ${parameter.parameterIndex} has no exact Mojo carrier for contract '${JSON.stringify(explicitContract)}' and receiver '${JSON.stringify(sourceReceiverType)}'.`,
       };
     }
     parameterTypes.push(target);
+    const variadicCollectionType = parameter.rest
+      ? explicitContract === undefined
+        ? presentType
+        : mojoNamedTargetType(
+            "tsonic.mojo.js.JsArray",
+            ["tsonic_js"],
+            "JsArray",
+            [target],
+          )
+      : undefined;
     targetArguments.push(Object.freeze({
       convention: "imm",
       position: "positional-or-keyword",
       variadic: parameter.rest,
-      ...(parameter.rest && presentType !== undefined ? { variadicCollectionType: presentType } : {}),
+      ...(variadicCollectionType === undefined ? {} : { variadicCollectionType }),
       passing: "plain",
     }));
   }

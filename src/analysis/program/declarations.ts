@@ -18,6 +18,7 @@ import type {
   MojoAnalyzedInterface,
   MojoAnalyzedProjectProperty,
 } from "./model.js";
+import { closeMojoProjectStateStorage } from "./reference-storage.js";
 
 export interface MojoProjectDeclarationAnalysis {
   readonly functions: MojoAnalyzedFunction[];
@@ -187,14 +188,29 @@ export function analyzeMojoProjectDeclarations(input: {
     }
   }
 
+  const closed = closeMojoProjectStateStorage(classes, interfaces);
+  const closedClassByDeclaration = new WeakMap<Node, MojoAnalyzedClass>();
+  const closedClassByTypeId = new Map<string, MojoAnalyzedClass>();
+  for (const class_ of closed.classes) {
+    closedClassByDeclaration.set(class_.declaration, class_);
+    if (class_.targetType.kind === "target-named") {
+      closedClassByTypeId.set(class_.targetType.id, class_);
+    }
+  }
+  const closedInterfaceByTypeId = new Map<string, MojoAnalyzedInterface>();
+  for (const interface_ of closed.interfaces) {
+    if (interface_.targetType.kind === "target-named") {
+      closedInterfaceByTypeId.set(interface_.targetType.id, interface_);
+    }
+  }
   return {
     functions,
-    classes,
-    interfaces,
+    classes: [...closed.classes],
+    interfaces: [...closed.interfaces],
     enums,
     functionByDeclaration,
-    classByDeclaration,
-    classByTypeId,
-    interfaceByTypeId,
+    classByDeclaration: closedClassByDeclaration,
+    classByTypeId: closedClassByTypeId,
+    interfaceByTypeId: closedInterfaceByTypeId,
   };
 }

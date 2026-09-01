@@ -223,6 +223,12 @@ function validateOperation(
   validateType(operation.resultType);
   for (const type of operation.parameterTypes ?? []) validateType(type);
   if (operation.receiverType !== undefined) validateType(operation.receiverType);
+  if (operation.errorType !== undefined) {
+    if (operation.raises !== true) {
+      throw new Error(`Provider operation '${operation.exportId}' has an error type but is not raising.`);
+    }
+    validateType(operation.errorType);
+  }
   if (operation.operationKind === "call" || operation.operationKind === "constructor") {
     if (signature === undefined) {
       throw new Error(`Provider ${operation.operationKind} '${operation.exportId}' requires an exact signature identity.`);
@@ -456,6 +462,7 @@ function validateType(type: MojoTargetTypeRef): void {
         validateType(parameter.type);
       }
       validateType(type.result);
+      if (type.errorType !== undefined) validateType(type.errorType);
       return;
     case "function":
       for (const parameter of type.genericParameters) {

@@ -3,6 +3,7 @@ import type { AstReader, Node, SourceFile, Type } from "@tsonic/tsts";
 import {
   BinaryExpression_Left,
   BinaryExpression_Right,
+  CatchClause_VariableDeclaration,
   Node_Expression,
   Node_Initializer,
   TryStatement_FinallyBlock,
@@ -58,7 +59,7 @@ import {
   analyzeExecutableRegionProviderValues,
   declaredOrInitializerType,
   descendWithinExecutableRegion,
-  executableRegionRaises,
+  executableRegionErrorTypes,
   isRuntimeValueOccurrence,
   resolveExecutableRegionType as resolveType,
   targetTypeDiagnostic as typeDiagnostic,
@@ -67,6 +68,7 @@ import { mojoParameterAbi } from "../../policy/callables/parameter-abi.js";
 import { analyzeMojoTemplateExpression } from "../operations/template-expressions.js";
 import { classifyMojoValueRefinement } from "../refinements/value.js";
 import { analyzeMojoNullishCoalescing } from "../operations/nullish-coalescing.js";
+import { mergeMojoErrorTypes, mojoOperationErrorTypes } from "./effects.js";
 
 export interface MojoExecutableRegionAnalysisInput {
   readonly root: Node;
@@ -86,6 +88,8 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly bindingTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly expressionTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly callSelections: WeakMap<Node, MojoCallSelection>;
+  readonly callNodes: Set<Node>;
+  readonly callDependencies: WeakMap<Node, Node>;
   readonly propertySelections: WeakMap<Node, MojoPropertySelection>;
   readonly elementSelections: WeakMap<Node, MojoElementSelection>;
   readonly iterationSelections: WeakMap<Node, MojoIterationSelection>;
@@ -123,7 +127,40 @@ export type MojoExecutableRegionAnalysisEnvironment = Omit<
 
 export interface MojoExecutableRegionAnalysis {
   readonly dependencies: ReadonlySet<Node>;
+  readonly errorTypes: readonly MojoTargetTypeRef[];
   readonly raises: boolean;
+}
+
+export function sealMojoCatchBindingCarrier(
+  catchClause: Node,
+  catchBlock: Node,
+  errorType: MojoTargetTypeRef,
+  input: MojoExecutableRegionAnalysisEnvironment,
+): void {
+  const declaration = CatchClause_VariableDeclaration(input.source.ast, catchClause);
+  if (declaration === undefined) return;
+  const sourceFile = input.source.ast.getSourceFile(catchClause);
+  if (sourceFile === undefined) return;
+  input.bindingTypes.set(declaration, errorType);
+  input.bindingSourceFiles.set(declaration, sourceFile);
+  const semantics = input.source.semantics.forFile(sourceFile);
+  for (const use of input.source.navigation.declarationUses(declaration)) {
+    if (use.kind === "type-only" || use.kind === "source-linkage") continue;
+    input.valueRefinements.delete(use.reference);
+    const refined = analyzeReferencedValueRefinement(
+      use.reference,
+      errorType,
+      { ...input, root: catchBlock, sourceFile },
+      semantics,
+    );
+    input.expressionTypes.set(use.reference, refined ?? errorType);
+  }
+  walkSourceTreePostOrder(catchBlock, input.source.ast, (node): void => {
+    if (input.source.ast.is.IsBinaryExpression(node) &&
+      input.source.ast.operatorKindName(node) === "KindInstanceOfKeyword") {
+      analyzeTypeTest(node, { ...input, root: catchBlock, sourceFile });
+    }
+  }, (node, regionRoot) => descendWithinExecutableRegion(node, regionRoot, input.source.ast));
 }
 
 export function analyzeMojoExecutableRegion(
@@ -371,7 +408,7 @@ export function analyzeMojoExecutableRegion(
       input.iterationSelections.set(node, iteration.selection);
     }
   }
-  let resourceRaises = false;
+  const resourceErrorTypes: MojoTargetTypeRef[] = [];
   for (const declaration of resourceDeclarations) {
     const sourceInfo = semantics.operations.resourceManagement(declaration);
     if (sourceInfo === undefined) {
@@ -403,14 +440,19 @@ export function analyzeMojoExecutableRegion(
       if (alternative.disposal.kind === "project") {
         dependencies.add(alternative.disposal.dependency);
       } else {
-        resourceRaises = resourceRaises || alternative.disposal.operation.raises;
+        resourceErrorTypes.push(...mojoOperationErrorTypes(alternative.disposal.operation));
       }
     }
   }
   analyzeExecutableRegionProviderValues(root, input);
+  const errorTypes = mergeMojoErrorTypes(
+    resourceErrorTypes,
+    executableRegionErrorTypes(root, input),
+  );
   return Object.freeze({
     dependencies,
-    raises: resourceRaises || executableRegionRaises(root, input),
+    errorTypes,
+    raises: errorTypes.length > 0,
   });
 }
 
@@ -580,7 +622,9 @@ function analyzeCall(
     return;
   }
   if (analyzed.dependency !== undefined) dependencies.add(analyzed.dependency);
+  if (analyzed.dependency !== undefined) input.callDependencies.set(node, analyzed.dependency);
   input.callSelections.set(node, analyzed.selection);
+  input.callNodes.add(node);
   input.expressionTypes.set(node, mojoCallResultType(analyzed.selection));
 }
 

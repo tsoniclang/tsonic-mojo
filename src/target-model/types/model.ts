@@ -51,6 +51,7 @@ export type MojoTargetTypeRef =
       readonly parameters: readonly MojoTargetCallableParameter[];
       readonly result: MojoTargetTypeRef;
       readonly raises: boolean;
+      readonly errorType?: MojoTargetTypeRef;
     }
   | {
       readonly kind: "function";

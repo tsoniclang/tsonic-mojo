@@ -68,6 +68,7 @@ export function registerMojoTypeImports(type: MojoTargetTypeRef, context: MojoPl
       registerMojoModuleImport(context, ["tsonic_runtime"]);
       for (const parameter of type.parameters) registerMojoTypeImports(parameter.type, context);
       registerMojoTypeImports(type.result, context);
+      if (type.errorType !== undefined) registerMojoTypeImports(type.errorType, context);
       return;
     case "function":
       for (const parameter of type.genericParameters) {
@@ -149,7 +150,10 @@ export function mojoTypeName(
         requiredTypeName(parameter.type, currentModulePath)).join(", ")}]`;
       const resultType = mojoTypeName(type.result, currentModulePath) ?? "NoneType";
       const name = type.raises ? "RaisingCallable" : "Callable";
-      return `tsonic_runtime.${name}[${argumentsType}, ${resultType}]`;
+      const errorType = type.raises && type.errorType !== undefined
+        ? `, ${requiredTypeName(type.errorType, currentModulePath)}`
+        : "";
+      return `tsonic_runtime.${name}[${argumentsType}, ${resultType}${errorType}]`;
     }
     case "function": {
       const generics = mojoGenericParametersText(type.genericParameters, currentModulePath);

@@ -85,6 +85,7 @@ export interface MojoProviderOperationDefinition {
   readonly parameterTypes?: readonly MojoTargetTypeRef[];
   readonly receiverType?: MojoTargetTypeRef;
   readonly raises?: boolean;
+  readonly errorType?: MojoTargetTypeRef;
 }
 
 export interface MojoProviderPackageDefinition {

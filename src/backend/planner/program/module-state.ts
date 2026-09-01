@@ -43,8 +43,18 @@ export function planMojoModuleState(
   const cellBindings = module.bindings.filter((binding) => binding.storage === "cell");
   const declarations: MojoDeclaration[] = [];
   for (const binding of comptimeBindings) {
+    const diagnosticCount = context.diagnostics.length;
     const declaration = planComptimeBinding(binding, context);
-    if (declaration === undefined) return undefined;
+    if (declaration === undefined) {
+      appendPlanningFailure(
+        context,
+        diagnosticCount,
+        "MOJO_COMPTIME_BINDING_NOT_PLANNED",
+        `Top-level binding '${binding.sourceName}' has no exact compile-time Mojo initializer plan.`,
+        binding.initializer,
+      );
+      return undefined;
+    }
     declarations.push(declaration);
   }
   if (!module.runtimeInitializationRequired && cellBindings.length === 0) {
@@ -63,8 +73,18 @@ export function planMojoModuleState(
   declarations.push(moduleStateStruct(module, cellBindings, lockType));
   declarations.push(moduleStateFactory(module, stateType, cellBindings, lockType));
   declarations.push(moduleStateCell(module, definition.id));
+  const diagnosticCount = context.diagnostics.length;
   const initializer = planModuleInitializer(program, definition, module, scopedLockType, context);
-  if (initializer === undefined) return undefined;
+  if (initializer === undefined) {
+    appendPlanningFailure(
+      context,
+      diagnosticCount,
+      "MOJO_MODULE_INITIALIZER_NOT_PLANNED",
+      `Source module '${definition.relativeSourcePath}' has no exact runtime initializer plan.`,
+      module.sourceFile,
+    );
+    return undefined;
+  }
   declarations.push(initializer);
   return Object.freeze(declarations);
 }
@@ -155,9 +175,19 @@ function planModuleInitializer(
   scopedLockType: MojoTargetTypeRef,
   context: MojoPlanningContext,
 ): MojoFunctionDeclaration | undefined {
+  if (module.errorType !== undefined) registerMojoTypeImports(module.errorType, context);
   const stateName = allocateMojoSyntheticName(context, "module_state");
   const statePointer = mojoModuleStatePointerExpression(module, context);
-  if (statePointer === undefined) return undefined;
+  if (statePointer === undefined) {
+    appendPlanningFailure(
+      context,
+      context.diagnostics.length,
+      "MOJO_MODULE_STATE_OWNER_NOT_PLANNED",
+      `Source module '${definition.relativeSourcePath}' has no exact module-state owner.`,
+      module.sourceFile,
+    );
+    return undefined;
+  }
   const state = Object.freeze({
     kind: "postfix-deref" as const,
     expression: Object.freeze({ kind: "path" as const, path: stateName }),
@@ -219,6 +249,7 @@ function planModuleInitializer(
     resultType: Object.freeze({ kind: "unit" }),
     asynchronous: module.asynchronous,
     raises: module.raises,
+    ...(module.errorType === undefined ? {} : { errorType: module.errorType }),
     statements: Object.freeze([
       Object.freeze({ kind: "variable", name: stateName, initializer: statePointer }),
       Object.freeze({
@@ -252,12 +283,28 @@ function planModuleInitializationSteps(
 ): readonly MojoStatement[] | undefined {
   const step = module.initializationSteps[index];
   if (step === undefined) return Object.freeze([]);
+  const diagnosticCount = context.diagnostics.length;
   const current = step.kind === "binding"
     ? planModuleBindingInitialization(step.binding, context)
     : step.kind === "statement"
       ? planModuleStatement(step.statement, context)
       : planMojoStatementRegion(step.statements, context);
-  if (current === undefined) return undefined;
+  if (current === undefined) {
+    appendPlanningFailure(
+      context,
+      diagnosticCount,
+      "MOJO_MODULE_INITIALIZATION_STEP_NOT_PLANNED",
+      step.kind === "binding"
+        ? `Top-level binding '${step.binding.sourceName}' has no exact runtime initialization plan.`
+        : "A top-level executable statement has no exact Mojo initialization plan.",
+      step.kind === "binding"
+        ? step.binding.initializer
+        : step.kind === "statement"
+          ? step.statement
+          : step.statements[0] ?? module.sourceFile,
+    );
+    return undefined;
+  }
   const remainder = planModuleInitializationSteps(module, context, index + 1);
   if (remainder === undefined) return undefined;
   if (step.kind !== "binding" ||
@@ -354,4 +401,22 @@ function construct(type: MojoTargetTypeRef): MojoExpression {
 
 function emptyModuleBinding(binding: MojoAnalyzedModuleBinding): MojoExpression {
   return construct(optionalType(binding.type));
+}
+
+function appendPlanningFailure(
+  context: MojoPlanningContext,
+  previousDiagnosticCount: number,
+  code: string,
+  message: string,
+  sourceNode: import("@tsonic/tsts").Node,
+): void {
+  if (context.diagnostics.length !== previousDiagnosticCount) return;
+  context.diagnostics.push(Object.freeze({
+    code,
+    category: "error" as const,
+    source: "tsonic-mojo",
+    message,
+    sourceNode,
+    evidence: Object.freeze(["target.capability=mojo.backend.module-initialization"]),
+  }));
 }

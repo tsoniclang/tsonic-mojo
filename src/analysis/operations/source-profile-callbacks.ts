@@ -58,7 +58,12 @@ export function selectMojoSourceProfileCallback(
       reason: "This JavaScript callback result has no exact target truthiness conversion.",
     };
   }
-  const selectedConversion = conversion ?? undefined;
+  const selectedConversion = conversion ?? (!type.raises
+    ? Object.freeze({
+        kind: "callable-raise-widen" as const,
+        targetType,
+      })
+    : undefined);
   if (contract.result === "float64" &&
     (type.result.kind !== "source-primitive" || type.result.name !== "float64")) {
     return {

@@ -1,5 +1,6 @@
 import type { Node, SourceFile } from "@tsonic/tsts";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
+import { Node_Expression, Node_Initializer } from "@tsonic/target-api/source";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
@@ -183,6 +184,8 @@ export interface MojoCallableExpressionAnalysisInput {
   readonly moduleBindingByDeclaration: WeakMap<Node, unknown>;
   readonly ensureLocationStorage: (declaration: Node, bindingName: string) => string;
   readonly selections: WeakMap<Node, MojoCallableExpressionSelection>;
+  readonly byDeclaration: WeakMap<Node, Node>;
+  readonly declarationByExpression: WeakMap<Node, Node>;
   readonly analyzed: WeakSet<Node>;
   readonly environment: MojoExecutableRegionAnalysisEnvironment;
 }
@@ -361,6 +364,79 @@ export function analyzeAndSealMojoCallableExpression(
     raises,
     callableType,
   }));
+  const declaration = callableExpressionDeclaration(input.expression, environment.source);
+  if (declaration !== undefined) {
+    input.byDeclaration.set(declaration, input.expression);
+    input.declarationByExpression.set(input.expression, declaration);
+  }
+}
+
+export function resolveMojoCallableExpressionDependency(
+  expression: Node,
+  source: TargetSourceProgram,
+  selections: WeakMap<Node, MojoCallableExpressionSelection>,
+  byDeclaration: WeakMap<Node, Node>,
+): Node | undefined {
+  const visitedDeclarations = new Set<Node>();
+  let current: Node | undefined = expression;
+  while (current !== undefined) {
+    current = unwrapCallableExpression(current, source);
+    if (selections.has(current)) return current;
+    const reference = source.navigation.sourceReferenceFor(current);
+    if (reference?.project !== true || visitedDeclarations.has(reference.declaration)) {
+      return undefined;
+    }
+    const symbol = reference.symbol;
+    if (symbol === undefined || source.sourceFiles.some((sourceFile) => sourceFile !== undefined &&
+      source.navigation.bindingWritesWithin(symbol, sourceFile).length > 0)) {
+      return undefined;
+    }
+    visitedDeclarations.add(reference.declaration);
+    const direct = byDeclaration.get(reference.declaration);
+    if (direct !== undefined) return direct;
+    current = Node_Initializer(source.ast, reference.declaration);
+  }
+  return undefined;
+}
+
+function callableExpressionDeclaration(
+  expression: Node,
+  source: TargetSourceProgram,
+): Node | undefined {
+  const { ast } = source;
+  let current = expression;
+  while (true) {
+    const parent = ast.parent(current);
+    if (parent === undefined) return undefined;
+    if (Node_Initializer(ast, parent) === current) return parent;
+    if (!isTransparentExpression(parent, ast) || Node_Expression(ast, parent) !== current) {
+      return undefined;
+    }
+    current = parent;
+  }
+}
+
+function unwrapCallableExpression(
+  expression: Node,
+  source: TargetSourceProgram,
+): Node {
+  const { ast } = source;
+  let current = expression;
+  while (isTransparentExpression(current, ast)) {
+    const inner = Node_Expression(ast, current);
+    if (inner === undefined) break;
+    current = inner;
+  }
+  return current;
+}
+
+function isTransparentExpression(
+  node: Node,
+  ast: TargetSourceProgram["ast"],
+): boolean {
+  return ast.is.IsParenthesizedExpression(node) || ast.is.IsAsExpression(node) ||
+    ast.is.IsTypeAssertion(node) || ast.is.IsNonNullExpression(node) ||
+    ast.is.IsSatisfiesExpression(node);
 }
 
 function captureEligibleDeclaration(

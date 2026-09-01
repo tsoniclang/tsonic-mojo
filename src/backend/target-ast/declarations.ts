@@ -23,6 +23,7 @@ export interface MojoFunctionDeclaration {
   readonly resultType: MojoTargetTypeRef;
   readonly asynchronous: boolean;
   readonly raises: boolean;
+  readonly errorType?: MojoTargetTypeRef;
   readonly statements?: readonly MojoStatement[];
   readonly decorators?: readonly string[];
   readonly self?: "self" | "mut self" | "out self" | "owned self";

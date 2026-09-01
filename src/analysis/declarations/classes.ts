@@ -192,6 +192,7 @@ export function analyzeMojoClass(
     methods: Object.freeze(methods),
     constructors: Object.freeze(constructors),
     targetType,
+    stateStorage: "direct",
   });
   return Object.freeze({
     class_,

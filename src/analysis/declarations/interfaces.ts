@@ -163,6 +163,7 @@ export function analyzeMojoInterface(
     fields: Object.freeze(fields),
     indexSignatures: Object.freeze(indexSignatures),
     targetType,
+    stateStorage: "direct",
   });
 }
 

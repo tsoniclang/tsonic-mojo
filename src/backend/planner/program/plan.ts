@@ -80,14 +80,32 @@ function planSourceModule(
       module.sourceFile,
     ));
   } else {
+    const stateDiagnosticCount = context.diagnostics.length;
     const state = planMojoModuleState(program, module, analyzedModule, context);
-    if (state !== undefined) declarations.push(...state);
+    if (state !== undefined) {
+      declarations.push(...state);
+    } else if (context.diagnostics.length === stateDiagnosticCount) {
+      context.diagnostics.push(planningDiagnostic(
+        "MOJO_MODULE_STATE_NOT_PLANNED",
+        `Source module '${module.relativeSourcePath}' has no exact sealed module-state plan.`,
+        module.sourceFile,
+      ));
+    }
   }
   for (const declaration of program.declarations) {
     if (program.modules.forSourceFile(declaration.sourceFile)?.id !== module.id) continue;
     if (declaration.kind === "class") {
+      const diagnosticCount = context.diagnostics.length;
       const planned = planMojoProjectClass(declaration, context);
-      if (planned !== undefined) declarations.push(...planned);
+      if (planned !== undefined) {
+        declarations.push(...planned);
+      } else if (context.diagnostics.length === diagnosticCount) {
+        context.diagnostics.push(planningDiagnostic(
+          "MOJO_PROJECT_CLASS_NOT_PLANNED",
+          `Project class '${declaration.name}' has no exact sealed Mojo declaration plan.`,
+          declaration.declaration,
+        ));
+      }
       continue;
     }
     if (declaration.kind === "enum") {
@@ -98,8 +116,17 @@ function planSourceModule(
       declarations.push(...planMojoInterface(declaration, context));
       continue;
     }
+    const diagnosticCount = context.diagnostics.length;
     const planned = planMojoProjectFunction(declaration, context);
-    if (planned !== undefined) declarations.push(planned);
+    if (planned !== undefined) {
+      declarations.push(planned);
+    } else if (context.diagnostics.length === diagnosticCount) {
+      context.diagnostics.push(planningDiagnostic(
+        "MOJO_PROJECT_FUNCTION_NOT_PLANNED",
+        `Project function '${declaration.name}' has no exact sealed Mojo declaration plan.`,
+        declaration.declaration,
+      ));
+    }
   }
   if (context.diagnostics.length > 0) {
     return Object.freeze({ kind: "rejected", diagnostics: Object.freeze(context.diagnostics) });

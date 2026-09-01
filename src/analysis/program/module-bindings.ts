@@ -352,6 +352,29 @@ export function analyzeMojoModuleBindings(
   return Object.freeze(analyzed);
 }
 
+export function finalizeMojoModuleBindingTypes(
+  modules: readonly MojoAnalyzedModule[],
+  bindingTypes: WeakMap<Node, MojoTargetTypeRef>,
+): readonly MojoAnalyzedModule[] {
+  return Object.freeze(modules.map((module) => {
+    const bindings = Object.freeze(module.bindings.map((binding) => {
+      const type = bindingTypes.get(binding.declaration) ?? binding.type;
+      return type === binding.type ? binding : Object.freeze({ ...binding, type });
+    }));
+    const bindingByDeclaration = new Map(
+      bindings.map((binding) => [binding.declaration, binding] as const),
+    );
+    const initializationSteps = Object.freeze(module.initializationSteps.map((step) =>
+      step.kind !== "binding"
+        ? step
+        : Object.freeze({
+            kind: "binding" as const,
+            binding: bindingByDeclaration.get(step.binding.declaration) ?? step.binding,
+          })));
+    return Object.freeze({ ...module, bindings, initializationSteps });
+  }));
+}
+
 function isNativeComptimeInitializer(
   initializer: Node,
   type: MojoTargetTypeRef,

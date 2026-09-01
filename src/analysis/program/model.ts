@@ -67,6 +67,7 @@ export interface MojoAnalyzedFunction {
   readonly asynchronous: boolean;
   readonly asyncDomain?: "native" | "js";
   readonly raises: boolean;
+  readonly errorType?: MojoTargetTypeRef;
   readonly static?: boolean;
   readonly owner?: MojoAnalyzedClassOwner;
 }
@@ -130,6 +131,9 @@ export interface MojoAnalyzedClass {
   readonly methods: readonly MojoAnalyzedFunction[];
   readonly constructors: readonly MojoAnalyzedFunction[];
   readonly targetType: MojoTargetTypeRef;
+  readonly stateStorage: "direct" | "erased";
+  readonly initializationErrorType?: MojoTargetTypeRef;
+  readonly errorRole?: "typed";
 }
 
 export interface MojoAnalyzedInterface {
@@ -142,6 +146,7 @@ export interface MojoAnalyzedInterface {
   readonly fields: readonly MojoAnalyzedInterfaceField[];
   readonly indexSignatures: readonly MojoAnalyzedInterfaceIndexSignature[];
   readonly targetType: MojoTargetTypeRef;
+  readonly stateStorage: "direct" | "erased";
 }
 
 export interface MojoAnalyzedEnumMember {
@@ -215,6 +220,7 @@ export interface MojoAnalyzedModule {
   readonly initializationSteps: readonly MojoModuleInitializationStep[];
   readonly asynchronous: boolean;
   readonly raises: boolean;
+  readonly errorType?: MojoTargetTypeRef;
   readonly runtimeInitializationRequired: boolean;
 }
 
@@ -486,6 +492,7 @@ export interface MojoCallableExpressionSelection {
   readonly resultType: MojoTargetTypeRef;
   readonly body: Node;
   readonly raises: boolean;
+  readonly errorType?: MojoTargetTypeRef;
   readonly callableType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
 }
 

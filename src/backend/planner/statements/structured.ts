@@ -122,8 +122,19 @@ function planStatementSequence(
       statements.push(...scoped);
       return Object.freeze(statements);
     }
+    const diagnosticCount = context.diagnostics.length;
     const planned = planStatement(sourceStatement, scope, context, flow);
-    if (planned === undefined) return undefined;
+    if (planned === undefined) {
+      if (context.diagnostics.length === diagnosticCount) {
+        appendMojoPlanningDiagnostic(
+          context,
+          "MOJO_STATEMENT_NOT_PLANNED",
+          `Statement kind '${context.program.source.ast.kindName(sourceStatement)}' has no exact sealed Mojo plan.`,
+          sourceStatement,
+        );
+      }
+      return undefined;
+    }
     statements.push(...planned);
   }
   return Object.freeze(statements);
@@ -230,8 +241,16 @@ function planStatement(
       : planMojoValue(conditionNode, context, { kind: "source-primitive", name: "bool" });
     const thenStatements = thenNode === undefined ? undefined : planStatementBody(thenNode, scope, context, flow);
     const elseStatements = elseNode === undefined ? undefined : planStatementBody(elseNode, scope, context, flow);
-    if (condition === undefined || thenStatements === undefined ||
-      (elseNode !== undefined && elseStatements === undefined)) return undefined;
+    if (condition === undefined) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_IF_CONDITION_NOT_PLANNED",
+        "An if statement requires one exact sealed Mojo condition plan.",
+        conditionNode ?? node,
+      );
+      return undefined;
+    }
+    if (thenStatements === undefined || (elseNode !== undefined && elseStatements === undefined)) return undefined;
     return Object.freeze([...condition.before, {
       kind: "if",
       condition: condition.value,
@@ -638,14 +657,55 @@ function planVariableDeclaration(
     const name = context.program.queries.bindingName(declaration);
     const type = context.program.queries.bindingType(declaration);
     const sourceInitializer = Node_Initializer(ast, declaration);
-    if (name === undefined || type === undefined || sourceInitializer === undefined) return undefined;
-    const initializer = planMojoValue(sourceInitializer, context, type);
-    if (initializer === undefined) return undefined;
+    if (name === undefined || type === undefined) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_VARIABLE_BINDING_NOT_CLOSED",
+        "A variable declaration requires one exact target name and sealed Mojo carrier.",
+        declaration,
+      );
+      return undefined;
+    }
+    const initializer = sourceInitializer === undefined
+      ? undefined
+      : planMojoValue(sourceInitializer, context, type);
+    if (sourceInitializer !== undefined && initializer === undefined) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_VARIABLE_INITIALIZER_NOT_PLANNED",
+        "A variable initializer requires one exact sealed Mojo value plan.",
+        sourceInitializer,
+      );
+      return undefined;
+    }
     const locationStorage = context.program.queries.locationStorage(declaration);
     if (locationStorage === undefined) {
       registerMojoTypeImports(type, context);
-      return Object.freeze([...initializer.before, { kind: "variable", name, type, initializer: initializer.value }]);
+      const defaultValue = sourceInitializer === undefined
+        ? uninitializedLocalValue(type)
+        : undefined;
+      return Object.freeze([
+        ...(initializer?.before ?? []),
+        {
+          kind: "variable",
+          name,
+          type,
+          ...(initializer === undefined && defaultValue === undefined
+            ? {}
+            : { initializer: initializer?.value ?? defaultValue! }),
+        },
+      ]);
     } else {
+      const value = initializer?.value ?? uninitializedLocalValue(type);
+      if (value === undefined) {
+        appendMojoPlanningDiagnostic(
+          context,
+          "MOJO_LOCATION_STORAGE_INITIALIZER_REQUIRED",
+          "A captured mutable local without an explicit initializer must have an exact undefined-capable Mojo carrier.",
+          declaration,
+        );
+        return undefined;
+      }
       const locationType: MojoTargetTypeRef = Object.freeze({
         kind: "target-named",
         id: "tsonic.mojo.runtime.Location",
@@ -654,17 +714,26 @@ function planVariableDeclaration(
         genericArguments: Object.freeze([Object.freeze({ kind: "type", type })]),
       });
       registerMojoTypeImports(locationType, context);
-      return Object.freeze([...initializer.before, {
+      return Object.freeze([...(initializer?.before ?? []), {
         kind: "variable",
         name: locationStorage.name,
         type: locationType,
         initializer: Object.freeze({
           kind: "construct",
           type: locationType,
-          arguments: Object.freeze([Object.freeze({ value: initializer.value })]),
+          arguments: Object.freeze([Object.freeze({ value })]),
         }),
       }]);
     }
+}
+
+function uninitializedLocalValue(type: MojoTargetTypeRef): MojoExpression | undefined {
+  if (type.kind !== "optional" && type.kind !== "undefined") return undefined;
+  return Object.freeze({
+    kind: "construct",
+    type,
+    arguments: Object.freeze([]),
+  });
 }
 
 function planForInitializer(

@@ -146,6 +146,9 @@ export function instantiateMojoProviderOperation(
       genericArguments: Object.freeze(genericArguments),
       genericParameters: Object.freeze(targetGenericParameters),
       raises: row.raises === true,
+      ...(row.errorType === undefined
+        ? {}
+        : { errorType: substituteMojoTargetType(row.errorType, substitutions) }),
     }),
   };
 }
@@ -178,6 +181,9 @@ export function instantiateMojoProviderPropertyOperation(
       genericArguments: Object.freeze([]),
       genericParameters: Object.freeze([]),
       raises: row.raises === true,
+      ...(row.errorType === undefined
+        ? {}
+        : { errorType: substituteMojoTargetType(row.errorType, substitutions) }),
     }),
   };
 }
@@ -198,6 +204,7 @@ export function instantiateMojoProviderConstantOperation(
       genericArguments: Object.freeze([]),
       genericParameters: Object.freeze([]),
       raises: row.raises === true,
+      ...(row.errorType === undefined ? {} : { errorType: row.errorType }),
     }),
   };
 }

@@ -102,6 +102,9 @@ export function substituteMojoTargetType(
           type: substituteMojoTargetType(parameter.type, substitutions),
         }))),
         result: substituteMojoTargetType(type.result, substitutions),
+        ...(type.errorType === undefined
+          ? {}
+          : { errorType: substituteMojoTargetType(type.errorType, substitutions) }),
       });
     case "function": {
       const nestedTypes = new Map(substitutions.types);

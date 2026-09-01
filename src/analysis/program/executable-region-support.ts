@@ -8,7 +8,13 @@ import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import { analyzeMojoProviderValue } from "../operations/values.js";
 import type { MojoExecutableRegionAnalysisInput } from "./executable-regions.js";
 import type { MojoCallSelection, MojoPropertySelection } from "./model.js";
-import { mojoConversionRaises, providerCallRequiresRaisingConversion } from "./effects.js";
+import {
+  mergeMojoErrorTypes,
+  mojoConversionRaises,
+  mojoNativeErrorType,
+  mojoOperationErrorTypes,
+  providerCallRequiresRaisingConversion,
+} from "./effects.js";
 import { walkSourceTree } from "./traversal.js";
 
 export function descendWithinExecutableRegion(
@@ -130,56 +136,84 @@ export function targetTypeDiagnostic(node: Node, reason: string): TargetDiagnost
   );
 }
 
-export function executableRegionRaises(
+export function executableRegionErrorTypes(
   root: Node,
   input: MojoExecutableRegionAnalysisInput,
-): boolean {
-  let raises = false;
+): readonly MojoTargetTypeRef[] {
+  const errors: MojoTargetTypeRef[] = [];
+  const addNativeConversionError = (raises: boolean): void => {
+    if (raises) errors.push(mojoNativeErrorType());
+  };
   walkSourceTree(root, input.source.ast, (node): void => {
     if (input.source.ast.is.IsCallExpression(node) || input.source.ast.is.IsNewExpression(node)) {
       const selection = input.callSelections.get(node);
       if (selection?.kind === "provider") {
-        raises = raises || selection.operation.raises || providerCallRequiresRaisingConversion(selection);
+        errors.push(...mojoOperationErrorTypes(selection.operation));
+        addNativeConversionError(providerCallRequiresRaisingConversion(selection));
       } else if (selection?.kind === "project" || selection?.kind === "callable") {
-        raises = raises || selection.arguments.some((argument) =>
+        addNativeConversionError(selection.arguments.some((argument) =>
           mojoConversionRaises(argument.conversion)) ||
           mojoConversionRaises(selection.resultConversion) ||
-          (selection.kind === "callable" && selection.callableType.raises);
+          (selection.kind === "callable" && selection.callableType.raises));
       }
     }
-    if (input.source.ast.is.IsThrowStatement(node)) raises = true;
+    if (input.source.ast.is.IsThrowStatement(node)) {
+      const expression = Node_Expression(input.source.ast, node);
+      const type = expression === undefined ? undefined : input.expressionTypes.get(expression);
+      if (type === undefined) {
+        input.diagnostics.push(diagnostic(
+          "MOJO_THROW_ERROR_CARRIER_NOT_CLOSED",
+          "A throw statement requires one exact sealed Mojo error carrier.",
+          node,
+        ));
+      } else {
+        errors.push(type);
+      }
+    }
     if (input.source.ast.is.IsPropertyAccessExpression(node)) {
       const selection = input.propertySelections.get(node);
       if (selection?.kind === "provider") {
-        raises = raises || selection.readOperation?.raises === true ||
-          selection.writeOperation?.raises === true ||
+        if (selection.readOperation !== undefined) {
+          errors.push(...mojoOperationErrorTypes(selection.readOperation));
+        }
+        if (selection.writeOperation !== undefined) {
+          errors.push(...mojoOperationErrorTypes(selection.writeOperation));
+        }
+        addNativeConversionError(
           (selection.receiverConversion !== undefined && mojoConversionRaises(selection.receiverConversion)) ||
-          (selection.readResultConversion !== undefined && mojoConversionRaises(selection.readResultConversion));
+          (selection.readResultConversion !== undefined && mojoConversionRaises(selection.readResultConversion)),
+        );
       } else if (selection?.kind === "provider-constant") {
-        raises = raises || selection.operation.raises ||
-          mojoConversionRaises(selection.readResultConversion);
+        errors.push(...mojoOperationErrorTypes(selection.operation));
+        addNativeConversionError(mojoConversionRaises(selection.readResultConversion));
       }
     }
     if (input.source.ast.is.IsIdentifier(node)) {
       const selection = input.valueSelections.get(node);
-      raises = raises || selection?.operation.raises === true ||
-        (selection?.resultConversion !== undefined && mojoConversionRaises(selection.resultConversion));
+      if (selection !== undefined) {
+        errors.push(...mojoOperationErrorTypes(selection.operation));
+        addNativeConversionError(mojoConversionRaises(selection.resultConversion));
+      }
     }
     if (input.source.ast.is.IsElementAccessExpression(node)) {
       const selection = input.elementSelections.get(node);
       if (selection !== undefined) {
-        raises = raises || mojoConversionRaises(selection.indexConversion) ||
+        addNativeConversionError(mojoConversionRaises(selection.indexConversion) ||
           (selection.readResultConversion !== undefined &&
-            mojoConversionRaises(selection.readResultConversion));
+            mojoConversionRaises(selection.readResultConversion)));
         if (selection.kind === "provider") {
-          raises = raises || selection.readOperation?.raises === true ||
-            selection.writeOperation?.raises === true ||
-            mojoConversionRaises(selection.receiverConversion);
+          if (selection.readOperation !== undefined) {
+            errors.push(...mojoOperationErrorTypes(selection.readOperation));
+          }
+          if (selection.writeOperation !== undefined) {
+            errors.push(...mojoOperationErrorTypes(selection.writeOperation));
+          }
+          addNativeConversionError(mojoConversionRaises(selection.receiverConversion));
         }
       }
     }
   }, (node, regionRoot) => descendWithinExecutableRegion(node, regionRoot, input.source.ast));
-  return raises;
+  return mergeMojoErrorTypes(errors);
 }
 
 function isCallableBoundary(node: Node, ast: TargetSourceProgram["ast"]): boolean {

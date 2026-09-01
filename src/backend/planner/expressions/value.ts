@@ -491,6 +491,15 @@ function planBinary(node: Node, context: MojoPlanningContext): MojoValuePlan | u
   const { ast } = context.program.source;
   const typeTest = context.program.queries.typeTestSelection(node);
   if (typeTest !== undefined) return planMojoTypeTest(typeTest, context, planMojoValue);
+  if (ast.operatorKindName(node) === "KindInstanceOfKeyword") {
+    appendMojoPlanningDiagnostic(
+      context,
+      "MOJO_TYPE_TEST_SELECTION_NOT_SEALED",
+      "A checked instanceof expression requires one exact sealed Mojo type-test selection.",
+      node,
+    );
+    return undefined;
+  }
   const leftNode = BinaryExpression_Left(ast, node);
   const rightNode = BinaryExpression_Right(ast, node);
   const operatorKind = ast.kindName(ast.as.AsBinaryExpression(node)?.OperatorToken);

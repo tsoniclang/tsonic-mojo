@@ -69,7 +69,10 @@ export function mojoTargetTypeEquals(
           parameter.passing === other.passing &&
           (parameter.omissionKind ?? "required") === (other.omissionKind ?? "required") &&
           mojoTargetTypeEquals(parameter.type, other.type)) &&
-        mojoTargetTypeEquals(left.result, right.result);
+        mojoTargetTypeEquals(left.result, right.result) &&
+        (left.errorType === undefined
+          ? right.errorType === undefined
+          : right.errorType !== undefined && mojoTargetTypeEquals(left.errorType, right.errorType));
     case "function":
       return right.kind === "function" && left.thin === right.thin &&
         left.asynchronous === right.asynchronous && left.raises === right.raises &&

@@ -10,9 +10,9 @@ import type {
 import type { MojoPlanningContext } from "../program/context.js";
 import { registerMojoTypeImports } from "../types/render.js";
 import {
-  mojoReferenceCopyInitializer,
   mojoReferenceIdentityEqualityMethod,
 } from "./reference-wrapper.js";
+import { mojoStateStorageType } from "./state-storage.js";
 
 export function planMojoInterface(
   interface_: MojoAnalyzedInterface,
@@ -36,13 +36,7 @@ export function planMojoInterface(
     name: interface_.stateName,
     ...(genericArguments.length === 0 ? {} : { genericArguments: Object.freeze(genericArguments) }),
   });
-  const arcType: MojoTargetTypeRef = Object.freeze({
-    kind: "target-named",
-    id: "mojo.std.memory.ArcPointer",
-    modulePath: Object.freeze(["std", "memory"]),
-    name: "ArcPointer",
-    genericArguments: Object.freeze([{ kind: "type" as const, type: stateType }]),
-  });
+  const arcType = mojoStateStorageType(stateType, interface_.stateStorage);
   registerMojoTypeImports(arcType, context);
   for (const field of interface_.fields) registerMojoTypeImports(field.type, context);
   const indexStorage = interface_.indexSignatures.map((indexSignature) => Object.freeze({
@@ -144,7 +138,6 @@ export function planMojoInterface(
     })]),
     methods: Object.freeze([
       constructor,
-      mojoReferenceCopyInitializer(),
       mojoReferenceIdentityEqualityMethod(interface_.targetType),
     ]),
   });
