@@ -4,6 +4,7 @@ import {
   BinaryExpression_Right,
   Node_Expression,
   Node_Initializer,
+  PrefixUnaryExpression_Operand,
 } from "@tsonic/target-api/source";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
@@ -25,6 +26,7 @@ import type { MojoSourceProfileRegistry } from "../types/source-profile.js";
 import { resolveMojoTargetType } from "../types/resolution.js";
 import { providerCallRequiresRaisingConversion } from "./effects.js";
 import { inferMojoExpressionType, isMojoExpressionNode } from "./expression-types.js";
+import { isMojoAssignmentOperator } from "./syntax-validation.js";
 import type {
   MojoAnalyzedClass,
   MojoAnalyzedClassOwner,
@@ -201,6 +203,22 @@ function expectedExpressionType(
   if (ast.is.IsCallExpression(parent) || ast.is.IsNewExpression(parent)) {
     return input.callSelections.get(parent)?.arguments.find((argument) => argument.expression === node)?.parameterType;
   }
+  if (ast.is.IsArrayLiteralExpression(parent)) {
+    const index = ast.elements(parent).findIndex((element) => element === node);
+    const aggregate = input.expressionTypes.get(parent);
+    if (index < 0 || aggregate === undefined) return undefined;
+    if (aggregate.kind === "list" || aggregate.kind === "fixed-array") return aggregate.element;
+    if (aggregate.kind === "tuple") return aggregate.elements[index];
+    if (aggregate.kind === "target-named" && aggregate.id === "tsonic.mojo.js.JsArray") {
+      const argument = aggregate.genericArguments?.[0];
+      return argument?.kind === "type" ? argument.type : undefined;
+    }
+  }
+  if (ast.is.IsPrefixUnaryExpression(parent) && PrefixUnaryExpression_Operand(ast, parent) === node) {
+    return ast.operatorKindName(parent) === "KindExclamationToken"
+      ? Object.freeze({ kind: "source-primitive", name: "bool" })
+      : input.expressionTypes.get(parent);
+  }
   if (ast.is.IsPropertyAssignment(parent) || ast.is.IsShorthandPropertyAssignment(parent)) {
     const owner = ast.parent(parent);
     const selection = owner === undefined ? undefined : input.objectLiteralSelections.get(owner);
@@ -208,7 +226,9 @@ function expectedExpressionType(
       candidate.kind === "field" && candidate.element === parent);
     return contribution?.kind === "field" ? contribution.fieldType : undefined;
   }
-  if (ast.is.IsBinaryExpression(parent) && BinaryExpression_Right(ast, parent) === node) {
+  const parentOperator = ast.operatorKindName(parent);
+  if (ast.is.IsBinaryExpression(parent) && BinaryExpression_Right(ast, parent) === node &&
+    parentOperator !== undefined && isMojoAssignmentOperator(parentOperator)) {
     const left = BinaryExpression_Left(ast, parent);
     if (left === undefined) return undefined;
     const property = input.propertySelections.get(left);

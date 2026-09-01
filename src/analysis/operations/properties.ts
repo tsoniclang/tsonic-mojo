@@ -93,7 +93,7 @@ export function analyzeMojoProjectProperty(
   }
   return {
     kind: "resolved",
-    expressionType: fieldType,
+    expressionType: optionalAccessResult(fieldType, source.optionalChain),
     selection: Object.freeze({
       kind: "project-field",
       receiver: source.receiver.expression,
@@ -104,6 +104,15 @@ export function analyzeMojoProjectProperty(
       optionalChain: source.optionalChain,
     }),
   };
+}
+
+function optionalAccessResult(
+  type: MojoTargetTypeRef,
+  optionalChain: boolean,
+): MojoTargetTypeRef {
+  return !optionalChain || type.kind === "optional"
+    ? type
+    : Object.freeze({ kind: "optional", value: type });
 }
 
 function instantiateProjectFieldType(

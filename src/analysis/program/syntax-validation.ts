@@ -97,7 +97,8 @@ export function validateMojoFunctionSyntax(
       return;
     }
     if (ast.is.IsStringLiteral(expression) || ast.is.IsNoSubstitutionTemplateLiteral(expression) ||
-      ast.is.IsNumericLiteral(expression) || ast.kindName(expression) === "KindTrueKeyword" ||
+      ast.is.IsNumericLiteral(expression) || ast.is.IsBigIntLiteral(expression) ||
+      ast.kindName(expression) === "KindTrueKeyword" ||
       ast.kindName(expression) === "KindFalseKeyword" || ast.kindName(expression) === "KindNullKeyword" ||
       ast.kindName(expression) === "KindUndefinedKeyword") return;
     if (ast.is.IsArrayLiteralExpression(expression)) {

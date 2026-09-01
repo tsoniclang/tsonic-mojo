@@ -575,7 +575,8 @@ function binaryOperandTypes(
   if (!isComparisonOperator(operator)) return Object.freeze([result, result]);
   const leftType = left === undefined ? undefined : context.program.queries.expressionType(left);
   const rightType = right === undefined ? undefined : context.program.queries.expressionType(right);
-  if (left !== undefined && context.program.source.ast.is.IsNumericLiteral(left)) {
+  if (left !== undefined && (context.program.source.ast.is.IsNumericLiteral(left) ||
+    context.program.source.ast.is.IsBigIntLiteral(left))) {
     return Object.freeze([rightType, undefined]);
   }
   return Object.freeze([undefined, leftType]);

@@ -328,3 +328,77 @@ test("authored scalar array tuple and FixedArray carriers survive collapsed Type
   assert.match(source.text, /var bytes: Array\[UInt8, 2\] = Array\[UInt8, 2\]\(UInt8\(4\), UInt8\(5\)\)/u);
   assert.match(source.text, /values\[Int\(0\)\].*tuple\[Int\(0\)\].*Int32\(bytes\[Int\(1\)\]\)/u);
 });
+
+test("all native Mojo and shared fixed-width primitive aliases retain authored carriers", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        'import type { bool, i8, u8, i16, u16, i32, u32, i64, u64, isize, usize, f16, f32, f64 } from "@tsonic/mojo/types.js";',
+        'import type { char, int128, uint128 } from "@tsonic/core/types.js";',
+        "function preserve(a: bool, b: char, c: i8, d: u8, e: i16, f: u16, g: i32, h: u32, i: i64, j: u64, k: isize, l: usize, m: f16, n: f32, o: f64, p: int128, q: uint128): [bool, char, i8, u8, i16, u16, i32, u32, i64, u64, isize, usize, f16, f32, f64, int128, uint128] {",
+        "  return [a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q];",
+        "}",
+        "function integerLiterals(): [i64, u64] { return [-1n, 2n]; }",
+        "export function main(): void {}",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("def preserve"));
+  assert.ok(source);
+  for (const type of [
+    "Bool", "UInt16", "Int8", "UInt8", "Int16", "Int32", "UInt32", "Int64",
+    "UInt64", "Int", "UInt", "Float16", "Float32", "Float64", "Int128", "UInt128",
+  ]) assert.match(source.text, new RegExp(`\\b${type}\\b`, "u"));
+  assert.match(source.text, /return \(-1, 2\)/u);
+});
+
+test("decimal rejects at target type closure because the pinned Mojo toolchain has no decimal carrier", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        'import type { decimal } from "@tsonic/core/types.js";',
+        "function preserve(value: decimal): decimal { return value; }",
+        "export function main(): void {}",
+      ].join("\n"),
+    },
+  });
+  assert.equal(result.artifacts.length, 0);
+  assert.ok(result.diagnostics.some(({ code, message }) =>
+    code === "MOJO_TARGET_TYPE_UNSUPPORTED" && message.includes("decimal")));
+});
+
+test("nested optional property reads and nullish fallback retain explicit Optional projections", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        "interface Value { count: i32; }",
+        "interface Box { value?: Value; }",
+        "function count(box: Box | undefined): i32 {",
+        "  return box?.value?.count ?? 0;",
+        "}",
+        "export function main(): void {}",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("def count"));
+  assert.ok(source);
+  assert.match(source.text, /Optional\[/u);
+  assert.match(source.text, /if __tsonic_optional_receiver_/u);
+  assert.match(source.text, /\.value\(\)/u);
+});
+
+test("open dynamic element access rejects before planning without reflective recovery", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        "function read(value: any, name: string): any { return value[name]; }",
+        "export function main(): void {}",
+      ].join("\n"),
+    },
+  });
+  assert.equal(result.artifacts.length, 0);
+  assert.ok(result.diagnostics.some(({ code }) => code === "MOJO_ELEMENT_TARGET_UNSUPPORTED"));
+});

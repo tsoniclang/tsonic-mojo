@@ -60,6 +60,18 @@ export function planMojoLeafExpression(
     planned = { kind: "string-literal", value: ast.text(node) };
   } else if (ast.is.IsNumericLiteral(node)) {
     planned = { kind: "number-literal", text: ast.text(node) };
+  } else if (ast.is.IsBigIntLiteral(node)) {
+    const text = ast.text(node);
+    if (!text.endsWith("n")) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_BIGINT_LITERAL_INVALID",
+        "A TypeScript bigint literal must retain its exact bigint suffix through source checking.",
+        node,
+      );
+      return undefined;
+    }
+    planned = { kind: "number-literal", text: text.slice(0, -1) };
   } else if (ast.kindName(node) === "KindTrueKeyword" || ast.kindName(node) === "KindFalseKeyword") {
     planned = { kind: "bool-literal", value: ast.kindName(node) === "KindTrueKeyword" };
   } else if (ast.kindName(node) === "KindNullKeyword" || ast.kindName(node) === "KindUndefinedKeyword") {

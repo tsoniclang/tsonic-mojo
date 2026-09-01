@@ -350,7 +350,9 @@
       "source": "return value?.item?.count ?? 0;",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain selected Option projections",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/language-parity.test.mjs",
+      "note": "Nested optional receivers are evaluated once into exact Optional[T] carriers and nullish fallback unwraps only the present branch."
     },
     {
       "id": "expressions.assertions-narrowing",
@@ -374,8 +376,9 @@
       "source": "const value: int32 = 1; const byte: uint8 = 2;",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain authored primitive identity",
-      "status": "partial",
-      "note": "Foundation coverage exists but does not satisfy the complete mature-target lane."
+      "status": "matched",
+      "proof": "test/language-parity.test.mjs",
+      "note": "All native Mojo and shared fixed-width primitive aliases retain exact authored carriers; decimal rejects during target type closure because the pinned toolchain exposes no decimal carrier."
     },
     {
       "id": "types.arrays-tuples-fixed",
@@ -403,7 +406,9 @@
       "source": "return value[name];",
       "benchmarkClassification": "shared-rejection",
       "benchmarkAction": "retain fail-closed behavior without reflection or dynamic dispatch",
-      "status": "pending"
+      "status": "matched-rejection",
+      "proof": "test/language-parity.test.mjs",
+      "note": "Open dynamic element access rejects during target analysis without reflective, spelling, or source-text recovery."
     },
     {
       "id": "safety.typed-locations",

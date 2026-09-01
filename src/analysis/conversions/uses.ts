@@ -175,7 +175,7 @@ export function recordMojoExecutableRegionConversionUses(
         const leftType = left === undefined ? undefined : expressionTypes.get(left);
         const rightType = right === undefined ? undefined : expressionTypes.get(right);
         if (leftType !== undefined && rightType !== undefined) {
-          if (ast.is.IsNumericLiteral(left!)) record(left, rightType);
+          if (ast.is.IsNumericLiteral(left!) || ast.is.IsBigIntLiteral(left!)) record(left, rightType);
           else record(right, leftType);
         }
       }

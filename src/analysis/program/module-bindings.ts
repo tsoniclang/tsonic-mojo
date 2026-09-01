@@ -364,7 +364,8 @@ function isNativeComptimeInitializer(
   if (!source.ast.is.IsPrefixUnaryExpression(initializer)) return false;
   const operand = source.ast.as.AsPrefixUnaryExpression(initializer)?.Operand;
   const operator = source.ast.operatorKindName(initializer);
-  return operand !== undefined && source.ast.is.IsNumericLiteral(operand) &&
+  return operand !== undefined &&
+    (source.ast.is.IsNumericLiteral(operand) || source.ast.is.IsBigIntLiteral(operand)) &&
     (operator === "KindPlusToken" || operator === "KindMinusToken");
 }
 
