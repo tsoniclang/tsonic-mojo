@@ -16,6 +16,7 @@ import { projectMojoPassingMode } from "./call-conventions.js";
 import {
   projectMojoCompilerType,
   projectMojoGenericParameters,
+  sourceVisibleMojoGenericParameters,
 } from "./types.js";
 import type { MojoCompilerTypeProjectionContext } from "./types.js";
 
@@ -34,8 +35,8 @@ export function projectAlias(
     const projected = projectMojoCompilerType(declaration.targetType, context);
     types.push(Object.freeze({
       exportId,
-      sourceGenericParameters: Object.freeze(declaration.genericParameters.map((parameter) =>
-        Object.freeze({ targetName: parameter.name, targetKind: parameter.kind }))),
+      sourceGenericParameters: Object.freeze(sourceVisibleMojoGenericParameters(declaration.genericParameters).map((parameter) =>
+        Object.freeze({ targetName: parameter.name, targetKind: parameter.kind, variadic: parameter.variadic }))),
       targetType: projected.target,
     }));
     return Object.freeze({
@@ -92,6 +93,16 @@ export function projectFunctionSignature(
   const result = function_.result === undefined
     ? { source: Object.freeze({ kind: "void" as const }), target: Object.freeze({ kind: "unit" as const }) }
     : projectMojoCompilerType(function_.result, context);
+  const sourceResult = function_.asynchronous
+    ? Object.freeze({
+        kind: "source-global" as const,
+        name: "Promise",
+        typeArguments: Object.freeze([result.source]),
+      })
+    : result.source;
+  const targetResult = function_.asynchronous
+    ? Object.freeze({ kind: "future" as const, domain: "native" as const, output: result.target })
+    : result.target;
   const parameters: ProviderParameterDeclaration[] = projectedArguments.map(({ argument, type }) =>
     Object.freeze({
       name: argument.name,
@@ -107,7 +118,7 @@ export function projectFunctionSignature(
         : `${memberId}:${function_.identity.split(":").slice(-1)[0]}`,
       name: function_.name,
       parameters: Object.freeze(parameters),
-      returnType: result.source,
+      returnType: sourceResult,
       ...(function_.genericParameters.length === 0
         ? {}
         : { typeParameters: projectMojoGenericParameters(function_.genericParameters, context) }),
@@ -121,7 +132,7 @@ export function projectFunctionSignature(
         ...(argument.variadic ? { variadic: true } : {}),
       }))),
     parameterTargets: Object.freeze(projectedArguments.map(({ type }) => type.target)),
-    resultTarget: result.target,
+    resultTarget: targetResult,
   });
 }
 

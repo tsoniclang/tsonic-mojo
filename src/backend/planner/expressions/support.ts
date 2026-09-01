@@ -298,6 +298,7 @@ export function applyMojoConversion(
       registerMojoModuleImport(context, ["tsonic_js"]);
       return { kind: "construct", type: conversion.targetType, arguments: Object.freeze([{ value: expression }]) };
     case "primitive-cast":
+    case "reference-copy":
       registerMojoTypeImports(conversion.targetType, context);
       return { kind: "construct", type: conversion.targetType, arguments: Object.freeze([{ value: expression }]) };
     case "optional-none":

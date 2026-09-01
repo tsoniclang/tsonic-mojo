@@ -59,9 +59,11 @@ export function projectMojoCompilerType(
       }
       const moduleSpecifier = context.source.moduleSpecifier;
       const genericArguments = context.owner.genericParameters.map((parameter): MojoTargetGenericArgument =>
-        parameter.kind === "type"
-          ? Object.freeze({ kind: "type", type: Object.freeze({ kind: "type-parameter", name: parameter.name }) })
-          : Object.freeze({ kind: "value-reference", path: Object.freeze([parameter.name]) }));
+        parameter.passingKind === "inferred"
+          ? Object.freeze({ kind: "unbound" })
+          : parameter.kind === "type"
+            ? Object.freeze({ kind: "type", type: Object.freeze({ kind: "type-parameter", name: parameter.name }) })
+            : Object.freeze({ kind: "value-reference", path: Object.freeze([parameter.name]) }));
       const ownerTarget = namedTargetType(
         context.package,
         context.modulePath,
@@ -85,10 +87,10 @@ export function projectMojoCompilerType(
           kind: "provider-ref",
           moduleSpecifier,
           exportName: context.owner.sourceName,
-          ...(context.owner.genericParameters.length === 0
+          ...(sourceVisibleMojoGenericParameters(context.owner.genericParameters).length === 0
             ? {}
             : {
-                typeArguments: Object.freeze(context.owner.genericParameters.map((parameter) =>
+                typeArguments: Object.freeze(sourceVisibleMojoGenericParameters(context.owner.genericParameters).map((parameter) =>
                   Object.freeze({ kind: "type-parameter" as const, name: parameter.name }))),
               }),
         }),
@@ -148,7 +150,13 @@ export function projectMojoCompilerType(
               type: projected.source,
               passingMode: projectMojoPassingMode(parameter.convention),
             }))),
-          returnType: result.source,
+          returnType: type.asynchronous
+            ? Object.freeze({
+                kind: "source-global",
+                name: "Promise",
+                typeArguments: Object.freeze([result.source]),
+              })
+            : result.source,
           ...(type.genericParameters.length === 0
             ? {}
             : { typeParameters: projectMojoGenericParameters(type.genericParameters, context) }),
@@ -217,7 +225,7 @@ export function projectMojoGenericParameters(
   parameters: readonly MojoCompilerGenericParameter[],
   context: MojoCompilerTypeProjectionContext,
 ): readonly ProviderTypeParameterDeclaration[] {
-  return Object.freeze(parameters.map((parameter): ProviderTypeParameterDeclaration => {
+  return Object.freeze(sourceVisibleMojoGenericParameters(parameters).map((parameter): ProviderTypeParameterDeclaration => {
     const constraints = parameter.constraints.map((constraint) =>
       projectMojoCompilerType(constraint, context).source);
     const sourceConstraints = parameter.variadic
@@ -240,6 +248,19 @@ export function projectMojoGenericParameters(
       ...(defaultArgument?.source === undefined ? {} : { defaultType: defaultArgument.source }),
     });
   }));
+}
+
+export function sourceVisibleMojoGenericParameters(
+  parameters: readonly MojoCompilerGenericParameter[],
+): readonly MojoCompilerGenericParameter[] {
+  for (const parameter of parameters) {
+    if (parameter.kind === "origin" && parameter.passingKind !== "inferred") {
+      throw new Error(
+        `Mojo origin parameter '${parameter.name}' is not infer-only and has no exact TypeScript source representation.`,
+      );
+    }
+  }
+  return Object.freeze(parameters.filter((parameter) => parameter.passingKind !== "inferred"));
 }
 
 function projectNamedType(

@@ -2,6 +2,7 @@ import type { ResolvedSourceCallInfo, Type } from "@tsonic/tsts";
 import type { MojoProviderOperationRow } from "../../providers/packages/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type {
+  MojoProviderTargetGenericParameter,
   MojoTargetGenericArgument,
   MojoTargetTypeRef,
 } from "../../target-model/types/model.js";
@@ -18,9 +19,15 @@ export type MojoProviderOperationInstantiation =
 export function instantiateMojoProviderOperation(
   row: MojoProviderOperationRow,
   source: ResolvedSourceCallInfo,
-  resolveType: (type: Type) => MojoTargetTypeRef | undefined,
+  resolveType: (type: Type, authoredTypeNode?: import("@tsonic/tsts").Node) => MojoTargetTypeRef | undefined,
+  resolveNonTypeGenericArguments: (
+    parameter: MojoProviderTargetGenericParameter,
+    explicitTypeNode: import("@tsonic/tsts").Node,
+  ) => readonly MojoTargetGenericArgument[] | undefined,
 ): MojoProviderOperationInstantiation {
   const typeSubstitutions = new Map<string, MojoTargetTypeRef>();
+  const valueSubstitutions = new Map<string, MojoTargetGenericArgument>();
+  const packSubstitutions = new Map<string, readonly MojoTargetGenericArgument[]>();
   if (row.receiverType !== undefined) {
     const sourceReceiver = source.sourceReceiver?.type;
     const receiver = sourceReceiver === undefined ? undefined : resolveType(sourceReceiver);
@@ -40,20 +47,51 @@ export function instantiateMojoProviderOperation(
   const genericArguments: MojoTargetGenericArgument[] = [];
   for (const parameter of targetGenericParameters) {
     const selected = selectedArguments.filter((argument) => argument.typeParameterName === parameter.name);
-    if (parameter.kind !== "type") {
-      return {
-        kind: "unsupported",
-        reason: `selected provider ${parameter.kind} parameter '${parameter.name}' requires exact non-type generic evidence`,
-      };
+    if (selected.length === 0 && (parameter.position === "inferred" || parameter.defaultArgument !== undefined)) {
+      continue;
     }
     if (selected.length !== 1) {
-      if (parameter.position === "inferred") continue;
       return {
         kind: "unsupported",
-        reason: `selected provider type parameter '${parameter.name}' has ${selected.length} exact source arguments`,
+        reason: `selected provider ${parameter.kind} parameter '${parameter.name}' has ${selected.length} exact source arguments`,
       };
     }
-    const targetType = resolveType(selected[0]!.selectedType);
+    const evidence = selected[0]!;
+    if (parameter.kind !== "type") {
+      if (evidence.explicitTypeNode === undefined) {
+        if (parameter.position === "inferred") continue;
+        return {
+          kind: "unsupported",
+          reason: `selected provider ${parameter.kind} parameter '${parameter.name}' has no exact authored argument`,
+        };
+      }
+      const resolved = resolveNonTypeGenericArguments(parameter, evidence.explicitTypeNode);
+      if (resolved === undefined || resolved.length === 0 || (!parameter.variadic && resolved.length !== 1)) {
+        return {
+          kind: "unsupported",
+          reason: `selected provider ${parameter.kind} parameter '${parameter.name}' has no closed Mojo argument`,
+        };
+      }
+      for (const argument of resolved) {
+        const named = parameter.position === "keyword"
+          ? Object.freeze({ ...argument, name: parameter.name })
+          : argument;
+        genericArguments.push(named);
+      }
+      if (parameter.variadic) packSubstitutions.set(parameter.name, resolved);
+      if (resolved.length === 1) {
+        const [argument] = resolved;
+        if (argument?.kind === "integer") {
+          valueSubstitutions.set(parameter.name, argument);
+        } else if (argument?.kind === "boolean") {
+          valueSubstitutions.set(parameter.name, argument);
+        } else if (argument !== undefined) {
+          valueSubstitutions.set(parameter.name, argument);
+        }
+      }
+      continue;
+    }
+    const targetType = resolveType(evidence.selectedType, evidence.explicitTypeNode);
     if (targetType === undefined) {
       return {
         kind: "unsupported",
@@ -67,19 +105,33 @@ export function instantiateMojoProviderOperation(
         reason: `selected provider type argument '${parameter.name}' contradicts receiver inference`,
       };
     }
-    typeSubstitutions.set(parameter.name, targetType);
-    if (parameter.position !== "inferred") {
-      genericArguments.push(Object.freeze({
-        kind: "type",
-        ...(parameter.position === "keyword" ? { name: parameter.name } : {}),
-        type: targetType,
-      }));
+    if (parameter.variadic) {
+      if (targetType.kind !== "tuple") {
+        return {
+          kind: "unsupported",
+          reason: `selected variadic provider type argument '${parameter.name}' is not an exact tuple pack`,
+        };
+      }
+      const pack = Object.freeze(targetType.elements.map((element) =>
+        Object.freeze({ kind: "type" as const, type: element })));
+      packSubstitutions.set(parameter.name, pack);
+      if (parameter.position !== "inferred") genericArguments.push(...pack);
+    } else {
+      typeSubstitutions.set(parameter.name, targetType);
+      if (parameter.position !== "inferred") {
+        genericArguments.push(Object.freeze({
+          kind: "type",
+          ...(parameter.position === "keyword" ? { name: parameter.name } : {}),
+          type: targetType,
+        }));
+      }
     }
   }
 
   const substitutions = {
     types: typeSubstitutions,
-    constants: new Map(),
+    values: valueSubstitutions,
+    packs: packSubstitutions,
   };
   return {
     kind: "resolved",
@@ -110,7 +162,11 @@ export function instantiateMojoProviderPropertyOperation(
   if (mismatch !== undefined) {
     return { kind: "unsupported", reason: `the selected provider property receiver does not close its Mojo ABI: ${mismatch}` };
   }
-  const substitutions = { types: typeSubstitutions, constants: new Map<string, never>() };
+  const substitutions = {
+    types: typeSubstitutions,
+    values: new Map<string, never>(),
+    packs: new Map<string, never>(),
+  };
   return {
     kind: "resolved",
     operation: Object.freeze({

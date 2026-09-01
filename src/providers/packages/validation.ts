@@ -120,6 +120,11 @@ export function validateMojoProviderPackageDefinition(
           `Provider type '${type.exportId}' has invalid or duplicate target generic parameter '${parameter.targetName}'.`,
         );
       }
+      if (typeof parameter.variadic !== "boolean") {
+        throw new Error(
+          `Provider type '${type.exportId}' has no exact variadic contract for '${parameter.targetName}'.`,
+        );
+      }
       sourceGenericNames.add(parameter.targetName);
     }
     validateType(type.targetType);

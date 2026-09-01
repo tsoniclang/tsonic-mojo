@@ -8,6 +8,7 @@ import type { MojoSourceProfileRegistry } from "../../policy/types/source-profil
 import { resolveMojoTargetType } from "../../policy/types/resolution.js";
 import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
+import { resolveMojoNonTypeGenericArguments } from "../../policy/types/generic-arguments.js";
 import { selectMojoProviderCall } from "../../policy/operations/provider-selection.js";
 import { instantiateMojoProviderOperation } from "../../policy/operations/provider-instantiation.js";
 import type {
@@ -94,7 +95,16 @@ export function analyzeMojoCall(
           reason: selectedProvider.reason,
         };
   }
-  const instantiated = instantiateMojoProviderOperation(selectedProvider.operation, sourceCall, resolve);
+  const instantiated = instantiateMojoProviderOperation(
+    selectedProvider.operation,
+    sourceCall,
+    resolve,
+    (parameter, explicitTypeNode) => resolveMojoNonTypeGenericArguments(
+      parameter,
+      explicitTypeNode,
+      context.source.ast,
+    ),
+  );
   if (instantiated.kind === "unsupported") {
     return { kind: "unsupported", code: "MOJO_PROVIDER_CALL_NOT_CLOSED", reason: instantiated.reason };
   }
@@ -263,7 +273,7 @@ function analyzeProjectCall(
     typeSubstitutions.set(parameter.name, targetType);
     genericArguments.push(Object.freeze({ kind: "type", type: targetType }));
   }
-  const substitutions = { types: typeSubstitutions, constants: new Map() };
+  const substitutions = { types: typeSubstitutions, values: new Map(), packs: new Map() };
   const parameterTypes = function_.parameters.map((parameter) =>
     substituteMojoTargetType(parameter.type, substitutions));
   const targetArguments = function_.parameters.map((parameter) => Object.freeze({

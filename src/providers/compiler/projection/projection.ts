@@ -23,6 +23,7 @@ import {
   projectMojoCompilerType,
   projectMojoGenericParameters,
   projectMojoTargetGenericParameters,
+  sourceVisibleMojoGenericParameters,
 } from "./types.js";
 import type { MojoCompilerTypeProjectionContext } from "./types.js";
 import {
@@ -199,18 +200,21 @@ function projectTypeDeclaration(
     kind: "named",
     name: declaration.name,
     arguments: declaration.kind === "struct"
-      ? declaration.genericParameters.map((parameter) => parameter.kind === "type"
-          ? Object.freeze({ kind: "type" as const, type: Object.freeze({ kind: "type-parameter" as const, name: parameter.name }) })
-          : Object.freeze({ kind: "value" as const, expression: parameter.name }))
+      ? declaration.genericParameters.map((parameter) => parameter.passingKind === "inferred"
+          ? Object.freeze({ kind: "unbound" as const })
+          : parameter.kind === "type"
+            ? Object.freeze({ kind: "type" as const, type: Object.freeze({ kind: "type-parameter" as const, name: parameter.name }) })
+            : Object.freeze({ kind: "value" as const, expression: parameter.name }))
       : Object.freeze([]),
   }, context);
   types.push(Object.freeze({
     exportId,
     sourceGenericParameters: Object.freeze((declaration.kind === "struct"
-      ? declaration.genericParameters
+      ? sourceVisibleMojoGenericParameters(declaration.genericParameters)
       : []).map((parameter) => Object.freeze({
         targetName: parameter.name,
         targetKind: parameter.kind,
+        variadic: parameter.variadic,
       }))),
     targetType: ownerType.target,
     ...(declaration.aliases.length === 0
@@ -319,9 +323,19 @@ function projectStructMembers(
     const memberId = `${exportId}::${constructor ? "constructor" : "method"}:${name}`;
     const signatures: ProviderSignatureDeclaration[] = [];
     for (const function_ of retainedFunctions) {
+      if (constructor && function_.asynchronous) {
+        throw new Error(
+          `Mojo initializer '${declaration.name}.__init__' is asynchronous and cannot be projected as a TypeScript constructor.`,
+        );
+      }
       const receiver = function_.arguments.find(({ name: argumentName }) => argumentName === "self");
       if (!constructor && !function_.static && receiver === undefined) {
         throw new Error(`Mojo method '${declaration.name}.${name}' has no compiler-owned receiver convention.`);
+      }
+      if (!function_.static && receiver !== undefined && !isDirectSelfReceiver(receiver.type)) {
+        throw new Error(
+          `Mojo method '${declaration.name}.${name}' has a custom receiver that one TypeScript instance value cannot represent exactly.`,
+        );
       }
       const projected = projectFunctionSignature(function_, context, memberId);
       signatures.push(projected.signature);
@@ -387,6 +401,9 @@ function projectStructIndexers(
     if (function_.static || receiver === undefined) {
       throw new Error(`Mojo index getter '${declaration.name}.__getitem__' has no compiler-owned instance receiver.`);
     }
+    if (!isDirectSelfReceiver(receiver.type)) {
+      throw new Error(`Mojo index getter '${declaration.name}.__getitem__' has an unrepresentable custom receiver.`);
+    }
     const projected = projectFunctionSignature(function_, context, memberId);
     if (projected.parameterTargets.length !== 1 || projected.resultTarget.kind === "unit") {
       throw new Error(`Mojo index getter '${declaration.name}.__getitem__' must have one index and one value result.`);
@@ -397,6 +414,9 @@ function projectStructIndexers(
     const receiver = function_.arguments.find(({ name }) => name === "self");
     if (function_.static || receiver === undefined) {
       throw new Error(`Mojo index setter '${declaration.name}.__setitem__' has no compiler-owned instance receiver.`);
+    }
+    if (!isDirectSelfReceiver(receiver.type)) {
+      throw new Error(`Mojo index setter '${declaration.name}.__setitem__' has an unrepresentable custom receiver.`);
     }
     const projected = projectFunctionSignature(function_, context, memberId);
     if (projected.parameterTargets.length !== 2 || projected.resultTarget.kind !== "unit") {
@@ -508,6 +528,11 @@ function projectTraitMembers(
       if (!function_.static && receiver === undefined) {
         throw new Error(`Mojo trait method '${declaration.name}.${name}' has no compiler-owned receiver convention.`);
       }
+      if (!function_.static && receiver !== undefined && !isDirectSelfReceiver(receiver.type)) {
+        throw new Error(
+          `Mojo trait method '${declaration.name}.${name}' has a custom receiver that one TypeScript instance value cannot represent exactly.`,
+        );
+      }
       const projected = projectFunctionSignature(function_, context, memberId);
       signatures.push(projected.signature);
       operations.push(Object.freeze({
@@ -551,4 +576,8 @@ function projectTraitMembers(
     }));
   }
   return members;
+}
+
+function isDirectSelfReceiver(type: import("../model/model.js").MojoCompilerType): boolean {
+  return type.kind === "self" && type.memberPath.length === 0 && type.arguments.length === 0;
 }

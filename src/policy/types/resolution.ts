@@ -15,7 +15,7 @@ import { ArrayTypeNode_ElementType } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics, MojoProviderTypeRow } from "../../providers/packages/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type {
-  MojoTargetConstArgument,
+  MojoTargetGenericArgument,
   MojoTargetTypeRef,
 } from "../../target-model/types/model.js";
 import { substituteMojoTargetType } from "../../target-model/types/substitution.js";
@@ -24,6 +24,7 @@ import type { MojoSourceProfileRegistry } from "./source-profile.js";
 import { mojoParameterAbi } from "../callables/parameter-abi.js";
 import { argumentPassingFactKey } from "@tsonic/tsts";
 import { resolveMojoSourcePrimitive } from "./source-primitives.js";
+import { resolveMojoNonTypeGenericArguments } from "./generic-arguments.js";
 
 export interface MojoTypeResolutionContext {
   readonly ast: AstReader;
@@ -361,30 +362,65 @@ function instantiateProviderType(
     };
   }
   const typeSubstitutions = new Map<string, MojoTargetTypeRef>();
-  const constantSubstitutions = new Map<string, MojoTargetConstArgument>();
+  const valueSubstitutions = new Map<string, MojoTargetGenericArgument>();
+  const packSubstitutions = new Map<string, readonly MojoTargetGenericArgument[]>();
   const authoredArguments = authoredTypeArguments(authoredTypeNode, context.ast);
   for (const [index, parameter] of row.sourceGenericParameters.entries()) {
     const sourceArgument = sourceArguments[index]!;
+    const authoredArgument = authoredArguments.length === sourceArguments.length
+      ? authoredArguments[index]
+      : undefined;
     if (parameter.targetKind !== "type") {
-      return {
-        kind: "unsupported",
-        reason: `Mojo ${parameter.targetKind} parameter '${parameter.targetName}' requires exact source generic-value evidence`,
-      };
+      if (authoredArgument === undefined) {
+        return {
+          kind: "unsupported",
+          reason: `Mojo ${parameter.targetKind} parameter '${parameter.targetName}' has no exact authored source argument`,
+        };
+      }
+      const arguments_ = resolveMojoNonTypeGenericArguments({
+        kind: parameter.targetKind,
+        name: parameter.targetName,
+        position: "positional",
+        variadic: parameter.variadic,
+        constraints: Object.freeze([]),
+      }, authoredArgument, context.ast);
+      if (arguments_ === undefined || arguments_.length === 0 ||
+        (!parameter.variadic && arguments_.length !== 1)) {
+        return {
+          kind: "unsupported",
+          reason: `Mojo ${parameter.targetKind} parameter '${parameter.targetName}' has no closed source generic-value evidence`,
+        };
+      }
+      if (parameter.variadic) packSubstitutions.set(parameter.targetName, arguments_);
+      else valueSubstitutions.set(parameter.targetName, arguments_[0]!);
+      continue;
     }
     const resolved = resolveMojoTargetTypeWithState(
       sourceArgument,
-      authoredArguments.length === sourceArguments.length ? authoredArguments[index] : undefined,
+      authoredArgument,
       context,
       resolving,
     );
     if (resolved.kind === "unsupported") return resolved;
-    typeSubstitutions.set(parameter.targetName, resolved.type);
+    if (parameter.variadic) {
+      if (resolved.type.kind !== "tuple") {
+        return {
+          kind: "unsupported",
+          reason: `Mojo variadic type parameter '${parameter.targetName}' requires one exact tuple pack`,
+        };
+      }
+      packSubstitutions.set(parameter.targetName, Object.freeze(resolved.type.elements.map((type) =>
+        Object.freeze({ kind: "type" as const, type }))));
+    } else {
+      typeSubstitutions.set(parameter.targetName, resolved.type);
+    }
   }
   return {
     kind: "resolved",
     type: substituteMojoTargetType(row.targetType, {
       types: typeSubstitutions,
-      constants: constantSubstitutions,
+      values: valueSubstitutions,
+      packs: packSubstitutions,
     }),
   };
 }

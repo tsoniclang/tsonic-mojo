@@ -130,7 +130,7 @@ export function instantiateProjectFieldType(
     if (argument?.kind !== "type") return undefined;
     types.set(name, argument.type);
   }
-  return substituteMojoTargetType(field.type, { types, constants: new Map() });
+  return substituteMojoTargetType(field.type, { types, values: new Map(), packs: new Map() });
 }
 
 export interface MojoProviderPropertyAnalysisContext {

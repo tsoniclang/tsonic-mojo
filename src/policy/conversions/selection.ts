@@ -77,6 +77,13 @@ export function classifyMojoValueConversion(
       conversion: Object.freeze({ kind: "primitive-cast", targetType: expected }),
     };
   }
+  if (actual.kind === "reference" && mojoTargetTypeEquals(actual.value, expected) &&
+    isTriviallyCopyableMojoType(expected)) {
+    return {
+      kind: "resolved",
+      conversion: Object.freeze({ kind: "reference-copy", targetType: expected }),
+    };
+  }
   if (expected.kind === "optional") {
     if (actual.kind === "undefined") {
       return {
@@ -101,6 +108,13 @@ export function classifyMojoValueConversion(
     kind: "unsupported",
     reason: `no exact Mojo conversion exists from '${mojoTargetTypeKey(actual)}' to '${mojoTargetTypeKey(expected)}'`,
   };
+}
+
+function isTriviallyCopyableMojoType(type: MojoTargetTypeRef): boolean {
+  if (type.kind === "source-primitive") return true;
+  if (type.kind === "unit" || type.kind === "never" || type.kind === "null" ||
+    type.kind === "undefined") return true;
+  return type.kind === "tuple" && type.elements.every(isTriviallyCopyableMojoType);
 }
 
 export function mojoTargetTypeKey(type: MojoTargetTypeRef): string {

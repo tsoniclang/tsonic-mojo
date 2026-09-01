@@ -7,7 +7,8 @@ import type {
 
 export interface MojoTargetTypeSubstitutions {
   readonly types: ReadonlyMap<string, MojoTargetTypeRef>;
-  readonly constants: ReadonlyMap<string, MojoTargetConstArgument>;
+  readonly values: ReadonlyMap<string, MojoTargetGenericArgument>;
+  readonly packs: ReadonlyMap<string, readonly MojoTargetGenericArgument[]>;
 }
 
 export function substituteMojoTargetType(
@@ -34,8 +35,8 @@ export function substituteMojoTargetType(
         ...(type.genericArguments === undefined
           ? {}
           : {
-              genericArguments: Object.freeze(type.genericArguments.map((argument) =>
-                substituteGenericArgument(argument, substitutions))),
+              genericArguments: Object.freeze(type.genericArguments.flatMap((argument) =>
+                substituteGenericArguments(argument, substitutions))),
             }),
       });
     case "list":
@@ -83,8 +84,8 @@ export function substituteMojoTargetType(
         kind: "associated",
         owner: substituteMojoTargetType(type.owner, substitutions),
         memberPath: type.memberPath,
-        genericArguments: Object.freeze(type.genericArguments.map((argument) =>
-          substituteGenericArgument(argument, substitutions))),
+        genericArguments: Object.freeze(type.genericArguments.flatMap((argument) =>
+          substituteGenericArguments(argument, substitutions))),
       });
     case "reference":
       return Object.freeze({
@@ -94,12 +95,14 @@ export function substituteMojoTargetType(
       });
     case "function": {
       const nestedTypes = new Map(substitutions.types);
-      const nestedConstants = new Map(substitutions.constants);
+      const nestedValues = new Map(substitutions.values);
+      const nestedPacks = new Map(substitutions.packs);
       for (const parameter of type.genericParameters) {
         if (parameter.kind === "type") nestedTypes.delete(parameter.name);
-        else nestedConstants.delete(parameter.name);
+        else nestedValues.delete(parameter.name);
+        nestedPacks.delete(parameter.name);
       }
-      const nested = { types: nestedTypes, constants: nestedConstants };
+      const nested = { types: nestedTypes, values: nestedValues, packs: nestedPacks };
       return Object.freeze({
         ...type,
         genericParameters: Object.freeze(type.genericParameters.map((parameter) =>
@@ -127,27 +130,45 @@ function substituteGenericParameter(
       substituteMojoTargetType(constraint, substitutions))),
     ...(parameter.defaultArgument === undefined
       ? {}
-      : { defaultArgument: substituteGenericArgument(parameter.defaultArgument, substitutions) }),
+      : { defaultArgument: substituteSingleGenericArgument(parameter.defaultArgument, substitutions) }),
   });
 }
 
-function substituteGenericArgument(
+function substituteGenericArguments(
+  argument: MojoTargetGenericArgument,
+  substitutions: MojoTargetTypeSubstitutions,
+): readonly MojoTargetGenericArgument[] {
+  if (argument.kind === "type" && argument.type.kind === "type-parameter") {
+    const replacement = substitutions.packs.get(argument.type.name);
+    if (replacement !== undefined) return replacement;
+  }
+  if (argument.kind === "value-reference" && argument.path.length === 1) {
+    const replacement = substitutions.packs.get(argument.path[0]!);
+    if (replacement !== undefined) return replacement;
+  }
+  if (argument.kind === "type") {
+    return Object.freeze([Object.freeze({
+      ...argument,
+      type: substituteMojoTargetType(argument.type, substitutions),
+    })]);
+  }
+  if (argument.kind === "value-reference" && argument.path.length === 1) {
+    const replacement = substitutions.values.get(argument.path[0]!);
+    if (replacement !== undefined) {
+      return Object.freeze([argument.name === undefined
+        ? replacement
+        : Object.freeze({ ...replacement, name: argument.name })]);
+    }
+  }
+  return Object.freeze([argument]);
+}
+
+function substituteSingleGenericArgument(
   argument: MojoTargetGenericArgument,
   substitutions: MojoTargetTypeSubstitutions,
 ): MojoTargetGenericArgument {
-  if (argument.kind === "type") {
-    return Object.freeze({
-      ...argument,
-      type: substituteMojoTargetType(argument.type, substitutions),
-    });
-  }
-  if (argument.kind === "value-reference" && argument.path.length === 1) {
-    const replacement = substitutions.constants.get(argument.path[0]!);
-    if (replacement !== undefined) {
-      return genericArgumentForConstant(replacement, argument.name);
-    }
-  }
-  return argument;
+  const values = substituteGenericArguments(argument, substitutions);
+  return values.length === 1 ? values[0]! : argument;
 }
 
 function substituteConstArgument(
@@ -155,22 +176,17 @@ function substituteConstArgument(
   substitutions: MojoTargetTypeSubstitutions,
 ): MojoTargetConstArgument {
   return argument.kind === "parameter"
-    ? substitutions.constants.get(argument.name) ?? argument
+    ? constArgumentForGenericValue(substitutions.values.get(argument.name)) ?? argument
     : argument;
 }
 
-function genericArgumentForConstant(
-  argument: MojoTargetConstArgument,
-  name: string | undefined,
-): MojoTargetGenericArgument {
-  const named = name === undefined ? {} : { name };
-  switch (argument.kind) {
-    case "integer": return Object.freeze({ kind: "integer", ...named, value: argument.value });
-    case "boolean": return Object.freeze({ kind: "boolean", ...named, value: argument.value });
-    case "parameter": return Object.freeze({
-      kind: "value-reference",
-      ...named,
-      path: Object.freeze([argument.name]),
-    });
+function constArgumentForGenericValue(
+  argument: MojoTargetGenericArgument | undefined,
+): MojoTargetConstArgument | undefined {
+  if (argument?.kind === "integer") return Object.freeze({ kind: "integer", value: argument.value });
+  if (argument?.kind === "boolean") return Object.freeze({ kind: "boolean", value: argument.value });
+  if (argument?.kind === "value-reference" && argument.path.length === 1) {
+    return Object.freeze({ kind: "parameter", name: argument.path[0]! });
   }
+  return undefined;
 }

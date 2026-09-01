@@ -39,6 +39,7 @@ export interface MojoProviderTypeDefinition {
   readonly sourceGenericParameters: readonly {
     readonly targetName: string;
     readonly targetKind: "type" | "value" | "origin";
+    readonly variadic: boolean;
   }[];
   readonly targetType: MojoTargetTypeRef;
   readonly conformances?: readonly {

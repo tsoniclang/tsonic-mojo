@@ -141,7 +141,7 @@ function instantiateFields(
   }
   return Object.freeze(interface_.fields.map((field) => Object.freeze({
     field,
-    fieldType: substituteMojoTargetType(field.type, { types, constants: new Map() }),
+    fieldType: substituteMojoTargetType(field.type, { types, values: new Map(), packs: new Map() }),
   })));
 }
 
