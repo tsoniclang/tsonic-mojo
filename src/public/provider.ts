@@ -10,9 +10,11 @@ export type {
 } from "../providers/packages/model.js";
 export type {
   MojoCallArgumentConvention,
-  MojoProviderOperationForm,
   MojoTargetTypeRef,
-} from "../target-model/provider/model.js";
+} from "../target-model/types/model.js";
+export type {
+  MojoProviderOperationForm,
+} from "../target-model/operations/model.js";
 export {
   mojoListTargetType,
   mojoNamedTargetType,
@@ -20,4 +22,4 @@ export {
   mojoPrimitiveTargetType,
   mojoStringTargetType,
   mojoUnitTargetType,
-} from "../target-model/provider/types.js";
+} from "../target-model/types/constructors.js";

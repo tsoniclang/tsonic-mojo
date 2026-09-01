@@ -323,7 +323,7 @@ function parseCallableParameter(
   const left = (colon === undefined ? expression : expression.slice(0, colon)).trim();
   const right = colon === undefined ? undefined : expression.slice(colon + 1).trim();
   const conventionMatch = /^(imm|mut|var|ref|out|deinit)\b/u.exec(left);
-  const convention = (conventionMatch?.[1] ?? "imm") as import("../../../target-model/provider/model.js").MojoCallArgumentConvention;
+  const convention = (conventionMatch?.[1] ?? "imm") as import("../../../target-model/types/model.js").MojoCallArgumentConvention;
   let remainder = conventionMatch === null ? left : left.slice(conventionMatch[0].length).trim();
   let referenceOrigin: string | undefined;
   if (convention === "ref" && remainder.startsWith("[")) {

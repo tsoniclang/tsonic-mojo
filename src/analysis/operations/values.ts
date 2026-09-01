@@ -1,12 +1,12 @@
 import type { Node } from "@tsonic/tsts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
-import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
-import type { MojoConversionIndex } from "../conversions/classification.js";
+import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
 import type { MojoValueSelection } from "../program/model.js";
-import { providerOwnerMatches } from "../types/resolution.js";
-import { instantiateMojoProviderConstantOperation } from "./provider-instantiation.js";
-import { selectedProviderDeclarationIdentity } from "./provider-selection.js";
+import { providerOwnerMatches } from "../../policy/types/resolution.js";
+import { instantiateMojoProviderConstantOperation } from "../../policy/operations/provider-instantiation.js";
+import { selectedProviderDeclarationIdentity } from "../../policy/operations/provider-selection.js";
 
 export type MojoValueAnalysis =
   | { readonly kind: "not-provider" }

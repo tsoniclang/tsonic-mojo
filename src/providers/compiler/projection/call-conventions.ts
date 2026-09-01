@@ -1,5 +1,5 @@
 import type { ArgumentPassingMode } from "@tsonic/tsts";
-import type { MojoCallArgumentConvention } from "../../../target-model/provider/model.js";
+import type { MojoCallArgumentConvention } from "../../../target-model/types/model.js";
 
 export function projectMojoPassingMode(
   convention: MojoCallArgumentConvention,

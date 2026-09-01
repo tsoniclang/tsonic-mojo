@@ -1,7 +1,7 @@
 import type { Node, SourceFile } from "@tsonic/tsts";
-import type { TargetCompileInput } from "@tsonic/target-api";
-import type { MojoConversionIndex } from "../conversions/classification.js";
-import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
+import type { TargetPlanningSourceNavigation } from "@tsonic/target-api/analysis";
+import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
+import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type {
   MojoAnalyzedModule,
   MojoAnalyzedModuleBinding,
@@ -17,7 +17,7 @@ import type {
 } from "./model.js";
 
 export interface MojoProgramQueryIndexes {
-  readonly source: TargetCompileInput["source"];
+  readonly sourceNavigation: TargetPlanningSourceNavigation;
   readonly bindingNames: WeakMap<Node, string>;
   readonly bindingSourceFiles: WeakMap<Node, SourceFile>;
   readonly bindingTypes: WeakMap<Node, MojoTargetTypeRef>;
@@ -84,7 +84,7 @@ export function createMojoProgramQueries(
     moduleBinding(referenceOrDeclaration: Node) {
       const direct = indexes.moduleBindingByDeclaration.get(referenceOrDeclaration);
       if (direct !== undefined) return direct;
-      const reference = indexes.source.navigation.sourceReferenceFor(referenceOrDeclaration);
+      const reference = indexes.sourceNavigation.sourceReferenceFor(referenceOrDeclaration);
       return reference === undefined
         ? undefined
         : indexes.moduleBindingByDeclaration.get(reference.declaration);

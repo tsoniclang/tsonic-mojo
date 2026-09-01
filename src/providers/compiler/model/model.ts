@@ -1,4 +1,4 @@
-import type { MojoCallArgumentConvention, MojoCallArgumentPosition } from "../../../target-model/provider/model.js";
+import type { MojoCallArgumentConvention, MojoCallArgumentPosition } from "../../../target-model/types/model.js";
 
 export const mojoCompilerProviderProtocolVersion = 2;
 

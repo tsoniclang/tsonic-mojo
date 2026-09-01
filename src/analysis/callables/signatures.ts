@@ -5,17 +5,17 @@ import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { SourceCallableTypeEvidence } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
-import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
-import type { MojoProjectTypeCatalog } from "../types/project-catalog.js";
-import type { MojoSourceProfileRegistry } from "../types/source-profile.js";
-import { resolveMojoTargetType } from "../types/resolution.js";
+import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
+import type { MojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
+import { resolveMojoTargetType } from "../../policy/types/resolution.js";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
 import type {
   MojoAnalyzedFunction,
   MojoAnalyzedParameter,
   MojoAnalyzedTypeParameter,
 } from "../program/model.js";
-import { mojoParameterAbi } from "./parameter-abi.js";
+import { mojoParameterAbi } from "../../policy/callables/parameter-abi.js";
 
 export interface MojoFunctionSignatureInput {
   readonly source: TargetSourceProgram;

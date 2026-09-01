@@ -5,7 +5,7 @@ import type {
 import type {
   MojoTargetGenericArgument,
   MojoTargetTypeRef,
-} from "../../target-model/provider/model.js";
+} from "../../target-model/types/model.js";
 import type {
   ProviderExportDeclaration,
   ProviderMemberDeclaration,
@@ -308,7 +308,7 @@ function validateOperation(
 }
 
 function validateOperationArgument(
-  argument: import("../../target-model/provider/model.js").MojoProviderTargetArgument,
+  argument: import("../../target-model/types/model.js").MojoProviderTargetArgument,
   exportId: string,
   role: string,
 ): void {
@@ -422,7 +422,7 @@ function validateType(type: MojoTargetTypeRef): void {
 }
 
 function validateConformanceCondition(
-  condition: import("../../target-model/provider/model.js").MojoTargetConformanceCondition,
+  condition: import("../../target-model/types/model.js").MojoTargetConformanceCondition,
   exportId: string,
 ): void {
   switch (condition.kind) {
@@ -459,7 +459,7 @@ function validateConformanceCondition(
 }
 
 function validateConditionValue(
-  value: import("../../target-model/provider/model.js").MojoTargetConditionValue,
+  value: import("../../target-model/types/model.js").MojoTargetConditionValue,
   exportId: string,
 ): void {
   const path = value.kind === "path" ? value.segments : value.receiver;

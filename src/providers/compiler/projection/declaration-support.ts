@@ -11,7 +11,7 @@ import type {
   MojoProviderOperationDefinition,
   MojoProviderTypeDefinition,
 } from "../../packages/model.js";
-import type { MojoProviderTargetArgument } from "../../../target-model/provider/model.js";
+import type { MojoProviderTargetArgument } from "../../../target-model/types/model.js";
 import { projectMojoPassingMode } from "./call-conventions.js";
 import {
   projectMojoCompilerType,
@@ -81,8 +81,8 @@ export function projectFunctionSignature(
 ): {
   readonly signature: ProviderSignatureDeclaration;
   readonly targetArguments: readonly MojoProviderTargetArgument[];
-  readonly parameterTargets: readonly import("../../../target-model/provider/model.js").MojoTargetTypeRef[];
-  readonly resultTarget: import("../../../target-model/provider/model.js").MojoTargetTypeRef;
+  readonly parameterTargets: readonly import("../../../target-model/types/model.js").MojoTargetTypeRef[];
+  readonly resultTarget: import("../../../target-model/types/model.js").MojoTargetTypeRef;
 } {
   const sourceArguments = function_.arguments.filter(({ name }) => name !== "self");
   const projectedArguments = sourceArguments.map((argument) => ({

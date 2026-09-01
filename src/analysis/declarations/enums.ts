@@ -1,7 +1,7 @@
 import type { Node, SourceFile } from "@tsonic/tsts";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
-import type { MojoProjectTypeCatalog } from "../types/project-catalog.js";
+import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
 import type {
   MojoAnalyzedEnum,

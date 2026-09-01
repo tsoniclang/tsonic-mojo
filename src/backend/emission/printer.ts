@@ -8,7 +8,7 @@ import type {
   MojoStatement,
   MojoStructDeclaration,
   MojoTraitDeclaration,
-} from "../target-ast/nodes.js";
+} from "../target-ast/index.js";
 import {
   mojoGenericParametersText,
   mojoTypeName,
@@ -205,7 +205,7 @@ function printExpression(expression: MojoExpression, modulePath: readonly string
 }
 
 function printCallGenericArguments(
-  arguments_: readonly import("../../target-model/provider/model.js").MojoTargetGenericArgument[] | undefined,
+  arguments_: readonly import("../../target-model/types/model.js").MojoTargetGenericArgument[] | undefined,
   modulePath: readonly string[],
 ): string {
   return arguments_ === undefined || arguments_.length === 0
@@ -214,7 +214,7 @@ function printCallGenericArguments(
 }
 
 function renderCallGenericArgument(
-  argument: import("../../target-model/provider/model.js").MojoTargetGenericArgument,
+  argument: import("../../target-model/types/model.js").MojoTargetGenericArgument,
   modulePath: readonly string[],
 ): string {
   const value = renderGenericArgumentValue(argument, modulePath);

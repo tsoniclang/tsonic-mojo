@@ -9,8 +9,8 @@ import {
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
-import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
-import type { MojoConversionIndex } from "../conversions/classification.js";
+import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import { analyzeMojoCall } from "../operations/calls.js";
 import { analyzeMojoElementAccess } from "../operations/elements.js";
@@ -22,9 +22,9 @@ import {
 } from "../operations/properties.js";
 import { analyzeMojoProviderValue } from "../operations/values.js";
 import { analyzeMojoObjectLiteral } from "../objects/object-literals.js";
-import type { MojoProjectTypeCatalog } from "../types/project-catalog.js";
-import type { MojoSourceProfileRegistry } from "../types/source-profile.js";
-import { resolveMojoTargetType } from "../types/resolution.js";
+import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
+import type { MojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
+import { resolveMojoTargetType } from "../../policy/types/resolution.js";
 import { providerCallRequiresRaisingConversion } from "./effects.js";
 import { inferMojoExpressionType, isMojoExpressionNode } from "./expression-types.js";
 import { isMojoAssignmentOperator } from "./syntax-validation.js";
@@ -42,7 +42,7 @@ import type {
   MojoValueSelection,
 } from "./model.js";
 import { walkSourceTree, walkSourceTreePostOrder } from "./traversal.js";
-import type { MojoSourceModuleCatalog } from "../modules/model.js";
+import type { MojoSourceModuleCatalog } from "../source-modules/model.js";
 
 export interface MojoExecutableRegionAnalysisInput {
   readonly root: Node;

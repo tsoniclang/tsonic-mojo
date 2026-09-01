@@ -1,15 +1,15 @@
 import type { Node, ResolvedSourceCallInfo, Type } from "@tsonic/tsts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
-import { substituteMojoTargetType } from "../../target-model/provider/substitution.js";
-import type { MojoTargetGenericArgument, MojoTargetTypeRef } from "../../target-model/provider/model.js";
-import type { MojoProjectTypeCatalog } from "../types/project-catalog.js";
-import type { MojoSourceProfileRegistry } from "../types/source-profile.js";
-import { resolveMojoTargetType } from "../types/resolution.js";
-import type { MojoConversionIndex } from "../conversions/classification.js";
-import { classifyMojoValueConversion } from "../conversions/classification.js";
-import { selectMojoProviderCall } from "./provider-selection.js";
-import { instantiateMojoProviderOperation } from "./provider-instantiation.js";
+import { substituteMojoTargetType } from "../../target-model/types/substitution.js";
+import type { MojoTargetGenericArgument, MojoTargetTypeRef } from "../../target-model/types/model.js";
+import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
+import type { MojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
+import { resolveMojoTargetType } from "../../policy/types/resolution.js";
+import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
+import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
+import { selectMojoProviderCall } from "../../policy/operations/provider-selection.js";
+import { instantiateMojoProviderOperation } from "../../policy/operations/provider-instantiation.js";
 import type {
   MojoAnalyzedClass,
   MojoAnalyzedCallArgument,
@@ -499,7 +499,7 @@ function closeResultConversion(
   sourceResult: Type,
   resolve: (type: Type) => MojoTargetTypeRef | undefined,
   conversions: MojoConversionIndex,
-): { readonly kind: "resolved"; readonly conversion: import("../program/model.js").MojoValueConversion } |
+): { readonly kind: "resolved"; readonly conversion: import("../../target-model/conversions/model.js").MojoValueConversion } |
   { readonly kind: "unsupported"; readonly code: string; readonly reason: string } {
   const sourceCarrier = resolve(sourceResult);
   if (sourceCarrier === undefined) {
@@ -519,7 +519,7 @@ function closeCanonicalProjectResult(
   callNode: Node,
   targetResult: MojoTargetTypeRef,
   conversions: MojoConversionIndex,
-): { readonly kind: "resolved"; readonly conversion: import("../program/model.js").MojoValueConversion } |
+): { readonly kind: "resolved"; readonly conversion: import("../../target-model/conversions/model.js").MojoValueConversion } |
   { readonly kind: "unsupported"; readonly code: string; readonly reason: string } {
   const conversion = conversions.record(callNode, targetResult, targetResult);
   return conversion.kind === "unsupported"

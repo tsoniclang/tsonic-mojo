@@ -14,7 +14,7 @@ import type {
   MojoProviderTargetGenericParameter,
   MojoTargetGenericArgument,
   MojoTargetTypeRef,
-} from "../../../target-model/provider/model.js";
+} from "../../../target-model/types/model.js";
 import { compilerModuleIdentity } from "../model/normalization.js";
 import { mojoCompilerModuleSpecifier } from "./module-specifier.js";
 import { projectMojoPassingMode } from "./call-conventions.js";

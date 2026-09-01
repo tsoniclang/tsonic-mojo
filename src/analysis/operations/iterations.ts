@@ -8,8 +8,8 @@ import {
   ForInOrOfStatement_Initializer,
   VariableDeclarationList_Declarations,
 } from "@tsonic/target-api/source";
-import { mojoTargetTypeEquals } from "../../target-model/provider/equality.js";
-import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
+import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
+import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoIterationSelection } from "../program/model.js";
 
 export type MojoIterationAnalysis =

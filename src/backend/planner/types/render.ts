@@ -1,6 +1,6 @@
-import type { MojoTargetTypeRef } from "../../../target-model/provider/model.js";
-import type { MojoPlanningContext } from "../context.js";
-import { registerMojoModuleImport, registerMojoSymbolImport } from "../context.js";
+import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
+import type { MojoPlanningContext } from "../program/context.js";
+import { registerMojoModuleImport, registerMojoSymbolImport } from "../program/context.js";
 
 export function registerMojoTypeImports(type: MojoTargetTypeRef, context: MojoPlanningContext): void {
   switch (type.kind) {
@@ -158,7 +158,7 @@ export function mojoTypeName(
 }
 
 function renderConstArgument(
-  argument: import("../../../target-model/provider/model.js").MojoTargetConstArgument,
+  argument: import("../../../target-model/types/model.js").MojoTargetConstArgument,
 ): string {
   switch (argument.kind) {
     case "integer": return argument.value;
@@ -184,7 +184,7 @@ function renderFunctionParameter(
 }
 
 export function mojoGenericParametersText(
-  parameters: readonly import("../../../target-model/provider/model.js").MojoProviderTargetGenericParameter[],
+  parameters: readonly import("../../../target-model/types/model.js").MojoProviderTargetGenericParameter[],
   currentModulePath: readonly string[] = Object.freeze([]),
 ): string {
   if (parameters.length === 0) return "";
@@ -217,7 +217,7 @@ function renderGenericArgument(
 }
 
 export function renderGenericArgumentValue(
-  argument: import("../../../target-model/provider/model.js").MojoTargetGenericArgument,
+  argument: import("../../../target-model/types/model.js").MojoTargetGenericArgument,
   currentModulePath: readonly string[] = Object.freeze([]),
 ): string {
   switch (argument.kind) {

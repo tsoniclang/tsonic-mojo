@@ -1,5 +1,5 @@
 import type { TargetCompileOutput, TargetSourceFile } from "@tsonic/target-api/artifacts";
-import type { MojoOutputPlan } from "../artifact-model/output.js";
+import type { MojoOutputPlan } from "../artifact-model/project/output.js";
 import { printMojoModule } from "./printer.js";
 
 export function materializeMojoOutputPlan(plan: MojoOutputPlan): TargetCompileOutput {

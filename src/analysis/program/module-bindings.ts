@@ -9,12 +9,12 @@ import {
 } from "@tsonic/target-api/source";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
-import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
+import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
-import type { MojoSourceModuleCatalog } from "../modules/model.js";
-import type { MojoProjectTypeCatalog } from "../types/project-catalog.js";
-import type { MojoSourceProfileRegistry } from "../types/source-profile.js";
-import { resolveMojoTargetType } from "../types/resolution.js";
+import type { MojoSourceModuleCatalog } from "../source-modules/model.js";
+import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
+import type { MojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
+import { resolveMojoTargetType } from "../../policy/types/resolution.js";
 import type {
   MojoAnalyzedModule,
   MojoAnalyzedModuleBinding,

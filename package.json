@@ -13,7 +13,7 @@
   },
   "scripts": {
     "build": "bash scripts/build.sh",
-    "test": "npm run build && node --test test/*.test.mjs",
+    "test": "npm run build && node --test \"test/**/*.test.mjs\"",
     "prepack": "npm run build"
   },
   "peerDependencies": {

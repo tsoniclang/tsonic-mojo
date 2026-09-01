@@ -22,14 +22,14 @@ import {
   VariableDeclarationList_Declarations,
   VariableStatement_DeclarationList,
 } from "@tsonic/target-api/source";
-import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
+import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
 import type {
   MojoElementSelection,
   MojoObjectLiteralSelection,
   MojoPropertySelection,
 } from "../program/model.js";
-import type { MojoConversionIndex } from "./classification.js";
+import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
 
 export function recordMojoExecutableRegionConversionUses(
   root: Node,

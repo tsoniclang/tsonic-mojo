@@ -1,5 +1,5 @@
 import type { Node } from "@tsonic/tsts";
-import type { MojoSourceModuleCatalog } from "../modules/model.js";
+import type { MojoSourceModuleCatalog } from "../source-modules/model.js";
 import type {
   MojoAnalyzedFunction,
   MojoAnalyzedModule,

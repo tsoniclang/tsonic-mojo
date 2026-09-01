@@ -17,7 +17,7 @@ import type {
   MojoProviderOperationDefinition,
   MojoProviderTypeDefinition,
 } from "../../packages/model.js";
-import { mojoTargetTypeEquals } from "../../../target-model/provider/equality.js";
+import { mojoTargetTypeEquals } from "../../../target-model/types/equality.js";
 import type { MojoCompilerProviderProjection } from "./model.js";
 import {
   projectMojoCompilerType,
@@ -371,7 +371,7 @@ function projectStructMembers(
 function projectStructIndexers(
   declaration: MojoCompilerStruct,
   exportId: string,
-  ownerTarget: import("../../../target-model/provider/model.js").MojoTargetTypeRef,
+  ownerTarget: import("../../../target-model/types/model.js").MojoTargetTypeRef,
   context: MojoCompilerTypeProjectionContext,
   operations: MojoProviderOperationDefinition[],
   getters: readonly MojoCompilerFunction[],

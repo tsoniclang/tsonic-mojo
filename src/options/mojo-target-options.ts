@@ -3,9 +3,9 @@ import type {
   MojoCompilerCommandConfiguration,
   MojoCompilerPackageConfiguration,
   MojoCompilerProviderConfiguration,
-  MojoOutputType,
   MojoTargetConfiguration,
-} from "../target-model/project/model.js";
+} from "../target-model/configuration/model.js";
+import type { MojoOutputType } from "../target-model/project/model.js";
 import { resolveMojoProjectConfiguration } from "./mojo-user-project.js";
 import { realpathSync, statSync } from "node:fs";
 import { resolve } from "node:path";

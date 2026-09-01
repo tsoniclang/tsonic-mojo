@@ -6,7 +6,7 @@ import type {
   ProviderModuleResolution,
   SourceDeclarationProvider,
 } from "@tsonic/tsts";
-import type { MojoTargetConfiguration } from "../../target-model/project/model.js";
+import type { MojoTargetConfiguration } from "../../target-model/configuration/model.js";
 import type {
   MojoProviderModuleDefinition,
   MojoProviderOperationDefinition,

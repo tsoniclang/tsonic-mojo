@@ -1,18 +1,18 @@
 import type { Node, ResolvedSourcePropertyAccessInfo, Type } from "@tsonic/tsts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
-import { classifyMojoValueConversion } from "../conversions/classification.js";
-import type { MojoConversionIndex } from "../conversions/classification.js";
+import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
+import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
 import type { MojoAnalyzedProjectProperty, MojoPropertySelection } from "../program/model.js";
-import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
-import { mojoTargetTypeEquals } from "../../target-model/provider/equality.js";
-import { providerOwnerMatches } from "../types/resolution.js";
+import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
+import { providerOwnerMatches } from "../../policy/types/resolution.js";
 import {
   instantiateMojoProviderConstantOperation,
   instantiateMojoProviderPropertyOperation,
-} from "./provider-instantiation.js";
-import { substituteMojoTargetType } from "../../target-model/provider/substitution.js";
-import { selectedProviderDeclarationIdentity } from "./provider-selection.js";
+} from "../../policy/operations/provider-instantiation.js";
+import { substituteMojoTargetType } from "../../target-model/types/substitution.js";
+import { selectedProviderDeclarationIdentity } from "../../policy/operations/provider-selection.js";
 
 export type MojoPropertyAnalysis =
   | { readonly kind: "resolved"; readonly selection: MojoPropertySelection; readonly expressionType: MojoTargetTypeRef }
@@ -297,7 +297,7 @@ function selectOperation(
   source: ResolvedSourcePropertyAccessInfo,
   context: MojoProviderPropertyAnalysisContext,
   receiverType: MojoTargetTypeRef,
-): { readonly kind: "resolved"; readonly operation: import("../program/model.js").MojoSelectedProviderOperation } |
+): { readonly kind: "resolved"; readonly operation: import("../../target-model/operations/selection.js").MojoSelectedProviderOperation } |
   { readonly kind: "unsupported"; readonly code: string; readonly reason: string } | undefined {
   const identity = selectedProviderDeclarationIdentity(context.source, [
     declaration,

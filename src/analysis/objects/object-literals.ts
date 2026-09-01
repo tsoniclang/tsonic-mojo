@@ -5,9 +5,9 @@ import {
 } from "@tsonic/target-api/source";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
-import { mojoTargetTypeEquals } from "../../target-model/provider/equality.js";
-import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
-import { substituteMojoTargetType } from "../../target-model/provider/substitution.js";
+import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
+import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import { substituteMojoTargetType } from "../../target-model/types/substitution.js";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
 import type {
   MojoAnalyzedInterface,

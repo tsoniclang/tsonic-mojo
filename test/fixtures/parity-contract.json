@@ -29,8 +29,8 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact source-reference linkage",
       "status": "matched",
-      "proof": "test/language-parity.test.mjs",
-      "note": "Exact imported declaration identity and dependency-ordered initialization are proven by test/language-parity.test.mjs."
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "note": "Exact imported declaration identity and dependency-ordered initialization are proven by test/integration/generated-mojo/language-parity.test.mjs."
     },
     {
       "id": "modules.side-effect-imports",
@@ -39,7 +39,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain dependency-ordered module initialization",
       "status": "matched",
-      "proof": "test/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
       "note": "Side-effect-only imports participate in the sealed source module dependency graph."
     },
     {
@@ -57,7 +57,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain one source-ordered immutable module binding and exact default-import identity",
       "status": "matched",
-      "proof": "test/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
       "note": "The expression executes once into a source-ordered module cell selected by default-import identity."
     },
     {
@@ -67,7 +67,7 @@
       "benchmarkClassification": "shared-rejection",
       "benchmarkAction": "retain deterministic rejection until shared live-binding and temporal-dead-zone evidence exists",
       "status": "matched-rejection",
-      "proof": "test/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
       "note": "Runtime-reachable initialization cycles reject before output planning."
     },
     {
@@ -77,7 +77,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact generic callable contracts",
       "status": "matched",
-      "proof": "test/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
       "note": "Generic signatures and exact explicit selected type arguments are proven through emitted Mojo."
     },
     {
@@ -87,7 +87,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain generated state and impl separation",
       "status": "matched",
-      "proof": "test/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
       "note": "Project classes use reference-identity wrappers over declaration-owned state."
     },
     {
@@ -97,7 +97,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain declaration-identity-backed storage",
       "status": "matched",
-      "proof": "test/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
       "note": "Private fields lower from exact declaration identity to private generated state storage."
     },
     {
@@ -107,7 +107,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain source-order module-cell initialization",
       "status": "matched",
-      "proof": "test/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
       "note": "Static fields share the source module state and ordered initialization transaction."
     },
     {
@@ -117,7 +117,7 @@
       "benchmarkClassification": "shared-rejection",
       "benchmarkAction": "retain the exact rejection; use an explicit initializer or defaultValue<T>() instead of silently replacing TypeScript undefined with a target-native default",
       "status": "matched-rejection",
-      "proof": "test/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
       "note": "A missing source initializer rejects rather than inventing a Mojo default."
     },
     {
@@ -127,7 +127,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain one source-ordered class initialization plan for static fields and blocks",
       "status": "matched",
-      "proof": "test/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
       "note": "Static blocks and fields retain one source-ordered module initialization plan."
     },
     {
@@ -161,7 +161,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain record and polymorphic interface plans",
       "status": "partial",
-      "proof": "test/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
       "note": "Generic declaration-selected interface fields and reference-identity object carriers are implemented; callable interface slots remain open."
     },
     {
@@ -187,7 +187,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain checker-evaluated discriminants",
       "status": "matched",
-      "proof": "test/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
       "note": "Checker-evaluated enum values and selected enum member identity are retained."
     },
     {
@@ -205,7 +205,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain finalized ordered record fields",
       "status": "matched",
-      "proof": "test/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
       "note": "Explicit fields use exact selected interface declarations and instantiated target carriers."
     },
     {
@@ -215,7 +215,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "record each spread projection and override in source evaluation order, evaluating every source expression once",
       "status": "matched",
-      "proof": "test/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
       "note": "Same-carrier spreads evaluate once, project fields project in declaration order, and later authored overrides win in source order."
     },
     {
@@ -273,7 +273,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact single-evaluation projections",
       "status": "partial",
-      "proof": "test/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
       "note": "Tuple, fixed-array, list, project-field, dictionary-key, omitted, renamed, and nested projections are sealed and evaluate their source once. Rest and default reconstruction remain explicit analysis rejections."
     },
     {
@@ -283,7 +283,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain structured control-flow planning",
       "status": "matched",
-      "proof": "test/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
       "note": "For-loop initialization, condition, increment, continue, and nested conditionals retain sealed carriers and source order."
     },
     {
@@ -293,7 +293,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain strict selection and source fallthrough",
       "status": "matched",
-      "proof": "test/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
       "note": "The selector is evaluated once, clauses are selected in source order, fallthrough is explicit, and break exits the generated dispatch region."
     },
     {
@@ -303,7 +303,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain explicit result and completion-flow lowering",
       "status": "matched",
-      "proof": "test/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
       "note": "Try, caught Error binding, throw, and mandatory finally cleanup lower through one structured Mojo error boundary."
     },
     {
@@ -313,7 +313,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain selected iterator protocol evidence",
       "status": "partial",
-      "proof": "test/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
       "note": "Checker-selected native list, fixed-array, and dictionary iteration lower from sealed element carriers. Asynchronous iteration remains an explicit pinned-Mojo language limit."
     },
     {
@@ -355,7 +355,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain selected Option projections",
       "status": "matched",
-      "proof": "test/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
       "note": "Nested optional receivers are evaluated once into exact Optional[T] carriers and nullish fallback unwraps only the present branch."
     },
     {
@@ -373,7 +373,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact capture and callable ABI facts",
       "status": "partial",
-      "proof": "test/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
       "note": "Expression-bodied arrows now retain exact parameter, result, direct-call, and immutable-capture contracts. Block-bodied, async, mutable-receiver, generic, and contextual object callables remain open."
     },
     {
@@ -383,7 +383,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain authored primitive identity",
       "status": "matched",
-      "proof": "test/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
       "note": "All native Mojo and shared fixed-width primitive aliases retain exact authored carriers; decimal rejects during target type closure because the pinned toolchain exposes no decimal carrier."
     },
     {
@@ -393,7 +393,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact tuple and homogeneous fixed-array carriers",
       "status": "matched",
-      "proof": "test/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
       "note": "Authored list and heterogeneous tuple component carriers remain exact through aggregate construction and indexing."
     },
     {
@@ -403,7 +403,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact source-core FixedArray<T, N> facts and native target array lowering without syntax or name inference",
       "status": "matched",
-      "proof": "test/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
       "note": "Exact source-core element and length facts produce native Array[T, N] construction and index carriers."
     },
     {
@@ -413,7 +413,7 @@
       "benchmarkClassification": "shared-rejection",
       "benchmarkAction": "retain fail-closed behavior without reflection or dynamic dispatch",
       "status": "matched-rejection",
-      "proof": "test/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
       "note": "Open dynamic element access rejects during target analysis without reflective, spelling, or source-text recovery."
     },
     {
@@ -552,7 +552,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain deterministic Cargo artifacts",
       "status": "matched",
-      "proof": "test/printer.test.mjs",
+      "proof": "test/backend/printer/mojo-printer.test.mjs",
       "note": "Equivalent generated Pixi/Mojo project lane."
     },
     {
@@ -562,7 +562,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain source-only publication without mutating Cargo.toml",
       "status": "matched",
-      "proof": "test/options.test.mjs",
+      "proof": "test/target-model/configuration/options.test.mjs",
       "note": "Equivalent user-owned pixi.toml lane."
     }
   ],

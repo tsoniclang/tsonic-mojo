@@ -1,17 +1,24 @@
 import type { Node, SourceFile } from "@tsonic/tsts";
 import type { TargetCompileInput } from "@tsonic/target-api";
-import type { TargetSourceSyntaxProgram } from "@tsonic/target-api/analysis";
+import type {
+  TargetPlanningSourceNavigation,
+  TargetSourceSyntaxProgram,
+} from "@tsonic/target-api/analysis";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
-import type { MojoTargetConfiguration } from "../../target-model/project/model.js";
+import type { MojoTargetConfiguration } from "../../target-model/configuration/model.js";
 import type {
   MojoCallArgumentPosition,
-  MojoProviderOperationForm,
-  MojoProviderTargetGenericParameter,
   MojoTargetGenericArgument,
   MojoTargetTypeRef,
-} from "../../target-model/provider/model.js";
-import type { MojoProjectTypeCatalog } from "../types/project-catalog.js";
-import type { MojoSourceModuleCatalog } from "../modules/model.js";
+} from "../../target-model/types/model.js";
+import type {
+  MojoSelectedProviderOperation,
+} from "../../target-model/operations/selection.js";
+import type {
+  MojoValueConversion,
+} from "../../target-model/conversions/model.js";
+import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
+import type { MojoSourceModuleCatalog } from "../source-modules/model.js";
 
 export interface MojoTargetAnalysisRequest {
   readonly input: TargetCompileInput;
@@ -192,15 +199,6 @@ export interface MojoAnalyzedModule {
   readonly runtimeInitializationRequired: boolean;
 }
 
-export type MojoValueConversion =
-  | { readonly kind: "identity" }
-  | { readonly kind: "primitive-cast"; readonly targetType: MojoTargetTypeRef }
-  | { readonly kind: "native-to-js-string"; readonly targetType: MojoTargetTypeRef }
-  | { readonly kind: "js-to-native-string" }
-  | { readonly kind: "optional-none"; readonly targetType: MojoTargetTypeRef }
-  | { readonly kind: "optional-some"; readonly targetType: MojoTargetTypeRef }
-  | { readonly kind: "union-inject"; readonly targetType: MojoTargetTypeRef };
-
 export interface MojoAnalyzedCallArgument {
   readonly expression: Node;
   readonly sourceType: MojoTargetTypeRef;
@@ -210,16 +208,6 @@ export interface MojoAnalyzedCallArgument {
   readonly spread: boolean;
   readonly position: MojoCallArgumentPosition;
   readonly nativeName?: string;
-}
-
-export interface MojoSelectedProviderOperation {
-  readonly target: MojoProviderOperationForm;
-  readonly receiverType?: MojoTargetTypeRef;
-  readonly parameterTypes: readonly MojoTargetTypeRef[];
-  readonly resultType: MojoTargetTypeRef;
-  readonly genericArguments: readonly MojoTargetGenericArgument[];
-  readonly genericParameters: readonly MojoProviderTargetGenericParameter[];
-  readonly raises: boolean;
 }
 
 export type MojoPropertySelection =
@@ -458,9 +446,18 @@ export interface MojoRuntimePackagePlan {
   }[];
 }
 
+export interface MojoPlanningHost {
+  readonly paths: TargetCompileInput["paths"];
+  readonly entryPoint: string;
+  readonly sourcePackages: TargetCompileInput["sourcePackages"];
+}
+
 export interface MojoTargetProgram {
+  readonly host: MojoPlanningHost;
   readonly configuration: MojoTargetConfiguration;
   readonly source: TargetSourceSyntaxProgram;
+  readonly sourceNavigation: TargetPlanningSourceNavigation;
+  readonly sourceFiles: readonly SourceFile[];
   readonly projectTypes: MojoProjectTypeCatalog;
   readonly modules: MojoSourceModuleCatalog;
   readonly analyzedModules: readonly MojoAnalyzedModule[];

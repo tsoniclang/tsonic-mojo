@@ -30,7 +30,7 @@ import {
   mojoPackagePathReferenceKind,
 } from "../target-model/project/runtime-reference.js";
 
-type SessionState =
+type MojoCompilationSessionState =
   | "created"
   | "profile-contributed"
   | "compiler-contributed"
@@ -49,7 +49,7 @@ export function createMojoCompilationSession(
   const providerSemantics = collectMojoProviderSemantics(context.capabilities);
   const compilerProviderSession = createMojoCompilerProviderSession(configuration);
   const jsEnabled = context.selectedSurfaceIds.includes(mojoJsSourceProfileOwnerId);
-  let state: SessionState = "created";
+  let state: MojoCompilationSessionState = "created";
   return Object.freeze({
     sourceProfileContributions(): TargetSourceProfileContributions {
       requireState(state, "created", "sourceProfileContributions");
@@ -96,13 +96,20 @@ export function createMojoCompilationSession(
       }));
     },
     close(): void {
+      if (state === "closed") {
+        return;
+      }
       compilerProviderSession.close();
       state = "closed";
     },
   });
 }
 
-function requireState(actual: SessionState, expected: SessionState, operation: string): void {
+function requireState(
+  actual: MojoCompilationSessionState,
+  expected: MojoCompilationSessionState,
+  operation: string,
+): void {
   if (actual !== expected) {
     throw new Error(
       `Mojo compilation session cannot call '${operation}' while in '${actual}'; expected '${expected}'.`,

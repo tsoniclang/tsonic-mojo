@@ -4,8 +4,8 @@ import {
   BinaryExpression_Right,
   Node_Expression,
 } from "@tsonic/target-api/source";
-import { mojoTargetTypeEquals } from "../../target-model/provider/equality.js";
-import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
+import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
+import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { isMojoAssignmentOperator } from "./syntax-validation.js";
 
 export function inferMojoExpressionType(

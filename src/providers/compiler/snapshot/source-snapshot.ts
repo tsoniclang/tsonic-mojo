@@ -10,7 +10,7 @@ import { spawnSync } from "node:child_process";
 import type {
   MojoCompilerPackageConfiguration,
   MojoCompilerProviderConfiguration,
-} from "../../../target-model/project/model.js";
+} from "../../../target-model/configuration/model.js";
 import type {
   MojoCompilerModuleSource,
   MojoCompilerPackageSnapshot,

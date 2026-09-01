@@ -5,7 +5,7 @@ import {
   BindingElement_PropertyName,
   Node_Initializer,
 } from "@tsonic/target-api/source";
-import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
+import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
 import { instantiateProjectFieldType } from "../operations/properties.js";
 import type {

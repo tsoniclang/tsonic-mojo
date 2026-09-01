@@ -7,10 +7,12 @@ import type {
   TargetCapabilityImplementation,
 } from "@tsonic/target-api/provider";
 import type {
-  MojoProviderOperationForm,
   MojoTargetConformanceCondition,
   MojoTargetTypeRef,
-} from "../../target-model/provider/model.js";
+} from "../../target-model/types/model.js";
+import type {
+  MojoProviderOperationForm,
+} from "../../target-model/operations/model.js";
 
 export interface MojoProviderModuleDefinition {
   readonly moduleSpecifier: string;
@@ -45,7 +47,7 @@ export interface MojoProviderTypeDefinition {
   }[];
   readonly associatedAliases?: readonly {
     readonly name: string;
-    readonly genericParameters: readonly import("../../target-model/provider/model.js").MojoProviderTargetGenericParameter[];
+    readonly genericParameters: readonly import("../../target-model/types/model.js").MojoProviderTargetGenericParameter[];
     readonly category: "type" | "value" | "origin";
     readonly abstract: boolean;
     readonly targetType?: MojoTargetTypeRef;
