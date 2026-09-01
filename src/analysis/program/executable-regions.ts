@@ -37,10 +37,12 @@ import type {
   MojoAnalyzedClassOwner,
   MojoBindingPatternSelection,
   MojoAnalyzedFunction,
+  MojoAnalyzedInterface,
   MojoAnalyzedProjectProperty,
   MojoCallSelection,
   MojoElementSelection,
   MojoIterationSelection,
+  MojoNullishCoalescingSelection,
   MojoObjectLiteralSelection,
   MojoPropertySelection,
   MojoResourceManagementSelection,
@@ -64,6 +66,7 @@ import {
 import { mojoParameterAbi } from "../../policy/callables/parameter-abi.js";
 import { analyzeMojoTemplateExpression } from "../operations/template-expressions.js";
 import { classifyMojoValueRefinement } from "../refinements/value.js";
+import { analyzeMojoNullishCoalescing } from "../operations/nullish-coalescing.js";
 
 export interface MojoExecutableRegionAnalysisInput {
   readonly root: Node;
@@ -91,6 +94,7 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly valueSelections: WeakMap<Node, MojoValueSelection>;
   readonly valueRefinements: WeakMap<Node, MojoValueRefinementSelection>;
   readonly typeTestSelections: WeakMap<Node, MojoTypeTestSelection>;
+  readonly nullishCoalescingSelections: WeakMap<Node, MojoNullishCoalescingSelection>;
   readonly objectLiteralSelections: WeakMap<Node, MojoObjectLiteralSelection>;
   readonly templateExpressionSelections: WeakMap<Node, MojoTemplateExpressionSelection>;
   readonly bindingPatternSelections: WeakMap<Node, MojoBindingPatternSelection>;
@@ -240,7 +244,9 @@ export function analyzeMojoExecutableRegion(
       analyzeCall(node, input, semantics, dependencies);
     }
     if (ast.is.IsBinaryExpression(node)) {
-      if (ast.operatorKindName(node) === "KindInstanceOfKeyword") {
+      if (ast.operatorKindName(node) === "KindQuestionQuestionToken") {
+        analyzeNullishCoalescing(node, input);
+      } else if (ast.operatorKindName(node) === "KindInstanceOfKeyword") {
         analyzeTypeTest(node, input);
       } else {
         analyzeNullishComparison(node, input);
@@ -275,12 +281,11 @@ export function analyzeMojoExecutableRegion(
       const expectedType = expectedExpressionType(node, input);
       const inferredType = input.expressionTypes.get(node);
       const candidate = expectedType ?? inferredType;
-      const projectInterfaceCandidate = candidate?.kind === "target-named"
-        ? input.interfaceByTypeId.has(candidate.id)
-        : candidate?.kind === "union" && candidate.members.some((member) =>
-          member.kind === "target-named" && input.interfaceByTypeId.has(member.id));
+      const projectInterfaceCandidate = candidate !== undefined &&
+        containsProjectInterface(candidate, input.interfaceByTypeId);
       if (candidate === undefined ||
-        (candidate.kind !== "target-named" && candidate.kind !== "union")) {
+        (candidate.kind !== "target-named" && candidate.kind !== "optional" &&
+          candidate.kind !== "union")) {
         pendingObjects.delete(node);
         continue;
       }
@@ -407,6 +412,42 @@ export function analyzeMojoExecutableRegion(
     dependencies,
     raises: resourceRaises || executableRegionRaises(root, input),
   });
+}
+
+function analyzeNullishCoalescing(
+  node: Node,
+  input: MojoExecutableRegionAnalysisInput,
+): void {
+  const left = BinaryExpression_Left(input.source.ast, node);
+  const right = BinaryExpression_Right(input.source.ast, node);
+  const leftType = left === undefined ? undefined : input.expressionTypes.get(left);
+  const rightType = right === undefined ? undefined : input.expressionTypes.get(right);
+  if (left === undefined || right === undefined || leftType === undefined || rightType === undefined) {
+    input.diagnostics.push(diagnostic(
+      "MOJO_NULLISH_COALESCING_OPERAND_NOT_CLOSED",
+      "Nullish coalescing requires exact sealed left and fallback carriers.",
+      node,
+    ));
+    return;
+  }
+  const result = analyzeMojoNullishCoalescing(
+    left,
+    right,
+    leftType,
+    rightType,
+    input.expressionTypes.get(node),
+    input.source.ast,
+  );
+  if (result.kind === "unsupported") {
+    input.diagnostics.push(diagnostic(
+      "MOJO_NULLISH_COALESCING_CONTRACT_UNCLOSED",
+      result.reason,
+      node,
+    ));
+    return;
+  }
+  input.nullishCoalescingSelections.set(node, result.selection);
+  input.expressionTypes.set(node, result.expressionType);
 }
 
 function selectReturnValueTransfer(
@@ -557,6 +598,10 @@ function analyzeExpressionCarrier(
   if (reference !== undefined) input.bindingSourceFiles.set(node, reference.sourceFile);
   const referencedType = reference === undefined ? undefined : input.bindingTypes.get(reference.declaration);
   const contextualExpected = expectedExpressionType(node, input);
+  const contextualAggregate = ast.is.IsArrayLiteralExpression(node) ||
+      ast.is.IsObjectLiteralExpression(node)
+    ? resolveContextualAggregateCarrier(node, input, semantics)
+    : undefined;
   const selectedOccurrenceType = referencedType === undefined
     ? undefined
     : analyzeReferencedValueRefinement(node, referencedType, input, semantics);
@@ -574,12 +619,35 @@ function analyzeExpressionCarrier(
     ast.kindName(node) === "KindNullKeyword" ||
     ast.kindName(node) === "KindUndefinedKeyword";
   const resolved = selectedOccurrenceType ?? referencedType ?? erasedCarrier ??
-    (exactSemanticFirst ? semanticType ?? contextualExpected : contextualExpected ?? semanticType);
+    (exactSemanticFirst
+      ? semanticType ?? contextualAggregate ?? contextualExpected
+      : contextualAggregate ?? contextualExpected ?? semanticType);
   if (resolved !== undefined) input.expressionTypes.set(node, resolved);
   if (ast.kindName(node) === "KindThisKeyword" && input.owner !== undefined) {
     input.bindingNames.set(node, "self");
     input.expressionTypes.set(node, input.owner.type);
   }
+}
+
+function resolveContextualAggregateCarrier(
+  node: Node,
+  input: MojoExecutableRegionAnalysisInput,
+  semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
+): MojoTargetTypeRef | undefined {
+  const selected = semantics.types.contextualValueSelection(node);
+  return selected.kind === "selected"
+    ? resolveType(selected.type, undefined, input, semantics)
+    : undefined;
+}
+
+function containsProjectInterface(
+  type: MojoTargetTypeRef,
+  interfaces: ReadonlyMap<string, MojoAnalyzedInterface>,
+): boolean {
+  if (type.kind === "target-named") return interfaces.has(type.id);
+  if (type.kind === "optional") return containsProjectInterface(type.value, interfaces);
+  return type.kind === "union" && type.members.some((member) =>
+    containsProjectInterface(member, interfaces));
 }
 
 function analyzeReferencedValueRefinement(

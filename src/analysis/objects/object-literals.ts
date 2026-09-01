@@ -185,12 +185,10 @@ function selectConstructionType(
   input: MojoObjectLiteralAnalysisInput,
   semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
 ): MojoTargetTypeRef | undefined {
-  if (resultType?.kind === "target-named" && input.interfaceByTypeId.has(resultType.id)) {
-    return resultType;
-  }
-  if (resultType?.kind !== "union") return undefined;
-  const interfaceMembers = resultType.members.filter((member): member is Extract<MojoTargetTypeRef, { readonly kind: "target-named" }> =>
-    member.kind === "target-named" && input.interfaceByTypeId.has(member.id));
+  const interfaceMembers = resultType === undefined
+    ? []
+    : projectInterfaceMembers(resultType, input.interfaceByTypeId);
+  if (interfaceMembers.length === 0) return undefined;
   const semanticCandidates = [contextualType, inferredType].filter((candidate): candidate is MojoTargetTypeRef =>
     candidate !== undefined && interfaceMembers.some((member) => mojoTargetTypeEquals(member, candidate)));
   const exactSemanticCandidates = uniqueTargetTypes(semanticCandidates);
@@ -213,6 +211,16 @@ function selectConstructionType(
   const ownerId = [...ownerIds][0]!;
   const matches = interfaceMembers.filter((member) => member.id === ownerId);
   return matches.length === 1 ? matches[0] : undefined;
+}
+
+function projectInterfaceMembers(
+  type: MojoTargetTypeRef,
+  interfaces: ReadonlyMap<string, MojoAnalyzedInterface>,
+): readonly Extract<MojoTargetTypeRef, { readonly kind: "target-named" }>[] {
+  if (type.kind === "target-named") return interfaces.has(type.id) ? Object.freeze([type]) : Object.freeze([]);
+  if (type.kind === "optional") return projectInterfaceMembers(type.value, interfaces);
+  if (type.kind !== "union") return Object.freeze([]);
+  return Object.freeze(type.members.flatMap((member) => projectInterfaceMembers(member, interfaces)));
 }
 
 function instantiateIndexSignatures(

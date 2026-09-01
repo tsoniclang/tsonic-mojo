@@ -23,6 +23,7 @@ import { registerMojoTypeImports } from "../types/render.js";
 import { planMojoFunctionStatements } from "../statements/structured.js";
 import { withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
+import { planMojoParameterPrelude } from "../declarations/parameters.js";
 
 const runtimeModule = Object.freeze(["tsonic_runtime"]);
 const unitType: MojoTargetTypeRef = Object.freeze({ kind: "unit" });
@@ -44,12 +45,11 @@ export function planMojoCallableExpression(
     return undefined;
   }
   if (selection.parameters.some((parameter) =>
-    parameter.optional || parameter.rest || parameter.initializer !== undefined ||
-    (parameter.convention !== "imm" && parameter.convention !== "var"))) {
+    parameter.convention !== "imm" && parameter.convention !== "var")) {
     appendMojoPlanningDiagnostic(
       context,
       "MOJO_ERASED_CALLABLE_PARAMETER_ABI_UNSUPPORTED",
-      "A retained Mojo callable currently requires required, non-rest value parameters.",
+      "A retained Mojo callable requires value-parameter conventions.",
       node,
     );
     return undefined;
@@ -130,7 +130,7 @@ function planCallableEnvironment(
   );
   const argumentType: MojoTargetTypeRef = Object.freeze({
     kind: "tuple",
-    elements: Object.freeze(selection.parameters.map((parameter) => parameter.type)),
+    elements: Object.freeze(selection.callableType.parameters.map((parameter) => parameter.type)),
   });
   registerMojoTypeImports(contextType, context);
   registerMojoTypeImports(argumentType, context);
@@ -172,16 +172,24 @@ function planCallableEnvironment(
     }));
   }
   const callableContext = withMojoBindingOverrides(context, overrides);
-  const parameterPrelude: MojoStatement[] = selection.parameters.length === 0
+  const tuplePrelude: MojoStatement[] = selection.parameters.length === 0
     ? []
     : [Object.freeze({
         kind: "tuple-variable" as const,
-        names: Object.freeze(selection.parameters.map((parameter) => parameter.name)),
+        names: Object.freeze(selection.parameters.map((parameter) =>
+          parameter.omissionKind === "initializer" ? parameter.incomingName : parameter.name)),
         initializer: Object.freeze({
           kind: "consume" as const,
           expression: Object.freeze({ kind: "path" as const, path: argumentsName }),
         }),
       })];
+  const parameterPrelude = planMojoParameterPrelude(
+    selection.parameters,
+    callableContext,
+    planValue,
+    false,
+  );
+  if (parameterPrelude === undefined) return undefined;
   const body = planCallableBody(selection, callableContext, planValue);
   if (body === undefined) return undefined;
   const invoke: MojoFunctionDeclaration = Object.freeze({
@@ -211,6 +219,7 @@ function planCallableEnvironment(
           arguments: Object.freeze([]),
         }),
       }),
+      ...tuplePrelude,
       ...parameterPrelude,
       ...body,
     ]),

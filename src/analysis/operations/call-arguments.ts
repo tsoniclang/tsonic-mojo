@@ -10,6 +10,7 @@ export interface MojoCallArgumentTarget {
   readonly position: "positional" | "positional-or-keyword" | "keyword";
   readonly nativeName?: string;
   readonly variadic?: boolean;
+  readonly variadicCollectionType?: MojoTargetTypeRef;
   readonly passing?: "plain" | "consume";
 }
 
@@ -60,7 +61,10 @@ export function analyzeArguments(
         reason: `Source call argument ${sourceArgumentIndex} expands across multiple target parameters.`,
       };
     }
-    const parameterType = parameterTypes[parameterIndex];
+    const spread = bindings.some((binding) => binding.sourceForm !== "value");
+    const parameterType = spread
+      ? targetArguments[parameterIndex]?.variadicCollectionType ?? parameterTypes[parameterIndex]
+      : parameterTypes[parameterIndex];
     const target = targetArguments[parameterIndex];
     const selectedSourceType = expressionTypes.get(sourceArgument.expression) ??
       resolve(bindings[0]!.selectedArgumentType);
@@ -78,7 +82,6 @@ export function analyzeArguments(
         reason: `Source call argument ${sourceArgumentIndex} has no closed Mojo argument contract.`,
       };
     }
-    const spread = bindings.some((binding) => binding.sourceForm !== "value");
     if (spread && target.variadic !== true) {
       return {
         kind: "unsupported",
@@ -106,6 +109,7 @@ export function analyzeArguments(
         (target.convention === "var" || target.convention === "deinit" ? "consume" : "plain"),
       spread,
       position: target.position,
+      parameterIndex,
       ...(target.position === "keyword" && target.nativeName !== undefined
         ? { nativeName: target.nativeName }
         : {}),

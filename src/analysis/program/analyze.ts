@@ -104,6 +104,7 @@ export function analyzeMojoTargetProgram(
   const valueSelections = new WeakMap<Node, MojoValueSelection>();
   const valueRefinements = new WeakMap<Node, MojoValueRefinementSelection>();
   const typeTestSelections = new WeakMap<Node, MojoTypeTestSelection>();
+  const nullishCoalescingSelections = new WeakMap<Node, import("./model.js").MojoNullishCoalescingSelection>();
   const objectLiteralSelections = new WeakMap<Node, MojoObjectLiteralSelection>();
   const callableExpressionSelections = new WeakMap<Node, MojoCallableExpressionSelection>();
   const templateExpressionSelections = new WeakMap<Node, MojoTemplateExpressionSelection>();
@@ -294,6 +295,7 @@ export function analyzeMojoTargetProgram(
     valueSelections,
     valueRefinements,
     typeTestSelections,
+    nullishCoalescingSelections,
     objectLiteralSelections,
     templateExpressionSelections,
     bindingPatternSelections,
@@ -422,6 +424,51 @@ export function analyzeMojoTargetProgram(
   }
 
   for (const function_ of functions) {
+    const dependencies = new Set<Node>();
+    let raises = false;
+    for (const parameter of function_.parameters) {
+      if (parameter.omissionKind !== "initializer" || parameter.initializer === undefined) continue;
+      const initializerRegion = analyzeMojoExecutableRegion({
+        root: parameter.initializer,
+        sourceFile: function_.sourceFile,
+        rootExpectedType: parameter.bodyType,
+        ...(function_.owner === undefined ? {} : { owner: function_.owner }),
+        ...executableEnvironment,
+      });
+      recordMojoExecutableRegionConversionUses(
+        parameter.initializer,
+        undefined,
+        ast,
+        bindingTypes,
+        expressionTypes,
+        callSelections,
+        propertySelections,
+        elementSelections,
+        objectLiteralSelections,
+        valueRefinements,
+        conversions,
+        diagnostics,
+      );
+      const actual = expressionTypes.get(parameter.initializer);
+      if (actual === undefined) {
+        diagnostics.push(diagnostic(
+          "MOJO_DEFAULT_PARAMETER_INITIALIZER_CARRIER_NOT_CLOSED",
+          "A default parameter initializer requires one exact sealed Mojo carrier.",
+          parameter.initializer,
+        ));
+      } else {
+        const conversion = conversions.record(parameter.initializer, actual, parameter.bodyType);
+        if (conversion.kind === "unsupported") {
+          diagnostics.push(diagnostic(
+            "MOJO_VALUE_CONVERSION_UNPROVEN",
+            conversion.reason,
+            parameter.initializer,
+          ));
+        }
+      }
+      for (const dependency of initializerRegion.dependencies) dependencies.add(dependency);
+      raises = raises || initializerRegion.raises;
+    }
     const region = analyzeMojoExecutableRegion({
       root: function_.body,
       sourceFile: function_.sourceFile,
@@ -429,7 +476,8 @@ export function analyzeMojoTargetProgram(
       ...(function_.owner === undefined ? {} : { owner: function_.owner }),
       ...executableEnvironment,
     });
-    projectDependencies.set(function_.declaration, new Set(region.dependencies));
+    for (const dependency of region.dependencies) dependencies.add(dependency);
+    projectDependencies.set(function_.declaration, dependencies);
     recordMojoExecutableRegionConversionUses(
       function_.body,
       function_.resultType,
@@ -444,7 +492,7 @@ export function analyzeMojoTargetProgram(
       conversions,
       diagnostics,
     );
-    directRaises.set(function_.declaration, region.raises);
+    directRaises.set(function_.declaration, raises || region.raises);
   }
 
   const raisesByDeclaration = propagateRaisingEffects(
@@ -538,6 +586,7 @@ export function analyzeMojoTargetProgram(
     valueSelections,
     valueRefinements,
     typeTestSelections,
+    nullishCoalescingSelections,
     elementSelections,
     iterationSelections,
     resourceManagementSelections,

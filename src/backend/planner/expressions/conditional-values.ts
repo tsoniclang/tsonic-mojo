@@ -7,7 +7,6 @@ import {
   PrefixUnaryExpression_Operand,
 } from "@tsonic/target-api/source";
 import type { MojoTypeTestSelection } from "../../../analysis/program/model.js";
-import { mojoTargetTypeEquals } from "../../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import type { MojoExpression } from "../../target-ast/index.js";
 import {
@@ -18,7 +17,7 @@ import {
 import type { MojoPlanningContext } from "../program/context.js";
 import { registerMojoTypeImports } from "../types/render.js";
 import { applyValueRefinement } from "./leaves.js";
-import { isJsString } from "./support.js";
+import { convertMojoValue, isJsString } from "./support.js";
 import { orderMojoValues } from "./support.js";
 import type { MojoValuePlanner } from "./support.js";
 import { withMojoValue } from "./value-plan.js";
@@ -31,58 +30,106 @@ export function planNullishCoalescing(
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
 ): MojoValuePlan | undefined {
-  if (leftNode === undefined || rightNode === undefined) return undefined;
-  const leftType = context.program.queries.expressionType(leftNode);
-  const resultType = context.program.queries.expressionType(node);
-  const left = planValue(leftNode, context);
-  const right = planValue(rightNode, context, resultType);
-  if (leftType === undefined || resultType === undefined || left === undefined || right === undefined) {
-    return undefined;
-  }
-  if (leftType.kind === "null" || leftType.kind === "undefined") {
-    return withMojoValue([
-      ...left.before,
-      Object.freeze({ kind: "expression", expression: left.value }),
-      ...right.before,
-    ], right.value);
-  }
-  if (leftType.kind !== "optional" || !mojoTargetTypeEquals(leftType.value, resultType)) {
+  const selection = context.program.queries.nullishCoalescingSelection(node);
+  if (leftNode === undefined || rightNode === undefined || selection === undefined) {
     appendMojoPlanningDiagnostic(
       context,
-      "MOJO_NULLISH_COALESCING_CARRIER_UNSUPPORTED",
-      "Nullish coalescing requires one exact Optional[T] left carrier and the same closed T result carrier.",
+      "MOJO_NULLISH_COALESCING_SELECTION_MISSING",
+      "Nullish coalescing has no sealed Mojo evaluation contract.",
       node,
     );
     return undefined;
   }
-  registerMojoTypeImports(leftType, context);
-  registerMojoTypeImports(resultType, context);
+  const left = planValue(selection.left, context);
+  if (left === undefined) return undefined;
+  if (selection.kind === "left") {
+    return convertMojoValue(left, selection.conversion, context);
+  }
+  const right = planValue(selection.right, context);
+  if (right === undefined) return undefined;
+  if (selection.kind === "right") {
+    const converted = convertMojoValue(right, selection.conversion, context);
+    return converted === undefined
+      ? undefined
+      : withMojoValue(Object.freeze([
+          ...left.before,
+          Object.freeze({ kind: "expression", expression: left.value }),
+          ...converted.before,
+        ]), converted.value);
+  }
+  registerMojoTypeImports(selection.leftType, context);
+  registerMojoTypeImports(selection.presentType, context);
+  registerMojoTypeImports(selection.resultType, context);
   const optionalName = allocateMojoSyntheticName(context, "nullish_source");
   const resultName = allocateMojoSyntheticName(context, "nullish_value");
   const optionalPath: MojoExpression = Object.freeze({ kind: "path", path: optionalName });
   const resultPath: MojoExpression = Object.freeze({ kind: "path", path: resultName });
-  const presentValue: MojoExpression = Object.freeze({
-    kind: "method-call",
-    receiver: optionalPath,
-    name: "value",
-    arguments: Object.freeze([]),
-  });
+  const presentValue = selection.kind === "optional"
+    ? Object.freeze({
+        kind: "method-call" as const,
+        receiver: optionalPath,
+        name: "value",
+        arguments: Object.freeze([]),
+      })
+    : applyValueRefinement(optionalPath, selection.presentRefinement, context);
+  const convertedPresent = convertMojoValue(
+    withMojoValue(Object.freeze([]), presentValue),
+    selection.presentConversion,
+    context,
+  );
+  const convertedRight = convertMojoValue(right, selection.rightConversion, context);
+  if (convertedPresent === undefined || convertedRight === undefined) return undefined;
+  const condition = selection.kind === "optional"
+    ? Object.freeze({
+        kind: "construct" as const,
+        type: Object.freeze({ kind: "source-primitive" as const, name: "bool" as const }),
+        arguments: Object.freeze([{ value: optionalPath }]),
+      })
+    : unionPresenceTest(optionalPath, selection.presentType, context);
+  if (condition === undefined) return undefined;
   return withMojoValue([
     ...left.before,
-    Object.freeze({ kind: "variable", name: optionalName, type: leftType, initializer: left.value }),
-    Object.freeze({ kind: "variable", name: resultName, type: resultType }),
+    Object.freeze({ kind: "variable", name: optionalName, type: selection.leftType, initializer: left.value }),
+    Object.freeze({ kind: "variable", name: resultName, type: selection.resultType }),
     Object.freeze({
       kind: "if",
-      condition: optionalPath,
+      condition,
       thenStatements: Object.freeze([
-        Object.freeze({ kind: "assignment", operator: "=", left: resultPath, right: presentValue }),
+        ...convertedPresent.before,
+        Object.freeze({ kind: "assignment", operator: "=", left: resultPath, right: convertedPresent.value }),
       ]),
       elseStatements: Object.freeze([
-        ...right.before,
-        Object.freeze({ kind: "assignment", operator: "=", left: resultPath, right: right.value }),
+        ...convertedRight.before,
+        Object.freeze({ kind: "assignment", operator: "=", left: resultPath, right: convertedRight.value }),
       ]),
     }),
   ], resultPath);
+}
+
+function unionPresenceTest(
+  expression: MojoExpression,
+  presentType: MojoTargetTypeRef,
+  context: MojoPlanningContext,
+): MojoExpression | undefined {
+  const members = presentType.kind === "union" ? presentType.members : [presentType];
+  const tests = members.map((member): MojoExpression => {
+    registerMojoTypeImports(member, context);
+    return Object.freeze({
+      kind: "method-call",
+      receiver: expression,
+      name: "isa",
+      genericArguments: Object.freeze([{ kind: "type" as const, type: member }]),
+      arguments: Object.freeze([]),
+    });
+  });
+  return tests.length === 0
+    ? undefined
+    : tests.reduce((left, right) => Object.freeze({
+        kind: "binary",
+        operator: "or",
+        left,
+        right,
+      }));
 }
 
 export function planPrefixUnary(

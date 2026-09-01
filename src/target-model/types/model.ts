@@ -92,6 +92,7 @@ export interface MojoTargetCallableParameter {
   readonly convention: MojoCallArgumentConvention;
   readonly passing: "plain" | "consume";
   readonly type: MojoTargetTypeRef;
+  readonly omissionKind?: "required" | "undefined" | "initializer" | "rest";
 }
 
 export type MojoCallArgumentPosition =

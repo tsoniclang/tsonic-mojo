@@ -130,11 +130,22 @@ export function orderCallArguments(
   return Object.freeze({
     before: ordered.before,
     ...(receiver === undefined ? {} : { receiver: ordered.values[0]! }),
-    arguments: Object.freeze(arguments_.map((argument, index) => Object.freeze({
-      value: ordered.values[index + offset]!,
-      ...(argument.name === undefined ? {} : { name: argument.name }),
-      ...(argument.spread ? { spread: true } : {}),
-    }))),
+    arguments: Object.freeze(arguments_.map((argument, index) => {
+      const orderedValue = ordered.values[index + offset]!;
+      const value = argument.spread && isJsArray(argument.type)
+        ? Object.freeze({
+            kind: "method-call" as const,
+            receiver: orderedValue,
+            name: "iter_values",
+            arguments: Object.freeze([]),
+          })
+        : orderedValue;
+      return Object.freeze({
+        value,
+        ...(argument.name === undefined ? {} : { name: argument.name }),
+        ...(argument.spread ? { spread: true } : {}),
+      });
+    })),
   });
 }
 

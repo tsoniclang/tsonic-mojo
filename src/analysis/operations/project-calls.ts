@@ -46,11 +46,17 @@ export function analyzeProjectCall(
   }
   const substitutions = { types: typeSubstitutions, values: new Map(), packs: new Map() };
   const parameterTypes = function_.parameters.map((parameter) =>
-    substituteMojoTargetType(parameter.type, substitutions));
+    substituteMojoTargetType(
+      parameter.omissionKind === "rest" ? parameter.type : parameter.callType,
+      substitutions,
+    ));
   const targetArguments = function_.parameters.map((parameter) => Object.freeze({
     convention: parameter.convention,
     position: "positional-or-keyword" as const,
-    variadic: parameter.rest,
+    variadic: parameter.omissionKind === "rest",
+    ...(parameter.omissionKind === "rest"
+      ? { variadicCollectionType: substituteMojoTargetType(parameter.callType, substitutions) }
+      : {}),
     passing: parameter.passing,
   }));
   const arguments_ = analyzeArguments(

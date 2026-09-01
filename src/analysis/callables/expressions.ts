@@ -99,7 +99,7 @@ export function analyzeMojoCallableExpressionSignature(
 
 export interface MojoCallableCaptureInput {
   readonly expression: Node;
-  readonly body: Node;
+  readonly roots: readonly Node[];
   readonly sourceFile: SourceFile;
   readonly owner?: MojoAnalyzedClassOwner;
   readonly source: TargetSourceProgram;
@@ -119,46 +119,48 @@ export function collectMojoCallableCaptures(
   const captures = new Map<Node, MojoCallableCapture>();
   let valid = true;
   let capturesSelf = false;
-  walkSourceTree(input.body, ast, (node): void => {
-    if (!valid) return;
-    if (ast.kindName(node) === "KindThisKeyword") {
-      capturesSelf = input.owner !== undefined;
-      return;
-    }
-    if (!ast.is.IsIdentifier(node)) return;
-    const expressionType = input.expressionTypes.get(node);
-    if (expressionType?.kind === "undefined" || expressionType?.kind === "null") return;
-    const reference = input.source.navigation.sourceReferenceFor(node);
-    if (reference?.project !== true) return;
-    const declaration = reference?.declaration;
-    if (declaration === undefined || nodeIsWithin(declaration, input.expression, ast) ||
-      input.moduleBindingByDeclaration.has(declaration) || captures.has(declaration)) return;
-    if (!captureEligibleDeclaration(declaration, ast)) return;
-    const bindingName = input.bindingNames.get(declaration);
-    const symbol = reference?.symbol;
-    const type = input.bindingTypes.get(declaration);
-    if (bindingName === undefined || symbol === undefined || type === undefined) {
-      input.diagnostics.push(mojoAnalysisDiagnostic(
-        "MOJO_CALLABLE_CAPTURE_IDENTITY_MISSING",
-        "A captured source binding requires one exact declaration, symbol, target name, and carrier.",
-        node,
-      ));
-      valid = false;
-      return;
-    }
-    const mutated = input.source.navigation.bindingWritesWithin(symbol, input.sourceFile).length > 0;
-    const existingLocation = input.locationStorageNames.get(declaration);
-    const storage = existingLocation !== undefined || mutated ? "location" : "value";
-    const name = storage === "location"
-      ? existingLocation ?? input.ensureLocationStorage(declaration, bindingName)
-      : bindingName;
-    captures.set(declaration, Object.freeze({
-      declaration,
-      name,
-      type,
-      storage,
-    }));
-  }, (node, root) => node === root || !isNestedCallable(node, ast));
+  for (const root of input.roots) {
+    walkSourceTree(root, ast, (node): void => {
+      if (!valid) return;
+      if (ast.kindName(node) === "KindThisKeyword") {
+        capturesSelf = input.owner !== undefined;
+        return;
+      }
+      if (!ast.is.IsIdentifier(node)) return;
+      const expressionType = input.expressionTypes.get(node);
+      if (expressionType?.kind === "undefined" || expressionType?.kind === "null") return;
+      const reference = input.source.navigation.sourceReferenceFor(node);
+      if (reference?.project !== true) return;
+      const declaration = reference?.declaration;
+      if (declaration === undefined || nodeIsWithin(declaration, input.expression, ast) ||
+        input.moduleBindingByDeclaration.has(declaration) || captures.has(declaration)) return;
+      if (!captureEligibleDeclaration(declaration, ast)) return;
+      const bindingName = input.bindingNames.get(declaration);
+      const symbol = reference?.symbol;
+      const type = input.bindingTypes.get(declaration);
+      if (bindingName === undefined || symbol === undefined || type === undefined) {
+        input.diagnostics.push(mojoAnalysisDiagnostic(
+          "MOJO_CALLABLE_CAPTURE_IDENTITY_MISSING",
+          "A captured source binding requires one exact declaration, symbol, target name, and carrier.",
+          node,
+        ));
+        valid = false;
+        return;
+      }
+      const mutated = input.source.navigation.bindingWritesWithin(symbol, input.sourceFile).length > 0;
+      const existingLocation = input.locationStorageNames.get(declaration);
+      const storage = existingLocation !== undefined || mutated ? "location" : "value";
+      const name = storage === "location"
+        ? existingLocation ?? input.ensureLocationStorage(declaration, bindingName)
+        : bindingName;
+      captures.set(declaration, Object.freeze({
+        declaration,
+        name,
+        type,
+        storage,
+      }));
+    }, (node, traversalRoot) => node === traversalRoot || !isNestedCallable(node, ast));
+  }
   if (!valid) return undefined;
   const ordered = [...captures.values()].sort((left, right) =>
     left.name.localeCompare(right.name, "en"));
@@ -207,6 +209,55 @@ export function analyzeAndSealMojoCallableExpression(
     diagnostics: environment.diagnostics,
   });
   if (callable === undefined) return;
+  let raises = false;
+  const initializerRoots: Node[] = [];
+  for (const parameter of callable.parameters) {
+    if (parameter.omissionKind !== "initializer" || parameter.initializer === undefined) continue;
+    initializerRoots.push(parameter.initializer);
+    const initializerRegion = analyzeMojoExecutableRegion({
+      root: parameter.initializer,
+      sourceFile: input.sourceFile,
+      rootExpectedType: parameter.bodyType,
+      ...(input.owner === undefined ? {} : { owner: input.owner }),
+      ...environment,
+    });
+    recordMojoExecutableRegionConversionUses(
+      parameter.initializer,
+      undefined,
+      environment.source.ast,
+      environment.bindingTypes,
+      environment.expressionTypes,
+      environment.callSelections,
+      environment.propertySelections,
+      environment.elementSelections,
+      environment.objectLiteralSelections,
+      environment.valueRefinements,
+      environment.conversions,
+      environment.diagnostics,
+    );
+    const actual = environment.expressionTypes.get(parameter.initializer);
+    if (actual === undefined) {
+      environment.diagnostics.push(mojoAnalysisDiagnostic(
+        "MOJO_DEFAULT_PARAMETER_INITIALIZER_CARRIER_NOT_CLOSED",
+        "A default parameter initializer requires one exact sealed Mojo carrier.",
+        parameter.initializer,
+      ));
+    } else {
+      const conversion = environment.conversions.record(
+        parameter.initializer,
+        actual,
+        parameter.bodyType,
+      );
+      if (conversion.kind === "unsupported") {
+        environment.diagnostics.push(mojoAnalysisDiagnostic(
+          "MOJO_VALUE_CONVERSION_UNPROVEN",
+          conversion.reason,
+          parameter.initializer,
+        ));
+      }
+    }
+    raises = raises || initializerRegion.raises;
+  }
   const region = analyzeMojoExecutableRegion({
     root: callable.body,
     sourceFile: input.sourceFile,
@@ -215,6 +266,7 @@ export function analyzeAndSealMojoCallableExpression(
     ...(input.owner === undefined ? {} : { owner: input.owner }),
     ...environment,
   });
+  raises = raises || region.raises;
   if (environment.source.ast.is.IsBlock(callable.body)) {
     recordMojoExecutableRegionConversionUses(
       callable.body,
@@ -270,7 +322,7 @@ export function analyzeAndSealMojoCallableExpression(
   }
   const captures = collectMojoCallableCaptures({
     expression: input.expression,
-    body: callable.body,
+    roots: Object.freeze([...initializerRoots, callable.body]),
     sourceFile: input.sourceFile,
     ...(input.owner === undefined ? {} : { owner: input.owner }),
     source: environment.source,
@@ -297,7 +349,7 @@ export function analyzeAndSealMojoCallableExpression(
   const callableType = Object.freeze({
     ...selectedType,
     result: callable.resultType,
-    raises: region.raises,
+    raises,
   });
   environment.expressionTypes.set(input.expression, callableType);
   input.selections.set(input.expression, Object.freeze({
@@ -306,7 +358,7 @@ export function analyzeAndSealMojoCallableExpression(
     captures,
     resultType: callable.resultType,
     body: callable.body,
-    raises: region.raises,
+    raises,
     callableType,
   }));
 }

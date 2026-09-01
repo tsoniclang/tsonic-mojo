@@ -392,11 +392,17 @@ function resolveMojoTargetTypeWithState(
             ? undefined
             : context.sourceFacts.getFact(parameter.declaration, argumentPassingFactKey)?.mode,
         );
+        const omissionKind = parameter.omissionKind;
+        const parameterType = omissionKind !== "required" && omissionKind !== "rest" &&
+            resolved.type.kind !== "optional"
+          ? Object.freeze({ kind: "optional" as const, value: resolved.type })
+          : resolved.type;
         parameters.push(Object.freeze({
           name: context.semantics.declarations.symbolName(parameter.sourceSymbol),
           convention: abi.convention,
           passing: abi.passing,
-          type: resolved.type,
+          type: parameterType,
+          omissionKind,
         }));
       }
       const result = resolveMojoTargetTypeWithState(

@@ -67,6 +67,7 @@ export function mojoTargetTypeEquals(
         arrayEquals(left.parameters, right.parameters, (parameter, other) =>
           parameter.convention === other.convention &&
           parameter.passing === other.passing &&
+          (parameter.omissionKind ?? "required") === (other.omissionKind ?? "required") &&
           mojoTargetTypeEquals(parameter.type, other.type)) &&
         mojoTargetTypeEquals(left.result, right.result);
     case "function":

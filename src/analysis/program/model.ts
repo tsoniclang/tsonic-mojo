@@ -33,11 +33,13 @@ export interface MojoTargetAnalysisRequest {
 export interface MojoAnalyzedParameter {
   readonly declaration: Node;
   readonly name: string;
+  readonly incomingName: string;
   readonly type: MojoTargetTypeRef;
+  readonly bodyType: MojoTargetTypeRef;
+  readonly callType: MojoTargetTypeRef;
   readonly convention: "imm" | "mut" | "var" | "ref" | "out";
   readonly passing: "plain" | "consume";
-  readonly optional: boolean;
-  readonly rest: boolean;
+  readonly omissionKind: "required" | "undefined" | "initializer" | "rest";
   readonly initializer?: Node;
 }
 
@@ -354,6 +356,32 @@ export type MojoTypeTestSelection =
       readonly testedType: MojoTargetTypeRef;
     };
 
+export type MojoNullishCoalescingSelection =
+  | {
+      readonly kind: "left";
+      readonly left: Node;
+      readonly resultType: MojoTargetTypeRef;
+      readonly conversion: MojoValueConversion;
+    }
+  | {
+      readonly kind: "right";
+      readonly left: Node;
+      readonly right: Node;
+      readonly resultType: MojoTargetTypeRef;
+      readonly conversion: MojoValueConversion;
+    }
+  | {
+      readonly kind: "optional" | "union";
+      readonly left: Node;
+      readonly right: Node;
+      readonly leftType: MojoTargetTypeRef;
+      readonly presentType: MojoTargetTypeRef;
+      readonly resultType: MojoTargetTypeRef;
+      readonly presentConversion: MojoValueConversion;
+      readonly rightConversion: MojoValueConversion;
+      readonly presentRefinement?: MojoValueRefinementSelection;
+    };
+
 export type MojoElementSelection = {
   readonly kind: "native";
   readonly receiver: Node;
@@ -625,6 +653,7 @@ export interface MojoProgramQueries {
   valueSelection(expression: Node): MojoValueSelection | undefined;
   valueRefinement(expression: Node): MojoValueRefinementSelection | undefined;
   typeTestSelection(expression: Node): MojoTypeTestSelection | undefined;
+  nullishCoalescingSelection(expression: Node): MojoNullishCoalescingSelection | undefined;
   elementSelection(access: Node): MojoElementSelection | undefined;
   iterationSelection(statement: Node): MojoIterationSelection | undefined;
   resourceManagementSelection(declaration: Node): MojoResourceManagementSelection | undefined;

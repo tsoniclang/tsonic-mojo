@@ -3,6 +3,7 @@ import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import {
   BinaryExpression_Left,
   BinaryExpression_Right,
+  CatchClause_Block,
   ConditionalExpression_Condition,
   ConditionalExpression_WhenFalse,
   ConditionalExpression_WhenTrue,
@@ -18,6 +19,9 @@ import {
   IterationStatement_Statement,
   SwitchStatement_CaseBlock,
   SwitchStatement_Expression,
+  TryStatement_CatchClause,
+  TryStatement_FinallyBlock,
+  TryStatement_TryBlock,
   SpreadAssignment_Expression,
   VariableDeclarationList_Declarations,
   VariableStatement_DeclarationList,
@@ -228,6 +232,12 @@ export function recordMojoExecutableRegionConversionUses(
     if (statement === undefined) return;
     if (ast.is.IsBlock(statement)) {
       for (const child of ast.statements(statement)) visitStatement(child);
+      return;
+    }
+    if (ast.is.IsTryStatement(statement)) {
+      visitStatement(TryStatement_TryBlock(ast, statement));
+      visitStatement(CatchClause_Block(ast, TryStatement_CatchClause(ast, statement)));
+      visitStatement(TryStatement_FinallyBlock(ast, statement));
       return;
     }
     if (ast.is.IsReturnStatement(statement)) {

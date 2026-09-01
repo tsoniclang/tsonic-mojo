@@ -16,7 +16,18 @@ export interface MojoAnalyzedCallArgument {
   readonly spread: boolean;
   readonly position: MojoCallArgumentPosition;
   readonly nativeName?: string;
+  readonly parameterIndex: number;
 }
+
+export type MojoCallableArgumentSlot =
+  | { readonly kind: "value"; readonly argument: MojoAnalyzedCallArgument }
+  | { readonly kind: "optional-absent"; readonly type: MojoTargetTypeRef }
+  | {
+      readonly kind: "rest";
+      readonly type: MojoTargetTypeRef;
+      readonly elementType: MojoTargetTypeRef;
+      readonly arguments: readonly MojoAnalyzedCallArgument[];
+    };
 
 export type MojoCallSelection =
   | {
@@ -156,6 +167,7 @@ export type MojoCallSelection =
       readonly callee: Node;
       readonly callableType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
       readonly arguments: readonly MojoAnalyzedCallArgument[];
+      readonly argumentSlots: readonly MojoCallableArgumentSlot[];
       readonly resultType: MojoTargetTypeRef;
       readonly resultConversion: MojoValueConversion;
       readonly optionalChain: boolean;

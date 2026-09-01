@@ -340,6 +340,7 @@ function analyzeSourceProfileCall(
       convention: "imm",
       position: "positional-or-keyword",
       variadic: parameter.rest,
+      ...(parameter.rest && resolved !== undefined ? { variadicCollectionType: resolved } : {}),
       passing: "plain",
     }));
   }
@@ -648,6 +649,21 @@ function analyzeCallableValueCall(
       reason: "The selected source callable signature and sealed Mojo function carrier have different arities.",
     };
   }
+  for (const [index, parameter] of callableType.parameters.entries()) {
+    const sourceOmission = sourceParameterOmissionForm(sourceParameters[index]!);
+    const targetOmission = parameter.omissionKind === "rest"
+      ? "rest"
+      : parameter.omissionKind === undefined || parameter.omissionKind === "required"
+        ? "required"
+        : "optional";
+    if (targetOmission !== sourceOmission) {
+      return {
+        kind: "unsupported",
+        code: "MOJO_CALLABLE_VALUE_OMISSION_ABI_MISMATCH",
+        reason: "The selected source callable omission contract differs from the sealed Mojo callable ABI.",
+      };
+    }
+  }
   const parameterTypes = callableType.parameters.map((parameter, index) => {
     const selected = sourceParameters[index];
     return selected?.rest === true ? restCallableElementType(parameter.type) : parameter.type;
@@ -666,6 +682,7 @@ function analyzeCallableValueCall(
       convention: parameter.convention,
       position: "positional-or-keyword" as const,
       variadic: sourceParameters[index]!.rest,
+      ...(sourceParameters[index]!.rest ? { variadicCollectionType: parameter.type } : {}),
       passing: parameter.passing,
     })),
     resolve,
@@ -674,6 +691,33 @@ function analyzeCallableValueCall(
     (expression) => context.source.ast.is.IsObjectLiteralExpression(expression),
   );
   if (arguments_.kind === "unsupported") return arguments_;
+  const argumentSlots = callableType.parameters.map((parameter, parameterIndex) => {
+    const selected = sourceParameters[parameterIndex]!;
+    const bound = arguments_.arguments.filter((argument) => argument.parameterIndex === parameterIndex);
+    if (selected.rest) {
+      const elementType = parameterTypes[parameterIndex]!;
+      return Object.freeze({
+        kind: "rest" as const,
+        type: parameter.type,
+        elementType,
+        arguments: Object.freeze(bound),
+      });
+    }
+    if (bound.length === 1) {
+      return Object.freeze({ kind: "value" as const, argument: bound[0]! });
+    }
+    if (bound.length === 0 && sourceParameterOmissionForm(selected) !== "required") {
+      return Object.freeze({ kind: "optional-absent" as const, type: parameter.type });
+    }
+    return undefined;
+  });
+  if (argumentSlots.some((slot) => slot === undefined)) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_CALLABLE_VALUE_ARGUMENT_SLOT_UNCLOSED",
+      reason: "The selected callable arguments do not close exactly over required, optional, and rest slots.",
+    };
+  }
   const callableTargets = callableType.parameters.map((parameter) => Object.freeze({
     convention: parameter.convention,
   }));
@@ -693,9 +737,16 @@ function analyzeCallableValueCall(
       callee: sourceCall.sourceCallee.expression,
       callableType,
       arguments: arguments_.arguments,
+      argumentSlots: Object.freeze(argumentSlots as NonNullable<(typeof argumentSlots)[number]>[]),
       resultType: targetResult,
       resultConversion: result.conversion,
       optionalChain: sourceCall.optionalChain,
     }),
   };
+}
+
+function sourceParameterOmissionForm(
+  parameter: ResolvedSourceCallInfo["sourceSelectedSignatureParameters"][number],
+): "required" | "optional" | "rest" {
+  return parameter.rest ? "rest" : parameter.acceptsOmission ? "optional" : "required";
 }
