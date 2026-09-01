@@ -81,6 +81,29 @@ export interface MojoAnalyzedClass {
 
 export type MojoAnalyzedDeclaration = MojoAnalyzedFunction | MojoAnalyzedClass;
 
+export interface MojoAnalyzedModuleBinding {
+  readonly declaration: Node;
+  readonly sourceFile: SourceFile;
+  readonly sourceName: string;
+  readonly name: string;
+  readonly declarationKind: "const" | "let" | "var";
+  readonly storage: "comptime" | "cell";
+  readonly type: MojoTargetTypeRef;
+  readonly initializer?: Node;
+}
+
+export interface MojoAnalyzedModule {
+  readonly sourceFile: SourceFile;
+  readonly stateName: string;
+  readonly createStateName: string;
+  readonly cellName: string;
+  readonly initializeName: string;
+  readonly bindings: readonly MojoAnalyzedModuleBinding[];
+  readonly executableStatements: readonly Node[];
+  readonly asynchronous: boolean;
+  readonly runtimeInitializationRequired: boolean;
+}
+
 export type MojoValueConversion =
   | { readonly kind: "identity" }
   | { readonly kind: "primitive-cast"; readonly targetType: MojoTargetTypeRef }
@@ -231,6 +254,8 @@ export interface MojoProgramQueries {
   valueSelection(expression: Node): MojoValueSelection | undefined;
   elementSelection(access: Node): MojoElementSelection | undefined;
   iterationSelection(statement: Node): MojoIterationSelection | undefined;
+  moduleForSourceFile(sourceFile: SourceFile): MojoAnalyzedModule | undefined;
+  moduleBinding(referenceOrDeclaration: Node): MojoAnalyzedModuleBinding | undefined;
 }
 
 export interface MojoRuntimePackagePlan {
@@ -248,6 +273,7 @@ export interface MojoTargetProgram {
   readonly source: TargetSourceSyntaxProgram;
   readonly projectTypes: MojoProjectTypeCatalog;
   readonly modules: MojoSourceModuleCatalog;
+  readonly analyzedModules: readonly MojoAnalyzedModule[];
   readonly declarations: readonly MojoAnalyzedDeclaration[];
   readonly queries: MojoProgramQueries;
   readonly runtimePackages: readonly MojoRuntimePackagePlan[];

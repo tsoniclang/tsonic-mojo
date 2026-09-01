@@ -100,8 +100,14 @@ function genericArgumentsEqual(
         return other.kind === "type" && mojoTargetTypeEquals(argument.type, other.type);
       case "type-expression":
       case "compiler-expression":
-      case "value":
         return other.kind === argument.kind && argument.expression === other.expression;
+      case "static-string":
+      case "integer":
+      case "boolean":
+        return other.kind === argument.kind && argument.value === other.value;
+      case "value-reference":
+        return other.kind === "value-reference" &&
+          arrayEquals(argument.path, other.path, (left, right) => left === right);
       case "unbound":
         return true;
     }

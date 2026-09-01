@@ -29,6 +29,7 @@ import type { MojoPlanningContext } from "./context.js";
 import { mojoTypeName, registerMojoTypeImports } from "./types/render.js";
 import { mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
+import { mojoModuleBindingRead } from "./module-bindings.js";
 
 const binaryOperatorText = new Map<string, string>([
   ["KindPlusToken", "+"],
@@ -272,25 +273,39 @@ function planMojoExpressionOnly(
       );
       if (planned === undefined) return undefined;
     } else {
-      const name = context.program.queries.bindingName(node);
-      if (name === undefined) {
-        appendMojoPlanningDiagnostic(
-          context,
-          "MOJO_IDENTIFIER_PLAN_MISSING",
-          `Identifier '${ast.text(node)}' has no sealed target binding.`,
-          node,
+      const moduleBinding = context.program.queries.moduleBinding(node);
+      if (moduleBinding !== undefined) {
+        planned = mojoModuleBindingRead(moduleBinding, context);
+        if (planned === undefined) {
+          appendMojoPlanningDiagnostic(
+            context,
+            "MOJO_MODULE_BINDING_PLAN_MISSING",
+            `Module binding '${moduleBinding.sourceName}' has no sealed Mojo storage path.`,
+            node,
+          );
+          return undefined;
+        }
+      } else {
+        const name = context.program.queries.bindingName(node);
+        if (name === undefined) {
+          appendMojoPlanningDiagnostic(
+            context,
+            "MOJO_IDENTIFIER_PLAN_MISSING",
+            `Identifier '${ast.text(node)}' has no sealed target binding.`,
+            node,
+          );
+          return undefined;
+        }
+        const ownerModule = context.program.modules.forSourceFile(
+          context.program.queries.bindingSourceFile(node),
         );
-        return undefined;
+        planned = {
+          kind: "path",
+          path: ownerModule === undefined
+            ? name
+            : mojoQualifiedModuleMember(context, ownerModule.modulePath, name),
+        };
       }
-      const ownerModule = context.program.modules.forSourceFile(
-        context.program.queries.bindingSourceFile(node),
-      );
-      planned = {
-        kind: "path",
-        path: ownerModule === undefined
-          ? name
-          : mojoQualifiedModuleMember(context, ownerModule.modulePath, name),
-      };
     }
   } else if (ast.is.IsStringLiteral(node) || ast.is.IsNoSubstitutionTemplateLiteral(node)) {
     planned = { kind: "string-literal", value: ast.text(node) };

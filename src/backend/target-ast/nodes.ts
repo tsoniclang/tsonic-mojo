@@ -193,20 +193,12 @@ export interface MojoComptimeDeclaration {
   readonly initializer: MojoExpression;
 }
 
-export interface MojoModuleVariableDeclaration {
-  readonly kind: "module-variable";
-  readonly name: string;
-  readonly type?: MojoTargetTypeRef;
-  readonly initializer: MojoExpression;
-}
-
 export type MojoDeclaration =
   | MojoFunctionDeclaration
   | MojoStructDeclaration
   | MojoTraitDeclaration
   | MojoTypeAliasDeclaration
-  | MojoComptimeDeclaration
-  | MojoModuleVariableDeclaration;
+  | MojoComptimeDeclaration;
 
 export interface MojoSourceModule {
   readonly modulePath: readonly string[];

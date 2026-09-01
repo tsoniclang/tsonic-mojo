@@ -9,7 +9,11 @@ import type {
   MojoStructDeclaration,
   MojoTraitDeclaration,
 } from "../target-ast/nodes.js";
-import { mojoGenericParametersText, mojoTypeName } from "../planner/types/render.js";
+import {
+  mojoGenericParametersText,
+  mojoTypeName,
+  renderGenericArgumentValue,
+} from "../planner/types/render.js";
 
 export function printMojoModule(module: MojoSourceModule): string {
   const lines = module.imports.map(printImport);
@@ -45,10 +49,6 @@ function printDeclaration(declaration: MojoDeclaration, modulePath: readonly str
       return [`comptime ${declaration.name}${mojoGenericParametersText(declaration.genericParameters, modulePath)}${type} = ${
         printExpression(declaration.initializer, modulePath)
       }`];
-    }
-    case "module-variable": {
-      const type = declaration.type === undefined ? "" : `: ${requiredTypeName(declaration.type, modulePath)}`;
-      return [`var ${declaration.name}${type} = ${printExpression(declaration.initializer, modulePath)}`];
     }
   }
 }
@@ -209,11 +209,7 @@ function renderCallGenericArgument(
   argument: import("../../target-model/provider/model.js").MojoTargetGenericArgument,
   modulePath: readonly string[],
 ): string {
-  const value = argument.kind === "type"
-    ? requiredTypeName(argument.type, modulePath)
-    : argument.kind === "unbound"
-      ? "_"
-      : argument.expression;
+  const value = renderGenericArgumentValue(argument, modulePath);
   return argument.name === undefined ? value : `${argument.name}=${value}`;
 }
 

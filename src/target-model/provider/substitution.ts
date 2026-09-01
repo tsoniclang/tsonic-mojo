@@ -135,14 +135,10 @@ function substituteGenericArgument(
       type: substituteMojoTargetType(argument.type, substitutions),
     });
   }
-  if (argument.kind === "value") {
-    const replacement = substitutions.constants.get(argument.expression);
+  if (argument.kind === "value-reference" && argument.path.length === 1) {
+    const replacement = substitutions.constants.get(argument.path[0]!);
     if (replacement !== undefined) {
-      return Object.freeze({
-        kind: "value",
-        ...(argument.name === undefined ? {} : { name: argument.name }),
-        expression: renderConstArgument(replacement),
-      });
+      return genericArgumentForConstant(replacement, argument.name);
     }
   }
   return argument;
@@ -157,10 +153,18 @@ function substituteConstArgument(
     : argument;
 }
 
-function renderConstArgument(argument: MojoTargetConstArgument): string {
+function genericArgumentForConstant(
+  argument: MojoTargetConstArgument,
+  name: string | undefined,
+): MojoTargetGenericArgument {
+  const named = name === undefined ? {} : { name };
   switch (argument.kind) {
-    case "integer": return argument.value;
-    case "boolean": return argument.value ? "True" : "False";
-    case "parameter": return argument.name;
+    case "integer": return Object.freeze({ kind: "integer", ...named, value: argument.value });
+    case "boolean": return Object.freeze({ kind: "boolean", ...named, value: argument.value });
+    case "parameter": return Object.freeze({
+      kind: "value-reference",
+      ...named,
+      path: Object.freeze([argument.name]),
+    });
   }
 }

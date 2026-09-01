@@ -61,7 +61,7 @@ export function projectMojoCompilerType(
       const genericArguments = context.owner.genericParameters.map((parameter): MojoTargetGenericArgument =>
         parameter.kind === "type"
           ? Object.freeze({ kind: "type", type: Object.freeze({ kind: "type-parameter", name: parameter.name }) })
-          : Object.freeze({ kind: "value", expression: parameter.name }));
+          : Object.freeze({ kind: "value-reference", path: Object.freeze([parameter.name]) }));
       const ownerTarget = namedTargetType(
         context.package,
         context.modulePath,
@@ -199,7 +199,7 @@ function projectTargetGenericArgument(
     return Object.freeze({ kind: "type", type: projectMojoCompilerType(argument.type, context).target });
   }
   if (argument.kind === "value") {
-    return Object.freeze({ kind: "value", expression: argument.expression });
+    return projectMojoCompilerValueArgument(argument.expression, argument.name);
   }
   if (argument.kind === "type-expression") {
     return Object.freeze({ kind: "type-expression", expression: argument.expression });
@@ -321,14 +321,33 @@ function projectGenericArgument(
       const source = sourceValueArgument(argument.expression);
       return Object.freeze({
         source,
-        target: Object.freeze({
-          kind: "value",
-          ...(argument.name === undefined ? {} : { name: argument.name }),
-          expression: argument.expression,
-        }),
+        target: projectMojoCompilerValueArgument(argument.expression, argument.name),
       });
     }
   }
+}
+
+export function projectMojoCompilerValueArgument(
+  expression: string,
+  name?: string,
+): MojoTargetGenericArgument {
+  const named = name === undefined ? {} : { name };
+  if (/^-?[0-9]+$/u.test(expression)) {
+    return Object.freeze({ kind: "integer", ...named, value: expression });
+  }
+  if (expression === "True" || expression === "False") {
+    return Object.freeze({ kind: "boolean", ...named, value: expression === "True" });
+  }
+  if (/^[_A-Za-z][_A-Za-z0-9]*(?:\.[_A-Za-z][_A-Za-z0-9]*)*$/u.test(expression)) {
+    return Object.freeze({ kind: "value-reference", ...named, path: Object.freeze(expression.split(".")) });
+  }
+  if (/^"(?:[^"\\]|\\.)*"$/u.test(expression)) {
+    try {
+      const value: unknown = JSON.parse(expression);
+      if (typeof value === "string") return Object.freeze({ kind: "static-string", ...named, value });
+    } catch {}
+  }
+  return Object.freeze({ kind: "compiler-expression", ...named, expression });
 }
 
 function sourceValueArgument(expression: string): ProviderTypeExpression {

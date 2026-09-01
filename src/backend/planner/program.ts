@@ -25,6 +25,7 @@ import type {
 import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
 import { normalizeMojoIdentifier } from "../../analysis/names/identifiers.js";
 import type { MojoSourceModuleDefinition } from "../../analysis/modules/model.js";
+import { planMojoModuleState } from "./module-state.js";
 
 export function planMojoOutput(program: MojoTargetProgram): TargetStageResult<MojoOutputPlan> {
   const diagnostics: TargetDiagnostic[] = [];
@@ -66,6 +67,17 @@ function planSourceModule(
     registerMojoModuleImport(context, dependency.target.modulePath);
   }
   const declarations: MojoDeclaration[] = [];
+  const analyzedModule = program.queries.moduleForSourceFile(module.sourceFile);
+  if (analyzedModule === undefined) {
+    context.diagnostics.push(planningDiagnostic(
+      "MOJO_ANALYZED_MODULE_MISSING",
+      `Source module '${module.relativeSourcePath}' has no sealed target analysis.`,
+      module.sourceFile,
+    ));
+  } else {
+    const state = planMojoModuleState(program, module, analyzedModule, context);
+    if (state !== undefined) declarations.push(...state);
+  }
   for (const declaration of program.declarations) {
     if (declaration.sourceFile !== module.sourceFile) continue;
     if (declaration.kind === "class") {
@@ -201,12 +213,28 @@ function planBinaryEntry(
     return undefined;
   }
   const importedName = "__tsonic_entry";
+  const analyzedEntry = program.queries.moduleForSourceFile(entry.sourceFile);
+  if (analyzedEntry === undefined) {
+    diagnostics.push(planningDiagnostic(
+      "MOJO_BINARY_ENTRY_MODULE_ANALYSIS_MISSING",
+      "Binary entry module has no sealed Mojo module analysis.",
+      entry.sourceFile,
+    ));
+    return undefined;
+  }
+  const initializerName = "__tsonic_initialize_entry";
+  const importedSymbols = [
+    Object.freeze({ name: function_.name, alias: importedName }),
+    ...(analyzedEntry.runtimeInitializationRequired
+      ? [Object.freeze({ name: analyzedEntry.initializeName, alias: initializerName })]
+      : []),
+  ];
   const module: MojoSourceModule = Object.freeze({
     modulePath: Object.freeze([]),
     imports: Object.freeze([Object.freeze({
       kind: "symbols" as const,
       modulePath: entry.modulePath,
-      symbols: Object.freeze([Object.freeze({ name: function_.name, alias: importedName })]),
+      symbols: Object.freeze(importedSymbols),
     })]),
     declarations: Object.freeze([Object.freeze({
       kind: "function" as const,
@@ -215,15 +243,27 @@ function planBinaryEntry(
       parameters: Object.freeze([]),
       resultType: Object.freeze({ kind: "unit" as const }),
       asynchronous: false,
-      raises: function_.raises,
-      statements: Object.freeze([Object.freeze({
-        kind: "expression" as const,
-        expression: Object.freeze({
-          kind: "call" as const,
-          callee: Object.freeze({ kind: "path" as const, path: importedName }),
-          arguments: Object.freeze([]),
+      raises: function_.raises || analyzedEntry.runtimeInitializationRequired,
+      statements: Object.freeze([
+        ...(analyzedEntry.runtimeInitializationRequired
+          ? [Object.freeze({
+              kind: "expression" as const,
+              expression: Object.freeze({
+                kind: "call" as const,
+                callee: Object.freeze({ kind: "path" as const, path: initializerName }),
+                arguments: Object.freeze([]),
+              }),
+            })]
+          : []),
+        Object.freeze({
+          kind: "expression" as const,
+          expression: Object.freeze({
+            kind: "call" as const,
+            callee: Object.freeze({ kind: "path" as const, path: importedName }),
+            arguments: Object.freeze([]),
+          }),
         }),
-      })]),
+      ]),
     })]),
   });
   return Object.freeze({ path: "src/main.mojo", module });

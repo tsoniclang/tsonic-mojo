@@ -205,12 +205,28 @@ function renderGenericArgument(
   argument: NonNullable<Extract<MojoTargetTypeRef, { readonly kind: "target-named" }>['genericArguments']>[number],
   currentModulePath: readonly string[],
 ): string {
-  const value = argument.kind === "type"
-    ? requiredTypeName(argument.type, currentModulePath)
-    : argument.kind === "value" || argument.kind === "type-expression" || argument.kind === "compiler-expression"
-      ? argument.expression
-      : "_";
+  const value = renderGenericArgumentValue(argument, currentModulePath);
   return argument.name === undefined ? value : `${argument.name}=${value}`;
+}
+
+export function renderGenericArgumentValue(
+  argument: import("../../../target-model/provider/model.js").MojoTargetGenericArgument,
+  currentModulePath: readonly string[] = Object.freeze([]),
+): string {
+  switch (argument.kind) {
+    case "type": return requiredTypeName(argument.type, currentModulePath);
+    case "type-expression":
+    case "compiler-expression": return argument.expression;
+    case "static-string": return quoteMojoStaticString(argument.value);
+    case "integer": return argument.value;
+    case "boolean": return argument.value ? "True" : "False";
+    case "value-reference": return argument.path.join(".");
+    case "unbound": return "_";
+  }
+}
+
+function quoteMojoStaticString(value: string): string {
+  return JSON.stringify(value).replace(/\\u2028/gu, "\\u{2028}").replace(/\\u2029/gu, "\\u{2029}");
 }
 
 function requiredTypeName(type: MojoTargetTypeRef, currentModulePath: readonly string[]): string {

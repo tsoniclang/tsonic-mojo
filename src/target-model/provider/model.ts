@@ -65,7 +65,10 @@ export type MojoTargetGenericArgument =
   | { readonly kind: "type"; readonly name?: string; readonly type: MojoTargetTypeRef }
   | { readonly kind: "type-expression"; readonly name?: string; readonly expression: string }
   | { readonly kind: "compiler-expression"; readonly name?: string; readonly expression: string }
-  | { readonly kind: "value"; readonly name?: string; readonly expression: string }
+  | { readonly kind: "static-string"; readonly name?: string; readonly value: string }
+  | { readonly kind: "integer"; readonly name?: string; readonly value: string }
+  | { readonly kind: "boolean"; readonly name?: string; readonly value: boolean }
+  | { readonly kind: "value-reference"; readonly name?: string; readonly path: readonly string[] }
   | { readonly kind: "unbound"; readonly name?: string };
 
 export type MojoCallArgumentConvention =

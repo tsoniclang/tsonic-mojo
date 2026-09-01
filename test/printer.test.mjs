@@ -114,3 +114,38 @@ test("printer emits typed declarations and structured control flow", () => {
     ].join("\n"),
   );
 });
+
+test("printer renders generated generic values from typed syntax", () => {
+  const module = {
+    modulePath: ["fixture"],
+    imports: [{ kind: "module", modulePath: ["tsonic_runtime"] }],
+    declarations: [{
+      kind: "comptime",
+      name: "stateCell",
+      genericParameters: [],
+      initializer: {
+        kind: "construct",
+        type: {
+          kind: "target-named",
+          id: "tsonic.mojo.runtime.GlobalCell",
+          modulePath: ["tsonic_runtime"],
+          name: "GlobalCell",
+          genericArguments: [
+            { kind: "static-string", value: "module.😀" },
+            { kind: "value-reference", path: ["fixture", "createState"] },
+          ],
+        },
+        arguments: [],
+      },
+    }],
+  };
+  assert.equal(
+    printMojoModule(module),
+    [
+      "import tsonic_runtime",
+      "",
+      'comptime stateCell = tsonic_runtime.GlobalCell["module.😀", fixture.createState]()',
+      "",
+    ].join("\n"),
+  );
+});

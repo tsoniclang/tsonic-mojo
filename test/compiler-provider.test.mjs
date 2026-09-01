@@ -158,7 +158,7 @@ test("compiler metadata extraction normalizes exact conventions, keywords, const
       { kind: "value", name: "payload", position: "positional-or-keyword", variadic: false },
     ]);
     assert.deepEqual(classifyOperation.target.genericParameters[2].defaultArgument, {
-      kind: "value",
+      kind: "compiler-expression",
       expression: "Int(4)",
     });
     const classifyExport = projection.declarationModel.exports.find(({ name }) => name === "classify");
@@ -731,7 +731,10 @@ test("runtime package artifacts retain the exact analyzed Mojo sources", () => {
       compilerProvider: configuration(),
       toolchainVersion: "1.1.0.dev2026083005",
     },
-    module: { imports: [], declarations: [] },
+    sources: [{
+      path: "src/main.mojo",
+      module: { modulePath: [], imports: [], declarations: [] },
+    }],
     runtimePackages: [packagePlan],
   });
   assert.deepEqual(

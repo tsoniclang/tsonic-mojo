@@ -472,9 +472,17 @@ function validateGenericArgument(argument: MojoTargetGenericArgument, owner = "p
     throw new Error(`Mojo ${owner} has an invalid named generic argument.`);
   }
   if (argument.kind === "type") validateType(argument.type);
-  else if (argument.kind === "value" || argument.kind === "type-expression" ||
-    argument.kind === "compiler-expression") {
+  else if (argument.kind === "type-expression" || argument.kind === "compiler-expression") {
     requireText(argument.expression, "target generic value");
+  } else if (argument.kind === "static-string") {
+    requireText(argument.value, "target static-string generic value");
+  } else if (argument.kind === "integer") {
+    if (!/^-?[0-9]+$/u.test(argument.value)) {
+      throw new Error("Mojo target integer generic value is not an exact integer literal.");
+    }
+  } else if (argument.kind === "value-reference" &&
+    (argument.path.length === 0 || argument.path.some((part) => !identifierPattern.test(part)))) {
+    throw new Error("Mojo target generic value reference is not an exact identifier path.");
   }
 }
 

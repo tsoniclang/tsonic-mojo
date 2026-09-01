@@ -4,11 +4,13 @@ export function walkSourceTree(
   root: Node,
   ast: AstReader,
   visit: (node: Node) => void,
+  descend: (node: Node, root: Node) => boolean = () => true,
 ): void {
   const stack: Node[] = [root];
   while (stack.length > 0) {
     const node = stack.pop()!;
     visit(node);
+    if (!descend(node, root)) continue;
     const children = ast.children(node);
     for (let index = children.length - 1; index >= 0; index -= 1) {
       const child = children[index];
@@ -21,6 +23,7 @@ export function walkSourceTreePostOrder(
   root: Node,
   ast: AstReader,
   visit: (node: Node) => void,
+  descend: (node: Node, root: Node) => boolean = () => true,
 ): void {
   const stack: { readonly node: Node; readonly visited: boolean }[] = [
     { node: root, visited: false },
@@ -32,6 +35,7 @@ export function walkSourceTreePostOrder(
       continue;
     }
     stack.push({ node: entry.node, visited: true });
+    if (!descend(entry.node, root)) continue;
     const children = ast.children(entry.node);
     for (let index = children.length - 1; index >= 0; index -= 1) {
       const child = children[index];
