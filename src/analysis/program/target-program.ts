@@ -33,6 +33,7 @@ import type {
   MojoAnalyzedFunction,
   MojoAnalyzedInterface,
   MojoAnalyzedProjectProperty,
+  MojoBindingPatternSelection,
   MojoCallSelection,
   MojoCallableExpressionSelection,
   MojoElementSelection,
@@ -97,6 +98,7 @@ export function analyzeMojoTargetProgram(
   const valueSelections = new WeakMap<Node, MojoValueSelection>();
   const objectLiteralSelections = new WeakMap<Node, MojoObjectLiteralSelection>();
   const callableExpressionSelections = new WeakMap<Node, MojoCallableExpressionSelection>();
+  const bindingPatternSelections = new WeakMap<Node, MojoBindingPatternSelection>();
   const analyzedCallableExpressions = new WeakSet<Node>();
   const conversions = createMojoConversionIndex();
   const functionByDeclaration = new WeakMap<Node, MojoAnalyzedFunction>();
@@ -358,6 +360,7 @@ export function analyzeMojoTargetProgram(
     iterationSelections,
     valueSelections,
     objectLiteralSelections,
+    bindingPatternSelections,
     analyzeCallableExpression,
     conversions,
     functionByDeclaration,
@@ -531,6 +534,7 @@ export function analyzeMojoTargetProgram(
       valueSelections,
       objectLiteralSelections,
       callableExpressionSelections,
+      bindingPatternSelections,
       bindingNames,
       diagnostics,
     );
@@ -551,6 +555,7 @@ export function analyzeMojoTargetProgram(
     iterationSelections,
     objectLiteralSelections,
     callableExpressionSelections,
+    bindingPatternSelections,
     moduleBySourceFile: finalizedModuleBySourceFile,
     moduleBindingByDeclaration,
   });

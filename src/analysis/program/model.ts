@@ -62,6 +62,7 @@ export interface MojoAnalyzedFunction {
 export interface MojoAnalyzedClassField {
   readonly kind: "instance-field";
   readonly declaration: Node;
+  readonly sourceName: string;
   readonly name: string;
   readonly type: MojoTargetTypeRef;
   readonly ownerType: MojoTargetTypeRef;
@@ -366,6 +367,36 @@ export interface MojoCallableExpressionSelection {
   readonly callableType: Extract<MojoTargetTypeRef, { readonly kind: "function" }>;
 }
 
+export type MojoBindingProjection =
+  | { readonly kind: "element"; readonly index: number }
+  | { readonly kind: "project-field"; readonly name: string }
+  | { readonly kind: "dictionary-key"; readonly key: string };
+
+export interface MojoBindingPatternElementSelection {
+  readonly element: Node;
+  readonly projection: MojoBindingProjection;
+  readonly projectedType: MojoTargetTypeRef;
+  readonly target:
+    | {
+        readonly kind: "binding";
+        readonly declaration: Node;
+        readonly name: string;
+        readonly type: MojoTargetTypeRef;
+      }
+    | {
+        readonly kind: "pattern";
+        readonly pattern: Node;
+        readonly elements: readonly MojoBindingPatternElementSelection[];
+      };
+}
+
+export interface MojoBindingPatternSelection {
+  readonly declaration: Node;
+  readonly initializer: Node;
+  readonly sourceType: MojoTargetTypeRef;
+  readonly elements: readonly MojoBindingPatternElementSelection[];
+}
+
 export type MojoObjectLiteralContribution =
   | {
       readonly kind: "field";
@@ -412,6 +443,7 @@ export interface MojoProgramQueries {
   iterationSelection(statement: Node): MojoIterationSelection | undefined;
   objectLiteralSelection(expression: Node): MojoObjectLiteralSelection | undefined;
   callableExpressionSelection(expression: Node): MojoCallableExpressionSelection | undefined;
+  bindingPatternSelection(declaration: Node): MojoBindingPatternSelection | undefined;
   moduleForSourceFile(sourceFile: SourceFile): MojoAnalyzedModule | undefined;
   moduleBinding(referenceOrDeclaration: Node): MojoAnalyzedModuleBinding | undefined;
 }

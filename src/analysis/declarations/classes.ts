@@ -105,12 +105,14 @@ export function analyzeMojoClass(
       const selected = declaredOrInitializerType(member, initializer, semantics, ast);
       const resolved = resolveType(input, selected, ast.typeNode(member), member);
       if (resolved === undefined) continue;
-      const name = classNames(ast.text(nameNode));
+      const sourceName = ast.text(nameNode);
+      const name = classNames(sourceName);
       input.bindingNames.set(member, name);
       input.bindingTypes.set(member, resolved);
       fields.push(Object.freeze({
         kind: "instance-field",
         declaration: member,
+        sourceName,
         name,
         type: resolved,
         ownerType: targetType,

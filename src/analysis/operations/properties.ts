@@ -115,7 +115,7 @@ function optionalAccessResult(
     : Object.freeze({ kind: "optional", value: type });
 }
 
-function instantiateProjectFieldType(
+export function instantiateProjectFieldType(
   field: Extract<MojoAnalyzedProjectProperty, { readonly kind: "instance-field" | "interface-field" }>,
   receiverType: MojoTargetTypeRef,
 ): MojoTargetTypeRef | undefined {

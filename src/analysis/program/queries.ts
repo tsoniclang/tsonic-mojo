@@ -5,6 +5,7 @@ import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
 import type {
   MojoAnalyzedModule,
   MojoAnalyzedModuleBinding,
+  MojoBindingPatternSelection,
   MojoCallSelection,
   MojoCallableExpressionSelection,
   MojoElementSelection,
@@ -29,6 +30,7 @@ export interface MojoProgramQueryIndexes {
   readonly iterationSelections: WeakMap<Node, MojoIterationSelection>;
   readonly objectLiteralSelections: WeakMap<Node, MojoObjectLiteralSelection>;
   readonly callableExpressionSelections: WeakMap<Node, MojoCallableExpressionSelection>;
+  readonly bindingPatternSelections: WeakMap<Node, MojoBindingPatternSelection>;
   readonly moduleBySourceFile: WeakMap<SourceFile, MojoAnalyzedModule>;
   readonly moduleBindingByDeclaration: WeakMap<Node, MojoAnalyzedModuleBinding>;
 }
@@ -72,6 +74,9 @@ export function createMojoProgramQueries(
     },
     callableExpressionSelection(expression: Node): MojoCallableExpressionSelection | undefined {
       return indexes.callableExpressionSelections.get(expression);
+    },
+    bindingPatternSelection(declaration: Node): MojoBindingPatternSelection | undefined {
+      return indexes.bindingPatternSelections.get(declaration);
     },
     moduleForSourceFile(sourceFile: SourceFile) {
       return indexes.moduleBySourceFile.get(sourceFile);

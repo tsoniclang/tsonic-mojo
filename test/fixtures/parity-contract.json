@@ -272,7 +272,9 @@
       "source": "const { left, ...rest } = pair; const [first, ...tail] = values;",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact single-evaluation projections",
-      "status": "pending"
+      "status": "partial",
+      "proof": "test/language-parity.test.mjs",
+      "note": "Tuple, fixed-array, list, project-field, dictionary-key, omitted, renamed, and nested projections are sealed and evaluate their source once. Rest and default reconstruction remain explicit analysis rejections."
     },
     {
       "id": "control.statements",
@@ -310,7 +312,9 @@
       "source": "for await (const value of values) { consume(value); }",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain selected iterator protocol evidence",
-      "status": "pending"
+      "status": "partial",
+      "proof": "test/language-parity.test.mjs",
+      "note": "Checker-selected native list, fixed-array, and dictionary iteration lower from sealed element carriers. Asynchronous iteration remains an explicit pinned-Mojo language limit."
     },
     {
       "id": "generators.bidirectional",

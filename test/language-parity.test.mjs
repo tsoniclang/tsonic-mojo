@@ -461,3 +461,94 @@ test("block-bodied callable expressions reject at the exact Mojo native boundary
   assert.equal(result.artifacts.length, 0);
   assert.ok(result.diagnostics.some(({ code }) => code === "MOJO_CALLABLE_BLOCK_BODY_NATIVE_LIMIT"));
 });
+
+test("binding patterns retain exact single-evaluation aggregate projections", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        "interface Pair<T> { left: T; right: T; }",
+        "function makePair(): Pair<i32> { return { left: 2, right: 3 }; }",
+        "function sum(values: [i32, Pair<i32>, i32]): i32 {",
+        "  const [first, { right: second }, third] = values;",
+        "  const { left, right: renamed } = makePair();",
+        "  const [, selected]: [i32, i32] = [7, 11];",
+        "  return first + second + third + left + renamed + selected;",
+        "}",
+        "export function main(): void {}",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("def sum"));
+  assert.ok(source);
+  assert.match(source.text, /var __tsonic_binding_source_\d+: \(Int32, Pair\[Int32\], Int32\) = values/u);
+  assert.match(source.text, /var first: Int32 = __tsonic_binding_source_\d+\[0\]/u);
+  assert.match(source.text, /var second: Int32 = __tsonic_binding_nested_\d+\._state\[\]\.right/u);
+  assert.match(source.text, /var renamed: Int32 = __tsonic_binding_source_\d+\._state\[\]\.right/u);
+  assert.equal((source.text.match(/= makePair\(\)/gu) ?? []).length, 1);
+});
+
+test("unclosed destructuring rest and defaults reject during sealed analysis", () => {
+  for (const [declaration, expected] of [
+    ["const [head, ...tail]: i32[] = values;", "MOJO_BINDING_REST_NOT_CLOSED"],
+    ["const [head = 0]: i32[] = values;", "MOJO_BINDING_DEFAULT_NOT_CLOSED"],
+  ]) {
+    const result = compileMojo({
+      files: {
+        "index.ts": [
+          'import type { i32 } from "@tsonic/mojo/types.js";',
+          "function read(values: i32[]): i32 {",
+          `  ${declaration}`,
+          "  return head;",
+          "}",
+          "export function main(): void {}",
+        ].join("\n"),
+      },
+    });
+    assert.equal(result.artifacts.length, 0);
+    assert.ok(result.diagnostics.some(({ code }) => code === expected));
+  }
+});
+
+test("synchronous list and dictionary iteration retain selected element carriers", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        "function sum(values: i32[]): i32 {",
+        "  let total: i32 = 0;",
+        "  for (const value of values) total += value;",
+        "  return total;",
+        "}",
+        "function count(values: Record<string, i32>): i32 {",
+        "  let total: i32 = 0;",
+        "  for (const key in values) total += values[key];",
+        "  return total;",
+        "}",
+        "export function main(): void {}",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("def sum"));
+  assert.ok(source);
+  assert.match(source.text, /for value in values:/u);
+  assert.match(source.text, /for key in values\.keys\(\):/u);
+});
+
+test("asynchronous iteration rejects at the pinned Mojo language boundary", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        "async function consume(values: i32[]): Promise<void> {",
+        "  for await (const value of values) { if (value === 0) return; }",
+        "}",
+        "export function main(): void {}",
+      ].join("\n"),
+    },
+  });
+  assert.equal(result.artifacts.length, 0);
+  assert.ok(result.diagnostics.some(({ code }) => code === "MOJO_ASYNC_ITERATION_NATIVE_LIMIT"));
+});

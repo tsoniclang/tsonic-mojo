@@ -20,6 +20,7 @@ import {
 } from "@tsonic/target-api/source";
 import type {
   MojoAnalyzedFunction,
+  MojoBindingPatternSelection,
   MojoCallSelection,
   MojoCallableExpressionSelection,
   MojoElementSelection,
@@ -80,6 +81,7 @@ export function validateMojoFunctionSyntax(
   values: WeakMap<Node, MojoValueSelection>,
   objectLiterals: WeakMap<Node, MojoObjectLiteralSelection>,
   callableExpressions: WeakMap<Node, MojoCallableExpressionSelection>,
+  bindingPatterns: WeakMap<Node, MojoBindingPatternSelection>,
   bindings: WeakMap<Node, string>,
   diagnostics: TargetDiagnostic[],
 ): void {
@@ -264,7 +266,18 @@ export function validateMojoFunctionSyntax(
     if (ast.is.IsVariableStatement(statement)) {
       const list = VariableStatement_DeclarationList(ast, statement);
       for (const declaration of VariableDeclarationList_Declarations(ast, list) ?? []) {
-        if (declaration !== undefined && Node_Initializer(ast, declaration) === undefined) {
+        if (declaration === undefined) continue;
+        const name = ast.name(declaration);
+        if (name !== undefined &&
+          (ast.is.IsArrayBindingPattern(name) || ast.is.IsObjectBindingPattern(name)) &&
+          bindingPatterns.get(declaration) === undefined) {
+          diagnostics.push(diagnostic(
+            "MOJO_BINDING_PATTERN_SELECTION_UNRESOLVED",
+            "Binding pattern has no sealed Mojo aggregate projection.",
+            declaration,
+          ));
+        }
+        if (Node_Initializer(ast, declaration) === undefined) {
           diagnostics.push(diagnostic(
             "MOJO_UNINITIALIZED_VARIABLE_UNSUPPORTED",
             "Mojo foundation requires local variables to have an initializer.",

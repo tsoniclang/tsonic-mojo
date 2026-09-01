@@ -28,6 +28,7 @@ import type { MojoPlanningContext } from "./context.js";
 import { allocateMojoSyntheticName, appendMojoPlanningDiagnostic } from "./context.js";
 import { planMojoAssignment, planMojoValue, planMojoUpdate } from "./expressions.js";
 import { registerMojoTypeImports } from "./types/render.js";
+import { planMojoBindingPattern } from "./binding-patterns.js";
 
 export function planMojoFunctionStatements(
   function_: MojoAnalyzedFunction,
@@ -250,7 +251,7 @@ function planStatement(
     const selection = context.program.queries.iterationSelection(node);
     const body = ForInOrOfStatement_Statement(ast, node);
     if (selection === undefined || body === undefined) return undefined;
-    const sourceIterable = planMojoValue(selection.iterable, context, selection.iterableType);
+    const sourceIterable = planMojoValue(selection.iterable, context);
     if (sourceIterable === undefined) return undefined;
     const iterable = selection.target === "dictionary-keys"
       ? Object.freeze({
@@ -508,6 +509,13 @@ function planVariableDeclarationList(
   const planned: MojoStatement[] = [];
   for (const declaration of declarations) {
     if (declaration === undefined) return undefined;
+    const pattern = context.program.queries.bindingPatternSelection(declaration);
+    if (pattern !== undefined) {
+      const statements = planMojoBindingPattern(pattern, context, planMojoValue);
+      if (statements === undefined) return undefined;
+      planned.push(...statements);
+      continue;
+    }
     const name = context.program.queries.bindingName(declaration);
     const type = context.program.queries.bindingType(declaration);
     const sourceInitializer = Node_Initializer(ast, declaration);

@@ -15,6 +15,7 @@ import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import { analyzeMojoCall } from "../operations/calls.js";
 import { analyzeMojoElementAccess } from "../operations/elements.js";
 import { analyzeMojoIteration } from "../operations/iterations.js";
+import { analyzeMojoBindingPattern } from "../bindings/patterns.js";
 import {
   analyzeMojoProjectProperty,
   analyzeMojoProviderProperty,
@@ -30,6 +31,7 @@ import { isMojoAssignmentOperator } from "./syntax-validation.js";
 import type {
   MojoAnalyzedClass,
   MojoAnalyzedClassOwner,
+  MojoBindingPatternSelection,
   MojoAnalyzedFunction,
   MojoAnalyzedProjectProperty,
   MojoCallSelection,
@@ -65,6 +67,7 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly iterationSelections: WeakMap<Node, MojoIterationSelection>;
   readonly valueSelections: WeakMap<Node, MojoValueSelection>;
   readonly objectLiteralSelections: WeakMap<Node, MojoObjectLiteralSelection>;
+  readonly bindingPatternSelections: WeakMap<Node, MojoBindingPatternSelection>;
   readonly conversions: MojoConversionIndex;
   readonly functionByDeclaration: WeakMap<Node, MojoAnalyzedFunction>;
   readonly classByDeclaration: WeakMap<Node, MojoAnalyzedClass>;
@@ -100,6 +103,7 @@ export function analyzeMojoExecutableRegion(
   const iterationNodes: Node[] = [];
   const objectLiteralNodes: Node[] = [];
   const callableExpressionNodes: Node[] = [];
+  const bindingPatternDeclarations: Node[] = [];
   walkSourceTree(root, ast, (node): void => {
     if (ast.is.IsVariableDeclaration(node)) {
       const selected = declaredOrInitializerType(node, semantics, ast);
@@ -108,6 +112,11 @@ export function analyzeMojoExecutableRegion(
         input.diagnostics.push(typeDiagnostic(node, "the selected declaration has no closed Mojo carrier"));
       } else {
         input.bindingTypes.set(node, resolved);
+      }
+      const name = ast.name(node);
+      if (name !== undefined &&
+        (ast.is.IsArrayBindingPattern(name) || ast.is.IsObjectBindingPattern(name))) {
+        bindingPatternDeclarations.push(node);
       }
     }
     if (isMojoExpressionNode(node, ast) && isRuntimeValueOccurrence(node, input)) {
@@ -163,6 +172,39 @@ export function analyzeMojoExecutableRegion(
         input.objectLiteralSelections.set(node, selection);
         progressed = true;
       }
+    }
+  }
+
+  for (const declaration of bindingPatternDeclarations) {
+    const initializer = Node_Initializer(ast, declaration);
+    const authoredType = ast.typeNode(declaration);
+    const sourceType = initializer === undefined
+      ? undefined
+      : authoredType === undefined
+        ? input.expressionTypes.get(initializer) ?? input.bindingTypes.get(declaration)
+        : input.bindingTypes.get(declaration) ?? input.expressionTypes.get(initializer);
+    if (initializer === undefined || sourceType === undefined) {
+      input.diagnostics.push(diagnostic(
+        "MOJO_BINDING_PATTERN_SOURCE_NOT_CLOSED",
+        "A binding pattern requires one initialized source with an exact Mojo carrier.",
+        declaration,
+      ));
+      continue;
+    }
+    const selection = analyzeMojoBindingPattern({
+      ast,
+      declaration,
+      initializer,
+      sourceType,
+      bindingNames: input.bindingNames,
+      bindingTypes: input.bindingTypes,
+      classByTypeId: input.classByTypeId,
+      interfaceByTypeId: input.interfaceByTypeId,
+      diagnostics: input.diagnostics,
+    });
+    if (selection !== undefined) {
+      input.bindingTypes.set(declaration, sourceType);
+      input.bindingPatternSelections.set(declaration, selection);
     }
   }
 
