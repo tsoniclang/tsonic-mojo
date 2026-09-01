@@ -7,7 +7,6 @@ import {
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import {
-  applyMojoConversion,
   convertMojoValue,
   finishOptionalMojoOperation,
   orderCallArguments,
@@ -233,9 +232,9 @@ export function planMojoCall(
           ...(selection.genericArguments.length === 0 ? {} : { genericArguments: selection.genericArguments }),
           arguments: ordered.arguments,
         };
-        const converted = applyMojoConversion(call, selection.resultConversion, context);
+        const converted = convertMojoValue(withMojoValue(before, call), selection.resultConversion, context);
         if (converted === undefined) return undefined;
-        return finishOptionalMojoOperation(node, receiver, withMojoValue(before, converted), context);
+        return finishOptionalMojoOperation(node, receiver, converted, context);
       }
       case "static-method": {
         if (selection.optionalChain) return unsupportedOptionalCall(node, context);
@@ -260,8 +259,7 @@ export function planMojoCall(
         break;
       }
     }
-    const converted = applyMojoConversion(call, selection.resultConversion, context);
-    return converted === undefined ? undefined : withMojoValue(before, converted);
+    return convertMojoValue(withMojoValue(before, call), selection.resultConversion, context);
   }
   if (selection.kind === "callable") {
     if (selection.optionalChain) return unsupportedOptionalCall(node, context);
@@ -293,8 +291,7 @@ export function planMojoCall(
         }),
       })]),
     });
-    const converted = applyMojoConversion(call, selection.resultConversion, context);
-    return converted === undefined ? undefined : withMojoValue(ordered.before, converted);
+    return convertMojoValue(withMojoValue(ordered.before, call), selection.resultConversion, context);
   }
   const target = selection.operation.target;
   if (target.kind !== "function-call" && target.kind !== "instance-call") {
@@ -400,10 +397,9 @@ export function planMojoCall(
         : { genericArguments: selection.operation.genericArguments }),
       arguments: ordered.arguments,
     };
-    const converted = applyMojoConversion(call, selection.resultConversion, context);
+    const converted = convertMojoValue(withMojoValue(before, call), selection.resultConversion, context);
     if (converted === undefined) return undefined;
-    return finishOptionalMojoOperation(node, preparedReceiver, withMojoValue(before, converted), context);
+    return finishOptionalMojoOperation(node, preparedReceiver, converted, context);
   }
-  const converted = applyMojoConversion(call, selection.resultConversion, context);
-  return converted === undefined ? undefined : withMojoValue(before, converted);
+  return convertMojoValue(withMojoValue(before, call), selection.resultConversion, context);
 }

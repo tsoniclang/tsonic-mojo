@@ -412,7 +412,7 @@ function resolveMojoTargetTypeWithState(
           kind: "callable",
           parameters: Object.freeze(parameters),
           result: result.type,
-          raises: false,
+          raises: true,
         }),
       };
     }

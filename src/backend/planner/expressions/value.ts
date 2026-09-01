@@ -27,7 +27,7 @@ import { planMojoElement } from "./elements.js";
 import { planMojoProperty } from "./properties.js";
 import { planMojoLeafExpression } from "./leaves.js";
 import {
-  applyMojoConversion,
+  convertMojoValue,
   isJsArray,
   jsArrayElement,
   orderMojoValues,
@@ -52,6 +52,7 @@ import {
   planNullishCoalescing,
   planPrefixUnary,
 } from "./conditional-values.js";
+import { planMojoTemplateExpression } from "./template-strings.js";
 
 const binaryOperatorText = new Map<string, string>([
   ["KindPlusToken", "+"], ["KindMinusToken", "-"], ["KindAsteriskToken", "*"],
@@ -354,6 +355,8 @@ export function planMojoValue(
   let plan: MojoValuePlan | undefined;
   if (ast.is.IsArrayLiteralExpression(node)) {
     plan = planArrayLiteral(node, context);
+  } else if (ast.kindName(node) === "KindTemplateExpression") {
+    plan = planMojoTemplateExpression(node, context, planMojoValue);
   } else if (ast.is.IsObjectLiteralExpression(node)) {
     plan = planObjectLiteral(node, context);
   } else if (ast.is.IsParenthesizedExpression(node)) {
@@ -389,8 +392,8 @@ export function planMojoValue(
   if (plan === undefined) return undefined;
   if (expectedType === undefined || actualType === undefined) return plan;
   if (inlineCallableWidening) return plan;
-  const converted = applyMojoConversion(plan.value, conversion, context);
-  return converted === undefined ? undefined : Object.freeze({ before: plan.before, value: converted });
+  if (conversion === undefined) return undefined;
+  return convertMojoValue(plan, conversion, context);
 }
 
 function planArrayLiteral(node: Node, context: MojoPlanningContext): MojoValuePlan | undefined {

@@ -38,6 +38,7 @@ import type {
   MojoObjectLiteralSelection,
   MojoPropertySelection,
   MojoResourceManagementSelection,
+  MojoTemplateExpressionSelection,
   MojoTargetAnalysisRequest,
   MojoTargetProgram,
   MojoTypeTestSelection,
@@ -105,6 +106,7 @@ export function analyzeMojoTargetProgram(
   const typeTestSelections = new WeakMap<Node, MojoTypeTestSelection>();
   const objectLiteralSelections = new WeakMap<Node, MojoObjectLiteralSelection>();
   const callableExpressionSelections = new WeakMap<Node, MojoCallableExpressionSelection>();
+  const templateExpressionSelections = new WeakMap<Node, MojoTemplateExpressionSelection>();
   const bindingPatternSelections = new WeakMap<Node, MojoBindingPatternSelection>();
   const returnValueTransfers = new WeakSet<Node>();
   const analyzedCallableExpressions = new WeakSet<Node>();
@@ -293,6 +295,7 @@ export function analyzeMojoTargetProgram(
     valueRefinements,
     typeTestSelections,
     objectLiteralSelections,
+    templateExpressionSelections,
     bindingPatternSelections,
     returnValueTransfers,
     structuralObjects,
@@ -310,6 +313,7 @@ export function analyzeMojoTargetProgram(
 
   for (const class_ of classes) {
     for (const field of class_.fields) {
+      if (field.initializer === undefined) continue;
       analyzeMojoExecutableRegion({
         root: field.initializer,
         sourceFile: class_.sourceFile,
@@ -327,6 +331,7 @@ export function analyzeMojoTargetProgram(
         propertySelections,
         elementSelections,
         objectLiteralSelections,
+        valueRefinements,
         conversions,
         diagnostics,
       );
@@ -388,6 +393,7 @@ export function analyzeMojoTargetProgram(
         propertySelections,
         elementSelections,
         objectLiteralSelections,
+        valueRefinements,
         conversions,
         diagnostics,
       );
@@ -434,6 +440,7 @@ export function analyzeMojoTargetProgram(
       propertySelections,
       elementSelections,
       objectLiteralSelections,
+      valueRefinements,
       conversions,
       diagnostics,
     );
@@ -510,6 +517,8 @@ export function analyzeMojoTargetProgram(
       bindingPatternSelections,
       resourceManagementSelections,
       bindingNames,
+      expressionTypes,
+      templateExpressionSelections,
       diagnostics,
     );
   }
@@ -534,6 +543,7 @@ export function analyzeMojoTargetProgram(
     resourceManagementSelections,
     objectLiteralSelections,
     callableExpressionSelections,
+    templateExpressionSelections,
     bindingPatternSelections,
     returnValueTransfers,
     moduleBySourceFile: finalizedModuleBySourceFile,

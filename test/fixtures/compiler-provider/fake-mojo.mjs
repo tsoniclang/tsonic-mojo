@@ -213,7 +213,17 @@ const apiModule = {
       convention: "memory_only",
       deprecated: "",
       description: "",
-      fields: [{ description: "", kind: "field", name: "value", summary: "", type: "Int32" }],
+      fields: [
+        { description: "", kind: "field", name: "value", summary: "", type: "Int32" },
+        {
+          description: "",
+          kind: "field",
+          name: "bucket",
+          path: "/probe/api/Bucket",
+          summary: "",
+          type: "Bucket[Int32]",
+        },
+      ],
       functions: [
         group("__init__", [overload("__init__", [
           argument("value", "imm", "pos_or_kw", "Int32", int32),
@@ -238,7 +248,11 @@ const apiModule = {
       kind: "struct",
       name: "Counter",
       parameters: [],
-      parentTraits: [],
+      parentTraits: [
+        { name: "AnyType", path: "/std/traits/anytype/AnyType" },
+        { name: "Deinitable", path: "/std/traits/deinitable/Deinitable" },
+        { name: "Movable", path: "/std/traits/movable/Movable" },
+      ],
       signature: "struct Counter",
       sinceVersion: "",
       summary: "",

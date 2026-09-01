@@ -17,8 +17,12 @@ export function planMojoLeafExpression(
   context: MojoPlanningContext,
 ): MojoExpression | undefined {
   const { ast } = context.program.source;
+  const actualType = context.program.queries.expressionType(node);
   let planned: MojoExpression | undefined;
-  if (ast.is.IsIdentifier(node) || ast.kindName(node) === "KindThisKeyword") {
+  if (actualType?.kind === "null" || actualType?.kind === "undefined") {
+    registerMojoTypeImports(actualType, context);
+    planned = { kind: "construct", type: actualType, arguments: Object.freeze([]) };
+  } else if (ast.is.IsIdentifier(node) || ast.kindName(node) === "KindThisKeyword") {
     const override = mojoBindingPlanOverride(node, context);
     const selectedValue = context.program.queries.valueSelection(node);
     if (override !== undefined) {
@@ -96,11 +100,6 @@ export function planMojoLeafExpression(
     planned = { kind: "number-literal", text: text.slice(0, -1) };
   } else if (ast.kindName(node) === "KindTrueKeyword" || ast.kindName(node) === "KindFalseKeyword") {
     planned = { kind: "bool-literal", value: ast.kindName(node) === "KindTrueKeyword" };
-  } else if (ast.kindName(node) === "KindNullKeyword" || ast.kindName(node) === "KindUndefinedKeyword") {
-    const type = context.program.queries.expressionType(node);
-    if (type === undefined || (type.kind !== "null" && type.kind !== "undefined")) return undefined;
-    registerMojoTypeImports(type, context);
-    planned = { kind: "construct", type, arguments: Object.freeze([]) };
   } else {
     appendMojoPlanningDiagnostic(
       context,
@@ -110,7 +109,6 @@ export function planMojoLeafExpression(
     );
     return undefined;
   }
-  const actualType = context.program.queries.expressionType(node);
   if ((ast.is.IsStringLiteral(node) || ast.is.IsNoSubstitutionTemplateLiteral(node)) &&
     actualType !== undefined && isJsString(actualType)) {
     registerMojoModuleImport(context, ["tsonic_js"]);
@@ -134,5 +132,43 @@ export function applyValueRefinement(
         name: "value",
         arguments: Object.freeze([]),
       })
-    : Object.freeze({ kind: "type-element", receiver: expression, type: refinement.resultType });
+    : refinement.kind === "union-member"
+      ? Object.freeze({ kind: "type-element", receiver: expression, type: refinement.resultType })
+      : planUnionSubsetRefinement(expression, refinement, context);
+}
+
+function planUnionSubsetRefinement(
+  expression: MojoExpression,
+  refinement: Extract<MojoValueRefinementSelection, { readonly kind: "union-subset" }>,
+  context: MojoPlanningContext,
+): MojoExpression {
+  let result: MojoExpression | undefined;
+  for (let index = refinement.resultType.members.length - 1; index >= 0; index -= 1) {
+    const member = refinement.resultType.members[index]!;
+    registerMojoTypeImports(member, context);
+    const projected: MojoExpression = Object.freeze({
+      kind: "construct",
+      type: refinement.resultType,
+      arguments: Object.freeze([{ value: Object.freeze({
+        kind: "type-element",
+        receiver: expression,
+        type: member,
+      }) }]),
+    });
+    result = result === undefined
+      ? projected
+      : Object.freeze({
+          kind: "conditional",
+          condition: Object.freeze({
+            kind: "method-call",
+            receiver: expression,
+            name: "isa",
+            genericArguments: Object.freeze([{ kind: "type" as const, type: member }]),
+            arguments: Object.freeze([]),
+          }),
+          whenTrue: projected,
+          whenFalse: result,
+        });
+  }
+  return result!;
 }

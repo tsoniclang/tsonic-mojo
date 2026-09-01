@@ -207,6 +207,35 @@ test("project construction selects the exact authored constructor signature", ()
   assert.match(source.text, /Counter\(Int32\(7\)\)/u);
 });
 
+test("constructor-owned field initialization closes reference state without target defaults", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        "class Pair {",
+        "  left: i32;",
+        "  right: string;",
+        "  constructor(left: i32, right: string) {",
+        "    this.left = left;",
+        "    this.right = right;",
+        "  }",
+        "}",
+        'export function main(): void { const pair = new Pair(7, "seven"); }',
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("struct PairState"));
+  assert.ok(source);
+  assert.match(source.text, /var __tsonic_left_initial_\d+: Int32 = left/u);
+  assert.match(source.text, /var __tsonic_right_initial_\d+: String = right/u);
+  assert.match(
+    source.text,
+    /PairState\(__tsonic_left_initial_\d+, __tsonic_right_initial_\d+\)/u,
+  );
+  assert.doesNotMatch(source.text, /self\._state\[\]\.(?:left|right) =/u);
+});
+
 test("class static fields without initializers reject instead of inventing target defaults", () => {
   const result = compileMojo({
     files: {

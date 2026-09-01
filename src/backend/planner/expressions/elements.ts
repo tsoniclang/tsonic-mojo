@@ -13,6 +13,7 @@ import {
 import type { MojoValuePlanner } from "./support.js";
 import { withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
+import { applyValueRefinement } from "./leaves.js";
 
 export function planMojoElement(
   node: Node,
@@ -103,7 +104,15 @@ export function planMojoElement(
         selection.readResultConversion,
         context,
       );
-  return operationPlan === undefined
-    ? undefined
-    : finishOptionalMojoOperation(node, preparedReceiver, operationPlan, context);
+  if (operationPlan === undefined) return undefined;
+  const finished = finishOptionalMojoOperation(node, preparedReceiver, operationPlan, context);
+  if (finished === undefined) return undefined;
+  return withMojoValue(
+    finished.before,
+    applyValueRefinement(
+      finished.value,
+      context.program.queries.valueRefinement(node),
+      context,
+    ),
+  );
 }

@@ -41,14 +41,22 @@ export function analyzeMojoIteration(input: MojoIterationAnalysisInput): MojoIte
       "Iteration requires one exact variable declaration with an identifier binding.",
     );
   }
-  const bindingName = input.bindingNames.get(bindingDeclaration);
+  const bindingNameNode = input.ast.name(bindingDeclaration);
+  const bindingName = input.bindingNames.get(bindingDeclaration) ??
+    (bindingNameNode === undefined ? undefined : input.bindingNames.get(bindingNameNode));
   const bindingType = input.bindingTypes.get(bindingDeclaration);
   const iterableType = input.resolveType(source.sourceIterableType);
   const sourceElementType = input.resolveType(source.sourceElementType);
   if (bindingName === undefined || bindingType === undefined || iterableType === undefined || sourceElementType === undefined) {
+    const missing = [
+      ...(bindingName === undefined ? ["binding name"] : []),
+      ...(bindingType === undefined ? ["binding carrier"] : []),
+      ...(iterableType === undefined ? ["source iterable carrier"] : []),
+      ...(sourceElementType === undefined ? ["source element carrier"] : []),
+    ];
     return unsupported(
       "MOJO_ITERATION_CARRIER_NOT_CLOSED",
-      "Iteration binding, iterable, or selected source element lacks one exact Mojo carrier.",
+      `Iteration lacks an exact ${missing.join(", ")}.`,
     );
   }
   const target = targetIterationContract(source.iterationKind, iterableType);

@@ -39,10 +39,11 @@ import { planMojoResourceScope } from "./resources.js";
 export function planMojoFunctionStatements(
   function_: MojoAnalyzedFunction,
   context: MojoPlanningContext,
+  omittedStatements: ReadonlySet<Node> = emptyOmittedStatements,
 ): readonly MojoStatement[] | undefined {
   return planBlock(
     function_.body,
-    Object.freeze({ resultType: function_.resultType, returnAllowed: true }),
+    Object.freeze({ resultType: function_.resultType, returnAllowed: true, omittedStatements }),
     context,
     emptyFlowContext,
   );
@@ -63,6 +64,7 @@ export function planMojoStatementRegion(
 interface MojoStatementPlanningScope {
   readonly resultType?: MojoTargetTypeRef;
   readonly returnAllowed: boolean;
+  readonly omittedStatements?: ReadonlySet<Node>;
 }
 
 interface MojoFlowPlanningContext {
@@ -70,6 +72,7 @@ interface MojoFlowPlanningContext {
 }
 
 const emptyFlowContext: MojoFlowPlanningContext = Object.freeze({});
+const emptyOmittedStatements: ReadonlySet<Node> = new Set();
 
 function planBlock(
   block: Node,
@@ -94,6 +97,7 @@ function planStatementSequence(
   const statements: MojoStatement[] = [];
   for (const [index, sourceStatement] of sourceStatements.entries()) {
     if (sourceStatement === undefined) continue;
+    if (scope.omittedStatements?.has(sourceStatement) === true) continue;
     const resourceList = resourceDeclarationList(sourceStatement, context);
     if (resourceList !== undefined) {
       const declarations = VariableDeclarationList_Declarations(

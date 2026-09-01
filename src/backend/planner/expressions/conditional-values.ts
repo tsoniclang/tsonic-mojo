@@ -19,6 +19,7 @@ import type { MojoPlanningContext } from "../program/context.js";
 import { registerMojoTypeImports } from "../types/render.js";
 import { applyValueRefinement } from "./leaves.js";
 import { isJsString } from "./support.js";
+import { orderMojoValues } from "./support.js";
 import type { MojoValuePlanner } from "./support.js";
 import { withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
@@ -205,6 +206,61 @@ export function planMojoTypeTest(
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
 ): MojoValuePlan | undefined {
+  if (selection.kind === "nullish-comparison") {
+    const left = planValue(selection.left, context);
+    const right = planValue(selection.right, context);
+    const leftType = context.program.queries.expressionType(selection.left);
+    const rightType = context.program.queries.expressionType(selection.right);
+    if (left === undefined || right === undefined || leftType === undefined || rightType === undefined) {
+      return undefined;
+    }
+    const ordered = orderMojoValues(Object.freeze([
+      Object.freeze({ plan: left, type: leftType, role: "comparison_left" }),
+      Object.freeze({ plan: right, type: rightType, role: "comparison_right" }),
+    ]), context, true);
+    if (selection.outcome.kind === "constant") {
+      return withMojoValue(
+        ordered.before,
+        Object.freeze({ kind: "bool-literal", value: selection.outcome.value }),
+      );
+    }
+    const operand = ordered.values[selection.outcome.operand === "left" ? 0 : 1]!;
+    let equal: MojoExpression;
+    if (selection.outcome.kind === "optional-absence") {
+      equal = Object.freeze({
+        kind: "unary",
+        operator: "not",
+        operand: Object.freeze({
+          kind: "construct",
+          type: Object.freeze({ kind: "source-primitive", name: "bool" }),
+          arguments: Object.freeze([{ value: operand }]),
+        }),
+      });
+    } else {
+      const tests = selection.outcome.testedTypes.map((testedType): MojoExpression => {
+        registerMojoTypeImports(testedType, context);
+        return Object.freeze({
+          kind: "method-call",
+          receiver: operand,
+          name: "isa",
+          genericArguments: Object.freeze([{ kind: "type" as const, type: testedType }]),
+          arguments: Object.freeze([]),
+        });
+      });
+      equal = tests.reduce((leftTest, rightTest) => Object.freeze({
+        kind: "binary",
+        operator: "or",
+        left: leftTest,
+        right: rightTest,
+      }));
+    }
+    return withMojoValue(
+      ordered.before,
+      selection.outcome.equal
+        ? equal
+        : Object.freeze({ kind: "unary", operator: "not", operand: equal }),
+    );
+  }
   const operand = planValue(selection.operand, context);
   if (operand === undefined) return undefined;
   if (selection.kind === "constant") {

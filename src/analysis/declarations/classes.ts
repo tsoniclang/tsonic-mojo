@@ -1,5 +1,7 @@
 import type { Node, SourceFile, Type } from "@tsonic/tsts";
-import { Node_Initializer } from "@tsonic/target-api/source";
+import {
+  Node_Initializer,
+} from "@tsonic/target-api/source";
 import type {
   SourceCallableTypeEvidence,
   TargetSourceProgram,
@@ -98,10 +100,6 @@ export function analyzeMojoClass(
         append(input, "MOJO_CLASS_FIELD_NAME_UNSUPPORTED", "Class fields require one exact identifier or private-identifier name.", member);
         continue;
       }
-      if (initializer === undefined) {
-        append(input, "MOJO_CLASS_FIELD_INITIALIZER_REQUIRED", "A Mojo reference-state field requires an explicit TypeScript initializer.", member);
-        continue;
-      }
       const selected = declaredOrInitializerType(member, initializer, semantics, ast);
       const resolved = resolveType(input, selected, ast.typeNode(member), member);
       if (resolved === undefined) continue;
@@ -117,7 +115,7 @@ export function analyzeMojoClass(
         type: resolved,
         ownerType: targetType,
         ownerTypeParameters: Object.freeze([...definition.typeParameterNames]),
-        initializer,
+        ...(initializer === undefined ? {} : { initializer }),
         visibility: ast.hasModifierKind(member, "private") ||
             ast.hasModifierKind(member, "protected") || ast.is.IsPrivateIdentifier(nameNode)
           ? "private"
@@ -286,7 +284,7 @@ function constructorCallable(
 
 function declaredOrInitializerType(
   declaration: Node,
-  initializer: Node,
+  initializer: Node | undefined,
   semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
   ast: TargetSourceProgram["ast"],
 ): Type | undefined {
@@ -294,7 +292,7 @@ function declaredOrInitializerType(
   return semantics.declarations.declaredValueType(declaration) ??
     semantics.declarations.declaredType(declaration) ??
     (authored === undefined ? undefined : semantics.types.authoredType(authored)) ??
-    semantics.types.expressionType(initializer);
+    (initializer === undefined ? undefined : semantics.types.expressionType(initializer));
 }
 
 function resolveType(

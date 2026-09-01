@@ -21,6 +21,7 @@ import type {
   MojoExecutableRegionAnalysisEnvironment,
 } from "../program/executable-regions.js";
 import { recordMojoExecutableRegionConversionUses } from "../conversions/uses.js";
+import { allocateMojoLocalBindings } from "../program/local-bindings.js";
 
 export interface MojoCallableExpressionSignatureInput {
   readonly expression: Node;
@@ -85,6 +86,14 @@ export function analyzeMojoCallableExpressionSignature(
   for (const parameter of callable.parameters) {
     input.bindingSourceFiles.set(parameter.declaration, input.sourceFile);
   }
+  allocateMojoLocalBindings(
+    body,
+    input.allocateLocalName,
+    input.bindingNames,
+    ast,
+    input.diagnostics,
+    input.bindingSourceFiles,
+  );
   return callable;
 }
 
@@ -96,6 +105,7 @@ export interface MojoCallableCaptureInput {
   readonly source: TargetSourceProgram;
   readonly bindingNames: WeakMap<Node, string>;
   readonly bindingTypes: WeakMap<Node, MojoTargetTypeRef>;
+  readonly expressionTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly locationStorageNames: WeakMap<Node, string>;
   readonly ensureLocationStorage: (declaration: Node, bindingName: string) => string;
   readonly moduleBindingByDeclaration: WeakMap<Node, unknown>;
@@ -116,7 +126,10 @@ export function collectMojoCallableCaptures(
       return;
     }
     if (!ast.is.IsIdentifier(node)) return;
+    const expressionType = input.expressionTypes.get(node);
+    if (expressionType?.kind === "undefined" || expressionType?.kind === "null") return;
     const reference = input.source.navigation.sourceReferenceFor(node);
+    if (reference?.project !== true) return;
     const declaration = reference?.declaration;
     if (declaration === undefined || nodeIsWithin(declaration, input.expression, ast) ||
       input.moduleBindingByDeclaration.has(declaration) || captures.has(declaration)) return;
@@ -213,6 +226,7 @@ export function analyzeAndSealMojoCallableExpression(
       environment.propertySelections,
       environment.elementSelections,
       environment.objectLiteralSelections,
+      environment.valueRefinements,
       environment.conversions,
       environment.diagnostics,
     );
@@ -227,6 +241,7 @@ export function analyzeAndSealMojoCallableExpression(
       environment.propertySelections,
       environment.elementSelections,
       environment.objectLiteralSelections,
+      environment.valueRefinements,
       environment.conversions,
       environment.diagnostics,
     );
@@ -261,6 +276,7 @@ export function analyzeAndSealMojoCallableExpression(
     source: environment.source,
     bindingNames: environment.bindingNames,
     bindingTypes: environment.bindingTypes,
+    expressionTypes: environment.expressionTypes,
     locationStorageNames: environment.locationStorageNames,
     ensureLocationStorage: input.ensureLocationStorage,
     moduleBindingByDeclaration: input.moduleBindingByDeclaration,

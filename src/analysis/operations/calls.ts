@@ -2,6 +2,7 @@ import type { Node, ResolvedSourceCallInfo, Type } from "@tsonic/tsts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import type { MojoTargetGenericArgument, MojoTargetTypeRef } from "../../target-model/types/model.js";
+import type { MojoValueConversion } from "../../target-model/conversions/model.js";
 import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
 import type { MojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
 import { resolveMojoTargetType } from "../../policy/types/resolution.js";
@@ -15,7 +16,10 @@ import { analyzeMojoRawPointer } from "./raw-pointers.js";
 import { analyzeMojoExplicitSafety } from "./explicit-safety.js";
 import { analyzeMojoNativePointer } from "./native-pointers.js";
 import { selectMojoSourceProfileCallRow } from "../../policy/operations/source-profile-selection.js";
-import type { MojoSourceProfileParameterContract } from "../../policy/operations/source-profile-selection.js";
+import type {
+  MojoSourceProfileCallRow,
+  MojoSourceProfileParameterContract,
+} from "../../policy/operations/source-profile-selection.js";
 import { selectMojoSourceProfileCallback } from "./source-profile-callbacks.js";
 import {
   mojoDynamicTargetType,
@@ -311,6 +315,13 @@ function analyzeSourceProfileCall(
     const explicitContract = parameterContract?.[parameterIndex];
     const resolved = callback?.parameterIndex === parameterIndex
       ? callback.type
+      : explicitContract === "selected-argument"
+        ? selectedSourceProfileArgumentType(
+            parameterIndex,
+            sourceCall,
+            resolve,
+            context.expressionTypes,
+          )
       : explicitContract === undefined
         ? resolve(parameter.selectedType, parameter.authoredTypeNode)
         : sourceProfileParameterType(explicitContract);
@@ -343,20 +354,6 @@ function analyzeSourceProfileCall(
       : new Map([[callback.parameterIndex, callback.conversion]]),
   );
   if (arguments_.kind === "unsupported") return arguments_;
-  const resultType = resolve(sourceCall.sourceResultType);
-  if (resultType === undefined) {
-    return {
-      kind: "unsupported",
-      code: "MOJO_SOURCE_PROFILE_RESULT_NOT_CLOSED",
-      reason: "The selected source-profile call result has no exact Mojo carrier.",
-    };
-  }
-  const result = closeResultConversion(
-    resultType,
-    sourceCall.sourceResultType,
-    resolve,
-  );
-  if (result.kind === "unsupported") return result;
   const genericArguments: MojoTargetGenericArgument[] = [];
   for (const selectedArgument of sourceCall.sourceSelectedMethodTypeArguments ?? []) {
     const argument = resolve(selectedArgument.selectedType, selectedArgument.explicitTypeNode);
@@ -424,6 +421,14 @@ function analyzeSourceProfileCall(
     };
     receiverConversion = conversion.conversion;
   }
+  const result = closeSourceProfileResult(
+    selected.row,
+    sourceCall,
+    sourceReceiverType,
+    resolve,
+    context,
+  );
+  if (result.kind === "unsupported") return result;
   return {
     kind: "resolved",
     selection: Object.freeze({
@@ -432,7 +437,7 @@ function analyzeSourceProfileCall(
         target,
         ...(sourceReceiverType === undefined ? {} : { receiverType: sourceReceiverType }),
         parameterTypes: Object.freeze(parameterTypes),
-        resultType,
+        resultType: result.type,
         genericArguments: Object.freeze(genericArguments),
         genericParameters: Object.freeze([]),
         raises: selected.row.raises === true || callback !== undefined,
@@ -445,6 +450,127 @@ function analyzeSourceProfileCall(
       optionalChain: sourceCall.optionalChain,
     }),
   };
+}
+
+type ClosedSourceProfileResult =
+  | {
+      readonly kind: "resolved";
+      readonly type: MojoTargetTypeRef;
+      readonly conversion: MojoValueConversion;
+    }
+  | { readonly kind: "unsupported"; readonly code: string; readonly reason: string };
+
+function closeSourceProfileResult(
+  row: MojoSourceProfileCallRow,
+  sourceCall: ResolvedSourceCallInfo,
+  sourceReceiverType: MojoTargetTypeRef | undefined,
+  resolve: (type: Type, authoredTypeNode?: Node) => MojoTargetTypeRef | undefined,
+  context: MojoCallAnalysisContext,
+): ClosedSourceProfileResult {
+  if (row.resultContract?.kind === "receiver-array") {
+    if (sourceReceiverType?.kind !== "target-named") {
+      return {
+        kind: "unsupported",
+        code: "MOJO_SOURCE_PROFILE_RESULT_CONTRACT_INVALID",
+        reason: "A receiver-derived source-profile result requires one exact generic receiver carrier.",
+      };
+    }
+    const arguments_ = sourceReceiverType.genericArguments ?? [];
+    const element = row.resultContract.element;
+    let elementType: MojoTargetTypeRef | undefined;
+    if (element.kind === "receiver-argument") {
+      const argument = arguments_[element.index];
+      elementType = argument?.kind === "type" ? argument.type : undefined;
+    } else {
+      const elements = element.indexes.map((index) => {
+        const argument = arguments_[index];
+        return argument?.kind === "type" ? argument.type : undefined;
+      });
+      if (elements.every((candidate) => candidate !== undefined)) {
+        elementType = Object.freeze({
+          kind: "tuple",
+          elements: Object.freeze(elements as readonly MojoTargetTypeRef[]),
+        });
+      }
+    }
+    if (elementType === undefined) {
+      return {
+        kind: "unsupported",
+        code: "MOJO_SOURCE_PROFILE_RESULT_CONTRACT_INVALID",
+        reason: "The selected source-profile receiver does not supply every required result type argument.",
+      };
+    }
+    return Object.freeze({
+      kind: "resolved",
+      type: mojoNamedTargetType(
+        "tsonic.mojo.js.JsArray",
+        ["tsonic_js"],
+        "JsArray",
+        [elementType],
+      ),
+      conversion: Object.freeze({ kind: "identity" }),
+    });
+  }
+
+  const selectedResult = resolve(sourceCall.sourceResultType);
+  if (selectedResult === undefined) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_SOURCE_PROFILE_RESULT_NOT_CLOSED",
+      reason: "The selected source-profile call result has no exact Mojo carrier.",
+    };
+  }
+  if (row.resultContract?.kind === "constructed-explicit-arguments") {
+    const explicitNodes = context.source.ast.typeArguments(sourceCall.call)
+      .filter((node): node is Node => node !== undefined);
+    if (explicitNodes.length !== 0) {
+      const indexes = row.resultContract.indexes ?? explicitNodes.map((_, index) => index);
+      const selectedNodes = indexes.map((index) => explicitNodes[index]);
+      const existingArguments = selectedResult.kind === "target-named"
+        ? selectedResult.genericArguments ?? []
+        : [];
+      if (selectedResult.kind !== "target-named" ||
+        selectedNodes.some((node) => node === undefined) ||
+        existingArguments.length !== selectedNodes.length ||
+        existingArguments.some((argument) => argument.kind !== "type")) {
+        return {
+          kind: "unsupported",
+          code: "MOJO_SOURCE_PROFILE_RESULT_CONTRACT_INVALID",
+          reason: "Explicit source-profile result arguments do not align with the selected target carrier.",
+        };
+      }
+      const semantics = context.source.semantics.forNode(sourceCall.call);
+      const resolvedArguments = selectedNodes.map((node) => {
+        const selectedType = node === undefined ? undefined : semantics.types.authoredType(node);
+        return selectedType === undefined || node === undefined ? undefined : resolve(selectedType, node);
+      });
+      if (resolvedArguments.some((argument) => argument === undefined)) {
+        return {
+          kind: "unsupported",
+          code: "MOJO_SOURCE_PROFILE_RESULT_NOT_CLOSED",
+          reason: "An explicit source-profile result type argument has no exact Mojo carrier.",
+        };
+      }
+      return Object.freeze({
+        kind: "resolved",
+        type: Object.freeze({
+          ...selectedResult,
+          genericArguments: Object.freeze((resolvedArguments as readonly MojoTargetTypeRef[]).map(
+            (type): MojoTargetGenericArgument => Object.freeze({ kind: "type", type }),
+          )),
+        }),
+        conversion: Object.freeze({ kind: "identity" }),
+      });
+    }
+  }
+  const conversion = closeResultConversion(
+    selectedResult,
+    sourceCall.sourceResultType,
+    resolve,
+  );
+  return conversion.kind === "unsupported"
+    ? conversion
+    : Object.freeze({ kind: "resolved", type: selectedResult, conversion: conversion.conversion });
 }
 
 function isExactMojoIntegerCarrier(type: MojoTargetTypeRef): boolean {
@@ -475,7 +601,7 @@ function isExactMojoIntegerCarrier(type: MojoTargetTypeRef): boolean {
 
 function sourceProfileParameterType(
   contract: MojoSourceProfileParameterContract,
-): MojoTargetTypeRef {
+): MojoTargetTypeRef | undefined {
   switch (contract) {
     case "float64":
       return mojoPrimitiveTargetType("float64");
@@ -487,7 +613,25 @@ function sourceProfileParameterType(
       );
     case "js-value":
       return mojoDynamicTargetType("js");
+    case "selected-argument":
+      return undefined;
   }
+}
+
+function selectedSourceProfileArgumentType(
+  parameterIndex: number,
+  sourceCall: ResolvedSourceCallInfo,
+  resolve: (type: Type, authoredTypeNode?: Node) => MojoTargetTypeRef | undefined,
+  expressionTypes: WeakMap<Node, MojoTargetTypeRef>,
+): MojoTargetTypeRef | undefined {
+  const bindings = sourceCall.sourceArgumentBindings.filter((binding) =>
+    binding.sourceParameterIndex === parameterIndex);
+  const argumentIndexes = [...new Set(bindings.map((binding) => binding.sourceArgumentIndex))];
+  if (bindings.length === 0 || argumentIndexes.length !== 1) return undefined;
+  const argument = sourceCall.sourceArguments[argumentIndexes[0]!];
+  const selectedTypes = bindings.map((binding) => binding.selectedArgumentType);
+  if (argument === undefined || selectedTypes.some((type) => type !== selectedTypes[0])) return undefined;
+  return expressionTypes.get(argument.expression) ?? resolve(selectedTypes[0]!);
 }
 
 function analyzeCallableValueCall(

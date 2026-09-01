@@ -17,5 +17,8 @@ function convertedType(
   if (conversion.kind === "js-to-native-string") {
     return Object.freeze({ kind: "native-string" });
   }
+  if (conversion.kind === "js-truthiness") {
+    return Object.freeze({ kind: "source-primitive", name: "bool" });
+  }
   return conversion.targetType;
 }

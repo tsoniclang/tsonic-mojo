@@ -48,6 +48,7 @@ export function isMojoExpressionNode(node: Node, ast: AstReader): boolean {
     ast.is.IsBinaryExpression(node) || ast.is.IsCallExpression(node) || ast.is.IsNewExpression(node) ||
     ast.is.IsPropertyAccessExpression(node) || ast.is.IsElementAccessExpression(node) ||
     ast.is.IsArrayLiteralExpression(node) || ast.is.IsObjectLiteralExpression(node) ||
+    ast.kindName(node) === "KindTemplateExpression" ||
     ast.is.IsPrefixUnaryExpression(node) || ast.is.IsPostfixUnaryExpression(node) ||
     ast.is.IsConditionalExpression(node) ||
     ast.is.IsArrowFunction(node) || ast.is.IsFunctionExpression(node) ||

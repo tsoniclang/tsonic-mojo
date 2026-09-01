@@ -1,6 +1,7 @@
 import type { Node } from "@tsonic/tsts";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { MojoTargetProgram } from "../../../analysis/program/model.js";
+import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import type { MojoSourceModuleDefinition } from "../../../analysis/source-modules/model.js";
 import type { MojoImportDeclaration } from "../../target-ast/index.js";
 import type { MojoDeclaration, MojoExpression } from "../../target-ast/index.js";
@@ -19,6 +20,7 @@ export interface MojoPlanningContext {
   readonly syntheticDeclarations: MojoDeclaration[];
   readonly callableArtifactNames: WeakMap<Node, string>;
   readonly bindingOverrides: ReadonlyMap<Node, MojoBindingPlanOverride>;
+  readonly initializingStateType?: MojoTargetTypeRef;
 }
 
 export interface MojoBindingPlanOverride {
@@ -54,6 +56,13 @@ export function withMojoBindingOverrides(
   bindingOverrides: ReadonlyMap<Node, MojoBindingPlanOverride>,
 ): MojoPlanningContext {
   return Object.freeze({ ...context, bindingOverrides });
+}
+
+export function withMojoStateInitialization(
+  context: MojoPlanningContext,
+  initializingStateType: MojoTargetTypeRef,
+): MojoPlanningContext {
+  return Object.freeze({ ...context, initializingStateType });
 }
 
 export function mojoBindingPlanOverride(

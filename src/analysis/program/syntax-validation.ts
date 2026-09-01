@@ -15,6 +15,8 @@ import {
   TryStatement_CatchClause,
   TryStatement_FinallyBlock,
   TryStatement_TryBlock,
+  TemplateExpression_TemplateSpans,
+  TemplateSpan_Expression,
   VariableDeclarationList_Declarations,
   VariableStatement_DeclarationList,
 } from "@tsonic/target-api/source";
@@ -28,9 +30,11 @@ import type {
   MojoObjectLiteralSelection,
   MojoPropertySelection,
   MojoResourceManagementSelection,
+  MojoTemplateExpressionSelection,
   MojoTypeTestSelection,
   MojoValueSelection,
 } from "./model.js";
+import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 
 const supportedBinaryOperators = new Set([
@@ -87,6 +91,8 @@ export function validateMojoFunctionSyntax(
   bindingPatterns: WeakMap<Node, MojoBindingPatternSelection>,
   resources: WeakMap<Node, MojoResourceManagementSelection>,
   bindings: WeakMap<Node, string>,
+  expressionTypes: WeakMap<Node, MojoTargetTypeRef>,
+  templateExpressions: WeakMap<Node, MojoTemplateExpressionSelection>,
   diagnostics: TargetDiagnostic[],
 ): void {
   const validateResourceDeclaration = (declaration: Node): void => {
@@ -110,6 +116,8 @@ export function validateMojoFunctionSyntax(
     assignmentAllowed = false,
   ): void => {
     if (expression === undefined) return;
+    const expressionType = expressionTypes.get(expression);
+    if (expressionType?.kind === "undefined" || expressionType?.kind === "null") return;
     if (ast.is.IsIdentifier(expression) || ast.kindName(expression) === "KindThisKeyword") {
       if (bindings.get(expression) === undefined && values.get(expression) === undefined) {
         diagnostics.push(diagnostic(
@@ -125,6 +133,19 @@ export function validateMojoFunctionSyntax(
       ast.kindName(expression) === "KindTrueKeyword" ||
       ast.kindName(expression) === "KindFalseKeyword" || ast.kindName(expression) === "KindNullKeyword" ||
       ast.kindName(expression) === "KindUndefinedKeyword") return;
+    if (ast.kindName(expression) === "KindTemplateExpression") {
+      if (templateExpressions.get(expression) === undefined) {
+        diagnostics.push(diagnostic(
+          "MOJO_TEMPLATE_SELECTION_UNRESOLVED",
+          "Template expression has no sealed source-string conversion selection.",
+          expression,
+        ));
+      }
+      for (const span of TemplateExpression_TemplateSpans(ast, expression) ?? []) {
+        if (span !== undefined) validateExpression(TemplateSpan_Expression(ast, span));
+      }
+      return;
+    }
     if (ast.is.IsArrayLiteralExpression(expression)) {
       for (const element of ast.elements(expression)) {
         if (element === undefined) continue;

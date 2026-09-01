@@ -77,7 +77,7 @@ export interface MojoAnalyzedClassField {
   readonly type: MojoTargetTypeRef;
   readonly ownerType: MojoTargetTypeRef;
   readonly ownerTypeParameters: readonly string[];
-  readonly initializer: Node;
+  readonly initializer?: Node;
   readonly visibility: "public" | "private";
 }
 
@@ -309,9 +309,34 @@ export type MojoValueRefinementSelection =
       readonly kind: "union-member";
       readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
       readonly resultType: MojoTargetTypeRef;
+    }
+  | {
+      readonly kind: "union-subset";
+      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
+      readonly resultType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
     };
 
 export type MojoTypeTestSelection =
+  | {
+      readonly kind: "nullish-comparison";
+      readonly left: Node;
+      readonly right: Node;
+      readonly outcome:
+        | { readonly kind: "constant"; readonly value: boolean }
+        | {
+            readonly kind: "optional-absence";
+            readonly operand: "left" | "right";
+            readonly equal: boolean;
+          }
+        | {
+            readonly kind: "union-membership";
+            readonly operand: "left" | "right";
+            readonly testedTypes: readonly Extract<MojoTargetTypeRef, {
+              readonly kind: "null" | "undefined";
+            }>[];
+            readonly equal: boolean;
+          };
+    }
   | {
       readonly kind: "constant";
       readonly value: boolean;
@@ -433,6 +458,40 @@ export interface MojoCallableExpressionSelection {
   readonly body: Node;
   readonly raises: boolean;
   readonly callableType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
+}
+
+export type MojoTemplateStringConversion =
+  | { readonly kind: "identity" }
+  | { readonly kind: "native-to-js" }
+  | { readonly kind: "js-to-native" }
+  | { readonly kind: "boolean" }
+  | { readonly kind: "number" }
+  | { readonly kind: "integer" }
+  | { readonly kind: "character" }
+  | { readonly kind: "null" }
+  | { readonly kind: "undefined" }
+  | {
+      readonly kind: "optional";
+      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "optional" }>;
+      readonly value: MojoTemplateStringConversion;
+    }
+  | {
+      readonly kind: "union";
+      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
+      readonly members: readonly {
+        readonly type: MojoTargetTypeRef;
+        readonly conversion: MojoTemplateStringConversion;
+      }[];
+    };
+
+export interface MojoTemplateExpressionSelection {
+  readonly expression: Node;
+  readonly resultType: MojoTargetTypeRef;
+  readonly substitutions: readonly {
+    readonly expression: Node;
+    readonly type: MojoTargetTypeRef;
+    readonly conversion: MojoTemplateStringConversion;
+  }[];
 }
 
 export type MojoBindingValueProjection =
@@ -571,6 +630,7 @@ export interface MojoProgramQueries {
   resourceManagementSelection(declaration: Node): MojoResourceManagementSelection | undefined;
   objectLiteralSelection(expression: Node): MojoObjectLiteralSelection | undefined;
   callableExpressionSelection(expression: Node): MojoCallableExpressionSelection | undefined;
+  templateExpressionSelection(expression: Node): MojoTemplateExpressionSelection | undefined;
   bindingPatternSelection(declaration: Node): MojoBindingPatternSelection | undefined;
   returnValueTransfer(expression: Node): boolean;
   moduleForSourceFile(sourceFile: SourceFile): MojoAnalyzedModule | undefined;

@@ -16,10 +16,17 @@ import { selectedProviderDeclarationIdentity } from "../../policy/operations/pro
 import type { MojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
 import { selectedMojoSourceProfileDeclarationIdentity } from "../../policy/operations/source-profile-selection.js";
 import type { MojoAnalyzedProjectProperty } from "../program/model.js";
+import type { MojoValueRefinementSelection } from "../program/model.js";
 import { instantiateProjectIndexSignature } from "./project-fields.js";
+import { classifyMojoValueRefinement } from "../refinements/value.js";
 
 export type MojoElementAnalysis =
-  | { readonly kind: "resolved"; readonly selection: MojoElementSelection; readonly expressionType: MojoTargetTypeRef }
+  | {
+      readonly kind: "resolved";
+      readonly selection: MojoElementSelection;
+      readonly expressionType: MojoTargetTypeRef;
+      readonly valueRefinement?: MojoValueRefinementSelection;
+    }
   | { readonly kind: "unsupported"; readonly code: string; readonly reason: string };
 
 export interface MojoElementAnalysisContext {
@@ -191,7 +198,10 @@ function analyzeSourceProfileElement(
       "ReadonlyArray index access is read-only.",
     );
   }
-  const sourceRead = source.sourceReadType === undefined ? undefined : context.resolveType(source.sourceReadType);
+  const readContract = source.sourceReadType === undefined
+    ? undefined
+    : sourceProfileElementReadContract(owner, receiver, source, context);
+  const sourceRead = readContract?.expressionType;
   const sourceWrite = source.sourceWriteType === undefined ? undefined : context.resolveType(source.sourceWriteType);
   if ((accessMode === "read" || accessMode === "read-write") && sourceRead === undefined ||
     (accessMode === "write" || accessMode === "read-write") && sourceWrite === undefined) {
@@ -200,23 +210,27 @@ function analyzeSourceProfileElement(
       `The exact JavaScript '${owner}' indexer has no closed read or write carrier.`,
     );
   }
-  const readOperation: MojoSelectedProviderOperation | undefined = sourceRead === undefined
+  if (source.sourceReadType !== undefined && readContract === undefined) {
+    return unsupported(
+      "MOJO_SOURCE_PROFILE_ELEMENT_READ_CONTRACT_UNCLOSED",
+      `The exact JavaScript '${owner}' index result has no closed Mojo read contract.`,
+    );
+  }
+  const readOperation: MojoSelectedProviderOperation | undefined = readContract === undefined
     ? undefined
     : Object.freeze({
         target: Object.freeze({
           kind: "index-read",
-          access: owner === "String"
-            ? Object.freeze({ kind: "method" as const, name: "char_at" })
-            : Object.freeze({ kind: "element" as const }),
+          access: readContract.access,
           receiver: "ref",
           index: Object.freeze({ convention: "imm", position: "positional-or-keyword" }),
         }),
         receiverType: receiver,
         parameterTypes: Object.freeze([index]),
-        resultType: sourceRead,
+        resultType: readContract.operationResultType,
         genericArguments: Object.freeze([]),
         genericParameters: Object.freeze([]),
-        raises: false,
+        raises: readContract.raises,
       });
   const writeOperation: MojoSelectedProviderOperation | undefined = sourceWrite === undefined
     ? undefined
@@ -243,15 +257,12 @@ function analyzeSourceProfileElement(
   if (indexConversion.kind === "unsupported") {
     return unsupported("MOJO_SOURCE_PROFILE_ELEMENT_INDEX_CONFLICT", indexConversion.reason);
   }
-  const readResultConversion = sourceRead === undefined
-    ? undefined
-    : classifyMojoValueConversion(sourceRead, sourceRead);
-  if (readResultConversion?.kind === "unsupported") {
-    return unsupported("MOJO_SOURCE_PROFILE_ELEMENT_READ_CONFLICT", readResultConversion.reason);
-  }
   return {
     kind: "resolved",
     expressionType: sourceRead ?? sourceWrite!,
+    ...(readContract?.valueRefinement === undefined
+      ? {}
+      : { valueRefinement: readContract.valueRefinement }),
     selection: Object.freeze({
       kind: "provider",
       receiver: source.receiver.expression,
@@ -262,10 +273,89 @@ function analyzeSourceProfileElement(
       receiverConversion: receiverConversion.conversion,
       sourceReceiverType: receiver,
       indexConversion: indexConversion.conversion,
-      ...(readResultConversion?.kind !== "resolved" ? {} : { readResultConversion: readResultConversion.conversion }),
       optionalChain: source.optionalChain,
     }),
   };
+}
+
+function sourceProfileElementReadContract(
+  owner: string,
+  receiver: MojoTargetTypeRef,
+  source: ResolvedSourceElementAccessInfo,
+  context: MojoElementAnalysisContext,
+): {
+  readonly access: { readonly kind: "element" } | { readonly kind: "method"; readonly name: string };
+  readonly operationResultType: MojoTargetTypeRef;
+  readonly expressionType: MojoTargetTypeRef;
+  readonly valueRefinement?: MojoValueRefinementSelection;
+  readonly raises: boolean;
+} | undefined {
+  if (source.sourceReadType === undefined) return undefined;
+  const semantics = context.source.semantics.forNode(source.expression);
+  const selectedSourceRead = source.sourceReadType;
+  const presentSourceRead = semantics.types.withoutMissingOrUndefined(selectedSourceRead);
+  if (presentSourceRead === undefined) return undefined;
+  if (owner === "String") {
+    const valueType = receiver.kind === "optional" ? receiver.value : receiver;
+    if (semantics.types.isStringLike(selectedSourceRead)) {
+      return Object.freeze({
+        access: Object.freeze({ kind: "method", name: "char_at" }),
+        operationResultType: valueType,
+        expressionType: valueType,
+        raises: false,
+      });
+    }
+    return semantics.types.isStringLike(presentSourceRead)
+      ? Object.freeze({
+          access: Object.freeze({ kind: "method", name: "get_index" }),
+          operationResultType: Object.freeze({ kind: "optional", value: valueType }),
+          expressionType: Object.freeze({ kind: "optional", value: valueType }),
+          raises: false,
+        })
+      : undefined;
+  }
+  const argument = receiver.kind === "target-named" &&
+      receiver.id === "tsonic.mojo.js.JsArray"
+    ? receiver.genericArguments?.[0]
+    : undefined;
+  const element = argument?.kind === "type" ? argument.type : undefined;
+  if (element === undefined) return undefined;
+  const sourceArguments = semantics.types.effectiveTypeArguments(source.receiver.type) ??
+    semantics.types.typeArguments(source.receiver.type);
+  const sourceElement = sourceArguments.length === 1 ? sourceArguments[0] : undefined;
+  if (sourceElement === undefined) return undefined;
+  if (semantics.types.isIdentical(selectedSourceRead, sourceElement)) {
+    return Object.freeze({
+      access: Object.freeze({ kind: "element" }),
+      operationResultType: element,
+      expressionType: element,
+      raises: true,
+    });
+  }
+  if (semantics.types.isIdentical(presentSourceRead, sourceElement)) {
+    const optionalElement = Object.freeze({ kind: "optional" as const, value: element });
+    return Object.freeze({
+      access: Object.freeze({ kind: "method", name: "get_index" }),
+      operationResultType: optionalElement,
+      expressionType: optionalElement,
+      raises: false,
+    });
+  }
+  const sourceRefinement = semantics.types.refinement(sourceElement, selectedSourceRead);
+  if (sourceRefinement.kind !== "members" || sourceRefinement.types.length === 0) return undefined;
+  const selectedTarget = context.resolveType(selectedSourceRead);
+  const valueRefinement = selectedTarget === undefined
+    ? undefined
+    : classifyMojoValueRefinement(element, selectedTarget);
+  return valueRefinement === undefined
+    ? undefined
+    : Object.freeze({
+        access: Object.freeze({ kind: "element" }),
+        operationResultType: element,
+        expressionType: valueRefinement.resultType,
+        valueRefinement,
+        raises: true,
+      });
 }
 
 function analyzeProviderElement(

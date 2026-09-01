@@ -3,13 +3,32 @@ import type {
   MojoAnalyzedFunction,
   MojoCallSelection,
 } from "./model.js";
+import type { MojoValueConversion } from "../../target-model/conversions/model.js";
 
 export function providerCallRequiresRaisingConversion(
   selection: Extract<MojoCallSelection, { readonly kind: "provider" }>,
 ): boolean {
-  return selection.arguments.some((argument) => argument.conversion.kind === "js-to-native-string") ||
-    selection.receiverConversion?.kind === "js-to-native-string" ||
-    selection.resultConversion.kind === "js-to-native-string";
+  return selection.arguments.some((argument) => mojoConversionRaises(argument.conversion)) ||
+    (selection.receiverConversion !== undefined && mojoConversionRaises(selection.receiverConversion)) ||
+    mojoConversionRaises(selection.resultConversion);
+}
+
+export function mojoConversionRaises(conversion: MojoValueConversion): boolean {
+  switch (conversion.kind) {
+    case "js-to-native-string": return true;
+    case "collection-map":
+      return conversion.elementConversion !== undefined &&
+        mojoConversionRaises(conversion.elementConversion);
+    case "optional-some":
+    case "optional-map":
+    case "optional-present":
+    case "optional-to-union":
+    case "union-inject":
+      return mojoConversionRaises(conversion.valueConversion);
+    case "union-map":
+      return conversion.members.some((member) => mojoConversionRaises(member.conversion));
+    default: return false;
+  }
 }
 
 export function propagateRaisingEffects(

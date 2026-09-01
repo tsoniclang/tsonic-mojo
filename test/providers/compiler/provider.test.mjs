@@ -102,6 +102,10 @@ test("compiler metadata extraction normalizes exact conventions, keywords, const
     assert.equal(sumOperation.target.arguments[1].position, "keyword");
     assert.equal(projection.operations.some(({ operationKind }) => operationKind === "constructor"), true);
     assert.equal(projection.operations.some(({ operationKind }) => operationKind === "property-set"), true);
+    const counterExport = projection.declarationModel.exports.find(({ name }) => name === "Counter");
+    const counterType = projection.types.find(({ exportId }) => exportId.endsWith("::export:Counter"));
+    assert.equal(counterExport.heritage, undefined);
+    assert.equal(counterType.conformances, undefined);
     const indexMember = projection.declarationModel.exports
       .find(({ name }) => name === "Counter").members
       .find(({ kind }) => kind === "indexer");
@@ -314,6 +318,18 @@ test("incremental compiler-provider slices isolate unrelated unsupported exports
         });
         assert.equal("exports" in named, true);
         assert.deepEqual(named.exports.map(({ name }) => name), ["sum"]);
+        const closed = provider.getDeclarationModel(resolution, {
+          context: {
+            resolutionMode: "import",
+            importSlice: {
+              moduleSpecifier,
+              kind: "named",
+              requestedExports: [{ exportedName: "Counter", kind: "type" }],
+            },
+          },
+          materialization: { kind: "incremental", completeExports: [] },
+        });
+        assert.deepEqual(closed.exports.map(({ name }) => name), ["Bucket", "Counter"]);
         const broad = provider.getDeclarationModel(resolution, {
           context: {
             resolutionMode: "import",

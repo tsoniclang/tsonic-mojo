@@ -33,6 +33,7 @@ import { resolveMojoCompilerModuleSpecifier } from "./projection/module-specifie
 import { projectMojoCompilerModule } from "./projection/projection.js";
 import { mergeMojoCompilerProjections } from "./projection/merge.js";
 import type { MojoCompilerProviderProjection } from "./projection/model.js";
+import { collectUnboundSameModuleProviderReferences } from "./projection/dependencies.js";
 
 const diagnosticCodes = Object.freeze({
   MOJO_COMPILER_PROVIDER_MODULE_UNOWNED: 9_502_001,
@@ -254,27 +255,44 @@ function projectRequestedExports(options: {
     package: options.package,
     module: options.module,
     exportNames: options.exportNames,
-  }).map((resolved) => {
-    const model = options.loader.module({
-      snapshot: options.snapshot,
-      package: resolved.package,
-      module: resolved.module,
-      requestedExports: [resolved.declarationName],
-    });
-    return projectMojoCompilerModule(options.snapshot, resolved.package, model, {
-      providerModuleId: options.providerModuleId,
-      moduleSpecifier: options.moduleSpecifier,
-      exports: [Object.freeze({
-        declarationName: resolved.declarationName,
-        exportName: resolved.exportName,
-      })],
-    });
-  });
+  }).map((resolved) => projectResolvedExportClosure(options, resolved));
   return mergeMojoCompilerProjections(
     options.moduleSpecifier,
     options.providerModuleId,
     projections,
   );
+}
+
+function projectResolvedExportClosure(
+  options: Parameters<typeof projectRequestedExports>[0],
+  resolved: ReturnType<MojoCompilerMetadataLoader["resolveExports"]>[number],
+): MojoCompilerProviderProjection {
+  const selected = new Map<string, string>([[resolved.declarationName, resolved.exportName]]);
+  while (true) {
+    const model = options.loader.module({
+      snapshot: options.snapshot,
+      package: resolved.package,
+      module: resolved.module,
+      requestedExports: [...selected.keys()].sort(compareText),
+    });
+    const projection = projectMojoCompilerModule(options.snapshot, resolved.package, model, {
+      providerModuleId: options.providerModuleId,
+      moduleSpecifier: options.moduleSpecifier,
+      exports: [...selected.entries()]
+        .sort(([left], [right]) => compareText(left, right))
+        .map(([declarationName, exportName]) => Object.freeze({ declarationName, exportName })),
+    });
+    const dependencies = collectUnboundSameModuleProviderReferences(projection.declarationModel);
+    if (dependencies.length === 0) return projection;
+    for (const dependency of dependencies) {
+      if (!model.availableExports.some(({ name, kind }) => name === dependency && kind !== "function")) {
+        throw new Error(
+          `Mojo export '${resolved.exportName}' references unavailable same-module type '${dependency}'.`,
+        );
+      }
+      selected.set(dependency, dependency);
+    }
+  }
 }
 
 interface ProjectionRegistry {

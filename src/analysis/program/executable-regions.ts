@@ -44,6 +44,7 @@ import type {
   MojoObjectLiteralSelection,
   MojoPropertySelection,
   MojoResourceManagementSelection,
+  MojoTemplateExpressionSelection,
   MojoTypeTestSelection,
   MojoValueRefinementSelection,
   MojoValueSelection,
@@ -61,6 +62,8 @@ import {
   targetTypeDiagnostic as typeDiagnostic,
 } from "./executable-region-support.js";
 import { mojoParameterAbi } from "../../policy/callables/parameter-abi.js";
+import { analyzeMojoTemplateExpression } from "../operations/template-expressions.js";
+import { classifyMojoValueRefinement } from "../refinements/value.js";
 
 export interface MojoExecutableRegionAnalysisInput {
   readonly root: Node;
@@ -89,6 +92,7 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly valueRefinements: WeakMap<Node, MojoValueRefinementSelection>;
   readonly typeTestSelections: WeakMap<Node, MojoTypeTestSelection>;
   readonly objectLiteralSelections: WeakMap<Node, MojoObjectLiteralSelection>;
+  readonly templateExpressionSelections: WeakMap<Node, MojoTemplateExpressionSelection>;
   readonly bindingPatternSelections: WeakMap<Node, MojoBindingPatternSelection>;
   readonly returnValueTransfers: WeakSet<Node>;
   readonly structuralObjects: MojoStructuralObjectCatalog;
@@ -235,13 +239,28 @@ export function analyzeMojoExecutableRegion(
     if (ast.is.IsCallExpression(node) || ast.is.IsNewExpression(node)) {
       analyzeCall(node, input, semantics, dependencies);
     }
-    if (ast.is.IsBinaryExpression(node) &&
-      ast.operatorKindName(node) === "KindInstanceOfKeyword") {
-      analyzeTypeTest(node, input);
+    if (ast.is.IsBinaryExpression(node)) {
+      if (ast.operatorKindName(node) === "KindInstanceOfKeyword") {
+        analyzeTypeTest(node, input);
+      } else {
+        analyzeNullishComparison(node, input);
+      }
     }
     if (ast.is.IsAsExpression(node) || ast.is.IsTypeAssertion(node) ||
       ast.is.IsNonNullExpression(node)) {
       analyzeErasedValueRefinement(node, input, semantics);
+    }
+    if (ast.kindName(node) === "KindTemplateExpression") {
+      const template = analyzeMojoTemplateExpression(node, source, input.expressionTypes);
+      if (template.kind === "unsupported") {
+        input.diagnostics.push(diagnostic(
+          "MOJO_TEMPLATE_STRING_CONVERSION_UNSUPPORTED",
+          template.reason,
+          template.node,
+        ));
+      } else {
+        input.templateExpressionSelections.set(node, template.selection);
+      }
     }
     if (!isMojoExpressionNode(node, ast) || !isRuntimeValueOccurrence(node, input)) return;
     const inferred = inferMojoExpressionType(node, ast, input.expressionTypes);
@@ -544,8 +563,18 @@ function analyzeExpressionCarrier(
   const erasedCarrier = isErasedValueWrapper(node, ast)
     ? resolveErasedExpressionCarrier(node, input, semantics)
     : undefined;
-  const resolved = selectedOccurrenceType ?? referencedType ?? erasedCarrier ?? contextualExpected ??
-    resolveType(semantics.types.expressionType(node), undefined, input, semantics);
+  const semanticType = resolveType(
+    semantics.types.expressionType(node),
+    undefined,
+    input,
+    semantics,
+  );
+  const exactSemanticFirst = ast.is.IsIdentifier(node) ||
+    ast.kindName(node) === "KindTemplateExpression" ||
+    ast.kindName(node) === "KindNullKeyword" ||
+    ast.kindName(node) === "KindUndefinedKeyword";
+  const resolved = selectedOccurrenceType ?? referencedType ?? erasedCarrier ??
+    (exactSemanticFirst ? semanticType ?? contextualExpected : contextualExpected ?? semanticType);
   if (resolved !== undefined) input.expressionTypes.set(node, resolved);
   if (ast.kindName(node) === "KindThisKeyword" && input.owner !== undefined) {
     input.bindingNames.set(node, "self");
@@ -560,16 +589,15 @@ function analyzeReferencedValueRefinement(
   semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
 ): MojoTargetTypeRef | undefined {
   const selected = input.source.semantics.selectValueTypeRefinement(node);
-  if (selected.kind !== "resolved" || selected.refinement.kind !== "members" ||
-    selected.refinement.types.length !== 1) return undefined;
+  if (selected.kind !== "resolved" || selected.refinement.kind !== "members") return undefined;
   const selectedTargetType = resolveType(
-    selected.refinement.types[0],
+    semantics.types.expressionType(node),
     undefined,
     input,
     semantics,
   );
   if (selectedTargetType === undefined) return undefined;
-  const refinement = classifyValueRefinement(declaredTargetType, selectedTargetType);
+  const refinement = classifyMojoValueRefinement(declaredTargetType, selectedTargetType);
   if (refinement === undefined) return undefined;
   input.valueRefinements.set(node, refinement);
   return refinement.resultType;
@@ -594,8 +622,12 @@ function analyzeErasedValueRefinement(
   if (sourceType === undefined || selectedType === undefined || sourceTargetType === undefined ||
     selectedTargetType === undefined) return;
   const sourceRefinement = semantics.types.refinement(sourceType, selectedType);
-  if (sourceRefinement.kind !== "members" || sourceRefinement.types.length !== 1) return;
-  const refinement = classifyValueRefinement(sourceTargetType, selectedTargetType);
+  const mechanicallySelected = sourceRefinement.kind === "members"
+    ? sourceRefinement.types.length > 0
+    : sourceRefinement.kind === "exact" &&
+      semantics.types.isIdentical(sourceType, selectedType);
+  if (!mechanicallySelected) return;
+  const refinement = classifyMojoValueRefinement(sourceTargetType, selectedTargetType);
   if (refinement !== undefined) input.valueRefinements.set(node, refinement);
 }
 
@@ -648,7 +680,7 @@ function resolveErasedExpressionCarrier(
     semantics,
   );
   if (selectedCarrier === undefined) return sourceCarrier;
-  if (classifyValueRefinement(sourceCarrier, selectedCarrier) !== undefined) return selectedCarrier;
+  if (classifyMojoValueRefinement(sourceCarrier, selectedCarrier) !== undefined) return selectedCarrier;
   if (ast.is.IsNonNullExpression(node)) return sourceCarrier;
   return classifyMojoValueConversion(sourceCarrier, selectedCarrier).kind === "resolved"
     ? selectedCarrier
@@ -662,21 +694,6 @@ function isErasedValueWrapper(
   return ast.is.IsParenthesizedExpression(node) || ast.is.IsAsExpression(node) ||
     ast.is.IsTypeAssertion(node) || ast.is.IsNonNullExpression(node) ||
     ast.is.IsSatisfiesExpression(node);
-}
-
-function classifyValueRefinement(
-  sourceType: MojoTargetTypeRef,
-  resultType: MojoTargetTypeRef,
-): MojoValueRefinementSelection | undefined {
-  if (sourceType.kind === "optional" &&
-    mojoTargetTypeEquals(sourceType.value, resultType)) {
-    return Object.freeze({ kind: "optional-present", sourceType, resultType });
-  }
-  if (sourceType.kind === "union" &&
-    sourceType.members.some((member) => mojoTargetTypeEquals(member, resultType))) {
-    return Object.freeze({ kind: "union-member", sourceType, resultType });
-  }
-  return undefined;
 }
 
 function analyzeTypeTest(
@@ -704,6 +721,88 @@ function analyzeTypeTest(
   }
   input.typeTestSelections.set(node, selection);
   input.expressionTypes.set(node, Object.freeze({ kind: "source-primitive", name: "bool" }));
+}
+
+function analyzeNullishComparison(
+  node: Node,
+  input: MojoExecutableRegionAnalysisInput,
+): void {
+  const operator = input.source.ast.operatorKindName(node);
+  const equality = operator === "KindEqualsEqualsToken" ||
+    operator === "KindEqualsEqualsEqualsToken";
+  const inequality = operator === "KindExclamationEqualsToken" ||
+    operator === "KindExclamationEqualsEqualsToken";
+  if (!equality && !inequality) return;
+  const strict = operator === "KindEqualsEqualsEqualsToken" ||
+    operator === "KindExclamationEqualsEqualsToken";
+  const left = BinaryExpression_Left(input.source.ast, node);
+  const right = BinaryExpression_Right(input.source.ast, node);
+  if (left === undefined || right === undefined) return;
+  const leftType = input.expressionTypes.get(left);
+  const rightType = input.expressionTypes.get(right);
+  if (leftType === undefined || rightType === undefined) return;
+  const leftNullish = exactNullishTarget(leftType);
+  const rightNullish = exactNullishTarget(rightType);
+  if (leftNullish === undefined && rightNullish === undefined) return;
+  if (leftNullish !== undefined && rightNullish !== undefined) {
+    const equal = !strict || leftNullish.kind === rightNullish.kind;
+    input.typeTestSelections.set(node, Object.freeze({
+      kind: "nullish-comparison",
+      left,
+      right,
+      outcome: Object.freeze({ kind: "constant", value: equality ? equal : !equal }),
+    }));
+    return;
+  }
+  const nullish = leftNullish ?? rightNullish!;
+  const valueType = leftNullish === undefined ? leftType : rightType;
+  const operand: "left" | "right" = leftNullish === undefined ? "left" : "right";
+  if (valueType.kind === "optional") {
+    const matchesAbsent = !strict || nullish.kind === "undefined";
+    input.typeTestSelections.set(node, Object.freeze({
+      kind: "nullish-comparison",
+      left,
+      right,
+      outcome: matchesAbsent
+        ? Object.freeze({ kind: "optional-absence", operand, equal: equality })
+        : Object.freeze({ kind: "constant", value: inequality }),
+    }));
+    return;
+  }
+  if (valueType.kind === "union") {
+    const testedTypes = valueType.members.filter((member): member is Extract<MojoTargetTypeRef, {
+      readonly kind: "null" | "undefined";
+    }> => (member.kind === "null" || member.kind === "undefined") &&
+      (!strict || member.kind === nullish.kind));
+    input.typeTestSelections.set(node, Object.freeze({
+      kind: "nullish-comparison",
+      left,
+      right,
+      outcome: testedTypes.length === 0
+        ? Object.freeze({ kind: "constant", value: inequality })
+        : Object.freeze({
+            kind: "union-membership",
+            operand,
+            testedTypes: Object.freeze(testedTypes),
+            equal: equality,
+          }),
+    }));
+    return;
+  }
+  if (valueType.kind !== "dynamic") {
+    input.typeTestSelections.set(node, Object.freeze({
+      kind: "nullish-comparison",
+      left,
+      right,
+      outcome: Object.freeze({ kind: "constant", value: inequality }),
+    }));
+  }
+}
+
+function exactNullishTarget(
+  type: MojoTargetTypeRef,
+): Extract<MojoTargetTypeRef, { readonly kind: "null" | "undefined" }> | undefined {
+  return type.kind === "null" || type.kind === "undefined" ? type : undefined;
 }
 
 function selectedProjectTypeTestMember(
@@ -802,5 +901,8 @@ function analyzeElement(
   } else {
     input.elementSelections.set(node, element.selection);
     input.expressionTypes.set(node, element.expressionType);
+    if (element.valueRefinement !== undefined) {
+      input.valueRefinements.set(node, element.valueRefinement);
+    }
   }
 }

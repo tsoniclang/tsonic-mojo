@@ -29,6 +29,7 @@ import type {
   MojoElementSelection,
   MojoObjectLiteralSelection,
   MojoPropertySelection,
+  MojoValueRefinementSelection,
 } from "../program/model.js";
 import { callArgumentExpectedType } from "../program/expected-types.js";
 import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
@@ -44,6 +45,7 @@ export function recordMojoExecutableRegionConversionUses(
   propertySelections: WeakMap<Node, MojoPropertySelection>,
   elementSelections: WeakMap<Node, MojoElementSelection>,
   objectLiteralSelections: WeakMap<Node, MojoObjectLiteralSelection>,
+  valueRefinements: WeakMap<Node, MojoValueRefinementSelection>,
   conversions: MojoConversionIndex,
   diagnostics: TargetDiagnostic[],
 ): void {
@@ -162,7 +164,9 @@ export function recordMojoExecutableRegionConversionUses(
       ast.is.IsNonNullExpression(expression) || ast.is.IsSatisfiesExpression(expression)) {
       const inner = Node_Expression(ast, expression);
       const expected = expressionTypes.get(expression);
-      if (expected !== undefined) record(inner, expected);
+      if (expected !== undefined && valueRefinements.get(expression) === undefined) {
+        record(inner, expected);
+      }
       visitExpression(inner);
       return;
     }
@@ -181,6 +185,13 @@ export function recordMojoExecutableRegionConversionUses(
       const left = BinaryExpression_Left(ast, expression);
       const right = BinaryExpression_Right(ast, expression);
       const operator = ast.operatorKindName(expression);
+      const leftType = left === undefined ? undefined : expressionTypes.get(left);
+      const rightType = right === undefined ? undefined : expressionTypes.get(right);
+      if (isEquality(operator) && (isExactNullish(leftType) || isExactNullish(rightType))) {
+        visitExpression(left);
+        visitExpression(right);
+        return;
+      }
       const resultType = expressionTypes.get(expression);
       if (operator === "KindQuestionQuestionToken") {
         if (resultType !== undefined) record(right, resultType);
@@ -200,8 +211,6 @@ export function recordMojoExecutableRegionConversionUses(
         record(left, resultType);
         record(right, resultType);
       } else {
-        const leftType = left === undefined ? undefined : expressionTypes.get(left);
-        const rightType = right === undefined ? undefined : expressionTypes.get(right);
         if (leftType !== undefined && rightType !== undefined) {
           if (ast.is.IsNumericLiteral(left!) || ast.is.IsBigIntLiteral(left!)) record(left, rightType);
           else record(right, leftType);
@@ -290,6 +299,15 @@ function isComparison(operator: string | undefined): boolean {
     operator === "KindExclamationEqualsToken" || operator === "KindExclamationEqualsEqualsToken" ||
     operator === "KindLessThanToken" || operator === "KindLessThanEqualsToken" ||
     operator === "KindGreaterThanToken" || operator === "KindGreaterThanEqualsToken";
+}
+
+function isEquality(operator: string | undefined): boolean {
+  return operator === "KindEqualsEqualsToken" || operator === "KindEqualsEqualsEqualsToken" ||
+    operator === "KindExclamationEqualsToken" || operator === "KindExclamationEqualsEqualsToken";
+}
+
+function isExactNullish(type: MojoTargetTypeRef | undefined): boolean {
+  return type?.kind === "null" || type?.kind === "undefined";
 }
 
 function isStatement(node: Node, ast: AstReader): boolean {

@@ -178,15 +178,17 @@ function projectTypeDeclaration(
   const typeParameters = declaration.kind === "struct"
     ? projectMojoGenericParameters(declaration.genericParameters, context)
     : Object.freeze([]);
-  const projectedConformances = declaration.parentTraits.map((trait) => {
-    const projected = projectMojoCompilerType({
+  const projectedConformances = declaration.parentTraits
+    .filter(({ path }) => path === undefined || !implicitMojoConformancePaths.has(path))
+    .map((trait) => {
+      const projected = projectMojoCompilerType({
         kind: "named",
         name: trait.name,
         ...(trait.path === undefined ? {} : { path: trait.path }),
         arguments: Object.freeze([]),
       }, context);
-    return Object.freeze({ trait, projected });
-  });
+      return Object.freeze({ trait, projected });
+    });
   const heritage = projectedConformances
     .filter(({ trait }) => trait.condition === undefined)
     .map(({ projected }) => Object.freeze({
@@ -254,6 +256,12 @@ function projectTypeDeclaration(
     ...documentation(declaration.documentation),
   });
 }
+
+const implicitMojoConformancePaths = new Set([
+  "/std/traits/anytype/AnyType",
+  "/std/traits/deinitable/Deinitable",
+  "/std/traits/movable/Movable",
+]);
 
 function projectStructMembers(
   declaration: MojoCompilerStruct,

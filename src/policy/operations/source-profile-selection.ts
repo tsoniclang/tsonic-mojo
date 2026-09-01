@@ -27,7 +27,20 @@ export interface MojoSourceProfileCallRow {
       };
   readonly raises?: boolean;
   readonly callback?: MojoSourceProfileCallbackContract;
+  readonly resultContract?: MojoSourceProfileResultContract;
 }
+
+export type MojoSourceProfileResultContract =
+  | {
+      readonly kind: "constructed-explicit-arguments";
+      readonly indexes?: readonly number[];
+    }
+  | {
+      readonly kind: "receiver-array";
+      readonly element:
+        | { readonly kind: "receiver-argument"; readonly index: number }
+        | { readonly kind: "tuple"; readonly indexes: readonly number[] };
+    };
 
 export interface MojoSourceProfileCallbackContract {
   readonly parameterIndex: number;
@@ -43,7 +56,8 @@ export interface MojoSourceProfileCallbackVariant {
 export type MojoSourceProfileParameterContract =
   | "float64"
   | "js-string"
-  | "js-value";
+  | "js-value"
+  | "selected-argument";
 
 export type MojoSourceProfileCallRowSelection =
   | { readonly kind: "not-source-profile" }
@@ -198,6 +212,19 @@ const jsReceiverFunctionRow = (
   ...(raises ? { raises: true } : {}),
 });
 
+const jsReceiverArrayRow = (
+  owner: string,
+  member: string,
+  element: Extract<MojoSourceProfileResultContract, { readonly kind: "receiver-array" }>["element"],
+): MojoSourceProfileCallRow => Object.freeze({
+  profile: "js",
+  kind: "call",
+  owner,
+  member,
+  target: Object.freeze({ kind: "instance", name: snakeCase(member), receiver: "imm" }),
+  resultContract: Object.freeze({ kind: "receiver-array", element }),
+});
+
 const jsConstructorRows: readonly MojoSourceProfileCallRow[] = Object.freeze([
   Object.freeze({
     profile: "js",
@@ -205,6 +232,7 @@ const jsConstructorRows: readonly MojoSourceProfileCallRow[] = Object.freeze([
     owner: "ArrayConstructor",
     member: "constructor",
     target: Object.freeze({ kind: "function", modulePath: Object.freeze(["tsonic_js"]), name: "array_new" }),
+    resultContract: Object.freeze({ kind: "constructed-explicit-arguments" }),
   }),
   ...["MapConstructor", "SetConstructor"].map((owner): MojoSourceProfileCallRow => Object.freeze({
     profile: "js",
@@ -218,7 +246,25 @@ const jsConstructorRows: readonly MojoSourceProfileCallRow[] = Object.freeze([
       modulePath: Object.freeze(["tsonic_js"]),
       name: `${snakeCase(owner.replace(/Constructor$/u, ""))}_new`,
     }),
+    resultContract: Object.freeze({ kind: "constructed-explicit-arguments" }),
   })),
+  Object.freeze({
+    profile: "js",
+    kind: "construct",
+    owner: "SetConstructor",
+    member: "constructor",
+    argumentCount: 1,
+    parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["selected-argument"]),
+    target: Object.freeze({
+      kind: "function",
+      modulePath: Object.freeze(["tsonic_js"]),
+      name: "set_new",
+    }),
+    resultContract: Object.freeze({
+      kind: "constructed-explicit-arguments",
+      indexes: Object.freeze([0]),
+    }),
+  }),
   ...[0, 1].map((argumentCount): MojoSourceProfileCallRow => Object.freeze({
     profile: "js",
     kind: "construct",
@@ -263,6 +309,52 @@ const jsCallbackRow = (
 
 export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Object.freeze([
   ...jsConstructorRows,
+  Object.freeze({
+    profile: "js",
+    kind: "call",
+    owner: "ArrayConstructor",
+    member: "from",
+    argumentCount: 1,
+    parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["selected-argument"]),
+    target: Object.freeze({
+      kind: "function",
+      modulePath: Object.freeze(["tsonic_js"]),
+      name: "array_from",
+    }),
+    resultContract: Object.freeze({
+      kind: "constructed-explicit-arguments",
+      indexes: Object.freeze([0]),
+    }),
+  }),
+  Object.freeze({
+    profile: "js",
+    kind: "call",
+    owner: "ArrayConstructor",
+    member: "from",
+    argumentCount: 2,
+    parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(([
+      "selected-argument",
+      "selected-argument",
+    ])),
+    target: Object.freeze({
+      kind: "function",
+      modulePath: Object.freeze(["tsonic_js"]),
+      name: "array_from_map_value",
+    }),
+    resultContract: Object.freeze({
+      kind: "constructed-explicit-arguments",
+      indexes: Object.freeze([1]),
+    }),
+    raises: true,
+    callback: Object.freeze({
+      parameterIndex: 1,
+      result: "preserve",
+      variants: Object.freeze([
+        Object.freeze({ arity: 1, targetName: "array_from_map_value" }),
+        Object.freeze({ arity: 2, targetName: "array_from_map_with_index" }),
+      ]),
+    }),
+  }),
   ...jsInstanceRows("String", "imm", [
     "at", "charAt", "charCodeAt", "codePointAt", "concat", "endsWith", "includes",
     "indexOf", "lastIndexOf", "padEnd", "padStart",
@@ -351,19 +443,35 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     "array_sort_zero", "array_sort_value", "array_sort_compare",
   ], 1),
   ...jsInstanceRows("Map", "mut", ["clear", "delete", "set"]),
-  ...jsInstanceRows("Map", "imm", ["entries", "get", "has", "keys", "values"]),
-  ...jsInstanceRows("ReadonlyMap", "imm", ["entries", "get", "has", "keys", "values"]),
+  ...jsInstanceRows("Map", "imm", ["get", "has"]),
+  ...jsInstanceRows("ReadonlyMap", "imm", ["get", "has"]),
+  ...["Map", "ReadonlyMap"].flatMap((owner) => [
+    jsReceiverArrayRow(owner, "keys", Object.freeze({ kind: "receiver-argument", index: 0 })),
+    jsReceiverArrayRow(owner, "values", Object.freeze({ kind: "receiver-argument", index: 1 })),
+    jsReceiverArrayRow(owner, "entries", Object.freeze({
+      kind: "tuple",
+      indexes: Object.freeze([0, 1]),
+    })),
+  ]),
   ...["Map", "ReadonlyMap"].map((owner) => jsCallbackRow(owner, "forEach", "imm", "preserve", [
     "map_for_each_zero", "map_for_each_value", "map_for_each_value_key", "map_for_each_with_map",
   ])),
   ...jsInstanceRows("Set", "mut", ["add", "clear", "delete"]),
   ...jsInstanceRows("Set", "imm", [
-    "difference", "entries", "has", "intersection", "isDisjointFrom",
-    "isSubsetOf", "isSupersetOf", "keys", "symmetricDifference", "union", "values",
+    "difference", "has", "intersection", "isDisjointFrom",
+    "isSubsetOf", "isSupersetOf", "symmetricDifference", "union",
   ]),
   ...jsInstanceRows("ReadonlySet", "imm", [
-    "difference", "entries", "has", "intersection", "isDisjointFrom", "isSubsetOf",
-    "isSupersetOf", "keys", "symmetricDifference", "union", "values",
+    "difference", "has", "intersection", "isDisjointFrom", "isSubsetOf",
+    "isSupersetOf", "symmetricDifference", "union",
+  ]),
+  ...["Set", "ReadonlySet"].flatMap((owner) => [
+    jsReceiverArrayRow(owner, "keys", Object.freeze({ kind: "receiver-argument", index: 0 })),
+    jsReceiverArrayRow(owner, "values", Object.freeze({ kind: "receiver-argument", index: 0 })),
+    jsReceiverArrayRow(owner, "entries", Object.freeze({
+      kind: "tuple",
+      indexes: Object.freeze([0, 0]),
+    })),
   ]),
   ...["Set", "ReadonlySet"].map((owner) => jsCallbackRow(owner, "forEach", "imm", "preserve", [
     "set_for_each_zero", "set_for_each_value", "set_for_each_value_key", "set_for_each_with_set",
@@ -545,6 +653,36 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["js-string"]),
     target: Object.freeze({ kind: "function", modulePath: Object.freeze(["tsonic_js"]), name: "number_parse_float" }),
   }),
+  Object.freeze({
+    profile: "js",
+    kind: "call",
+    owner: "Global",
+    member: "parseFloat",
+    argumentCount: 1,
+    parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["js-string"]),
+    target: Object.freeze({
+      kind: "function",
+      modulePath: Object.freeze(["tsonic_js"]),
+      name: "number_parse_float",
+    }),
+  }),
+  ...[
+    ["encodeURIComponent", "encode_uri_component"],
+    ["decodeURIComponent", "decode_uri_component"],
+  ].map(([member, name]): MojoSourceProfileCallRow => Object.freeze({
+    profile: "js",
+    kind: "call",
+    owner: "Global",
+    member: member!,
+    argumentCount: 1,
+    parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["js-string"]),
+    target: Object.freeze({
+      kind: "function",
+      modulePath: Object.freeze(["tsonic_js"]),
+      name: name!,
+    }),
+    raises: true,
+  })),
   Object.freeze({
     profile: "js",
     kind: "call",

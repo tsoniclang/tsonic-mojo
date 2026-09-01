@@ -8,7 +8,7 @@ import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import { analyzeMojoProviderValue } from "../operations/values.js";
 import type { MojoExecutableRegionAnalysisInput } from "./executable-regions.js";
 import type { MojoCallSelection, MojoPropertySelection } from "./model.js";
-import { providerCallRequiresRaisingConversion } from "./effects.js";
+import { mojoConversionRaises, providerCallRequiresRaisingConversion } from "./effects.js";
 import { walkSourceTree } from "./traversal.js";
 
 export function descendWithinExecutableRegion(
@@ -140,6 +140,11 @@ export function executableRegionRaises(
       const selection = input.callSelections.get(node);
       if (selection?.kind === "provider") {
         raises = raises || selection.operation.raises || providerCallRequiresRaisingConversion(selection);
+      } else if (selection?.kind === "project" || selection?.kind === "callable") {
+        raises = raises || selection.arguments.some((argument) =>
+          mojoConversionRaises(argument.conversion)) ||
+          mojoConversionRaises(selection.resultConversion) ||
+          (selection.kind === "callable" && selection.callableType.raises);
       }
     }
     if (input.source.ast.is.IsThrowStatement(node)) raises = true;
@@ -148,17 +153,30 @@ export function executableRegionRaises(
       if (selection?.kind === "provider") {
         raises = raises || selection.readOperation?.raises === true ||
           selection.writeOperation?.raises === true ||
-          selection.receiverConversion?.kind === "js-to-native-string" ||
-          selection.readResultConversion?.kind === "js-to-native-string";
+          (selection.receiverConversion !== undefined && mojoConversionRaises(selection.receiverConversion)) ||
+          (selection.readResultConversion !== undefined && mojoConversionRaises(selection.readResultConversion));
       } else if (selection?.kind === "provider-constant") {
         raises = raises || selection.operation.raises ||
-          selection.readResultConversion.kind === "js-to-native-string";
+          mojoConversionRaises(selection.readResultConversion);
       }
     }
     if (input.source.ast.is.IsIdentifier(node)) {
       const selection = input.valueSelections.get(node);
       raises = raises || selection?.operation.raises === true ||
-        selection?.resultConversion.kind === "js-to-native-string";
+        (selection?.resultConversion !== undefined && mojoConversionRaises(selection.resultConversion));
+    }
+    if (input.source.ast.is.IsElementAccessExpression(node)) {
+      const selection = input.elementSelections.get(node);
+      if (selection !== undefined) {
+        raises = raises || mojoConversionRaises(selection.indexConversion) ||
+          (selection.readResultConversion !== undefined &&
+            mojoConversionRaises(selection.readResultConversion));
+        if (selection.kind === "provider") {
+          raises = raises || selection.readOperation?.raises === true ||
+            selection.writeOperation?.raises === true ||
+            mojoConversionRaises(selection.receiverConversion);
+        }
+      }
     }
   }, (node, regionRoot) => descendWithinExecutableRegion(node, regionRoot, input.source.ast));
   return raises;

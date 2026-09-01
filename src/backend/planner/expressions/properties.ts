@@ -5,6 +5,7 @@ import {
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import { mojoModuleBindingRead, mojoModuleBindingWrite } from "../bindings/module-bindings.js";
+import { mojoTargetTypeEquals } from "../../../target-model/types/equality.js";
 import { mojoTypeName, registerMojoTypeImports } from "../types/render.js";
 import {
   convertMojoValue,
@@ -167,12 +168,17 @@ export function planMojoProperty(
     const ordered = orderMojoValues([
       Object.freeze({ plan: receiver.plan, type: selection.receiverType, role: "property_receiver" }),
     ], context, stabilizeReceiver);
+    const directState = context.initializingStateType !== undefined &&
+      context.program.source.ast.kindName(selection.receiver) === "KindThisKeyword" &&
+      mojoTargetTypeEquals(context.initializingStateType, selection.receiverType);
     const operation = withMojoValue(ordered.before, {
       kind: "member",
-      receiver: {
-        kind: "postfix-deref",
-        expression: { kind: "member", receiver: ordered.values[0]!, name: "_state" },
-      },
+      receiver: directState
+        ? ordered.values[0]!
+        : {
+            kind: "postfix-deref",
+            expression: { kind: "member", receiver: ordered.values[0]!, name: "_state" },
+          },
       name: selection.fieldName,
     });
     return finishOptionalMojoOperation(node, receiver, operation, context);
