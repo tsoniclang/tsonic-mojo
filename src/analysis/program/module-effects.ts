@@ -28,6 +28,9 @@ export function finalizeMojoModuleEffects(
   const runtimeInitialization = new Map(
     analyzedModules.map((module) => [module, module.runtimeInitializationRequired] as const),
   );
+  const asynchronous = new Map(
+    analyzedModules.map((module) => [module, module.asynchronous] as const),
+  );
   let changed = true;
   while (changed) {
     changed = false;
@@ -48,10 +51,18 @@ export function finalizeMojoModuleEffects(
         runtimeInitialization.set(module, true);
         changed = true;
       }
+      if (asynchronous.get(module) !== true && dependencies.some((dependency) => {
+        const target = analyzedBySourceFile.get(dependency.target.sourceFile);
+        return target !== undefined && asynchronous.get(target) === true;
+      })) {
+        asynchronous.set(module, true);
+        changed = true;
+      }
     }
   }
   return Object.freeze(analyzedModules.map((module) => Object.freeze({
     ...module,
+    asynchronous: asynchronous.get(module) === true,
     raises: raises.get(module) === true,
     runtimeInitializationRequired: runtimeInitialization.get(module) === true,
   })));

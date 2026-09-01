@@ -238,6 +238,39 @@ function planBinaryEntry(
       ? [Object.freeze({ name: analyzedEntry.initializeName, alias: initializerName })]
       : []),
   ];
+  const asynchronousBootstrap = function_.asynchronous || analyzedEntry.asynchronous;
+  const bootstrapName = "__tsonic_async_entry";
+  const call = (path: string) => Object.freeze({
+    kind: "call" as const,
+    callee: Object.freeze({ kind: "path" as const, path }),
+    arguments: Object.freeze([]),
+  });
+  const maybeAwait = (path: string, asynchronous: boolean) => asynchronous
+    ? Object.freeze({ kind: "await" as const, expression: call(path) })
+    : call(path);
+  const bootstrap: MojoFunctionDeclaration | undefined = asynchronousBootstrap
+    ? Object.freeze({
+        kind: "function",
+        name: bootstrapName,
+        genericParameters: Object.freeze([]),
+        parameters: Object.freeze([]),
+        resultType: Object.freeze({ kind: "unit" }),
+        asynchronous: true,
+        raises: function_.raises || analyzedEntry.raises,
+        statements: Object.freeze([
+          ...(analyzedEntry.runtimeInitializationRequired
+            ? [Object.freeze({
+                kind: "expression" as const,
+                expression: maybeAwait(initializerName, analyzedEntry.asynchronous),
+              })]
+            : []),
+          Object.freeze({
+            kind: "expression" as const,
+            expression: maybeAwait(importedName, function_.asynchronous),
+          }),
+        ]),
+      })
+    : undefined;
   const module: MojoSourceModule = Object.freeze({
     modulePath: Object.freeze([]),
     imports: Object.freeze([
@@ -246,65 +279,57 @@ function planBinaryEntry(
         modulePath: entry.modulePath,
         symbols: Object.freeze(importedSymbols),
       }),
-      ...(function_.asynchronous
+      ...(asynchronousBootstrap
         ? [Object.freeze({
             kind: "symbols" as const,
             modulePath: Object.freeze(["tsonic_runtime"]),
             symbols: Object.freeze([Object.freeze({
-              name: function_.raises ? "create_raising_task" : "create_task",
+              name: function_.raises || analyzedEntry.raises ? "create_raising_task" : "create_task",
             })]),
           })]
         : []),
     ]),
-    declarations: Object.freeze([Object.freeze({
-      kind: "function" as const,
-      name: "main",
-      genericParameters: Object.freeze([]),
-      parameters: Object.freeze([]),
-      resultType: Object.freeze({ kind: "unit" as const }),
-      asynchronous: false,
-      raises: function_.raises || analyzedEntry.raises,
-      statements: Object.freeze([
-        ...(analyzedEntry.runtimeInitializationRequired
+    declarations: Object.freeze([
+      ...(bootstrap === undefined ? [] : [bootstrap]),
+      Object.freeze({
+        kind: "function" as const,
+        name: "main",
+        genericParameters: Object.freeze([]),
+        parameters: Object.freeze([]),
+        resultType: Object.freeze({ kind: "unit" as const }),
+        asynchronous: false,
+        raises: function_.raises || analyzedEntry.raises,
+        statements: Object.freeze(asynchronousBootstrap
           ? [Object.freeze({
               kind: "expression" as const,
               expression: Object.freeze({
-                kind: "call" as const,
-                callee: Object.freeze({ kind: "path" as const, path: initializerName }),
-                arguments: Object.freeze([]),
-              }),
-            })]
-          : []),
-        Object.freeze({
-          kind: "expression" as const,
-          expression: function_.asynchronous
-            ? Object.freeze({
                 kind: "method-call" as const,
                 receiver: Object.freeze({
                   kind: "call" as const,
                   callee: Object.freeze({
                     kind: "path" as const,
-                    path: function_.raises ? "create_raising_task" : "create_task",
+                    path: function_.raises || analyzedEntry.raises ? "create_raising_task" : "create_task",
                   }),
-                  arguments: Object.freeze([Object.freeze({
-                    value: Object.freeze({
-                      kind: "call" as const,
-                      callee: Object.freeze({ kind: "path" as const, path: importedName }),
-                      arguments: Object.freeze([]),
-                    }),
-                  })]),
+                  arguments: Object.freeze([Object.freeze({ value: call(bootstrapName) })]),
                 }),
                 name: "wait",
                 arguments: Object.freeze([]),
-              })
-            : Object.freeze({
-                kind: "call" as const,
-                callee: Object.freeze({ kind: "path" as const, path: importedName }),
-                arguments: Object.freeze([]),
               }),
-        }),
-      ]),
-    })]),
+            })]
+          : [
+              ...(analyzedEntry.runtimeInitializationRequired
+                ? [Object.freeze({
+                    kind: "expression" as const,
+                    expression: call(initializerName),
+                  })]
+                : []),
+              Object.freeze({
+                kind: "expression" as const,
+                expression: call(importedName),
+              }),
+            ]),
+      }),
+    ]),
   });
   return Object.freeze({ path: "src/main.mojo", module });
 }

@@ -520,6 +520,16 @@ export function analyzeMojoTargetProgram(
     moduleRegionFacts,
     finalizedByDeclaration,
   );
+  if (configuration.outputType !== "bin") {
+    for (const module of finalizedModules) {
+      if (!module.asynchronous) continue;
+      diagnostics.push(diagnostic(
+        "MOJO_LIBRARY_TOP_LEVEL_AWAIT_UNSUPPORTED",
+        "Mojo library output cannot publish an asynchronous TypeScript module-initialization contract; select binary output or remove top-level await from the exported module graph.",
+        module.sourceFile,
+      ));
+    }
+  }
   const finalizedModuleBySourceFile = new WeakMap(
     finalizedModules.map((module) => [module.sourceFile, module] as const),
   );

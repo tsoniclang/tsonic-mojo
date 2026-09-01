@@ -155,15 +155,6 @@ function planModuleInitializer(
   scopedLockType: MojoTargetTypeRef,
   context: MojoPlanningContext,
 ): MojoFunctionDeclaration | undefined {
-  if (module.asynchronous) {
-    appendMojoPlanningDiagnostic(
-      context,
-      "MOJO_TOP_LEVEL_AWAIT_REQUIRES_EXECUTOR_CONTRACT",
-      "Top-level await requires a compiler-backed Mojo executor and async module-initialization contract.",
-      module.sourceFile,
-    );
-    return undefined;
-  }
   const stateName = allocateMojoSyntheticName(context, "module_state");
   const statePointer = mojoModuleStatePointerExpression(module, context);
   if (statePointer === undefined) return undefined;
@@ -175,16 +166,19 @@ function planModuleInitializer(
   for (const dependency of definition.dependencies) {
     const target = program.queries.moduleForSourceFile(dependency.target.sourceFile);
     if (target === undefined || !target.runtimeInitializationRequired) continue;
+    const call = Object.freeze({
+      kind: "call" as const,
+      callee: Object.freeze({
+        kind: "path" as const,
+        path: mojoQualifiedModuleMember(context, dependency.target.modulePath, target.initializeName),
+      }),
+      arguments: Object.freeze([]),
+    });
     initialization.push(Object.freeze({
       kind: "expression",
-      expression: Object.freeze({
-        kind: "call",
-        callee: Object.freeze({
-          kind: "path",
-          path: mojoQualifiedModuleMember(context, dependency.target.modulePath, target.initializeName),
-        }),
-        arguments: Object.freeze([]),
-      }),
+      expression: target.asynchronous
+        ? Object.freeze({ kind: "await", expression: call })
+        : call,
     }));
   }
   for (const step of module.initializationSteps) {
@@ -217,7 +211,7 @@ function planModuleInitializer(
     genericParameters: Object.freeze([]),
     parameters: Object.freeze([]),
     resultType: Object.freeze({ kind: "unit" }),
-    asynchronous: false,
+    asynchronous: module.asynchronous,
     raises: module.raises,
     statements: Object.freeze([
       Object.freeze({ kind: "variable", name: stateName, initializer: statePointer }),

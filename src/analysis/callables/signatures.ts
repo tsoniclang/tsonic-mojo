@@ -44,6 +44,16 @@ export function analyzeMojoFunctionSignature(
   const { source, declaration, sourceFile } = input;
   const { ast } = source;
   const semantics = source.semantics.forFile(sourceFile);
+  const generator = semantics.operations.generator(declaration);
+  if (generator !== undefined) {
+    append(
+      input,
+      "MOJO_GENERATOR_NATIVE_LIMIT",
+      `The pinned Mojo target exposes no authored ${generator.generatorKind} generator contract with exact yield, return, and next-value semantics.`,
+      declaration,
+    );
+    return undefined;
+  }
   const callableType = semantics.declarations.declaredValueType(declaration);
   const callable = input.callable ??
     (callableType === undefined ? undefined : semantics.types.callable(callableType));

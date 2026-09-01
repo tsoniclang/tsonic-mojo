@@ -85,6 +85,15 @@ export function validateMojoFunctionSyntax(
   bindings: WeakMap<Node, string>,
   diagnostics: TargetDiagnostic[],
 ): void {
+  const validateVariableDeclarationKind = (node: Node): void => {
+    const kind = ast.variableDeclarationKind(node);
+    if (kind !== "using" && kind !== "await using") return;
+    diagnostics.push(diagnostic(
+      "MOJO_EXPLICIT_RESOURCE_MANAGEMENT_NATIVE_LIMIT",
+      `TypeScript '${kind}' requires exact synchronous or asynchronous disposal and suppressed-error semantics that the pinned Mojo target does not expose.`,
+      node,
+    ));
+  };
   const validateExpression = (
     expression: Node | undefined,
     assignmentAllowed = false,
@@ -265,6 +274,7 @@ export function validateMojoFunctionSyntax(
     }
     if (ast.is.IsVariableStatement(statement)) {
       const list = VariableStatement_DeclarationList(ast, statement);
+      validateVariableDeclarationKind(list ?? statement);
       for (const declaration of VariableDeclarationList_Declarations(ast, list) ?? []) {
         if (declaration === undefined) continue;
         const name = ast.name(declaration);
@@ -306,6 +316,10 @@ export function validateMojoFunctionSyntax(
       return;
     }
     if (ast.is.IsForOfStatement(statement) || ast.is.IsForInStatement(statement)) {
+      const initializer = ast.as.AsForInOrOfStatement(statement)?.Initializer;
+      if (initializer !== undefined && ast.is.IsVariableDeclarationList(initializer)) {
+        validateVariableDeclarationKind(initializer);
+      }
       if (iterations.get(statement) === undefined) {
         diagnostics.push(diagnostic(
           "MOJO_ITERATION_SELECTION_UNRESOLVED",
@@ -321,6 +335,7 @@ export function validateMojoFunctionSyntax(
       const initializer = ForStatement_Initializer(ast, statement);
       if (initializer !== undefined) {
         if (ast.is.IsVariableDeclarationList(initializer)) {
+          validateVariableDeclarationKind(initializer);
           for (const declaration of VariableDeclarationList_Declarations(ast, initializer) ?? []) {
             validateExpression(Node_Initializer(ast, declaration));
           }
