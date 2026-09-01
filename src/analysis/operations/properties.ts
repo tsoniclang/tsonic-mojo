@@ -21,12 +21,13 @@ export type MojoPropertyAnalysis =
 export function analyzeMojoProjectProperty(
   source: ResolvedSourcePropertyAccessInfo,
   fieldByDeclaration: WeakMap<Node, MojoAnalyzedClassField>,
+  receiverType: MojoTargetTypeRef | undefined,
 ): MojoPropertyAnalysis {
-  if (source.optionalChain) {
+  if (receiverType === undefined) {
     return {
       kind: "unsupported",
-      code: "MOJO_PROJECT_OPTIONAL_PROPERTY_ACCESS_UNSUPPORTED",
-      reason: "Optional project-property access requires a sealed short-circuit evaluation region.",
+      code: "MOJO_PROJECT_PROPERTY_RECEIVER_NOT_CLOSED",
+      reason: "Selected project-property receiver has no exact non-null Mojo carrier.",
     };
   }
   if (source.callCallee) return { kind: "not-project-field" };
@@ -63,7 +64,9 @@ export function analyzeMojoProjectProperty(
       receiver: source.receiver.expression,
       fieldName: field.name,
       fieldType: field.type,
+      receiverType,
       accessMode: source.accessMode,
+      optionalChain: source.optionalChain,
     }),
   };
 }
@@ -79,13 +82,6 @@ export function analyzeMojoProviderProperty(
   source: ResolvedSourcePropertyAccessInfo,
   context: MojoProviderPropertyAnalysisContext,
 ): MojoPropertyAnalysis {
-  if (source.optionalChain) {
-    return {
-      kind: "unsupported",
-      code: "MOJO_PROVIDER_OPTIONAL_PROPERTY_ACCESS_UNSUPPORTED",
-      reason: "Optional provider-property access requires a sealed short-circuit evaluation region.",
-    };
-  }
   if (source.callCallee) return { kind: "not-project-field" };
   if (source.accessMode === "delete") {
     return {
@@ -225,8 +221,10 @@ export function analyzeMojoProviderProperty(
       ...(read === undefined ? {} : { readOperation: read.operation }),
       ...(write === undefined ? {} : { writeOperation: write.operation }),
       receiver: source.receiver.expression,
+      sourceReceiverType: receiverType,
       receiverConversion: receiverConversion.conversion,
       ...(readResultConversion === undefined ? {} : { readResultConversion }),
+      optionalChain: source.optionalChain,
     }),
   };
 }

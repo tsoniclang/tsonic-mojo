@@ -116,15 +116,19 @@ export type MojoPropertySelection =
       readonly receiver: Node;
       readonly fieldName: string;
       readonly fieldType: MojoTargetTypeRef;
+      readonly receiverType: MojoTargetTypeRef;
       readonly accessMode: "read" | "write" | "read-write";
+      readonly optionalChain: boolean;
     }
   | {
       readonly kind: "provider";
       readonly readOperation?: MojoSelectedProviderOperation;
       readonly writeOperation?: MojoSelectedProviderOperation;
       readonly receiver: Node;
+      readonly sourceReceiverType: MojoTargetTypeRef;
       readonly receiverConversion?: MojoValueConversion;
       readonly readResultConversion?: MojoValueConversion;
+      readonly optionalChain: boolean;
     }
   | {
       readonly kind: "provider-constant";
@@ -150,6 +154,7 @@ export type MojoElementSelection = {
   readonly indexConversion: MojoValueConversion;
   readonly readResultConversion?: MojoValueConversion;
   readonly selectedElementIndex?: number;
+  readonly optionalChain: boolean;
 } | {
   readonly kind: "provider";
   readonly receiver: Node;
@@ -158,10 +163,12 @@ export type MojoElementSelection = {
   readonly readOperation?: MojoSelectedProviderOperation;
   readonly writeOperation?: MojoSelectedProviderOperation;
   readonly receiverConversion: MojoValueConversion;
+  readonly sourceReceiverType: MojoTargetTypeRef;
   readonly indexConversion: MojoValueConversion;
   readonly readType?: MojoTargetTypeRef;
   readonly writeType?: MojoTargetTypeRef;
   readonly readResultConversion?: MojoValueConversion;
+  readonly optionalChain: boolean;
 };
 
 export interface MojoIterationSelection {
@@ -180,21 +187,29 @@ export type MojoCallSelection =
       readonly kind: "project";
       readonly target:
         | { readonly kind: "function"; readonly name: string }
-        | { readonly kind: "method"; readonly name: string; readonly receiver: Node }
+        | {
+            readonly kind: "method";
+            readonly name: string;
+            readonly receiver: Node;
+            readonly receiverType: MojoTargetTypeRef;
+          }
         | { readonly kind: "static-method"; readonly owner: MojoTargetTypeRef; readonly name: string }
         | { readonly kind: "constructor"; readonly type: MojoTargetTypeRef };
       readonly genericArguments: readonly MojoTargetGenericArgument[];
       readonly arguments: readonly MojoAnalyzedCallArgument[];
       readonly resultType: MojoTargetTypeRef;
       readonly resultConversion: MojoValueConversion;
+      readonly optionalChain: boolean;
     }
   | {
       readonly kind: "provider";
       readonly operation: MojoSelectedProviderOperation;
       readonly arguments: readonly MojoAnalyzedCallArgument[];
       readonly receiver?: Node;
+      readonly sourceReceiverType?: MojoTargetTypeRef;
       readonly receiverConversion?: MojoValueConversion;
       readonly resultConversion: MojoValueConversion;
+      readonly optionalChain: boolean;
     };
 
 export interface MojoProgramQueries {

@@ -4,8 +4,17 @@ import {
   ForStatement_Condition,
   ForStatement_Incrementor,
   ForStatement_Initializer,
+  CaseBlock_Clauses,
+  CaseOrDefaultClause_Expression,
+  CaseOrDefaultClause_Statements,
+  CatchClause_Block,
   Node_Expression,
   Node_Initializer,
+  SwitchStatement_CaseBlock,
+  SwitchStatement_Expression,
+  TryStatement_CatchClause,
+  TryStatement_FinallyBlock,
+  TryStatement_TryBlock,
   VariableDeclarationList_Declarations,
   VariableStatement_DeclarationList,
 } from "@tsonic/target-api/source";
@@ -33,6 +42,7 @@ const supportedBinaryOperators = new Set([
   "KindGreaterThanEqualsToken",
   "KindAmpersandAmpersandToken",
   "KindBarBarToken",
+  "KindQuestionQuestionToken",
   "KindAsteriskAsteriskToken",
   "KindAmpersandToken",
   "KindBarToken",
@@ -223,6 +233,10 @@ export function validateMojoFunctionSyntax(
       validateExpression(Node_Expression(ast, statement), ast.is.IsExpressionStatement(statement));
       return;
     }
+    if (ast.is.IsThrowStatement(statement)) {
+      validateExpression(Node_Expression(ast, statement));
+      return;
+    }
     if (ast.is.IsVariableStatement(statement)) {
       const list = VariableStatement_DeclarationList(ast, statement);
       for (const declaration of VariableDeclarationList_Declarations(ast, list) ?? []) {
@@ -280,6 +294,22 @@ export function validateMojoFunctionSyntax(
       validateExpression(ForStatement_Condition(ast, statement));
       validateExpression(ForStatement_Incrementor(ast, statement), true);
       validateStatement(ast.as.AsForStatement(statement)?.Statement);
+      return;
+    }
+    if (ast.is.IsSwitchStatement(statement)) {
+      validateExpression(SwitchStatement_Expression(ast, statement));
+      for (const clause of CaseBlock_Clauses(ast, SwitchStatement_CaseBlock(ast, statement)) ?? []) {
+        validateExpression(CaseOrDefaultClause_Expression(ast, clause));
+        for (const child of CaseOrDefaultClause_Statements(ast, clause) ?? []) {
+          validateStatement(child);
+        }
+      }
+      return;
+    }
+    if (ast.is.IsTryStatement(statement)) {
+      validateStatement(TryStatement_TryBlock(ast, statement));
+      validateStatement(CatchClause_Block(ast, TryStatement_CatchClause(ast, statement)));
+      validateStatement(TryStatement_FinallyBlock(ast, statement));
       return;
     }
     if (ast.is.IsBreakStatement(statement) || ast.is.IsContinueStatement(statement)) {

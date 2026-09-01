@@ -111,6 +111,7 @@ export function analyzeMojoCall(
   );
   if (result.kind === "unsupported") return result;
   let receiverConversion;
+  let sourceReceiverType;
   if (instantiated.operation.receiverType !== undefined) {
     const receiver = sourceCall.sourceReceiver;
     const actual = receiver === undefined ? undefined : resolve(receiver.type);
@@ -126,6 +127,7 @@ export function analyzeMojoCall(
       return { kind: "unsupported", code: "MOJO_PROVIDER_RECEIVER_CONVERSION_UNPROVEN", reason: conversion.reason };
     }
     receiverConversion = conversion.conversion;
+    sourceReceiverType = actual;
   }
   return {
     kind: "resolved",
@@ -134,8 +136,10 @@ export function analyzeMojoCall(
       operation: instantiated.operation,
       arguments: arguments_.arguments,
       ...(sourceCall.sourceReceiver === undefined ? {} : { receiver: sourceCall.sourceReceiver.expression }),
+      ...(sourceReceiverType === undefined ? {} : { sourceReceiverType }),
       ...(receiverConversion === undefined ? {} : { receiverConversion }),
       resultConversion: result.conversion,
+      optionalChain: sourceCall.optionalChain,
     }),
   };
 }
@@ -212,6 +216,7 @@ function analyzeProjectCall(
       arguments: arguments_.arguments,
       resultType: callResult,
       resultConversion: result.conversion,
+      optionalChain: sourceCall.optionalChain,
     }),
   };
 }
@@ -251,7 +256,12 @@ function projectCallTarget(
   }
   return {
     kind: "resolved",
-    target: Object.freeze({ kind: "method", name: function_.name, receiver }),
+    target: Object.freeze({
+      kind: "method",
+      name: function_.name,
+      receiver,
+      receiverType: function_.owner!.type,
+    }),
   };
 }
 
@@ -296,6 +306,7 @@ function analyzeImplicitProjectConstruction(
       arguments: Object.freeze([]),
       resultType: sourceResult,
       resultConversion: result.conversion,
+      optionalChain: sourceCall.optionalChain,
     }),
   };
 }

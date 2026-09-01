@@ -11,6 +11,7 @@ import {
   PrefixUnaryExpression_Operand,
 } from "@tsonic/target-api/source";
 import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
+import { mojoTargetTypeEquals } from "../../target-model/provider/equality.js";
 import type { MojoValueConversion } from "../../analysis/program/model.js";
 import type {
   MojoCallArgument,
@@ -74,6 +75,15 @@ interface PlannedMojoCallArgument {
   readonly name?: string;
   readonly spread: boolean;
 }
+
+type PreparedMojoReceiver =
+  | { readonly kind: "required"; readonly plan: MojoValuePlan }
+  | {
+      readonly kind: "optional";
+      readonly before: readonly MojoStatement[];
+      readonly condition: MojoExpression;
+      readonly plan: MojoValuePlan;
+    };
 
 export function planMojoUpdate(
   node: Node,
@@ -392,6 +402,9 @@ function planBinary(node: Node, context: MojoPlanningContext): MojoValuePlan | u
   const leftNode = BinaryExpression_Left(ast, node);
   const rightNode = BinaryExpression_Right(ast, node);
   const operatorKind = ast.kindName(ast.as.AsBinaryExpression(node)?.OperatorToken);
+  if (operatorKind === "KindQuestionQuestionToken") {
+    return planNullishCoalescing(node, leftNode, rightNode, context);
+  }
   const operator = binaryOperatorText.get(operatorKind);
   const resultType = context.program.queries.expressionType(node);
   const [leftExpected, rightExpected] = binaryOperandTypes(
@@ -434,6 +447,66 @@ function planBinary(node: Node, context: MojoPlanningContext): MojoValuePlan | u
       kind: "if",
       condition: branchCondition,
       thenStatements: Object.freeze([
+        ...right.before,
+        Object.freeze({ kind: "assignment", operator: "=", left: resultPath, right: right.value }),
+      ]),
+    }),
+  ], resultPath);
+}
+
+function planNullishCoalescing(
+  node: Node,
+  leftNode: Node | undefined,
+  rightNode: Node | undefined,
+  context: MojoPlanningContext,
+): MojoValuePlan | undefined {
+  if (leftNode === undefined || rightNode === undefined) return undefined;
+  const leftType = context.program.queries.expressionType(leftNode);
+  const resultType = context.program.queries.expressionType(node);
+  const left = planMojoValue(leftNode, context);
+  const right = planMojoValue(rightNode, context, resultType);
+  if (leftType === undefined || resultType === undefined || left === undefined || right === undefined) {
+    return undefined;
+  }
+  if (leftType.kind === "null" || leftType.kind === "undefined") {
+    return withMojoValue([
+      ...left.before,
+      Object.freeze({ kind: "expression", expression: left.value }),
+      ...right.before,
+    ], right.value);
+  }
+  if (leftType.kind !== "optional" || !mojoTargetTypeEquals(leftType.value, resultType)) {
+    appendMojoPlanningDiagnostic(
+      context,
+      "MOJO_NULLISH_COALESCING_CARRIER_UNSUPPORTED",
+      "Nullish coalescing requires one exact Optional[T] left carrier and the same closed T result carrier.",
+      node,
+    );
+    return undefined;
+  }
+  registerMojoTypeImports(leftType, context);
+  registerMojoTypeImports(resultType, context);
+  const optionalName = allocateMojoSyntheticName(context, "nullish_source");
+  const resultName = allocateMojoSyntheticName(context, "nullish_value");
+  const optionalPath: MojoExpression = Object.freeze({ kind: "path", path: optionalName });
+  const resultPath: MojoExpression = Object.freeze({ kind: "path", path: resultName });
+  const presentValue: MojoExpression = Object.freeze({
+    kind: "method-call",
+    receiver: optionalPath,
+    name: "value",
+    arguments: Object.freeze([]),
+  });
+  return withMojoValue([
+    ...left.before,
+    Object.freeze({ kind: "variable", name: optionalName, type: leftType, initializer: left.value }),
+    Object.freeze({ kind: "variable", name: resultName, type: resultType }),
+    Object.freeze({
+      kind: "if",
+      condition: optionalPath,
+      thenStatements: Object.freeze([
+        Object.freeze({ kind: "assignment", operator: "=", left: resultPath, right: presentValue }),
+      ]),
+      elseStatements: Object.freeze([
         ...right.before,
         Object.freeze({ kind: "assignment", operator: "=", left: resultPath, right: right.value }),
       ]),
@@ -588,17 +661,25 @@ function planElement(
     );
     return undefined;
   }
-  const rawReceiver = planMojoValue(selection.receiver, context);
-  const receiver = rawReceiver === undefined
+  const sourceReceiverType = selection.kind === "native"
+    ? selection.receiverType
+    : selection.sourceReceiverType;
+  const preparedReceiver = prepareMojoReceiver(
+    selection.receiver,
+    sourceReceiverType,
+    selection.optionalChain,
+    context,
+  );
+  const receiver = preparedReceiver === undefined
     ? undefined
     : selection.kind === "provider"
-      ? convertMojoValue(rawReceiver, selection.receiverConversion, context)
-      : rawReceiver;
+      ? convertMojoValue(preparedReceiver.plan, selection.receiverConversion, context)
+      : preparedReceiver.plan;
   const rawIndex = planMojoValue(selection.index, context);
   const index = rawIndex === undefined
     ? undefined
     : convertMojoValue(rawIndex, selection.indexConversion, context);
-  if (receiver === undefined || index === undefined) return undefined;
+  if (preparedReceiver === undefined || receiver === undefined || index === undefined) return undefined;
   const operation = selection.kind === "provider"
     ? mode === "read" ? selection.readOperation : selection.writeOperation
     : undefined;
@@ -626,11 +707,16 @@ function planElement(
     receiver: ordered.values[0]!,
     index: ordered.values[1]!,
   };
-  if (mode !== "read" || selection.readResultConversion === undefined) {
-    return withMojoValue(ordered.before, access);
-  }
-  const converted = applyMojoConversion(access, selection.readResultConversion, context);
-  return converted === undefined ? undefined : withMojoValue(ordered.before, converted);
+  const operationPlan = mode !== "read" || selection.readResultConversion === undefined
+    ? withMojoValue(ordered.before, access)
+    : convertMojoValue(
+        withMojoValue(ordered.before, access),
+        selection.readResultConversion,
+        context,
+      );
+  return operationPlan === undefined
+    ? undefined
+    : finishOptionalMojoOperation(node, preparedReceiver, operationPlan, context);
 }
 
 function planCall(node: Node, context: MojoPlanningContext): MojoValuePlan | undefined {
@@ -647,6 +733,7 @@ function planCall(node: Node, context: MojoPlanningContext): MojoValuePlan | und
     let before: readonly MojoStatement[];
     switch (selection.target.kind) {
       case "function": {
+        if (selection.optionalChain) return unsupportedOptionalCall(node, context);
         const ordered = orderCallArguments(plannedArguments, context);
         before = ordered.before;
         call = {
@@ -658,12 +745,16 @@ function planCall(node: Node, context: MojoPlanningContext): MojoValuePlan | und
         break;
       }
       case "method": {
-        const receiver = planMojoValue(selection.target.receiver, context);
-        const receiverType = context.program.queries.expressionType(selection.target.receiver);
-        if (receiver === undefined || receiverType === undefined) return undefined;
+        const receiver = prepareMojoReceiver(
+          selection.target.receiver,
+          selection.target.receiverType,
+          selection.optionalChain,
+          context,
+        );
+        if (receiver === undefined) return undefined;
         const ordered = orderCallArguments(plannedArguments, context, Object.freeze({
-          plan: receiver,
-          type: receiverType,
+          plan: receiver.plan,
+          type: selection.target.receiverType,
           role: "call_receiver",
         }));
         before = ordered.before;
@@ -674,9 +765,17 @@ function planCall(node: Node, context: MojoPlanningContext): MojoValuePlan | und
           ...(selection.genericArguments.length === 0 ? {} : { genericArguments: selection.genericArguments }),
           arguments: ordered.arguments,
         };
-        break;
+        const converted = applyMojoConversion(call, selection.resultConversion, context);
+        if (converted === undefined) return undefined;
+        return finishOptionalMojoOperation(
+          node,
+          receiver,
+          withMojoValue(before, converted),
+          context,
+        );
       }
       case "static-method": {
+        if (selection.optionalChain) return unsupportedOptionalCall(node, context);
         registerMojoTypeImports(selection.target.owner, context);
         const ordered = orderCallArguments(plannedArguments, context);
         before = ordered.before;
@@ -690,6 +789,7 @@ function planCall(node: Node, context: MojoPlanningContext): MojoValuePlan | und
         break;
       }
       case "constructor": {
+        if (selection.optionalChain) return unsupportedOptionalCall(node, context);
         registerMojoTypeImports(selection.target.type, context);
         const ordered = orderCallArguments(plannedArguments, context);
         before = ordered.before;
@@ -720,6 +820,7 @@ function planCall(node: Node, context: MojoPlanningContext): MojoValuePlan | und
   let call: MojoExpression;
   let before: readonly MojoStatement[];
   if (target.kind === "function-call") {
+    if (selection.optionalChain) return unsupportedOptionalCall(node, context);
     registerMojoModuleImport(context, target.modulePath);
     const ordered = orderCallArguments(plannedArguments, context);
     before = ordered.before;
@@ -733,11 +834,19 @@ function planCall(node: Node, context: MojoPlanningContext): MojoValuePlan | und
     };
   } else if (target.kind === "instance-call") {
     if (selection.receiver === undefined) return undefined;
-    const rawReceiver = planMojoValue(selection.receiver, context);
-    const receiver = rawReceiver === undefined || selection.receiverConversion === undefined
-      ? rawReceiver
-      : convertMojoValue(rawReceiver, selection.receiverConversion, context);
-    if (receiver === undefined || selection.operation.receiverType === undefined) return undefined;
+    if (selection.sourceReceiverType === undefined) return undefined;
+    const preparedReceiver = prepareMojoReceiver(
+      selection.receiver,
+      selection.sourceReceiverType,
+      selection.optionalChain,
+      context,
+    );
+    const receiver = preparedReceiver === undefined || selection.receiverConversion === undefined
+      ? preparedReceiver?.plan
+      : convertMojoValue(preparedReceiver.plan, selection.receiverConversion, context);
+    if (preparedReceiver === undefined || receiver === undefined || selection.operation.receiverType === undefined) {
+      return undefined;
+    }
     const ordered = orderCallArguments(plannedArguments, context, Object.freeze({
       plan: receiver,
       type: selection.operation.receiverType,
@@ -755,6 +864,14 @@ function planCall(node: Node, context: MojoPlanningContext): MojoValuePlan | und
         : { genericArguments: selection.operation.genericArguments }),
       arguments: ordered.arguments,
     };
+    const converted = applyMojoConversion(call, selection.resultConversion, context);
+    if (converted === undefined) return undefined;
+    return finishOptionalMojoOperation(
+      node,
+      preparedReceiver,
+      withMojoValue(before, converted),
+      context,
+    );
   } else {
     return undefined;
   }
@@ -795,15 +912,21 @@ function planProperty(
     );
     return constant === undefined ? undefined : mojoValue(constant);
   }
-  const receiver = planMojoValue(selection.receiver, context);
+  const sourceReceiverType = selection.kind === "project-field"
+    ? selection.receiverType
+    : selection.sourceReceiverType;
+  const receiver = prepareMojoReceiver(
+    selection.receiver,
+    sourceReceiverType,
+    selection.optionalChain,
+    context,
+  );
   if (receiver === undefined) return undefined;
   if (selection.kind === "project-field") {
-    const receiverType = context.program.queries.expressionType(selection.receiver);
-    if (receiverType === undefined) return undefined;
     const ordered = orderMojoValues([
-      Object.freeze({ plan: receiver, type: receiverType, role: "property_receiver" }),
+      Object.freeze({ plan: receiver.plan, type: selection.receiverType, role: "property_receiver" }),
     ], context, stabilizeReceiver);
-    return withMojoValue(ordered.before, {
+    const operation = withMojoValue(ordered.before, {
       kind: "member",
       receiver: {
         kind: "postfix-deref",
@@ -811,6 +934,7 @@ function planProperty(
       },
       name: selection.fieldName,
     });
+    return finishOptionalMojoOperation(node, receiver, operation, context);
   }
   const operation = mode === "read" ? selection.readOperation : selection.writeOperation;
   if (operation === undefined) {
@@ -834,8 +958,8 @@ function planProperty(
     return undefined;
   }
   const convertedReceiver = selection.receiverConversion === undefined
-    ? receiver
-    : convertMojoValue(receiver, selection.receiverConversion, context);
+    ? receiver.plan
+    : convertMojoValue(receiver.plan, selection.receiverConversion, context);
   if (convertedReceiver === undefined || operation.receiverType === undefined) return undefined;
   const ordered = orderMojoValues([
     Object.freeze({
@@ -846,11 +970,16 @@ function planProperty(
   ], context, stabilizeReceiver);
   if (target.kind !== "property-read" && target.kind !== "property-write") return undefined;
   const member: MojoExpression = { kind: "member", receiver: ordered.values[0]!, name: target.name };
-  if (mode !== "read" || selection.readResultConversion === undefined) {
-    return withMojoValue(ordered.before, member);
-  }
-  const converted = applyMojoConversion(member, selection.readResultConversion, context);
-  return converted === undefined ? undefined : withMojoValue(ordered.before, converted);
+  const operationPlan = mode !== "read" || selection.readResultConversion === undefined
+    ? withMojoValue(ordered.before, member)
+    : convertMojoValue(
+        withMojoValue(ordered.before, member),
+        selection.readResultConversion,
+        context,
+      );
+  return operationPlan === undefined
+    ? undefined
+    : finishOptionalMojoOperation(node, receiver, operationPlan, context);
 }
 
 function planProviderConstant(
@@ -962,6 +1091,110 @@ function convertMojoValue(
 ): MojoValuePlan | undefined {
   const converted = applyMojoConversion(plan.value, conversion, context);
   return converted === undefined ? undefined : withMojoValue(plan.before, converted);
+}
+
+function prepareMojoReceiver(
+  expression: Node,
+  selectedType: MojoTargetTypeRef,
+  optionalChain: boolean,
+  context: MojoPlanningContext,
+): PreparedMojoReceiver | undefined {
+  const receiver = planMojoValue(expression, context);
+  if (receiver === undefined) return undefined;
+  if (!optionalChain) return Object.freeze({ kind: "required", plan: receiver });
+  const actualType = context.program.queries.expressionType(expression);
+  if (actualType?.kind !== "optional" || !mojoTargetTypeEquals(actualType.value, selectedType)) {
+    appendMojoPlanningDiagnostic(
+      context,
+      "MOJO_OPTIONAL_RECEIVER_CARRIER_UNPROVEN",
+      "Optional chaining requires one exact Optional[T] receiver whose T matches the checker-selected non-null receiver.",
+      expression,
+    );
+    return undefined;
+  }
+  registerMojoTypeImports(actualType, context);
+  const receiverName = allocateMojoSyntheticName(context, "optional_receiver");
+  const receiverPath: MojoExpression = Object.freeze({ kind: "path", path: receiverName });
+  return Object.freeze({
+    kind: "optional",
+    before: Object.freeze([
+      ...receiver.before,
+      Object.freeze({
+        kind: "variable",
+        name: receiverName,
+        type: actualType,
+        initializer: receiver.value,
+      }),
+    ]),
+    condition: receiverPath,
+    plan: mojoValue(Object.freeze({
+      kind: "method-call",
+      receiver: receiverPath,
+      name: "value",
+      arguments: Object.freeze([]),
+    })),
+  });
+}
+
+function finishOptionalMojoOperation(
+  expression: Node,
+  receiver: PreparedMojoReceiver,
+  operation: MojoValuePlan,
+  context: MojoPlanningContext,
+): MojoValuePlan | undefined {
+  if (receiver.kind === "required") return operation;
+  const resultType = context.program.queries.expressionType(expression);
+  if (resultType?.kind !== "optional") {
+    appendMojoPlanningDiagnostic(
+      context,
+      "MOJO_OPTIONAL_RESULT_CARRIER_UNPROVEN",
+      "Optional chaining requires one exact Optional[T] result carrier.",
+      expression,
+    );
+    return undefined;
+  }
+  registerMojoTypeImports(resultType, context);
+  const resultName = allocateMojoSyntheticName(context, "optional_result");
+  const resultPath: MojoExpression = Object.freeze({ kind: "path", path: resultName });
+  return withMojoValue([
+    ...receiver.before,
+    Object.freeze({
+      kind: "variable",
+      name: resultName,
+      type: resultType,
+      initializer: Object.freeze({
+        kind: "construct",
+        type: resultType,
+        arguments: Object.freeze([]),
+      }),
+    }),
+    Object.freeze({
+      kind: "if",
+      condition: receiver.condition,
+      thenStatements: Object.freeze([
+        ...operation.before,
+        Object.freeze({
+          kind: "assignment",
+          operator: "=",
+          left: resultPath,
+          right: operation.value,
+        }),
+      ]),
+    }),
+  ], resultPath);
+}
+
+function unsupportedOptionalCall(
+  node: Node,
+  context: MojoPlanningContext,
+): undefined {
+  appendMojoPlanningDiagnostic(
+    context,
+    "MOJO_OPTIONAL_CALLABLE_VALUE_UNSUPPORTED",
+    "An optional call without an exact receiver requires a sealed callable-value representation.",
+    node,
+  );
+  return undefined;
 }
 
 function requiredConversion(

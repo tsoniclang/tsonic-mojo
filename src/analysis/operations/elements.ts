@@ -25,12 +25,6 @@ export function analyzeMojoElementAccess(
   source: ResolvedSourceElementAccessInfo,
   context: MojoElementAnalysisContext,
 ): MojoElementAnalysis {
-  if (source.optionalChain) {
-    return unsupported(
-      "MOJO_OPTIONAL_ELEMENT_ACCESS_UNSUPPORTED",
-      "Optional element access requires a sealed short-circuit evaluation region.",
-    );
-  }
   if (source.callCallee) {
     return unsupported(
       "MOJO_ELEMENT_CALL_CALLEE_UNSUPPORTED",
@@ -166,8 +160,10 @@ function analyzeProviderElement(
       ...(readOperation === undefined ? {} : { readOperation, readType: readOperation.resultType }),
       ...(writeOperation === undefined ? {} : { writeOperation, writeType }),
       receiverConversion: receiverConversion.conversion,
+      sourceReceiverType: receiver,
       indexConversion: indexConversion.conversion,
       ...(readResultConversion === undefined ? {} : { readResultConversion }),
+      optionalChain: source.optionalChain,
     }),
   };
 }
@@ -226,6 +222,7 @@ function analyzeNativeElement(
       indexConversion: indexConversion.conversion,
       ...(readResultConversion === undefined ? {} : { readResultConversion }),
       ...(source.selectedElementIndex === undefined ? {} : { selectedElementIndex: source.selectedElementIndex }),
+      optionalChain: source.optionalChain,
     }),
   };
 }

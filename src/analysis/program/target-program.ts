@@ -356,7 +356,6 @@ export function analyzeMojoTargetProgram(
             node,
           ));
         } else {
-          const projectProperty = analyzeMojoProjectProperty(selectedProperty, fieldByDeclaration);
           const resolvePropertyType = (type: Type): MojoTargetTypeRef | undefined => {
             const resolved = resolveMojoTargetType(
               type,
@@ -365,6 +364,11 @@ export function analyzeMojoTargetProgram(
             );
             return resolved.kind === "resolved" ? resolved.type : undefined;
           };
+          const projectProperty = analyzeMojoProjectProperty(
+            selectedProperty,
+            fieldByDeclaration,
+            resolvePropertyType(selectedProperty.receiver.type),
+          );
           const property = projectProperty.kind === "not-project-field"
             ? analyzeMojoProviderProperty(selectedProperty, {
                 source: input.source,
@@ -502,6 +506,7 @@ export function analyzeMojoTargetProgram(
             providerCallRequiresRaisingConversion(selection);
         }
       }
+      if (ast.is.IsThrowStatement(node)) functionRaises = true;
       if (ast.is.IsPropertyAccessExpression(node)) {
         const selection = propertySelections.get(node);
         if (selection?.kind === "provider") {

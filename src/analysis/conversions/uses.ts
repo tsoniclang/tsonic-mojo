@@ -10,6 +10,10 @@ import {
   Node_Initializer,
   ObjectLiteralProperty_Value,
   PrefixUnaryExpression_Operand,
+  CaseBlock_Clauses,
+  CaseOrDefaultClause_Expression,
+  SwitchStatement_CaseBlock,
+  SwitchStatement_Expression,
   VariableDeclarationList_Declarations,
   VariableStatement_DeclarationList,
 } from "@tsonic/target-api/source";
@@ -126,7 +130,9 @@ export function recordMojoFunctionConversionUses(
       const right = BinaryExpression_Right(ast, expression);
       const operator = ast.operatorKindName(expression);
       const resultType = expressionTypes.get(expression);
-      if (operator === "KindAmpersandAmpersandToken" || operator === "KindBarBarToken") {
+      if (operator === "KindQuestionQuestionToken") {
+        if (resultType !== undefined) record(right, resultType);
+      } else if (operator === "KindAmpersandAmpersandToken" || operator === "KindBarBarToken") {
         const bool: MojoTargetTypeRef = { kind: "source-primitive", name: "bool" };
         record(left, bool);
         record(right, bool);
@@ -188,6 +194,16 @@ export function recordMojoFunctionConversionUses(
     if (ast.is.IsIfStatement(statement) || ast.is.IsWhileStatement(statement) || ast.is.IsDoStatement(statement)) {
       const condition = Node_Expression(ast, statement);
       record(condition, { kind: "source-primitive", name: "bool" });
+    }
+    if (ast.is.IsSwitchStatement(statement)) {
+      const discriminant = SwitchStatement_Expression(ast, statement);
+      const discriminantType = discriminant === undefined ? undefined : expressionTypes.get(discriminant);
+      visitExpression(discriminant);
+      for (const clause of CaseBlock_Clauses(ast, SwitchStatement_CaseBlock(ast, statement)) ?? []) {
+        const expression = CaseOrDefaultClause_Expression(ast, clause);
+        if (discriminantType !== undefined) record(expression, discriminantType);
+        visitExpression(expression);
+      }
     }
     for (const child of ast.children(statement)) {
       if (child === undefined) continue;
