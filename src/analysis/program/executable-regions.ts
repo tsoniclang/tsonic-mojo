@@ -11,6 +11,7 @@ import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
+import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import { analyzeMojoCall } from "../operations/calls.js";
 import { analyzeMojoElementAccess } from "../operations/elements.js";
@@ -119,8 +120,16 @@ export function analyzeMojoExecutableRegion(
   const bindingPatternDeclarations: Node[] = [];
   walkSourceTree(root, ast, (node): void => {
     if (ast.is.IsVariableDeclaration(node)) {
-      const selected = declaredOrInitializerType(node, semantics, ast);
-      const resolved = resolveType(selected, ast.typeNode(node), input, semantics);
+      const authoredType = ast.typeNode(node);
+      const initializer = Node_Initializer(ast, node);
+      const resolved = authoredType === undefined && initializer !== undefined
+        ? resolveInferredBindingCarrier(initializer, input, semantics)
+        : resolveType(
+            declaredOrInitializerType(node, semantics, ast),
+            authoredType,
+            input,
+            semantics,
+          );
       if (resolved === undefined) {
         input.diagnostics.push(typeDiagnostic(node, "the selected declaration has no closed Mojo carrier"));
       } else {
@@ -334,7 +343,10 @@ function analyzeExpressionCarrier(
   const selectedOccurrenceType = referencedType === undefined
     ? undefined
     : analyzeReferencedValueRefinement(node, referencedType, input, semantics);
-  const resolved = selectedOccurrenceType ?? referencedType ?? contextualExpected ??
+  const erasedCarrier = isErasedValueWrapper(node, ast)
+    ? resolveErasedExpressionCarrier(node, input, semantics)
+    : undefined;
+  const resolved = selectedOccurrenceType ?? referencedType ?? erasedCarrier ?? contextualExpected ??
     resolveType(semantics.types.expressionType(node), undefined, input, semantics);
   if (resolved !== undefined) input.expressionTypes.set(node, resolved);
   if (ast.is.IsIdentifier(node) && referencedName === undefined && resolved !== undefined &&
@@ -390,13 +402,66 @@ function analyzeErasedValueRefinement(
   const sourceType = semantics.types.expressionType(inner);
   const selectedType = semantics.types.expressionType(node);
   const sourceTargetType = input.expressionTypes.get(inner);
-  const selectedTargetType = input.expressionTypes.get(node);
+  const selectedTargetType = resolveType(
+    selectedType,
+    input.source.ast.typeNode(node),
+    input,
+    semantics,
+  );
   if (sourceType === undefined || selectedType === undefined || sourceTargetType === undefined ||
     selectedTargetType === undefined) return;
   const sourceRefinement = semantics.types.refinement(sourceType, selectedType);
   if (sourceRefinement.kind !== "members" || sourceRefinement.types.length !== 1) return;
   const refinement = classifyValueRefinement(sourceTargetType, selectedTargetType);
   if (refinement !== undefined) input.valueRefinements.set(node, refinement);
+}
+
+function resolveInferredBindingCarrier(
+  initializer: Node,
+  input: MojoExecutableRegionAnalysisInput,
+  semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
+): MojoTargetTypeRef | undefined {
+  return isErasedValueWrapper(initializer, input.source.ast)
+    ? resolveErasedExpressionCarrier(initializer, input, semantics)
+    : resolveType(semantics.types.expressionType(initializer), undefined, input, semantics);
+}
+
+function resolveErasedExpressionCarrier(
+  node: Node,
+  input: MojoExecutableRegionAnalysisInput,
+  semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
+): MojoTargetTypeRef | undefined {
+  const { ast } = input.source;
+  const inner = Node_Expression(ast, node);
+  if (inner === undefined) return undefined;
+  const sourceCarrier = input.expressionTypes.get(inner) ??
+    (isErasedValueWrapper(inner, ast)
+      ? resolveErasedExpressionCarrier(inner, input, semantics)
+      : resolveType(semantics.types.expressionType(inner), undefined, input, semantics));
+  if (sourceCarrier === undefined || ast.is.IsParenthesizedExpression(node) ||
+    ast.is.IsSatisfiesExpression(node)) return sourceCarrier;
+  const selectedSourceType = semantics.types.expressionType(node);
+  const selectedCarrier = resolveType(
+    selectedSourceType,
+    ast.typeNode(node),
+    input,
+    semantics,
+  );
+  if (selectedCarrier === undefined) return sourceCarrier;
+  if (classifyValueRefinement(sourceCarrier, selectedCarrier) !== undefined) return selectedCarrier;
+  if (ast.is.IsNonNullExpression(node)) return sourceCarrier;
+  return classifyMojoValueConversion(sourceCarrier, selectedCarrier).kind === "resolved"
+    ? selectedCarrier
+    : sourceCarrier;
+}
+
+function isErasedValueWrapper(
+  node: Node,
+  ast: TargetSourceProgram["ast"],
+): boolean {
+  return ast.is.IsParenthesizedExpression(node) || ast.is.IsAsExpression(node) ||
+    ast.is.IsTypeAssertion(node) || ast.is.IsNonNullExpression(node) ||
+    ast.is.IsSatisfiesExpression(node);
 }
 
 function classifyValueRefinement(

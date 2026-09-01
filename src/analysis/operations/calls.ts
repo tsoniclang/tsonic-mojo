@@ -259,18 +259,20 @@ function analyzeSourceProfileCall(
         context.expressionTypes,
       );
   if (callback?.kind === "unsupported") return callback;
-  if (parameterContract !== undefined &&
-    parameterContract.length !== sourceCall.sourceSelectedSignatureParameters.length &&
-    !(parameterContract.length === 0 && sourceCall.sourceArguments.length === 0)) {
-    return {
-      kind: "unsupported",
-      code: "MOJO_SOURCE_PROFILE_PARAMETER_CONTRACT_INVALID",
-      reason: `The exact source-profile overload '${selected.row.owner}.${selected.row.member}' and its Mojo runtime parameter contract have different arities.`,
-    };
+  if (parameterContract !== undefined) {
+    if (parameterContract.length > sourceCall.sourceSelectedSignatureParameters.length ||
+      sourceCall.sourceArgumentBindings.some((binding) =>
+        binding.sourceParameterIndex >= parameterContract.length)) {
+      return {
+        kind: "unsupported",
+        code: "MOJO_SOURCE_PROFILE_PARAMETER_CONTRACT_INVALID",
+        reason: `The exact source-profile overload '${selected.row.owner}.${selected.row.member}' cannot be represented by its Mojo runtime parameter contract.`,
+      };
+    }
   }
-  const selectedParameters = parameterContract?.length === 0
-    ? []
-    : sourceCall.sourceSelectedSignatureParameters;
+  const selectedParameters = parameterContract === undefined
+    ? sourceCall.sourceSelectedSignatureParameters
+    : sourceCall.sourceSelectedSignatureParameters.slice(0, parameterContract.length);
   for (const [parameterIndex, parameter] of selectedParameters.entries()) {
     const explicitContract = parameterContract?.[parameterIndex];
     const resolved = callback?.parameterIndex === parameterIndex
