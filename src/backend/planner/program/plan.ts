@@ -72,7 +72,7 @@ function planSourceModule(
     registerMojoModuleImport(context, dependency.target.modulePath);
   }
   const declarations: MojoDeclaration[] = [];
-  const analyzedModule = program.queries.moduleForSourceFile(module.sourceFile);
+  const analyzedModule = program.queries.moduleForId(module.id);
   if (analyzedModule === undefined) {
     context.diagnostics.push(planningDiagnostic(
       "MOJO_ANALYZED_MODULE_MISSING",
@@ -218,7 +218,7 @@ function planBinaryEntry(
     return undefined;
   }
   const importedName = "__tsonic_entry";
-  const analyzedEntry = program.queries.moduleForSourceFile(entry.sourceFile);
+  const analyzedEntry = program.queries.moduleForId(entry.id);
   if (analyzedEntry === undefined) {
     diagnostics.push(planningDiagnostic(
       "MOJO_BINARY_ENTRY_MODULE_ANALYSIS_MISSING",

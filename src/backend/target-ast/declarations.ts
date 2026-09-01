@@ -10,6 +10,7 @@ export interface MojoParameter {
   readonly name: string;
   readonly type: MojoTargetTypeRef;
   readonly convention?: MojoCallArgumentConvention;
+  readonly position?: "positional" | "positional-or-keyword" | "keyword";
   readonly defaultValue?: MojoExpression;
   readonly variadic?: boolean;
 }

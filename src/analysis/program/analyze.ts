@@ -549,6 +549,9 @@ export function analyzeMojoTargetProgram(
   const finalizedModuleBySourceFile = new WeakMap(
     finalizedModules.map((module) => [module.sourceFile, module] as const),
   );
+  const finalizedModuleById = new Map(
+    finalizedModules.map((module) => [module.id, module] as const),
+  );
 
   for (const function_ of finalizedFunctions) {
     validateMojoFunctionSyntax(
@@ -596,6 +599,7 @@ export function analyzeMojoTargetProgram(
     bindingPatternSelections,
     returnValueTransfers,
     moduleBySourceFile: finalizedModuleBySourceFile,
+    moduleById: finalizedModuleById,
     moduleBindingByDeclaration,
     locationStorageNames,
   });

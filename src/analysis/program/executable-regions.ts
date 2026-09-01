@@ -615,7 +615,13 @@ function analyzeExpressionCarrier(
     semantics,
   );
   const exactSemanticFirst = ast.is.IsIdentifier(node) ||
+    ast.is.IsStringLiteral(node) ||
+    ast.is.IsNoSubstitutionTemplateLiteral(node) ||
+    ast.is.IsNumericLiteral(node) ||
+    ast.is.IsBigIntLiteral(node) ||
     ast.kindName(node) === "KindTemplateExpression" ||
+    ast.kindName(node) === "KindTrueKeyword" ||
+    ast.kindName(node) === "KindFalseKeyword" ||
     ast.kindName(node) === "KindNullKeyword" ||
     ast.kindName(node) === "KindUndefinedKeyword";
   const resolved = selectedOccurrenceType ?? referencedType ?? erasedCarrier ??

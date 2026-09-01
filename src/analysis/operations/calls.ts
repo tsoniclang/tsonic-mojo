@@ -325,9 +325,12 @@ function analyzeSourceProfileCall(
       : explicitContract === undefined
         ? resolve(parameter.selectedType, parameter.authoredTypeNode)
         : sourceProfileParameterType(explicitContract);
-    const target = parameter.rest === true && resolved !== undefined
-      ? restCallableElementType(resolved)
-      : resolved;
+    const presentType = resolved === undefined
+      ? undefined
+      : sourceProfilePresentArgumentType(parameter.acceptsOmission, resolved);
+    const target = parameter.rest === true && presentType !== undefined
+      ? restCallableElementType(presentType)
+      : presentType;
     if (target === undefined) {
       return {
         kind: "unsupported",
@@ -340,7 +343,7 @@ function analyzeSourceProfileCall(
       convention: "imm",
       position: "positional-or-keyword",
       variadic: parameter.rest,
-      ...(parameter.rest && resolved !== undefined ? { variadicCollectionType: resolved } : {}),
+      ...(parameter.rest && presentType !== undefined ? { variadicCollectionType: presentType } : {}),
       passing: "plain",
     }));
   }
@@ -451,6 +454,13 @@ function analyzeSourceProfileCall(
       optionalChain: sourceCall.optionalChain,
     }),
   };
+}
+
+function sourceProfilePresentArgumentType(
+  acceptsOmission: boolean,
+  type: MojoTargetTypeRef,
+): MojoTargetTypeRef {
+  return !acceptsOmission || type.kind !== "optional" ? type : type.value;
 }
 
 type ClosedSourceProfileResult =

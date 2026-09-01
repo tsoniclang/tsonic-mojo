@@ -334,6 +334,7 @@ export function analyzeMojoModuleBindings(
       }
     }
     analyzed.push(Object.freeze({
+      id: definition.id,
       sourceFile,
       stateName,
       createStateName,

@@ -164,7 +164,7 @@ function planModuleInitializer(
   });
   const initialization: MojoStatement[] = [];
   for (const dependency of definition.dependencies) {
-    const target = program.queries.moduleForSourceFile(dependency.target.sourceFile);
+    const target = program.queries.moduleForId(dependency.target.id);
     if (target === undefined || !target.runtimeInitializationRequired) continue;
     const call = Object.freeze({
       kind: "call" as const,

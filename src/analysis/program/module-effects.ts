@@ -16,8 +16,8 @@ export function finalizeMojoModuleEffects(
   moduleRegionFacts: WeakMap<MojoAnalyzedModule, MojoAnalyzedModuleRegionFacts>,
   finalizedByDeclaration: WeakMap<Node, MojoAnalyzedFunction>,
 ): readonly MojoAnalyzedModule[] {
-  const analyzedBySourceFile = new WeakMap(
-    analyzedModules.map((module) => [module.sourceFile, module] as const),
+  const analyzedById = new Map(
+    analyzedModules.map((module) => [module.id, module] as const),
   );
   const raises = new Map(analyzedModules.map((module) => {
     const facts = moduleRegionFacts.get(module);
@@ -38,21 +38,21 @@ export function finalizeMojoModuleEffects(
       const definition = modules.forSourceFile(module.sourceFile);
       const dependencies = definition?.dependencies ?? [];
       if (raises.get(module) !== true && dependencies.some((dependency) => {
-        const target = analyzedBySourceFile.get(dependency.target.sourceFile);
+        const target = analyzedById.get(dependency.target.id);
         return target !== undefined && raises.get(target) === true;
       })) {
         raises.set(module, true);
         changed = true;
       }
       if (runtimeInitialization.get(module) !== true && dependencies.some((dependency) => {
-        const target = analyzedBySourceFile.get(dependency.target.sourceFile);
+        const target = analyzedById.get(dependency.target.id);
         return target !== undefined && runtimeInitialization.get(target) === true;
       })) {
         runtimeInitialization.set(module, true);
         changed = true;
       }
       if (asynchronous.get(module) !== true && dependencies.some((dependency) => {
-        const target = analyzedBySourceFile.get(dependency.target.sourceFile);
+        const target = analyzedById.get(dependency.target.id);
         return target !== undefined && asynchronous.get(target) === true;
       })) {
         asynchronous.set(module, true);

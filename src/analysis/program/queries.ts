@@ -43,6 +43,7 @@ export interface MojoProgramQueryIndexes {
   readonly bindingPatternSelections: WeakMap<Node, MojoBindingPatternSelection>;
   readonly returnValueTransfers: WeakSet<Node>;
   readonly moduleBySourceFile: WeakMap<SourceFile, MojoAnalyzedModule>;
+  readonly moduleById: ReadonlyMap<string, MojoAnalyzedModule>;
   readonly moduleBindingByDeclaration: WeakMap<Node, MojoAnalyzedModuleBinding>;
   readonly locationStorageNames: WeakMap<Node, string>;
 }
@@ -110,6 +111,9 @@ export function createMojoProgramQueries(
     },
     moduleForSourceFile(sourceFile: SourceFile) {
       return indexes.moduleBySourceFile.get(sourceFile);
+    },
+    moduleForId(id: string) {
+      return indexes.moduleById.get(id);
     },
     moduleBinding(referenceOrDeclaration: Node) {
       const direct = indexes.moduleBindingByDeclaration.get(referenceOrDeclaration);

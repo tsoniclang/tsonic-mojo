@@ -60,10 +60,7 @@ function printFunction(
 ): string[] {
   const indent = "    ".repeat(depth);
   const decorators = (function_.decorators ?? []).map((decorator) => `${indent}@${decorator}`);
-  const parameters = [
-    ...(function_.self === undefined ? [] : [function_.self]),
-    ...function_.parameters.map((parameter) => printParameter(parameter, modulePath)),
-  ].join(", ");
+  const parameters = printParameters(function_, modulePath);
   const result = mojoTypeName(function_.resultType, modulePath);
   const signature = `${indent}${function_.asynchronous ? "async " : ""}def ${function_.name}${
     mojoGenericParametersText(function_.genericParameters, modulePath)
@@ -72,6 +69,25 @@ function printFunction(
     ? [`${indent}    ...`]
     : printBody(function_.statements, depth + 1, modulePath);
   return [...decorators, signature, ...body];
+}
+
+function printParameters(
+  function_: MojoFunctionDeclaration,
+  modulePath: readonly string[],
+): string {
+  const parameters: string[] = function_.self === undefined ? [] : [function_.self];
+  let previousPosition: MojoParameter["position"] = "positional-or-keyword";
+  for (const [index, parameter] of function_.parameters.entries()) {
+    const position = parameter.position ?? "positional-or-keyword";
+    if (position === "keyword" && previousPosition !== "keyword") parameters.push("*");
+    parameters.push(printParameter(parameter, modulePath));
+    if (position === "positional" &&
+      (function_.parameters[index + 1]?.position ?? "positional-or-keyword") !== "positional") {
+      parameters.push("/");
+    }
+    previousPosition = position;
+  }
+  return parameters.join(", ");
 }
 
 function printStruct(declaration: MojoStructDeclaration, modulePath: readonly string[]): string[] {

@@ -19,6 +19,10 @@ import {
   planMojoParameterDeclaration,
   planMojoParameterPrelude,
 } from "./parameters.js";
+import {
+  mojoReferenceCopyInitializer,
+  mojoReferenceIdentityEqualityMethod,
+} from "./reference-wrapper.js";
 
 export function planMojoProjectFunction(
   function_: MojoAnalyzedFunction,
@@ -170,11 +174,17 @@ export function planMojoProjectClass(
     self: "out self",
     statements: Object.freeze([initializeState]),
   });
-  const methods: MojoFunctionDeclaration[] = [constructor, identityEqualityMethod(class_.targetType)];
+  const methods: MojoFunctionDeclaration[] = [
+    constructor,
+    mojoReferenceCopyInitializer(class_.targetType),
+    mojoReferenceIdentityEqualityMethod(class_.targetType),
+  ];
   for (const method of class_.methods) {
     const planned = planMojoProjectFunction(method, context, method.static === true ? undefined : "self");
     if (planned === undefined) return undefined;
-    methods.push(planned);
+    methods.push(method.static === true
+      ? Object.freeze({ ...planned, decorators: Object.freeze(["staticmethod"]) })
+      : planned);
   }
   const wrapper: MojoStructDeclaration = Object.freeze({
     kind: "struct",
@@ -239,40 +249,6 @@ export function planMojoProjectEnum(enum_: MojoAnalyzedEnum): MojoStructDeclarat
     ]),
     methods: Object.freeze([]),
     decorators: Object.freeze(["fieldwise_init"]),
-  });
-}
-
-function identityEqualityMethod(owner: MojoTargetTypeRef): MojoFunctionDeclaration {
-  return Object.freeze({
-    kind: "function",
-    name: "__eq__",
-    genericParameters: Object.freeze([]),
-    parameters: Object.freeze([Object.freeze({
-      name: "other",
-      type: owner,
-      convention: "imm" as const,
-    })]),
-    resultType: Object.freeze({ kind: "source-primitive", name: "bool" }),
-    asynchronous: false,
-    raises: false,
-    self: "self",
-    statements: Object.freeze([Object.freeze({
-      kind: "return" as const,
-      expression: Object.freeze({
-        kind: "binary" as const,
-        operator: "is",
-        left: Object.freeze({
-          kind: "member" as const,
-          receiver: Object.freeze({ kind: "path" as const, path: "self" }),
-          name: "_state",
-        }),
-        right: Object.freeze({
-          kind: "member" as const,
-          receiver: Object.freeze({ kind: "path" as const, path: "other" }),
-          name: "_state",
-        }),
-      }),
-    })]),
   });
 }
 

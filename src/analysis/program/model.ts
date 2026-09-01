@@ -203,6 +203,7 @@ export type MojoModuleInitializationStep =
     };
 
 export interface MojoAnalyzedModule {
+  readonly id: string;
   readonly sourceFile: SourceFile;
   readonly stateName: string;
   readonly createStateName: string;
@@ -663,6 +664,7 @@ export interface MojoProgramQueries {
   bindingPatternSelection(declaration: Node): MojoBindingPatternSelection | undefined;
   returnValueTransfer(expression: Node): boolean;
   moduleForSourceFile(sourceFile: SourceFile): MojoAnalyzedModule | undefined;
+  moduleForId(id: string): MojoAnalyzedModule | undefined;
   moduleBinding(referenceOrDeclaration: Node): MojoAnalyzedModuleBinding | undefined;
   locationStorage(referenceOrDeclaration: Node): {
     readonly declaration: Node;
