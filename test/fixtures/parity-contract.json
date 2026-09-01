@@ -370,7 +370,9 @@
       "source": "if (value instanceof Dog) return (value as Dog).name;",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain checker-selected conversions and generated downcast routes",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "note": "Checker-selected discriminant refinement and authored assertions retain one exact closed-union target route without changing runtime representation."
     },
     {
       "id": "expressions.callable-values",
@@ -378,9 +380,9 @@
       "source": "const operation = condition ? add : subtract; return operation(2, 1);",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact capture and callable ABI facts",
-      "status": "partial",
+      "status": "matched",
       "proof": "test/integration/generated-mojo/language-parity.test.mjs",
-      "note": "Expression-bodied arrows now retain exact parameter, result, direct-call, and immutable-capture contracts. Block-bodied, async, mutable-receiver, generic, and contextual object callables remain open."
+      "note": "Function references, conditional callable values, expression and block-bodied closures, immutable and mutable captures, callable fields, and exact direct-call ABIs are sealed and lowered."
     },
     {
       "id": "types.primitives-aliases",

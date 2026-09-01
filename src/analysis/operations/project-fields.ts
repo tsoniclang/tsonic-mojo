@@ -24,7 +24,6 @@ export function analyzeMojoProjectProperty(
   selectedSubjects: readonly object[],
   ast: AstReader,
 ): MojoProjectFieldAnalysis {
-  if (source.callCallee) return { kind: "not-project-field" };
   if (source.accessMode === "delete") {
     return {
       kind: "unsupported",

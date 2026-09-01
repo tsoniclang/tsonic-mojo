@@ -830,3 +830,49 @@ test("readonly project index signatures reject exact selected writes", () => {
     },
   }), /TS2542/u);
 });
+
+test("conditional callable values and callable fields retain one exact ABI", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        "interface Operation { run: (left: i32, right: i32) => i32; }",
+        "function add(left: i32, right: i32): i32 { return left + right; }",
+        "function subtract(left: i32, right: i32): i32 { return left - right; }",
+        "function apply(condition: boolean): i32 {",
+        "  const selected = condition ? add : subtract;",
+        "  const operation: Operation = { run: selected };",
+        "  return operation.run(4, 2);",
+        "}",
+        "export function main(): void { if (apply(true) !== 6 || apply(false) !== 2) return; }",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("def apply"));
+  assert.ok(source);
+  assert.match(source.text, /Callable\[Tuple\[Int32, Int32\], Int32\]/u);
+  assert.match(source.text, /operation\._state\[\]\.run\.call\(\(Int32\(4\), Int32\(2\)\)\)/u);
+});
+
+test("assertions consume the checker-selected narrowed union route", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        'interface Dog { kind: "dog"; name: string; }',
+        'interface Cat { kind: "cat"; lives: i32; }',
+        "type Pet = Dog | Cat;",
+        "function name(pet: Pet): string {",
+        '  if (pet.kind === "dog") return (pet as Dog).name;',
+        '  return "cat";',
+        "}",
+        "export function main(): void {}",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("def name"));
+  assert.ok(source);
+  assert.match(source.text, /return \(pet\[Dog\]\)\._state\[\]\.name/u);
+});
