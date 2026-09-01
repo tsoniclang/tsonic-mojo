@@ -1,7 +1,7 @@
 import type { Node, ResolvedSourceCallInfo, Type } from "@tsonic/tsts";
-import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
+import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoAnalyzedCallArgument } from "../program/model.js";
 
@@ -31,6 +31,7 @@ export function analyzeArguments(
   resolve: (type: Type) => MojoTargetTypeRef | undefined,
   expressionTypes: WeakMap<Node, MojoTargetTypeRef>,
   conversionOverrides?: ReadonlyMap<number, MojoValueConversion>,
+  contextualAggregate?: (expression: Node, targetType: MojoTargetTypeRef) => boolean,
 ): { readonly kind: "resolved"; readonly arguments: readonly MojoAnalyzedCallArgument[] } |
   { readonly kind: "unsupported"; readonly code: string; readonly reason: string } {
   if (parameterTypes.length !== targetArguments.length) {
@@ -61,8 +62,15 @@ export function analyzeArguments(
     }
     const parameterType = parameterTypes[parameterIndex];
     const target = targetArguments[parameterIndex];
-    const sourceType = expressionTypes.get(sourceArgument.expression) ??
+    const selectedSourceType = expressionTypes.get(sourceArgument.expression) ??
       resolve(bindings[0]!.selectedArgumentType);
+    const sourceType = selectedSourceType ??
+      (parameterType !== undefined && contextualAggregate?.(sourceArgument.expression, parameterType)
+        ? parameterType
+        : undefined);
+    if (selectedSourceType === undefined && sourceType !== undefined) {
+      expressionTypes.set(sourceArgument.expression, sourceType);
+    }
     if (parameterType === undefined || target === undefined || sourceType === undefined) {
       return {
         kind: "unsupported",
@@ -107,11 +115,9 @@ export function analyzeArguments(
 }
 
 export function closeResultConversion(
-  callNode: Node,
   targetResult: MojoTargetTypeRef,
   sourceResult: Type,
   resolve: (type: Type) => MojoTargetTypeRef | undefined,
-  conversions: MojoConversionIndex,
 ): { readonly kind: "resolved"; readonly conversion: MojoValueConversion } |
   { readonly kind: "unsupported"; readonly code: string; readonly reason: string } {
   const sourceCarrier = resolve(sourceResult);
@@ -122,8 +128,19 @@ export function closeResultConversion(
       reason: "Selected source call result has no closed Mojo carrier.",
     };
   }
-  const conversion = conversions.record(callNode, targetResult, sourceCarrier);
+  const conversion = sourceFutureShapeMatches(targetResult, sourceCarrier)
+    ? { kind: "resolved" as const, conversion: Object.freeze({ kind: "identity" as const }) }
+    : classifyMojoValueConversion(targetResult, sourceCarrier);
   return conversion.kind === "unsupported"
     ? { kind: "unsupported", code: "MOJO_CALL_RESULT_CONVERSION_UNPROVEN", reason: conversion.reason }
     : { kind: "resolved", conversion: conversion.conversion };
+}
+
+function sourceFutureShapeMatches(
+  target: MojoTargetTypeRef,
+  source: MojoTargetTypeRef,
+): boolean {
+  return target.kind === "future" && source.kind === "future" &&
+    target.domain === source.domain &&
+    mojoTargetTypeEquals(target.output, source.output);
 }

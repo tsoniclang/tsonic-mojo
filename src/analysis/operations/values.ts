@@ -2,7 +2,7 @@ import type { Node } from "@tsonic/tsts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
-import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
+import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 import type { MojoValueSelection } from "../program/model.js";
 import { providerOwnerMatches } from "../../policy/types/resolution.js";
 import { instantiateMojoProviderConstantOperation } from "../../policy/operations/provider-instantiation.js";
@@ -18,7 +18,6 @@ export function analyzeMojoProviderValue(
   selectedType: MojoTargetTypeRef,
   source: TargetSourceProgram,
   providerSemantics: MojoProviderSemantics,
-  conversions: MojoConversionIndex,
 ): MojoValueAnalysis {
   const reference = source.navigation.sourceReferenceFor(expression);
   const identity = selectedProviderDeclarationIdentity(source, [
@@ -48,7 +47,7 @@ export function analyzeMojoProviderValue(
   if (instantiated.kind === "unsupported") {
     return { kind: "unsupported", code: "MOJO_PROVIDER_VALUE_NOT_CLOSED", reason: instantiated.reason };
   }
-  const conversion = conversions.record(expression, instantiated.operation.resultType, selectedType);
+  const conversion = classifyMojoValueConversion(instantiated.operation.resultType, selectedType);
   return conversion.kind === "unsupported"
     ? { kind: "unsupported", code: "MOJO_PROVIDER_VALUE_CONVERSION_UNPROVEN", reason: conversion.reason }
     : {

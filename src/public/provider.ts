@@ -18,6 +18,7 @@ export type {
 } from "../target-model/operations/model.js";
 export {
   mojoCallableTargetType,
+  mojoFutureTargetType,
   mojoListTargetType,
   mojoNamedTargetType,
   mojoOptionalTargetType,

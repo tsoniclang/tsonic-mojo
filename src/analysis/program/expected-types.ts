@@ -72,7 +72,7 @@ export function expectedExpressionType(
   return undefined;
 }
 
-function callArgumentExpectedType(
+export function callArgumentExpectedType(
   selection: MojoCallSelection | undefined,
   expression: Node,
 ): MojoTargetTypeRef | undefined {
@@ -91,6 +91,24 @@ function callArgumentExpectedType(
         return selection.pointerExpression === expression ? selection.pointerType : undefined;
     }
   }
+  if (selection.kind === "explicit-safety") {
+    return selection.form === "expression" && selection.expression === expression
+      ? selection.resultType
+      : undefined;
+  }
+  if (selection.kind === "native-pointer") {
+    switch (selection.operation) {
+      case "load":
+        return selection.pointerExpression === expression ? selection.pointerType : undefined;
+      case "store":
+        if (selection.pointerExpression === expression) return selection.pointerType;
+        return selection.valueExpression === expression ? selection.valueType : undefined;
+      case "offset":
+        if (selection.pointerExpression === expression) return selection.pointerType;
+        return selection.offsetExpression === expression ? selection.offsetType : undefined;
+    }
+  }
+  if (selection.kind !== "typed-location") return undefined;
   switch (selection.operation) {
     case "address-of":
       return undefined;

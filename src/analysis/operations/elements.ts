@@ -174,7 +174,7 @@ function analyzeSourceProfileElement(
   }
   const readResultConversion = sourceRead === undefined
     ? undefined
-    : context.conversions.record(source.expression, sourceRead, sourceRead);
+    : classifyMojoValueConversion(sourceRead, sourceRead);
   if (readResultConversion?.kind === "unsupported") {
     return unsupported("MOJO_SOURCE_PROFILE_ELEMENT_READ_CONFLICT", readResultConversion.reason);
   }
@@ -275,7 +275,7 @@ function analyzeProviderElement(
     if (sourceRead === undefined) {
       return unsupported("MOJO_PROVIDER_ELEMENT_READ_CARRIER_NOT_CLOSED", "Selected provider element read has no exact source carrier.");
     }
-    const conversion = context.conversions.record(source.expression, readOperation.resultType, sourceRead);
+    const conversion = classifyMojoValueConversion(readOperation.resultType, sourceRead);
     if (conversion.kind === "unsupported") {
       return unsupported("MOJO_PROVIDER_ELEMENT_READ_CONVERSION_UNPROVEN", conversion.reason);
     }
@@ -328,7 +328,7 @@ function analyzeNativeElement(
   let expressionType: MojoTargetTypeRef;
   let readResultConversion;
   if (source.sourceReadType !== undefined) {
-    const conversion = conversions.record(source.expression, target.valueType, target.valueType);
+    const conversion = classifyMojoValueConversion(target.valueType, target.valueType);
     expressionType = target.valueType;
     readResultConversion = conversion.kind === "resolved" ? conversion.conversion : undefined;
   } else {

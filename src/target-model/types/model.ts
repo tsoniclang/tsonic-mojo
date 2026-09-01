@@ -33,6 +33,7 @@ export type MojoTargetTypeRef =
       readonly kind: "future";
       readonly domain: "native" | "js";
       readonly output: MojoTargetTypeRef;
+      readonly raises: boolean;
     }
   | { readonly kind: "optional"; readonly value: MojoTargetTypeRef }
   | { readonly kind: "union"; readonly members: readonly MojoTargetTypeRef[] }

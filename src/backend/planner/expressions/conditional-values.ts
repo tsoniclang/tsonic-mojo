@@ -169,14 +169,16 @@ export function planAwait(
     );
     return undefined;
   }
-  registerMojoSymbolImport(context, ["tsonic_runtime"], "create_task");
+  const taskFactory = type.raises ? "create_raising_task" : "create_task";
+  registerMojoSymbolImport(context, ["tsonic_runtime"], taskFactory);
+  const task = Object.freeze({
+    kind: "call" as const,
+    callee: Object.freeze({ kind: "path" as const, path: taskFactory }),
+    arguments: Object.freeze([Object.freeze({ value: plan.value })]),
+  });
   return withMojoValue(plan.before, {
     kind: "await",
-    expression: Object.freeze({
-      kind: "call",
-      callee: Object.freeze({ kind: "path", path: "create_task" }),
-      arguments: Object.freeze([Object.freeze({ value: plan.value })]),
-    }),
+    expression: task,
   });
 }
 

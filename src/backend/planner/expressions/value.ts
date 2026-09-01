@@ -22,9 +22,9 @@ import {
 import type { MojoPlanningContext } from "../program/context.js";
 import {
   planMojoCall,
-  planMojoElement,
-  planMojoProperty,
-} from "./operations.js";
+} from "./calls.js";
+import { planMojoElement } from "./elements.js";
+import { planMojoProperty } from "./properties.js";
 import { planMojoLeafExpression } from "./leaves.js";
 import {
   applyMojoConversion,

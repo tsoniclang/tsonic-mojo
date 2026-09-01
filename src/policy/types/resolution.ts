@@ -4,11 +4,7 @@ import {
   rawPointerFactKey,
   sourcePrimitiveFactKey,
 } from "@tsonic/tsts";
-import type {
-  AstReader,
-  Node,
-  Type,
-} from "@tsonic/tsts";
+import type { AstReader, Node, Type } from "@tsonic/tsts";
 import { tsonicFixedArrayFactKey } from "@tsonic/source-core/facts";
 import type { SourceFileSemantics } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics, MojoProviderTypeRow } from "../../providers/packages/model.js";
@@ -243,6 +239,7 @@ function resolveMojoTargetTypeWithState(
             type: Object.freeze({
               kind: "future",
               domain: sourceProfile.profile,
+              raises: false,
               output: output.type,
             }),
           };

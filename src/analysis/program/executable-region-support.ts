@@ -92,7 +92,6 @@ export function analyzeExecutableRegionProviderValues(
       selectedType,
       input.source,
       input.providerSemantics,
-      input.conversions,
     );
     if (value.kind === "unsupported") {
       input.diagnostics.push(diagnostic(value.code, value.reason, node));

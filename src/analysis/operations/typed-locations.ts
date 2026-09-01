@@ -5,6 +5,7 @@ import type {
   ResolvedSourceCallInfo,
 } from "@tsonic/tsts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
+import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoCallSelection } from "../program/model.js";
 
@@ -17,6 +18,7 @@ export interface MojoTypedLocationAnalysisInput {
   readonly call: Node;
   readonly sourceCall: ResolvedSourceCallInfo;
   readonly source: TargetSourceProgram;
+  readonly expressionTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly locationStorageNames: WeakMap<Node, string>;
   readonly resolveType: (
     type: import("@tsonic/tsts").Type,
@@ -51,14 +53,24 @@ export function analyzeMojoTypedLocation(
       `The selected '${fact.operation}' arguments do not match the finalized pointer-operation evidence.`,
     );
   }
-  const pointeeType = input.resolveType(fact.pointeeType, fact.explicitPointeeTypeNode);
+  const exactLocation = exactLocationType(fact, input.expressionTypes);
+  const exactPointee = exactOperationPointee(fact, exactLocation, input.expressionTypes);
+  const resolvedPointee = input.resolveType(fact.pointeeType, fact.explicitPointeeTypeNode);
+  const pointeeType = exactPointee ?? resolvedPointee;
   if (pointeeType === undefined) {
     return unsupported(
       "MOJO_POINTER_POINTEE_CARRIER_NOT_PROVEN",
       `The selected '${fact.operation}' operation has no exact Mojo pointee carrier.`,
     );
   }
-  const locationType = mojoLocationTargetType(pointeeType);
+  if (exactPointee !== undefined && fact.explicitPointeeTypeNode !== undefined &&
+    (resolvedPointee === undefined || !mojoTargetTypeEquals(exactPointee, resolvedPointee))) {
+    return unsupported(
+      "MOJO_POINTER_POINTEE_CARRIER_CONFLICT",
+      `The selected '${fact.operation}' pointer and authored pointee require different Mojo carriers.`,
+    );
+  }
+  const locationType = exactLocation ?? mojoLocationTargetType(pointeeType);
   switch (fact.operation) {
     case "address-of": {
       const declaration = directStorageDeclaration(fact, input.source);
@@ -123,6 +135,47 @@ export function analyzeMojoTypedLocation(
         `The pinned Mojo runtime has no exact '${fact.operation}' identity contract.`,
       );
   }
+}
+
+function exactOperationPointee(
+  fact: PointerOperationFact,
+  exactLocation: MojoTargetTypeRef | undefined,
+  expressionTypes: WeakMap<Node, MojoTargetTypeRef>,
+): MojoTargetTypeRef | undefined {
+  if (fact.operation === "address-of") return expressionTypes.get(fact.storageExpression);
+  if (fact.operation === "allocate") return expressionTypes.get(fact.initialExpression);
+  return locationPointee(exactLocation);
+}
+
+function exactLocationType(
+  fact: PointerOperationFact,
+  expressionTypes: WeakMap<Node, MojoTargetTypeRef>,
+): MojoTargetTypeRef | undefined {
+  switch (fact.operation) {
+    case "load":
+    case "store":
+    case "hash-pointer":
+    case "project-pointer":
+      return expressionTypes.get(fact.pointerExpression);
+    case "bind-pointer":
+      return undefined;
+    case "equal-pointer": {
+      const left = expressionTypes.get(fact.leftExpression);
+      const right = expressionTypes.get(fact.rightExpression);
+      return left !== undefined && right !== undefined && mojoTargetTypeEquals(left, right)
+        ? left
+        : undefined;
+    }
+    case "address-of":
+    case "allocate":
+      return undefined;
+  }
+}
+
+function locationPointee(type: MojoTargetTypeRef | undefined): MojoTargetTypeRef | undefined {
+  if (type?.kind !== "target-named" || type.id !== "tsonic.mojo.runtime.Location") return undefined;
+  const argument = type.genericArguments?.[0];
+  return argument?.kind === "type" ? argument.type : undefined;
 }
 
 function directStorageDeclaration(

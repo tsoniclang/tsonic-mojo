@@ -84,9 +84,10 @@ export function mojoDictionaryTargetType(
 
 export function mojoFutureTargetType(
   output: MojoTargetTypeRef,
-  domain: "native" | "js" = "native",
+  domain: "native" | "js",
+  raises: boolean,
 ): MojoTargetTypeRef {
-  return Object.freeze({ kind: "future", domain, output });
+  return Object.freeze({ kind: "future", domain, output, raises });
 }
 
 export function mojoOptionalTargetType(value: MojoTargetTypeRef): MojoTargetTypeRef {

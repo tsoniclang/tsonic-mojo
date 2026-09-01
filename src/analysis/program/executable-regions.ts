@@ -14,9 +14,12 @@ import type { MojoConversionIndex } from "../../policy/conversions/selection.js"
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import { analyzeMojoCall } from "../operations/calls.js";
+import { mojoCallResultType } from "../operations/call-results.js";
 import { analyzeMojoElementAccess } from "../operations/elements.js";
 import { analyzeMojoIteration } from "../operations/iterations.js";
 import { analyzeMojoBindingPattern } from "../bindings/patterns.js";
+import { mojoLocationTargetType } from "../operations/typed-locations.js";
+import { pointerOperationFactKey } from "@tsonic/tsts";
 import {
   analyzeMojoProjectProperty,
   analyzeMojoProviderProperty,
@@ -320,10 +323,7 @@ function analyzeCall(
   }
   if (analyzed.dependency !== undefined) dependencies.add(analyzed.dependency);
   input.callSelections.set(node, analyzed.selection);
-  if (analyzed.selection.kind === "project" || analyzed.selection.kind === "callable" ||
-    analyzed.selection.kind === "typed-location") {
-    input.expressionTypes.set(node, analyzed.selection.resultType);
-  }
+  input.expressionTypes.set(node, mojoCallResultType(analyzed.selection));
 }
 
 function analyzeExpressionCarrier(
@@ -406,6 +406,21 @@ function resolveInferredBindingCarrier(
   input: MojoExecutableRegionAnalysisInput,
   semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
 ): MojoTargetTypeRef | undefined {
+  const pointer = input.source.sourceFacts.getFact(initializer, pointerOperationFactKey);
+  if (pointer?.operation === "address-of" || pointer?.operation === "allocate") {
+    const exactOperand = pointer.operation === "address-of"
+      ? (pointer.storageDeclaration === undefined
+          ? input.expressionTypes.get(pointer.storageExpression)
+          : input.bindingTypes.get(pointer.storageDeclaration))
+      : input.expressionTypes.get(pointer.initialExpression);
+    const pointee = exactOperand ?? resolveType(
+        pointer.pointeeType,
+        pointer.explicitPointeeTypeNode,
+        input,
+        semantics,
+      );
+    if (pointee !== undefined) return mojoLocationTargetType(pointee);
+  }
   return isErasedValueWrapper(initializer, input.source.ast)
     ? resolveErasedExpressionCarrier(initializer, input, semantics)
     : resolveType(semantics.types.expressionType(initializer), undefined, input, semantics);

@@ -12,6 +12,8 @@ import { selectMojoProviderCall } from "../../policy/operations/provider-selecti
 import { instantiateMojoProviderOperation } from "../../policy/operations/provider-instantiation.js";
 import { analyzeMojoTypedLocation } from "./typed-locations.js";
 import { analyzeMojoRawPointer } from "./raw-pointers.js";
+import { analyzeMojoExplicitSafety } from "./explicit-safety.js";
+import { analyzeMojoNativePointer } from "./native-pointers.js";
 import { selectMojoSourceProfileCallRow } from "../../policy/operations/source-profile-selection.js";
 import type { MojoSourceProfileParameterContract } from "../../policy/operations/source-profile-selection.js";
 import { selectMojoSourceProfileCallback } from "./source-profile-callbacks.js";
@@ -76,6 +78,27 @@ export function analyzeMojoCall(
   };
   const selectedDeclaration = sourceCall.sourceCallee.selectedDeclaration ??
     sourceCall.sourceCalleeAccess?.selectedDeclaration;
+  const explicitSafety = analyzeMojoExplicitSafety(
+    callNode,
+    sourceCall,
+    context.source,
+    resolve,
+  );
+  if (explicitSafety.kind === "unsupported") return explicitSafety;
+  if (explicitSafety.kind === "resolved") {
+    return { kind: "resolved", selection: explicitSafety.selection };
+  }
+  const nativePointer = analyzeMojoNativePointer({
+    call: callNode,
+    sourceCall,
+    source: context.source,
+    expressionTypes: context.expressionTypes,
+    resolveType: resolve,
+  });
+  if (nativePointer.kind === "unsupported") return nativePointer;
+  if (nativePointer.kind === "resolved") {
+    return { kind: "resolved", selection: nativePointer.selection };
+  }
   const rawPointer = analyzeMojoRawPointer({
     call: callNode,
     sourceCall,
@@ -91,6 +114,7 @@ export function analyzeMojoCall(
     call: callNode,
     sourceCall,
     source: context.source,
+    expressionTypes: context.expressionTypes,
     locationStorageNames: context.locationStorageNames,
     resolveType: resolve,
   });
@@ -102,7 +126,7 @@ export function analyzeMojoCall(
     ? undefined
     : context.functionByDeclaration.get(selectedDeclaration);
   if (projectFunction !== undefined) {
-    return analyzeProjectCall(callNode, sourceCall, projectFunction, resolve, context);
+    return analyzeProjectCall(sourceCall, projectFunction, resolve, context);
   }
   const directlySelectedClass = selectedDeclaration === undefined
     ? undefined
@@ -115,11 +139,10 @@ export function analyzeMojoCall(
       ? context.classByTypeId.get(selectedResultCarrier.id)
       : undefined);
   if (projectClass !== undefined) {
-    return analyzeImplicitProjectConstruction(callNode, sourceCall, projectClass, resolve, context);
+    return analyzeImplicitProjectConstruction(sourceCall, projectClass, resolve);
   }
 
   const sourceProfile = analyzeSourceProfileCall(
-    callNode,
     sourceCall,
     resolve,
     context,
@@ -138,7 +161,7 @@ export function analyzeMojoCall(
     const callableType = context.expressionTypes.get(sourceCall.sourceCallee.expression) ??
       resolve(sourceCall.sourceCallee.type, sourceCall.sourceCallee.authoredTypeNode);
     return callableType?.kind === "callable"
-      ? analyzeCallableValueCall(callNode, sourceCall, callableType, resolve, context)
+      ? analyzeCallableValueCall(sourceCall, callableType, resolve, context)
       : {
           kind: "unsupported",
           code: "MOJO_CALL_TARGET_UNSUPPORTED",
@@ -172,6 +195,8 @@ export function analyzeMojoCall(
     target.arguments,
     resolve,
     context.expressionTypes,
+    undefined,
+    (expression) => context.source.ast.is.IsObjectLiteralExpression(expression),
   );
   if (arguments_.kind === "unsupported") return arguments_;
   const locationConflict = locationBackedMutableArgument(
@@ -181,11 +206,9 @@ export function analyzeMojoCall(
   );
   if (locationConflict !== undefined) return locationConflict;
   const result = closeResultConversion(
-    callNode,
     instantiated.operation.resultType,
     sourceCall.sourceResultType,
     resolve,
-    context.conversions,
   );
   if (result.kind === "unsupported") return result;
   let receiverConversion;
@@ -232,7 +255,6 @@ export function analyzeMojoCall(
 }
 
 function analyzeSourceProfileCall(
-  callNode: Node,
   sourceCall: ResolvedSourceCallInfo,
   resolve: (type: Type, authoredTypeNode?: Node) => MojoTargetTypeRef | undefined,
   context: MojoCallAnalysisContext,
@@ -327,11 +349,9 @@ function analyzeSourceProfileCall(
     };
   }
   const result = closeResultConversion(
-    callNode,
     resultType,
     sourceCall.sourceResultType,
     resolve,
-    context.conversions,
   );
   if (result.kind === "unsupported") return result;
   const genericArguments: MojoTargetGenericArgument[] = [];
@@ -468,7 +488,6 @@ function sourceProfileParameterType(
 }
 
 function analyzeCallableValueCall(
-  callNode: Node,
   sourceCall: ResolvedSourceCallInfo,
   callableType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
   resolve: (type: Type, authoredTypeNode?: Node) => MojoTargetTypeRef | undefined,
@@ -516,7 +535,7 @@ function analyzeCallableValueCall(
   );
   if (locationConflict !== undefined) return locationConflict;
   const targetResult = callableType.result;
-  const result = closeCanonicalProjectResult(callNode, targetResult, context.conversions);
+  const result = closeCanonicalProjectResult(targetResult);
   if (result.kind === "unsupported") return result;
   return {
     kind: "resolved",

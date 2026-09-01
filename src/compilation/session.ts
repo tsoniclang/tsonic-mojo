@@ -18,6 +18,7 @@ import {
   mergeMojoProviderSemantics,
 } from "../providers/packages/semantics.js";
 import { createMojoCompilerProviderSession } from "../providers/compiler/session.js";
+import { mojoBuiltInSourceTypeSemantics } from "../providers/builtins/source-types.js";
 import { createMojoSourceSemanticsExtension } from "../source/extension/source-extension.js";
 import { mojoSourceSemanticsModules } from "../source/profiles/source-modules.js";
 import {
@@ -46,7 +47,10 @@ export function createMojoCompilationSession(
     context.projectDirectory,
     context.paths.targetOutputRoot,
   );
-  const providerSemantics = collectMojoProviderSemantics(context.capabilities);
+  const providerSemantics = mergeMojoProviderSemantics(
+    mojoBuiltInSourceTypeSemantics(),
+    collectMojoProviderSemantics(context.capabilities),
+  );
   const compilerProviderSession = createMojoCompilerProviderSession(configuration);
   const jsEnabled = context.selectedSurfaceIds.includes(mojoJsSourceProfileOwnerId);
   let state: MojoCompilationSessionState = "created";

@@ -101,7 +101,12 @@ export function projectFunctionSignature(
       })
     : result.source;
   const targetResult = function_.asynchronous
-    ? Object.freeze({ kind: "future" as const, domain: "native" as const, output: result.target })
+    ? Object.freeze({
+        kind: "future" as const,
+        domain: "native" as const,
+        output: result.target,
+        raises: function_.raises,
+      })
     : result.target;
   const parameters: ProviderParameterDeclaration[] = projectedArguments.map(({ argument, type }) =>
     Object.freeze({

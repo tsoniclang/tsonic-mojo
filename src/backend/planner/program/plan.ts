@@ -243,9 +243,26 @@ function planBinaryEntry(
     callee: Object.freeze({ kind: "path" as const, path }),
     arguments: Object.freeze([]),
   });
-  const maybeAwait = (path: string, asynchronous: boolean) => asynchronous
-    ? Object.freeze({ kind: "await" as const, expression: call(path) })
+  const taskFactory = (raises: boolean): string => raises
+    ? "create_raising_task"
+    : "create_task";
+  const maybeAwait = (path: string, asynchronous: boolean, raises: boolean) => asynchronous
+    ? Object.freeze({
+        kind: "await" as const,
+        expression: Object.freeze({
+          kind: "call" as const,
+          callee: Object.freeze({ kind: "path" as const, path: taskFactory(raises) }),
+          arguments: Object.freeze([Object.freeze({ value: call(path) })]),
+        }),
+      })
     : call(path);
+  const taskFactories = [...new Set([
+    ...(asynchronousBootstrap ? [taskFactory(function_.raises || analyzedEntry.raises)] : []),
+    ...(analyzedEntry.runtimeInitializationRequired && analyzedEntry.asynchronous
+      ? [taskFactory(analyzedEntry.raises)]
+      : []),
+    ...(function_.asynchronous ? [taskFactory(function_.raises)] : []),
+  ])];
   const bootstrap: MojoFunctionDeclaration | undefined = asynchronousBootstrap
     ? Object.freeze({
         kind: "function",
@@ -259,12 +276,12 @@ function planBinaryEntry(
           ...(analyzedEntry.runtimeInitializationRequired
             ? [Object.freeze({
                 kind: "expression" as const,
-                expression: maybeAwait(initializerName, analyzedEntry.asynchronous),
+                expression: maybeAwait(initializerName, analyzedEntry.asynchronous, analyzedEntry.raises),
               })]
             : []),
           Object.freeze({
             kind: "expression" as const,
-            expression: maybeAwait(importedName, function_.asynchronous),
+            expression: maybeAwait(importedName, function_.asynchronous, function_.raises),
           }),
         ]),
       })
@@ -281,9 +298,7 @@ function planBinaryEntry(
         ? [Object.freeze({
             kind: "symbols" as const,
             modulePath: Object.freeze(["tsonic_runtime"]),
-            symbols: Object.freeze([Object.freeze({
-              name: function_.raises || analyzedEntry.raises ? "create_raising_task" : "create_task",
-            })]),
+            symbols: Object.freeze(taskFactories.map((name) => Object.freeze({ name }))),
           })]
         : []),
       ...uniqueModulePaths(program.binaryEpilogues.map((epilogue) => epilogue.modulePath))
@@ -312,7 +327,7 @@ function planBinaryEntry(
                     kind: "call" as const,
                     callee: Object.freeze({
                       kind: "path" as const,
-                      path: function_.raises || analyzedEntry.raises ? "create_raising_task" : "create_task",
+                      path: taskFactory(function_.raises || analyzedEntry.raises),
                     }),
                     arguments: Object.freeze([Object.freeze({ value: call(bootstrapName) })]),
                   }),

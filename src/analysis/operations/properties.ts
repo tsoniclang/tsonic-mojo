@@ -196,7 +196,7 @@ export function analyzeMojoProviderProperty(
         reason: "Selected provider module constant has no exact source carrier.",
       };
     }
-    const conversion = context.conversions.record(source.expression, instantiated.operation.resultType, selectedRead);
+    const conversion = classifyMojoValueConversion(instantiated.operation.resultType, selectedRead);
     return conversion.kind === "unsupported"
       ? { kind: "unsupported", code: "MOJO_PROVIDER_CONSTANT_CONVERSION_UNPROVEN", reason: conversion.reason }
       : {
@@ -267,7 +267,7 @@ export function analyzeMojoProviderProperty(
         reason: "Selected provider property read has no exact source carrier.",
       };
     }
-    const conversion = context.conversions.record(source.expression, read.operation.resultType, selectedRead);
+    const conversion = classifyMojoValueConversion(read.operation.resultType, selectedRead);
     if (conversion.kind === "unsupported") {
       return { kind: "unsupported", code: "MOJO_PROVIDER_PROPERTY_READ_CONVERSION_UNPROVEN", reason: conversion.reason };
     }
@@ -350,7 +350,7 @@ function analyzeSourceProfileProperty(
       genericParameters: Object.freeze([]),
       raises: false,
     });
-    const conversion = context.conversions.record(source.expression, resultType, resultType);
+    const conversion = classifyMojoValueConversion(resultType, resultType);
     return conversion.kind === "unsupported"
       ? { kind: "unsupported", code: "MOJO_SOURCE_PROFILE_CONSTANT_CONVERSION_UNPROVEN", reason: conversion.reason }
       : {
@@ -433,8 +433,7 @@ function analyzeSourceProfileProperty(
       });
   const readResultConversion = readType === undefined
     ? undefined
-    : context.conversions.record(
-        source.expression,
+    : classifyMojoValueConversion(
         access.resultType ?? readType,
         readType,
       );

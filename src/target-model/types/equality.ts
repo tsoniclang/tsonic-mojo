@@ -42,6 +42,7 @@ export function mojoTargetTypeEquals(
         mojoTargetTypeEquals(left.value, right.value);
     case "future":
       return right.kind === "future" && left.domain === right.domain &&
+        left.raises === right.raises &&
         mojoTargetTypeEquals(left.output, right.output);
     case "optional":
       return right.kind === "optional" && mojoTargetTypeEquals(left.value, right.value);

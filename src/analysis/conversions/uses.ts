@@ -25,10 +25,12 @@ import {
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
 import type {
+  MojoCallSelection,
   MojoElementSelection,
   MojoObjectLiteralSelection,
   MojoPropertySelection,
 } from "../program/model.js";
+import { callArgumentExpectedType } from "../program/expected-types.js";
 import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
 import { isMojoAssignmentOperator } from "../program/syntax-validation.js";
 
@@ -38,6 +40,7 @@ export function recordMojoExecutableRegionConversionUses(
   ast: AstReader,
   bindingTypes: WeakMap<Node, MojoTargetTypeRef>,
   expressionTypes: WeakMap<Node, MojoTargetTypeRef>,
+  callSelections: WeakMap<Node, MojoCallSelection>,
   propertySelections: WeakMap<Node, MojoPropertySelection>,
   elementSelections: WeakMap<Node, MojoElementSelection>,
   objectLiteralSelections: WeakMap<Node, MojoObjectLiteralSelection>,
@@ -157,7 +160,13 @@ export function recordMojoExecutableRegionConversionUses(
     }
     if (ast.is.IsCallExpression(expression) || ast.is.IsNewExpression(expression)) {
       visitExpression(Node_Expression(ast, expression));
-      for (const argument of ast.arguments(expression)) visitExpression(argument);
+      const selection = callSelections.get(expression);
+      for (const argument of ast.arguments(expression)) {
+        if (argument === undefined) continue;
+        const expected = callArgumentExpectedType(selection, argument);
+        if (expected !== undefined) record(argument, expected);
+        visitExpression(argument);
+      }
       return;
     }
     if (ast.is.IsBinaryExpression(expression)) {

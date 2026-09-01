@@ -176,7 +176,19 @@ function planModuleInitializer(
     initialization.push(Object.freeze({
       kind: "expression",
       expression: target.asynchronous
-        ? Object.freeze({ kind: "await", expression: call })
+        ? Object.freeze({
+            kind: "await",
+            expression: Object.freeze({
+              kind: "call",
+              callee: Object.freeze({
+                kind: "path",
+                path: target.raises
+                  ? "tsonic_runtime.create_raising_task"
+                  : "tsonic_runtime.create_task",
+              }),
+              arguments: Object.freeze([Object.freeze({ value: call })]),
+            }),
+          })
         : call,
     }));
   }

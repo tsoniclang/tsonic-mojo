@@ -2,6 +2,7 @@ import type { ResolvedSourcePropertyAccessInfo } from "@tsonic/tsts";
 import { instantiateMojoProviderConstantOperation } from "../../policy/operations/provider-instantiation.js";
 import { selectedProviderDeclarationIdentity } from "../../policy/operations/provider-selection.js";
 import { providerOwnerMatches } from "../../policy/types/resolution.js";
+import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 import type { MojoSelectedProviderOperation } from "../../target-model/operations/selection.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type {
@@ -72,11 +73,7 @@ export function analyzeStaticProviderProperty(
         reason: "Selected static provider read has no exact source carrier.",
       };
     }
-    const conversion = context.conversions.record(
-      source.expression,
-      read.operation.resultType,
-      selectedRead,
-    );
+    const conversion = classifyMojoValueConversion(read.operation.resultType, selectedRead);
     if (conversion.kind === "unsupported") {
       return {
         kind: "unsupported",

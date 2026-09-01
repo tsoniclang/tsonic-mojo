@@ -26,6 +26,31 @@ test("module initialization is source ordered, dependency ordered, and idempoten
   assert.match(entry.text, /initializeTsonicModule/u);
 });
 
+test("top-level await propagates one asynchronous module bootstrap", () => {
+  const result = compileMojo({
+    files: {
+      "value.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        "async function load(): Promise<i32> { return 7; }",
+        "export const value: i32 = await load();",
+      ].join("\n"),
+      "index.ts": [
+        'import { value } from "./value.js";',
+        "export function main(): void { if (value !== 7) return; }",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const sources = artifactTexts(result);
+  const value = sources.find(({ path }) => path.endsWith("value.mojo"));
+  const entry = sources.find(({ path }) => path.endsWith("main.mojo"));
+  assert.ok(value);
+  assert.ok(entry);
+  assert.match(value.text, /async def initializeTsonicModule/u);
+  assert.match(value.text, /await create_task\(load\(\)\)/u);
+  assert.match(entry.text, /create_task\(__tsonic_async_entry\(\)\)\.wait\(\)/u);
+});
+
 test("class static fields and blocks share one exact module-state path", () => {
   const result = compileMojo({
     files: {
@@ -599,6 +624,65 @@ test("asynchronous iteration rejects at the pinned Mojo language boundary", () =
   });
   assert.equal(result.artifacts.length, 0);
   assert.ok(result.diagnostics.some(({ code }) => code === "MOJO_ASYNC_ITERATION_NATIVE_LIMIT"));
+});
+
+test("typed locations retain exact mutable storage identity", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        'import { addressOf, loadPointer, storePointer } from "@tsonic/core/lang.js";',
+        'import type { int32 } from "@tsonic/core/types.js";',
+        "function increment(): int32 {",
+        "  let value: int32 = 1;",
+        "  const location = addressOf(value);",
+        "  storePointer(location, loadPointer(location) + 1);",
+        "  return value;",
+        "}",
+        "export function main(): void { if (increment() !== 2) return; }",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("def increment"));
+  assert.ok(source);
+  assert.match(source.text, /Location\[Int32\]/u);
+  assert.match(source.text, /\.read\(\)/u);
+  assert.match(source.text, /\.write\(/u);
+});
+
+test("native pointers lower only inside an exact explicit unsafe region", () => {
+  const source = [
+    'import { loadNativePointer, offsetNativePointer, storeNativePointer, unsafeContext } from "@tsonic/core/lang.js";',
+    'import type { NativePointer, int32, nativeInt } from "@tsonic/core/types.js";',
+    "export function copy(source: NativePointer<int32>, destination: NativePointer<int32>, offset: nativeInt): NativePointer<int32> {",
+    "  unsafeContext();",
+    "  storeNativePointer(destination, loadNativePointer(source));",
+    "  return offsetNativePointer(source, offset);",
+    "}",
+    "export function main(): void {}",
+  ].join("\n");
+  const result = compileMojo({ files: { "index.ts": source } });
+  assert.deepEqual(result.diagnostics, []);
+  const generated = artifactTexts(result).find(({ text }) => text.includes("def copy"));
+  assert.ok(generated);
+  assert.match(generated.text, /Pointer\[Int32, MutUnsafeAnyOrigin\]/u);
+  assert.match(generated.text, /destination\[\] = source\[\]/u);
+  assert.match(generated.text, /source\.unsafe_offset\(offset\)/u);
+  assert.doesNotMatch(generated.text, /loadNativePointer|storeNativePointer|offsetNativePointer|unsafeContext/u);
+
+  const rejected = compileMojo({
+    files: {
+      "index.ts": [
+        'import { loadNativePointer } from "@tsonic/core/lang.js";',
+        'import type { NativePointer, int32 } from "@tsonic/core/types.js";',
+        "export function read(pointer: NativePointer<int32>): int32 { return loadNativePointer(pointer); }",
+        "export function main(): void {}",
+      ].join("\n"),
+    },
+  });
+  assert.equal(rejected.artifacts.length, 0);
+  assert.ok(rejected.diagnostics.some(({ code }) =>
+    code === "MOJO_NATIVE_POINTER_UNSAFE_CONTEXT_REQUIRED"));
 });
 
 test("native length reads retain their exact numeric conversion in comparisons", () => {

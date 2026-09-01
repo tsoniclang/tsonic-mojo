@@ -132,7 +132,7 @@ export function mojoTypeName(
     case "dictionary": return `Dict[${requiredTypeName(type.key, currentModulePath)}, ${requiredTypeName(type.value, currentModulePath)}]`;
     case "future": return type.domain === "js"
       ? `tsonic_js.JsPromise[${requiredTypeName(type.output, currentModulePath)}]`
-      : `Coroutine[${requiredTypeName(type.output, currentModulePath)}, ...]`;
+      : `${type.raises ? "RaisingCoroutine" : "Coroutine"}[${requiredTypeName(type.output, currentModulePath)}, ...]`;
     case "optional": return `Optional[${requiredTypeName(type.value, currentModulePath)}]`;
     case "union": return `Variant[${type.members.map((member) => requiredTypeName(member, currentModulePath)).join(", ")}]`;
     case "tuple": return `Tuple[${type.elements.map((element) => requiredTypeName(element, currentModulePath)).join(", ")}]`;

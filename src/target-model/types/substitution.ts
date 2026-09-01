@@ -60,6 +60,7 @@ export function substituteMojoTargetType(
       return Object.freeze({
         kind: "future",
         domain: type.domain,
+        raises: type.raises,
         output: substituteMojoTargetType(type.output, substitutions),
       });
     case "optional":

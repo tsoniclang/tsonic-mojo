@@ -12,7 +12,6 @@ import {
   finishOptionalMojoOperation,
   orderCallArguments,
   orderMojoValues,
-  planProviderConstant,
   planSelectedArgument,
   prepareMojoReceiver,
   requiredMojoTypeName,
@@ -22,94 +21,9 @@ import type {
   MojoValuePlanner,
   PlannedMojoCallArgument,
 } from "./support.js";
-import { mojoModuleBindingRead, mojoModuleBindingWrite } from "../bindings/module-bindings.js";
-import { mojoTypeName, registerMojoTypeImports } from "../types/render.js";
+import { registerMojoTypeImports } from "../types/render.js";
 import { mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
-
-export function planMojoElement(
-  node: Node,
-  context: MojoPlanningContext,
-  planValue: MojoValuePlanner,
-  mode: "read" | "write",
-  stabilizeComponents = false,
-): MojoValuePlan | undefined {
-  const selection = context.program.queries.elementSelection(node);
-  if (selection === undefined || (mode === "read" ? selection.readType : selection.writeType) === undefined) {
-    appendMojoPlanningDiagnostic(
-      context,
-      "MOJO_ELEMENT_PLAN_MISSING",
-      `Element access has no sealed ${mode} selection.`,
-      node,
-    );
-    return undefined;
-  }
-  const sourceReceiverType = selection.kind === "native"
-    ? selection.receiverType
-    : selection.sourceReceiverType;
-  const preparedReceiver = prepareMojoReceiver(
-    selection.receiver,
-    sourceReceiverType,
-    selection.optionalChain,
-    context,
-    planValue,
-  );
-  const receiver = preparedReceiver === undefined
-    ? undefined
-    : selection.kind === "provider"
-      ? convertMojoValue(preparedReceiver.plan, selection.receiverConversion, context)
-      : preparedReceiver.plan;
-  const rawIndex = planValue(selection.index, context);
-  const index = rawIndex === undefined
-    ? undefined
-    : convertMojoValue(rawIndex, selection.indexConversion, context);
-  if (preparedReceiver === undefined || receiver === undefined || index === undefined) return undefined;
-  const operation = selection.kind === "provider"
-    ? mode === "read" ? selection.readOperation : selection.writeOperation
-    : undefined;
-  if (selection.kind === "provider") {
-    const expectedKind = mode === "read" ? "index-read" : "index-write";
-    if (operation?.target.kind !== expectedKind) {
-      appendMojoPlanningDiagnostic(
-        context,
-        "MOJO_PROVIDER_ELEMENT_FORM_INVALID",
-        `Provider element ${mode} has no sealed '${expectedKind}' form.`,
-        node,
-      );
-      return undefined;
-    }
-  }
-  const receiverType = selection.kind === "native" ? selection.receiverType : operation?.receiverType;
-  const indexType = selection.kind === "native" ? selection.indexType : operation?.parameterTypes[0];
-  if (receiverType === undefined || indexType === undefined) return undefined;
-  const ordered = orderMojoValues([
-    Object.freeze({ plan: receiver, type: receiverType, role: "element_receiver" }),
-    Object.freeze({ plan: index, type: indexType, role: "element_index" }),
-  ], context, stabilizeComponents);
-  const access: MojoExpression = selection.kind === "provider" &&
-      operation?.target.kind === "index-read" && operation.target.access.kind === "method"
-    ? {
-        kind: "method-call",
-        receiver: ordered.values[0]!,
-        name: operation.target.access.name,
-        arguments: Object.freeze([Object.freeze({ value: ordered.values[1]! })]),
-      }
-    : {
-        kind: "element",
-        receiver: ordered.values[0]!,
-        index: ordered.values[1]!,
-      };
-  const operationPlan = mode !== "read" || selection.readResultConversion === undefined
-    ? withMojoValue(ordered.before, access)
-    : convertMojoValue(
-        withMojoValue(ordered.before, access),
-        selection.readResultConversion,
-        context,
-      );
-  return operationPlan === undefined
-    ? undefined
-    : finishOptionalMojoOperation(node, preparedReceiver, operationPlan, context);
-}
 
 export function planMojoCall(
   node: Node,
@@ -120,6 +34,54 @@ export function planMojoCall(
   if (selection === undefined) {
     appendMojoPlanningDiagnostic(context, "MOJO_CALL_PLAN_MISSING", "Call expression has no sealed target selection.", node);
     return undefined;
+  }
+  if (selection.kind === "explicit-safety") {
+    return selection.form === "remaining-block"
+      ? mojoValue(Object.freeze({ kind: "tuple", elements: Object.freeze([]) }))
+      : planValue(selection.expression, context, selection.resultType);
+  }
+  if (selection.kind === "native-pointer") {
+    registerMojoTypeImports(selection.pointerType, context);
+    const pointer = planValue(selection.pointerExpression, context, selection.pointerType);
+    if (pointer === undefined) return undefined;
+    if (selection.operation === "load") {
+      return withMojoValue(pointer.before, Object.freeze({
+        kind: "postfix-deref",
+        expression: pointer.value,
+      }));
+    }
+    if (selection.operation === "offset") {
+      const offset = planValue(selection.offsetExpression, context, selection.offsetType);
+      if (offset === undefined) return undefined;
+      const ordered = orderMojoValues([
+        Object.freeze({ plan: pointer, type: selection.pointerType, role: "native_pointer" }),
+        Object.freeze({ plan: offset, type: selection.offsetType, role: "native_pointer_offset" }),
+      ], context);
+      return withMojoValue(ordered.before, Object.freeze({
+        kind: "method-call",
+        receiver: ordered.values[0]!,
+        name: "unsafe_offset",
+        arguments: Object.freeze([Object.freeze({ value: ordered.values[1]! })]),
+      }));
+    }
+    const value = planValue(selection.valueExpression, context, selection.valueType);
+    if (value === undefined) return undefined;
+    const ordered = orderMojoValues([
+      Object.freeze({ plan: pointer, type: selection.pointerType, role: "native_pointer" }),
+      Object.freeze({ plan: value, type: selection.valueType, role: "native_pointer_value" }),
+    ], context);
+    return withMojoValue(Object.freeze([
+      ...ordered.before,
+      Object.freeze({
+        kind: "assignment" as const,
+        left: Object.freeze({
+          kind: "postfix-deref" as const,
+          expression: ordered.values[0]!,
+        }),
+        operator: "=" as const,
+        right: ordered.values[1]!,
+      }),
+    ]), Object.freeze({ kind: "tuple", elements: Object.freeze([]) }));
   }
   if (selection.kind === "raw-pointer") {
     registerMojoModuleImport(context, Object.freeze(["tsonic_runtime"]));
@@ -444,148 +406,4 @@ export function planMojoCall(
   }
   const converted = applyMojoConversion(call, selection.resultConversion, context);
   return converted === undefined ? undefined : withMojoValue(before, converted);
-}
-
-export function planMojoProperty(
-  node: Node,
-  context: MojoPlanningContext,
-  planValue: MojoValuePlanner,
-  mode: "read" | "write",
-  stabilizeReceiver = false,
-): MojoValuePlan | undefined {
-  const selection = context.program.queries.propertySelection(node);
-  if (selection === undefined) {
-    appendMojoPlanningDiagnostic(context, "MOJO_PROPERTY_PLAN_MISSING", "Property access has no sealed target selection.", node);
-    return undefined;
-  }
-  if (selection.kind === "provider-constant") {
-    if (mode !== "read") {
-      appendMojoPlanningDiagnostic(
-        context,
-        "MOJO_PROVIDER_CONSTANT_WRITE_UNSUPPORTED",
-        "A provider module constant cannot be planned as a writable location.",
-        node,
-      );
-      return undefined;
-    }
-    const constant = planProviderConstant(selection.operation, selection.readResultConversion, context);
-    return constant === undefined ? undefined : mojoValue(constant);
-  }
-  if (selection.kind === "provider-static") {
-    if (mode !== "read" || selection.readOperation?.target.kind !== "function-read" ||
-      selection.readResultConversion === undefined) {
-      appendMojoPlanningDiagnostic(
-        context,
-        "MOJO_PROVIDER_STATIC_PROPERTY_LOCATION_REQUIRED",
-        "A static provider write must be planned as its sealed target function operation.",
-        node,
-      );
-      return undefined;
-    }
-    const value = planProviderConstant(
-      selection.readOperation,
-      selection.readResultConversion,
-      context,
-    );
-    return value === undefined ? undefined : mojoValue(value);
-  }
-  if (selection.kind === "project-enum-member") {
-    if (mode !== "read") {
-      appendMojoPlanningDiagnostic(
-        context,
-        "MOJO_ENUM_MEMBER_WRITE_UNSUPPORTED",
-        "A project enum member is an immutable compile-time value.",
-        node,
-      );
-      return undefined;
-    }
-    registerMojoTypeImports(selection.owner, context);
-    const owner = mojoTypeName(selection.owner, context.module.modulePath);
-    return owner === undefined
-      ? undefined
-      : mojoValue(Object.freeze({ kind: "path", path: `${owner}.${selection.name}` }));
-  }
-  if (selection.kind === "project-static-field") {
-    if (selection.optionalChain) {
-      appendMojoPlanningDiagnostic(
-        context,
-        "MOJO_STATIC_FIELD_OPTIONAL_CHAIN_UNSUPPORTED",
-        "A project static field optional chain requires an exact nullable class-value carrier.",
-        node,
-      );
-      return undefined;
-    }
-    const field = mode === "read"
-      ? mojoModuleBindingRead(selection.binding, context)
-      : mojoModuleBindingWrite(selection.binding, context);
-    return field === undefined ? undefined : mojoValue(field);
-  }
-  const sourceReceiverType = selection.kind === "project-field"
-    ? selection.receiverType
-    : selection.sourceReceiverType;
-  const receiver = prepareMojoReceiver(
-    selection.receiver,
-    sourceReceiverType,
-    selection.optionalChain,
-    context,
-    planValue,
-  );
-  if (receiver === undefined) return undefined;
-  if (selection.kind === "project-field") {
-    const ordered = orderMojoValues([
-      Object.freeze({ plan: receiver.plan, type: selection.receiverType, role: "property_receiver" }),
-    ], context, stabilizeReceiver);
-    const operation = withMojoValue(ordered.before, {
-      kind: "member",
-      receiver: {
-        kind: "postfix-deref",
-        expression: { kind: "member", receiver: ordered.values[0]!, name: "_state" },
-      },
-      name: selection.fieldName,
-    });
-    return finishOptionalMojoOperation(node, receiver, operation, context);
-  }
-  const operation = mode === "read" ? selection.readOperation : selection.writeOperation;
-  if (operation === undefined) {
-    appendMojoPlanningDiagnostic(
-      context,
-      "MOJO_PROVIDER_PROPERTY_ACCESS_MODE_MISSING",
-      `Provider property has no sealed ${mode} operation.`,
-      node,
-    );
-    return undefined;
-  }
-  const target = operation.target;
-  if ((mode === "read" && target.kind !== "property-read") ||
-    (mode === "write" && target.kind !== "property-write")) {
-    appendMojoPlanningDiagnostic(
-      context,
-      "MOJO_PROVIDER_PROPERTY_FORM_INVALID",
-      `Provider property ${mode} selected target form '${target.kind}'.`,
-      node,
-    );
-    return undefined;
-  }
-  const convertedReceiver = selection.receiverConversion === undefined
-    ? receiver.plan
-    : convertMojoValue(receiver.plan, selection.receiverConversion, context);
-  if (convertedReceiver === undefined || operation.receiverType === undefined) return undefined;
-  const ordered = orderMojoValues([
-    Object.freeze({ plan: convertedReceiver, type: operation.receiverType, role: "property_receiver" }),
-  ], context, stabilizeReceiver);
-  if (target.kind !== "property-read" && target.kind !== "property-write") return undefined;
-  const member: MojoExpression = target.access.kind === "member"
-    ? { kind: "member", receiver: ordered.values[0]!, name: target.access.name }
-    : {
-        kind: "method-call",
-        receiver: ordered.values[0]!,
-        name: target.access.name,
-        arguments: Object.freeze([]),
-      };
-  const operationPlan = mode !== "read" || selection.readResultConversion === undefined
-    ? withMojoValue(ordered.before, member)
-    : convertMojoValue(withMojoValue(ordered.before, member), selection.readResultConversion, context);
-  return operationPlan === undefined
-    ? undefined
-    : finishOptionalMojoOperation(node, receiver, operationPlan, context);
 }

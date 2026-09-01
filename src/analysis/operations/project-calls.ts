@@ -1,6 +1,7 @@
 import type { Node, ResolvedSourceCallInfo, Type } from "@tsonic/tsts";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
 import type { MojoTargetGenericArgument, MojoTargetTypeRef } from "../../target-model/types/model.js";
+import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 import { substituteMojoTargetType } from "../../target-model/types/substitution.js";
 import type {
   MojoAnalyzedCallArgument,
@@ -12,7 +13,6 @@ import { analyzeArguments } from "./call-arguments.js";
 import type { MojoCallAnalysis, MojoCallAnalysisContext } from "./calls.js";
 
 export function analyzeProjectCall(
-  callNode: Node,
   sourceCall: ResolvedSourceCallInfo,
   function_: MojoAnalyzedFunction,
   resolve: (type: Type, authoredTypeNode?: Node) => MojoTargetTypeRef | undefined,
@@ -73,6 +73,7 @@ export function analyzeProjectCall(
         kind: "future" as const,
         domain: function_.asyncDomain ?? "native",
         output: targetOutput,
+        raises: function_.raises,
       })
     : targetOutput;
   const callResult = function_.kind === "constructor"
@@ -85,7 +86,7 @@ export function analyzeProjectCall(
       reason: "Project constructor has no exact owning class carrier.",
     };
   }
-  const result = closeCanonicalProjectResult(callNode, callResult, context.conversions);
+  const result = closeCanonicalProjectResult(callResult);
   if (result.kind === "unsupported") return result;
   const target = projectCallTarget(function_, sourceCall, callResult, context);
   if (target.kind === "unsupported") return target;
@@ -105,11 +106,9 @@ export function analyzeProjectCall(
 }
 
 export function analyzeImplicitProjectConstruction(
-  callNode: Node,
   sourceCall: ResolvedSourceCallInfo,
   class_: MojoAnalyzedClass,
   resolve: (type: Type) => MojoTargetTypeRef | undefined,
-  context: MojoCallAnalysisContext,
 ): MojoCallAnalysis {
   if (class_.constructors.length !== 0 || sourceCall.sourceArguments.length !== 0) {
     return {
@@ -127,7 +126,7 @@ export function analyzeImplicitProjectConstruction(
       reason: "Implicit project construction has no exact closed class result carrier.",
     };
   }
-  const result = closeCanonicalProjectResult(callNode, sourceResult, context.conversions);
+  const result = closeCanonicalProjectResult(sourceResult);
   if (result.kind === "unsupported") return result;
   return {
     kind: "resolved",
@@ -218,12 +217,10 @@ function projectCallTarget(
 }
 
 export function closeCanonicalProjectResult(
-  callNode: Node,
   targetResult: MojoTargetTypeRef,
-  conversions: MojoCallAnalysisContext["conversions"],
 ): { readonly kind: "resolved"; readonly conversion: MojoValueConversion } |
   { readonly kind: "unsupported"; readonly code: string; readonly reason: string } {
-  const conversion = conversions.record(callNode, targetResult, targetResult);
+  const conversion = classifyMojoValueConversion(targetResult, targetResult);
   return conversion.kind === "unsupported"
     ? { kind: "unsupported", code: "MOJO_PROJECT_CALL_RESULT_CONFLICT", reason: conversion.reason }
     : { kind: "resolved", conversion: conversion.conversion };
