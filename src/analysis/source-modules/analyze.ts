@@ -93,7 +93,9 @@ export function analyzeMojoSourceModules(
       packages: identityPlan.packages,
       entryPoint,
       forSourceFile(sourceFile: SourceFile | undefined) {
-        return sourceFile === undefined ? undefined : definitionBySourceFile.get(sourceFile);
+        if (sourceFile === undefined) return undefined;
+        return definitionBySourceFile.get(sourceFile) ??
+          byFileName.get(normalizePath(input.source.ast.getFileName(sourceFile)));
       },
       forFileName(fileName: string) {
         return byFileName.get(normalizePath(fileName));

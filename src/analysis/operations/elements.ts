@@ -19,6 +19,7 @@ import type { MojoAnalyzedProjectProperty } from "../program/model.js";
 import type { MojoValueRefinementSelection } from "../program/model.js";
 import { instantiateProjectIndexSignature } from "./project-fields.js";
 import { classifyMojoValueRefinement } from "../refinements/value.js";
+import { mojoPrimitiveTargetType } from "../../target-model/types/constructors.js";
 
 export type MojoElementAnalysis =
   | {
@@ -202,7 +203,10 @@ function analyzeSourceProfileElement(
     ? undefined
     : sourceProfileElementReadContract(owner, receiver, source, context);
   const sourceRead = readContract?.expressionType;
-  const sourceWrite = source.sourceWriteType === undefined ? undefined : context.resolveType(source.sourceWriteType);
+  const receiverElement = sourceProfileReceiverElement(receiver);
+  const sourceWrite = source.sourceWriteType === undefined
+    ? undefined
+    : owner === "Array" ? receiverElement : context.resolveType(source.sourceWriteType);
   if ((accessMode === "read" || accessMode === "read-write") && sourceRead === undefined ||
     (accessMode === "write" || accessMode === "read-write") && sourceWrite === undefined) {
     return unsupported(
@@ -216,6 +220,7 @@ function analyzeSourceProfileElement(
       `The exact JavaScript '${owner}' index result has no closed Mojo read contract.`,
     );
   }
+  const targetIndex = mojoPrimitiveTargetType("float64");
   const readOperation: MojoSelectedProviderOperation | undefined = readContract === undefined
     ? undefined
     : Object.freeze({
@@ -226,7 +231,7 @@ function analyzeSourceProfileElement(
           index: Object.freeze({ convention: "imm", position: "positional-or-keyword" }),
         }),
         receiverType: receiver,
-        parameterTypes: Object.freeze([index]),
+        parameterTypes: Object.freeze([targetIndex]),
         resultType: readContract.operationResultType,
         genericArguments: Object.freeze([]),
         genericParameters: Object.freeze([]),
@@ -243,14 +248,14 @@ function analyzeSourceProfileElement(
           value: Object.freeze({ convention: "imm", position: "positional-or-keyword" }),
         }),
         receiverType: receiver,
-        parameterTypes: Object.freeze([index, sourceWrite]),
+        parameterTypes: Object.freeze([targetIndex, sourceWrite]),
         resultType: Object.freeze({ kind: "unit" }),
         genericArguments: Object.freeze([]),
         genericParameters: Object.freeze([]),
         raises: false,
       });
   const receiverConversion = classifyMojoValueConversion(receiver, receiver);
-  const indexConversion = context.conversions.record(source.argument.expression, index, index);
+  const indexConversion = context.conversions.record(source.argument.expression, index, targetIndex);
   if (receiverConversion.kind === "unsupported") {
     return unsupported("MOJO_SOURCE_PROFILE_ELEMENT_RECEIVER_CONFLICT", receiverConversion.reason);
   }
@@ -276,6 +281,15 @@ function analyzeSourceProfileElement(
       optionalChain: source.optionalChain,
     }),
   };
+}
+
+function sourceProfileReceiverElement(
+  receiver: MojoTargetTypeRef,
+): MojoTargetTypeRef | undefined {
+  const value = receiver.kind === "optional" ? receiver.value : receiver;
+  if (value.kind !== "target-named" || value.id !== "tsonic.mojo.js.JsArray") return undefined;
+  const argument = value.genericArguments?.[0];
+  return argument?.kind === "type" ? argument.type : undefined;
 }
 
 function sourceProfileElementReadContract(

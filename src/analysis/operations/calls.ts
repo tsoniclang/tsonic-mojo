@@ -288,6 +288,15 @@ function analyzeSourceProfileCall(
     readonly passing: "plain";
   }[] = [];
   const parameterContract = selected.row.parameterContract;
+  const sourceReceiver = sourceCall.sourceReceiver;
+  const sourceReceiverType = sourceReceiver === undefined
+    ? undefined
+    : context.expressionTypes.get(sourceReceiver.expression) ?? resolve(
+        sourceReceiver.type,
+        sourceReceiver.authoredTypeNode ?? (sourceReceiver.declaration === undefined
+          ? undefined
+          : context.source.ast.typeNode(sourceReceiver.declaration)),
+      );
   const callback = selected.row.callback === undefined
     ? undefined
     : selectMojoSourceProfileCallback(
@@ -297,20 +306,7 @@ function analyzeSourceProfileCall(
         context.expressionTypes,
       );
   if (callback?.kind === "unsupported") return callback;
-  if (parameterContract !== undefined) {
-    if (parameterContract.length > sourceCall.sourceSelectedSignatureParameters.length ||
-      sourceCall.sourceArgumentBindings.some((binding) =>
-        binding.sourceParameterIndex >= parameterContract.length)) {
-      return {
-        kind: "unsupported",
-        code: "MOJO_SOURCE_PROFILE_PARAMETER_CONTRACT_INVALID",
-        reason: `The exact source-profile overload '${selected.row.owner}.${selected.row.member}' cannot be represented by its Mojo runtime parameter contract.`,
-      };
-    }
-  }
-  const selectedParameters = parameterContract === undefined
-    ? sourceCall.sourceSelectedSignatureParameters
-    : sourceCall.sourceSelectedSignatureParameters.slice(0, parameterContract.length);
+  const selectedParameters = sourceCall.sourceSelectedSignatureParameters;
   for (const [parameterIndex, parameter] of selectedParameters.entries()) {
     const explicitContract = parameterContract?.[parameterIndex];
     const resolved = callback?.parameterIndex === parameterIndex
@@ -324,7 +320,7 @@ function analyzeSourceProfileCall(
           )
       : explicitContract === undefined
         ? resolve(parameter.selectedType, parameter.authoredTypeNode)
-        : sourceProfileParameterType(explicitContract);
+        : sourceProfileParameterType(explicitContract, sourceReceiverType);
     const presentType = resolved === undefined
       ? undefined
       : sourceProfilePresentArgumentType(parameter.acceptsOmission, resolved);
@@ -389,18 +385,8 @@ function analyzeSourceProfileCall(
         arguments: Object.freeze(targetArguments),
       });
   let receiver: Node | undefined;
-  let sourceReceiverType: MojoTargetTypeRef | undefined;
   let receiverConversion;
   if (selected.row.target.kind === "instance" || selected.row.target.receiver !== undefined) {
-    const sourceReceiver = sourceCall.sourceReceiver;
-    sourceReceiverType = sourceReceiver === undefined
-      ? undefined
-      : resolve(
-          sourceReceiver.type,
-          sourceReceiver.authoredTypeNode ?? (sourceReceiver.declaration === undefined
-            ? undefined
-            : context.source.ast.typeNode(sourceReceiver.declaration)),
-        );
     if (sourceReceiver === undefined || sourceReceiverType === undefined) {
       return {
         kind: "unsupported",
@@ -612,7 +598,15 @@ function isExactMojoIntegerCarrier(type: MojoTargetTypeRef): boolean {
 
 function sourceProfileParameterType(
   contract: MojoSourceProfileParameterContract,
+  receiver: MojoTargetTypeRef | undefined,
 ): MojoTargetTypeRef | undefined {
+  if (typeof contract !== "string") {
+    if (contract.kind === "receiver") return receiver;
+    const value = receiver?.kind === "optional" ? receiver.value : receiver;
+    if (value?.kind !== "target-named") return undefined;
+    const argument = value.genericArguments?.[contract.index];
+    return argument?.kind === "type" ? argument.type : undefined;
+  }
   switch (contract) {
     case "float64":
       return mojoPrimitiveTargetType("float64");

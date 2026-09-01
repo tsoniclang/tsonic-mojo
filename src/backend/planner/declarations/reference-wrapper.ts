@@ -1,16 +1,19 @@
 import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import type { MojoFunctionDeclaration } from "../../target-ast/index.js";
 
-export function mojoReferenceCopyInitializer(
-  owner: MojoTargetTypeRef,
-): MojoFunctionDeclaration {
+export function mojoReferenceCopyInitializer(): MojoFunctionDeclaration {
   return Object.freeze({
     kind: "function",
     name: "__init__",
     genericParameters: Object.freeze([]),
     parameters: Object.freeze([Object.freeze({
       name: "copy",
-      type: owner,
+      type: Object.freeze({
+        kind: "target-named" as const,
+        id: "mojo.builtin.Self",
+        modulePath: Object.freeze([]),
+        name: "Self",
+      }),
       convention: "imm" as const,
       position: "keyword" as const,
     })]),

@@ -727,6 +727,8 @@ function resolveInferredBindingCarrier(
       );
     if (pointee !== undefined) return mojoLocationTargetType(pointee);
   }
+  const exactExpressionType = input.expressionTypes.get(initializer);
+  if (exactExpressionType !== undefined) return exactExpressionType;
   return isErasedValueWrapper(initializer, input.source.ast)
     ? resolveErasedExpressionCarrier(initializer, input, semantics)
     : resolveType(semantics.types.expressionType(initializer), undefined, input, semantics);

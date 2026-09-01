@@ -43,8 +43,8 @@ export function mojoModuleBindingSlot(
   binding: MojoAnalyzedModuleBinding,
   context: MojoPlanningContext,
 ): MojoExpression | undefined {
-  const module = context.program.queries.moduleForSourceFile(binding.sourceFile);
   const owner = context.program.modules.forSourceFile(binding.sourceFile);
+  const module = owner === undefined ? undefined : context.program.queries.moduleForId(owner.id);
   if (module === undefined || owner === undefined) return undefined;
   return Object.freeze({
     kind: "member",

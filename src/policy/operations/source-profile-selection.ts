@@ -57,7 +57,9 @@ export type MojoSourceProfileParameterContract =
   | "float64"
   | "js-string"
   | "js-value"
-  | "selected-argument";
+  | "selected-argument"
+  | { readonly kind: "receiver" }
+  | { readonly kind: "receiver-argument"; readonly index: number };
 
 export type MojoSourceProfileCallRowSelection =
   | { readonly kind: "not-source-profile" }
@@ -171,6 +173,24 @@ const jsInstanceRows = (
     ...(raises === true ? { raises: true } : {}),
   });
 });
+
+const jsInstanceParameterRow = (
+  owner: string,
+  member: string,
+  receiver: "imm" | "mut",
+  parameterContract: readonly MojoSourceProfileParameterContract[],
+): MojoSourceProfileCallRow => Object.freeze({
+  profile: "js",
+  kind: "call",
+  owner,
+  member,
+  parameterContract: Object.freeze([...parameterContract]),
+  target: Object.freeze({ kind: "instance", name: snakeCase(member), receiver }),
+});
+
+const receiverType = Object.freeze({ kind: "receiver" as const });
+const receiverArgument = (index: number): MojoSourceProfileParameterContract =>
+  Object.freeze({ kind: "receiver-argument", index });
 
 const jsStaticRows = (
   owner: string,
@@ -393,14 +413,18 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     }),
     parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["js-string", "float64"]),
   }),
-  ...jsInstanceRows("Array", "mut", [
-    "copyWithin", "fill", "pop", "push", "reverse", "shift", "splice", "unshift",
-  ]),
-  ...jsInstanceRows("Array", "imm", [
-    "at", "includes", "indexOf", "join", "lastIndexOf", "slice",
-  ]),
-  ...jsInstanceRows("ReadonlyArray", "imm", [
-    "at", "includes", "indexOf", "join", "lastIndexOf", "slice",
+  ...jsInstanceRows("Array", "mut", ["copyWithin", "pop", "reverse", "shift"]),
+  jsInstanceParameterRow("Array", "fill", "mut", [receiverArgument(0), "float64", "float64"]),
+  jsInstanceParameterRow("Array", "push", "mut", [receiverArgument(0)]),
+  jsInstanceParameterRow("Array", "splice", "mut", ["float64", "float64", receiverArgument(0)]),
+  jsInstanceParameterRow("Array", "unshift", "mut", [receiverArgument(0)]),
+  ...["Array", "ReadonlyArray"].flatMap((owner) => [
+    jsInstanceParameterRow(owner, "at", "imm", ["float64"]),
+    jsInstanceParameterRow(owner, "includes", "imm", [receiverArgument(0), "float64"]),
+    jsInstanceParameterRow(owner, "indexOf", "imm", [receiverArgument(0), "float64"]),
+    jsInstanceParameterRow(owner, "join", "imm", ["js-string"]),
+    jsInstanceParameterRow(owner, "lastIndexOf", "imm", [receiverArgument(0), "float64"]),
+    jsInstanceParameterRow(owner, "slice", "imm", ["float64", "float64"]),
   ]),
   ...["Array", "ReadonlyArray"].flatMap((owner) => [
     jsCallbackRow(owner, "map", "imm", "preserve", [
@@ -442,9 +466,13 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
   jsCallbackRow("Array", "sort", "mut", "float64", [
     "array_sort_zero", "array_sort_value", "array_sort_compare",
   ], 1),
-  ...jsInstanceRows("Map", "mut", ["clear", "delete", "set"]),
-  ...jsInstanceRows("Map", "imm", ["get", "has"]),
-  ...jsInstanceRows("ReadonlyMap", "imm", ["get", "has"]),
+  ...jsInstanceRows("Map", "mut", ["clear"]),
+  jsInstanceParameterRow("Map", "delete", "mut", [receiverArgument(0)]),
+  jsInstanceParameterRow("Map", "set", "mut", [receiverArgument(0), receiverArgument(1)]),
+  ...["Map", "ReadonlyMap"].flatMap((owner) => [
+    jsInstanceParameterRow(owner, "get", "imm", [receiverArgument(0)]),
+    jsInstanceParameterRow(owner, "has", "imm", [receiverArgument(0)]),
+  ]),
   ...["Map", "ReadonlyMap"].flatMap((owner) => [
     jsReceiverArrayRow(owner, "keys", Object.freeze({ kind: "receiver-argument", index: 0 })),
     jsReceiverArrayRow(owner, "values", Object.freeze({ kind: "receiver-argument", index: 1 })),
@@ -456,14 +484,15 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
   ...["Map", "ReadonlyMap"].map((owner) => jsCallbackRow(owner, "forEach", "imm", "preserve", [
     "map_for_each_zero", "map_for_each_value", "map_for_each_value_key", "map_for_each_with_map",
   ])),
-  ...jsInstanceRows("Set", "mut", ["add", "clear", "delete"]),
-  ...jsInstanceRows("Set", "imm", [
-    "difference", "has", "intersection", "isDisjointFrom",
-    "isSubsetOf", "isSupersetOf", "symmetricDifference", "union",
-  ]),
-  ...jsInstanceRows("ReadonlySet", "imm", [
-    "difference", "has", "intersection", "isDisjointFrom", "isSubsetOf",
-    "isSupersetOf", "symmetricDifference", "union",
+  ...jsInstanceRows("Set", "mut", ["clear"]),
+  jsInstanceParameterRow("Set", "add", "mut", [receiverArgument(0)]),
+  jsInstanceParameterRow("Set", "delete", "mut", [receiverArgument(0)]),
+  ...["Set", "ReadonlySet"].flatMap((owner) => [
+    jsInstanceParameterRow(owner, "has", "imm", [receiverArgument(0)]),
+    ...[
+      "difference", "intersection", "isDisjointFrom", "isSubsetOf",
+      "isSupersetOf", "symmetricDifference", "union",
+    ].map((member) => jsInstanceParameterRow(owner, member, "imm", [receiverType])),
   ]),
   ...["Set", "ReadonlySet"].flatMap((owner) => [
     jsReceiverArrayRow(owner, "keys", Object.freeze({ kind: "receiver-argument", index: 0 })),

@@ -165,12 +165,16 @@ export function planMojoProperty(
   );
   if (receiver === undefined) return undefined;
   if (selection.kind === "project-field") {
-    const ordered = orderMojoValues([
-      Object.freeze({ plan: receiver.plan, type: selection.receiverType, role: "property_receiver" }),
-    ], context, stabilizeReceiver);
-    const directState = context.initializingStateType !== undefined &&
+    const directState = context.initializingState !== undefined &&
       context.program.source.ast.kindName(selection.receiver) === "KindThisKeyword" &&
-      mojoTargetTypeEquals(context.initializingStateType, selection.receiverType);
+      mojoTargetTypeEquals(context.initializingState.referenceType, selection.receiverType);
+    const ordered = orderMojoValues([
+      Object.freeze({
+        plan: receiver.plan,
+        type: directState ? context.initializingState!.stateType : selection.receiverType,
+        role: "property_receiver",
+      }),
+    ], context, stabilizeReceiver);
     const operation = withMojoValue(ordered.before, {
       kind: "member",
       receiver: directState

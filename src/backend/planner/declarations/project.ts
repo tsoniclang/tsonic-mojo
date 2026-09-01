@@ -84,7 +84,7 @@ export function planMojoProjectClass(
   registerMojoTypeImports(arcType, context);
   for (const field of class_.fields) registerMojoTypeImports(field.type, context);
   const sourceConstructor = class_.constructors[0];
-  const stateContext = withMojoStateInitialization(context, class_.targetType);
+  const stateContext = withMojoStateInitialization(context, class_.targetType, stateType);
   const stateInitializationStatements: MojoStatement[] = [];
   for (const field of class_.fields) {
     if (field.initializer === undefined) continue;
@@ -176,7 +176,7 @@ export function planMojoProjectClass(
   });
   const methods: MojoFunctionDeclaration[] = [
     constructor,
-    mojoReferenceCopyInitializer(class_.targetType),
+    mojoReferenceCopyInitializer(),
     mojoReferenceIdentityEqualityMethod(class_.targetType),
   ];
   for (const method of class_.methods) {

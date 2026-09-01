@@ -90,20 +90,25 @@ export function analyzeMojoFunctionSignature(
     const abi = mojoParameterAbi(passingFact?.mode);
     const name = input.allocateLocalName(ast.text(nameNode));
     const omissionKind = selected.omissionKind;
-    const callType = omissionKind === "initializer" && resolved.kind !== "optional"
+    const omittedType = (omissionKind === "undefined" || omissionKind === "initializer") &&
+        resolved.kind !== "optional"
       ? Object.freeze({ kind: "optional" as const, value: resolved })
+      : resolved;
+    const bodyType = omissionKind === "undefined" ? omittedType : resolved;
+    const callType = omissionKind === "undefined" || omissionKind === "initializer"
+      ? omittedType
       : resolved;
     const incomingName = omissionKind === "initializer" || omissionKind === "rest"
       ? input.allocateLocalName(`${ast.text(nameNode)}_slot`)
       : name;
     input.bindingNames.set(parameter, name);
-    input.bindingTypes.set(parameter, resolved);
+    input.bindingTypes.set(parameter, bodyType);
     parameters.push(Object.freeze({
       declaration: parameter,
       name,
       incomingName,
-      type: parameterType,
-      bodyType: resolved,
+      type: rest ? parameterType : bodyType,
+      bodyType,
       callType,
       convention: abi.convention,
       passing: abi.passing,

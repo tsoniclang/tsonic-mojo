@@ -84,7 +84,7 @@ function planSourceModule(
     if (state !== undefined) declarations.push(...state);
   }
   for (const declaration of program.declarations) {
-    if (declaration.sourceFile !== module.sourceFile) continue;
+    if (program.modules.forSourceFile(declaration.sourceFile)?.id !== module.id) continue;
     if (declaration.kind === "class") {
       const planned = planMojoProjectClass(declaration, context);
       if (planned !== undefined) declarations.push(...planned);

@@ -144,7 +144,7 @@ export function planMojoInterface(
     })]),
     methods: Object.freeze([
       constructor,
-      mojoReferenceCopyInitializer(interface_.targetType),
+      mojoReferenceCopyInitializer(),
       mojoReferenceIdentityEqualityMethod(interface_.targetType),
     ]),
   });

@@ -20,7 +20,10 @@ export interface MojoPlanningContext {
   readonly syntheticDeclarations: MojoDeclaration[];
   readonly callableArtifactNames: WeakMap<Node, string>;
   readonly bindingOverrides: ReadonlyMap<Node, MojoBindingPlanOverride>;
-  readonly initializingStateType?: MojoTargetTypeRef;
+  readonly initializingState?: {
+    readonly referenceType: MojoTargetTypeRef;
+    readonly stateType: MojoTargetTypeRef;
+  };
 }
 
 export interface MojoBindingPlanOverride {
@@ -60,9 +63,13 @@ export function withMojoBindingOverrides(
 
 export function withMojoStateInitialization(
   context: MojoPlanningContext,
-  initializingStateType: MojoTargetTypeRef,
+  referenceType: MojoTargetTypeRef,
+  stateType: MojoTargetTypeRef,
 ): MojoPlanningContext {
-  return Object.freeze({ ...context, initializingStateType });
+  return Object.freeze({
+    ...context,
+    initializingState: Object.freeze({ referenceType, stateType }),
+  });
 }
 
 export function mojoBindingPlanOverride(
