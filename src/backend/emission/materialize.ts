@@ -6,14 +6,14 @@ export function materializeMojoOutputPlan(plan: MojoOutputPlan): TargetCompileOu
   const sourcePath = plan.configuration.outputType === "bin"
     ? "src/main.mojo"
     : `src/${plan.configuration.packageName}/__init__.mojo`;
-  const artifacts: import("@tsonic/target-api/artifacts").TargetArtifact[] = [
-    Object.freeze<TargetSourceFile>({
+  const artifacts: import("@tsonic/target-api/artifacts").TargetArtifact[] = plan.sources.map(
+    (source) => Object.freeze<TargetSourceFile>({
       kind: "source",
       language: "mojo",
-      path: sourcePath,
-      text: printMojoModule(plan.module),
+      path: source.path,
+      text: printMojoModule(source.module),
     }),
-  ];
+  );
   for (const runtime of plan.runtimePackages) {
     for (const source of runtime.sources) {
       artifacts.push(Object.freeze<TargetSourceFile>({
@@ -35,7 +35,8 @@ export function materializeMojoOutputPlan(plan: MojoOutputPlan): TargetCompileOu
 }
 
 function printPixiProject(plan: MojoOutputPlan, sourcePath: string): string {
-  const includeArguments = plan.runtimePackages.length === 0 ? "" : "-I 'packages'";
+  const includeArguments = ["-I 'src'", ...(plan.runtimePackages.length === 0 ? [] : ["-I 'packages'"])]
+    .join(" ");
   const output = plan.configuration.outputType === "bin"
     ? `build/${plan.configuration.packageName}`
     : `build/${plan.configuration.packageName}.mojoc`;

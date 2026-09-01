@@ -30,6 +30,7 @@ export interface MojoCallAnalysisContext {
   readonly functionByDeclaration: WeakMap<Node, MojoAnalyzedFunction>;
   readonly classByDeclaration: WeakMap<Node, MojoAnalyzedClass>;
   readonly classByTypeId: ReadonlyMap<string, MojoAnalyzedClass>;
+  readonly modulePathForSourceFile: (sourceFile: import("@tsonic/tsts").SourceFile) => readonly string[];
 }
 
 export function analyzeMojoCall(
@@ -204,7 +205,7 @@ function analyzeProjectCall(
     context.conversions,
   );
   if (result.kind === "unsupported") return result;
-  const target = projectCallTarget(function_, sourceCall, callResult);
+  const target = projectCallTarget(function_, sourceCall, callResult, context);
   if (target.kind === "unsupported") return target;
   return {
     kind: "resolved",
@@ -225,13 +226,21 @@ function projectCallTarget(
   function_: MojoAnalyzedFunction,
   sourceCall: ResolvedSourceCallInfo,
   resultType: MojoTargetTypeRef,
+  context: MojoCallAnalysisContext,
 ): { readonly kind: "resolved"; readonly target: Extract<MojoCallSelection, { kind: "project" }>["target"] } |
   { readonly kind: "unsupported"; readonly code: string; readonly reason: string } {
   if (function_.kind === "constructor") {
     return { kind: "resolved", target: Object.freeze({ kind: "constructor", type: resultType }) };
   }
   if (function_.kind === "function") {
-    return { kind: "resolved", target: Object.freeze({ kind: "function", name: function_.name }) };
+    return {
+      kind: "resolved",
+      target: Object.freeze({
+        kind: "function",
+        name: function_.name,
+        modulePath: Object.freeze([...context.modulePathForSourceFile(function_.sourceFile)]),
+      }),
+    };
   }
   if (function_.static === true) {
     if (function_.owner === undefined) {

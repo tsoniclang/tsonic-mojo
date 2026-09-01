@@ -11,6 +11,7 @@ export interface MojoProjectTypeDefinition {
   readonly sourceFile: SourceFile;
   readonly sourceName: string;
   readonly targetName: string;
+  readonly modulePath: readonly string[];
   readonly kind: MojoProjectTypeKind;
   readonly typeParameterNames: readonly string[];
 }
@@ -39,6 +40,7 @@ export function createMojoProjectTypeCatalog(
   source: TargetSourceProgram,
   sourceFiles: readonly SourceFile[],
   nameForDeclaration: (declaration: Node, sourceName: string) => string,
+  modulePathForSourceFile: (sourceFile: SourceFile) => readonly string[],
 ): MojoProjectTypeCatalog {
   const definitions: MojoProjectTypeDefinition[] = [];
   const issues: MojoProjectTypeIssue[] = [];
@@ -87,6 +89,7 @@ export function createMojoProjectTypeCatalog(
         sourceFile,
         sourceName,
         targetName: nameForDeclaration(statement, sourceName),
+        modulePath: Object.freeze([...modulePathForSourceFile(sourceFile)]),
         kind,
         typeParameterNames: Object.freeze((parameterNames as readonly Node[]).map((name) => ast.text(name))),
       });
@@ -131,7 +134,7 @@ export function createMojoProjectTypeCatalog(
       return Object.freeze({
         kind: "target-named" as const,
         id: definition.id,
-        modulePath: Object.freeze([]),
+        modulePath: definition.modulePath,
         name: definition.targetName,
         ...(arguments_.length === 0
           ? {}

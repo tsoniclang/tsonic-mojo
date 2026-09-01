@@ -1,12 +1,18 @@
 import { rejectedTargetStage, resolvedTargetStage } from "@tsonic/target-api/artifacts";
-import type { TargetStageResult } from "@tsonic/target-api/artifacts";
-import type { MojoOutputPlan } from "../artifact-model/output.js";
+import type { TargetDiagnostic, TargetStageResult } from "@tsonic/target-api/artifacts";
+import type { MojoOutputPlan, MojoOutputSourceFile } from "../artifact-model/output.js";
 import type {
   MojoDeclaration,
   MojoFunctionDeclaration,
+  MojoImportDeclaration,
+  MojoSourceModule,
   MojoStatement,
   MojoStructDeclaration,
 } from "../target-ast/nodes.js";
+import {
+  createMojoPlanningContext,
+  registerMojoModuleImport,
+} from "./context.js";
 import type { MojoPlanningContext } from "./context.js";
 import { planMojoExpression } from "./expressions.js";
 import { planMojoFunctionStatements } from "./statements.js";
@@ -14,12 +20,54 @@ import { registerMojoTypeImports } from "./types/render.js";
 import type {
   MojoAnalyzedClass,
   MojoAnalyzedFunction,
+  MojoTargetProgram,
 } from "../../analysis/program/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
+import { normalizeMojoIdentifier } from "../../analysis/names/identifiers.js";
+import type { MojoSourceModuleDefinition } from "../../analysis/modules/model.js";
 
-export function planMojoOutput(context: MojoPlanningContext): TargetStageResult<MojoOutputPlan> {
+export function planMojoOutput(program: MojoTargetProgram): TargetStageResult<MojoOutputPlan> {
+  const diagnostics: TargetDiagnostic[] = [];
+  const sources: MojoOutputSourceFile[] = [];
+  for (const module of program.modules.definitions) {
+    const planned = planSourceModule(program, module);
+    if (planned.kind === "rejected") diagnostics.push(...planned.diagnostics);
+    else sources.push(planned.source);
+  }
+  const packageSources = planPackageInitializers(program, diagnostics);
+  sources.push(...packageSources);
+  if (program.configuration.outputType === "bin") {
+    const main = planBinaryEntry(program, diagnostics);
+    if (main !== undefined) sources.push(main);
+  }
+  const duplicatePaths = duplicateSourcePaths(sources);
+  for (const path of duplicatePaths) {
+    diagnostics.push(planningDiagnostic(
+      "MOJO_OUTPUT_SOURCE_PATH_CONFLICT",
+      `Multiple sealed Mojo source modules map to output path '${path}'.`,
+    ));
+  }
+  if (diagnostics.length > 0) return rejectedTargetStage(Object.freeze(diagnostics));
+  return resolvedTargetStage(Object.freeze({
+    configuration: program.configuration,
+    sources: Object.freeze([...sources].sort((left, right) => left.path.localeCompare(right.path, "en"))),
+    runtimePackages: program.runtimePackages,
+  }));
+}
+
+function planSourceModule(
+  program: MojoTargetProgram,
+  module: MojoSourceModuleDefinition,
+):
+  | { readonly kind: "resolved"; readonly source: MojoOutputSourceFile }
+  | { readonly kind: "rejected"; readonly diagnostics: readonly TargetDiagnostic[] } {
+  const context = createMojoPlanningContext(program, module);
+  for (const dependency of module.dependencies) {
+    registerMojoModuleImport(context, dependency.target.modulePath);
+  }
   const declarations: MojoDeclaration[] = [];
-  for (const declaration of context.program.declarations) {
+  for (const declaration of program.declarations) {
+    if (declaration.sourceFile !== module.sourceFile) continue;
     if (declaration.kind === "class") {
       const planned = planClass(declaration, context);
       if (planned !== undefined) declarations.push(...planned);
@@ -28,17 +76,188 @@ export function planMojoOutput(context: MojoPlanningContext): TargetStageResult<
     const planned = planFunction(declaration, context);
     if (planned !== undefined) declarations.push(planned);
   }
-  if (context.diagnostics.length > 0) return rejectedTargetStage(context.diagnostics);
-  return resolvedTargetStage(Object.freeze({
-    configuration: context.program.configuration,
-    module: Object.freeze({
-      imports: Object.freeze([...context.imports.entries()]
-        .sort(([left], [right]) => left.localeCompare(right, "en"))
-        .map(([, declaration]) => declaration)),
-      declarations: Object.freeze(declarations),
+  if (context.diagnostics.length > 0) {
+    return Object.freeze({ kind: "rejected", diagnostics: Object.freeze(context.diagnostics) });
+  }
+  return Object.freeze({
+    kind: "resolved",
+    source: Object.freeze({
+      path: module.artifactPath,
+      module: Object.freeze({
+        modulePath: module.modulePath,
+        imports: sortedImports(context.imports.values()),
+        declarations: Object.freeze(declarations),
+      }),
     }),
-    runtimePackages: context.program.runtimePackages,
-  }));
+  });
+}
+
+function planPackageInitializers(
+  program: MojoTargetProgram,
+  diagnostics: TargetDiagnostic[],
+): readonly MojoOutputSourceFile[] {
+  const sources: MojoOutputSourceFile[] = [];
+  for (const package_ of program.modules.packages) {
+    for (const modulePath of package_.moduleDirectories) {
+      const imports: MojoImportDeclaration[] = [];
+      if (package_.root && modulePath.length === 1) {
+        imports.push(...entryExportImports(program, diagnostics));
+      }
+      sources.push(Object.freeze({
+        path: `src/${modulePath.join("/")}/__init__.mojo`,
+        module: Object.freeze({
+          modulePath,
+          imports: Object.freeze(imports),
+          declarations: Object.freeze([]),
+        }),
+      }));
+    }
+  }
+  return Object.freeze(sources);
+}
+
+function entryExportImports(
+  program: MojoTargetProgram,
+  diagnostics: TargetDiagnostic[],
+): readonly MojoImportDeclaration[] {
+  const symbolsByModule = new Map<string, {
+    readonly modulePath: readonly string[];
+    readonly symbols: Map<string, { readonly name: string; readonly alias?: string }>;
+  }>();
+  const exportedNames = new Map<string, string>();
+  for (const exported of program.modules.entryPoint.exports) {
+    const owner = program.modules.forSourceFile(exported.sourceFile);
+    const targetName = program.queries.bindingName(exported.declaration);
+    if (owner === undefined || targetName === undefined) {
+      diagnostics.push(planningDiagnostic(
+        "MOJO_EXPORTED_DECLARATION_NOT_PLANNED",
+        `Entry export '${exported.exportName}' has no exact planned Mojo declaration.`,
+        exported.declaration,
+      ));
+      continue;
+    }
+    const alias = normalizeMojoIdentifier(
+      exported.exportName === "default" ? "defaultExport" : exported.exportName,
+    );
+    const previous = exportedNames.get(alias);
+    if (previous !== undefined && previous !== exported.exportName) {
+      diagnostics.push(planningDiagnostic(
+        "MOJO_EXPORTED_NAME_COLLISION",
+        `Entry exports '${previous}' and '${exported.exportName}' map to Mojo name '${alias}'.`,
+        exported.declaration,
+      ));
+      continue;
+    }
+    exportedNames.set(alias, exported.exportName);
+    const key = owner.modulePath.join("\0");
+    const group = symbolsByModule.get(key) ?? {
+      modulePath: owner.modulePath,
+      symbols: new Map<string, { readonly name: string; readonly alias?: string }>(),
+    };
+    const symbol = Object.freeze({
+      name: targetName,
+      ...(alias === targetName ? {} : { alias }),
+    });
+    group.symbols.set(`${targetName}\0${alias}`, symbol);
+    symbolsByModule.set(key, group);
+  }
+  return Object.freeze([...symbolsByModule.values()]
+    .sort((left, right) => left.modulePath.join(".").localeCompare(right.modulePath.join("."), "en"))
+    .map((group) => Object.freeze({
+      kind: "symbols" as const,
+      modulePath: group.modulePath,
+      symbols: Object.freeze([...group.symbols.values()].sort((left, right) =>
+        left.name.localeCompare(right.name, "en") ||
+        (left.alias ?? "").localeCompare(right.alias ?? "", "en"))),
+    })));
+}
+
+function planBinaryEntry(
+  program: MojoTargetProgram,
+  diagnostics: TargetDiagnostic[],
+): MojoOutputSourceFile | undefined {
+  const entry = program.modules.entryPoint;
+  const exportedMain = entry.exports.find((exported) => exported.exportName === "main");
+  const function_ = exportedMain === undefined
+    ? undefined
+    : program.declarations.find((declaration): declaration is MojoAnalyzedFunction =>
+      declaration.kind === "function" && declaration.declaration === exportedMain.declaration);
+  if (exportedMain === undefined || function_ === undefined ||
+    function_.parameters.length !== 0 || function_.typeParameters.length !== 0 ||
+    function_.resultType.kind !== "unit") {
+    diagnostics.push(planningDiagnostic(
+      "MOJO_BINARY_ENTRYPOINT_UNSUPPORTED",
+      "Binary output requires the configured entry module to export a non-generic 'main' function with no parameters and a void result.",
+      entry.sourceFile,
+    ));
+    return undefined;
+  }
+  if (function_.asynchronous) {
+    diagnostics.push(planningDiagnostic(
+      "MOJO_ASYNC_BINARY_ENTRYPOINT_UNSUPPORTED",
+      "The pinned Mojo toolchain does not expose a proven native async program-entry contract.",
+      function_.declaration,
+    ));
+    return undefined;
+  }
+  const importedName = "__tsonic_entry";
+  const module: MojoSourceModule = Object.freeze({
+    modulePath: Object.freeze([]),
+    imports: Object.freeze([Object.freeze({
+      kind: "symbols" as const,
+      modulePath: entry.modulePath,
+      symbols: Object.freeze([Object.freeze({ name: function_.name, alias: importedName })]),
+    })]),
+    declarations: Object.freeze([Object.freeze({
+      kind: "function" as const,
+      name: "main",
+      genericParameters: Object.freeze([]),
+      parameters: Object.freeze([]),
+      resultType: Object.freeze({ kind: "unit" as const }),
+      asynchronous: false,
+      raises: function_.raises,
+      statements: Object.freeze([Object.freeze({
+        kind: "expression" as const,
+        expression: Object.freeze({
+          kind: "call" as const,
+          callee: Object.freeze({ kind: "path" as const, path: importedName }),
+          arguments: Object.freeze([]),
+        }),
+      })]),
+    })]),
+  });
+  return Object.freeze({ path: "src/main.mojo", module });
+}
+
+function sortedImports(imports: Iterable<MojoImportDeclaration>): readonly MojoImportDeclaration[] {
+  return Object.freeze([...imports].sort((left, right) =>
+    left.modulePath.join(".").localeCompare(right.modulePath.join("."), "en") ||
+    left.kind.localeCompare(right.kind, "en")));
+}
+
+function duplicateSourcePaths(sources: readonly MojoOutputSourceFile[]): readonly string[] {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const source of sources) {
+    if (seen.has(source.path)) duplicates.add(source.path);
+    seen.add(source.path);
+  }
+  return Object.freeze([...duplicates].sort((left, right) => left.localeCompare(right, "en")));
+}
+
+function planningDiagnostic(
+  code: string,
+  message: string,
+  sourceNode?: import("@tsonic/tsts").Node,
+): TargetDiagnostic {
+  return Object.freeze({
+    code,
+    category: "error" as const,
+    source: "tsonic-mojo",
+    message,
+    ...(sourceNode === undefined ? {} : { sourceNode }),
+    evidence: Object.freeze(["target.capability=mojo.backend.output-modules"]),
+  });
 }
 
 function planFunction(

@@ -209,6 +209,7 @@ export type MojoDeclaration =
   | MojoModuleVariableDeclaration;
 
 export interface MojoSourceModule {
+  readonly modulePath: readonly string[];
   readonly imports: readonly MojoImportDeclaration[];
   readonly declarations: readonly MojoDeclaration[];
 }

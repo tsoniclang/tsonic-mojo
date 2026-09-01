@@ -4,6 +4,11 @@ import type { MojoSourceModule } from "../target-ast/nodes.js";
 
 export interface MojoOutputPlan {
   readonly configuration: MojoTargetConfiguration;
-  readonly module: MojoSourceModule;
+  readonly sources: readonly MojoOutputSourceFile[];
   readonly runtimePackages: readonly MojoRuntimePackagePlan[];
+}
+
+export interface MojoOutputSourceFile {
+  readonly path: string;
+  readonly module: MojoSourceModule;
 }

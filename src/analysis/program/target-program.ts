@@ -55,6 +55,7 @@ import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import { validateMojoFunctionSyntax } from "./syntax-validation.js";
 import { walkSourceTree, walkSourceTreePostOrder } from "./traversal.js";
+import { analyzeMojoSourceModules } from "../modules/index.js";
 
 export function analyzeMojoTargetProgram(
   request: MojoTargetAnalysisRequest,
@@ -67,7 +68,20 @@ export function analyzeMojoTargetProgram(
       !ast.isDeclarationFile(sourceFile),
   ));
   const diagnostics: TargetDiagnostic[] = [];
+  const moduleAnalysis = analyzeMojoSourceModules(input, configuration.packageName, sourceFiles);
+  if (moduleAnalysis.kind === "rejected") {
+    return rejectedTargetStage(moduleAnalysis.issues.map((issue) => Object.freeze({
+      code: issue.code,
+      category: "error" as const,
+      source: "tsonic-mojo",
+      message: issue.message,
+      ...(issue.node === undefined ? {} : { sourceNode: issue.node }),
+      evidence: Object.freeze(["target.capability=mojo.analysis.source-modules"]),
+    })));
+  }
+  const modules = moduleAnalysis.catalog;
   const bindingNames = new WeakMap<Node, string>();
+  const bindingSourceFiles = new WeakMap<Node, SourceFile>();
   const bindingTypes = new WeakMap<Node, MojoTargetTypeRef>();
   const expressionTypes = new WeakMap<Node, MojoTargetTypeRef>();
   const callSelections = new WeakMap<Node, MojoCallSelection>();
@@ -85,7 +99,15 @@ export function analyzeMojoTargetProgram(
   const reservedNames = new Set<string>();
   const createNameAllocator = (): ((name: string) => string) =>
     createMojoNameAllocator([], (name) => reservedNames.add(name));
-  const globalNames = createNameAllocator();
+  const globalNamesBySourceFile = new WeakMap<SourceFile, (name: string) => string>();
+  const unownedGlobalNames = createNameAllocator();
+  const globalNames = (sourceFile: SourceFile): ((name: string) => string) => {
+    const existing = globalNamesBySourceFile.get(sourceFile);
+    if (existing !== undefined) return existing;
+    const created = createNameAllocator();
+    globalNamesBySourceFile.set(sourceFile, created);
+    return created;
+  };
   const globalNameByDeclaration = new WeakMap<Node, string>();
   const functionDrafts: {
     readonly declaration: Node;
@@ -106,14 +128,20 @@ export function analyzeMojoTargetProgram(
       if (statement === undefined) continue;
       const nameNode = ast.name(statement);
       if (nameNode !== undefined && ast.is.IsIdentifier(nameNode)) {
-        globalNameByDeclaration.set(statement, globalNames(ast.text(nameNode)));
+        globalNameByDeclaration.set(statement, globalNames(sourceFile)(ast.text(nameNode)));
+        bindingSourceFiles.set(statement, sourceFile);
       }
     }
   }
   const projectTypes = createMojoProjectTypeCatalog(
     input.source,
     sourceFiles,
-    (declaration, sourceName) => globalNameByDeclaration.get(declaration) ?? globalNames(sourceName),
+    (declaration, sourceName) => {
+      const sourceFile = ast.getSourceFile(declaration);
+      return globalNameByDeclaration.get(declaration) ??
+        (sourceFile === undefined ? unownedGlobalNames(sourceName) : globalNames(sourceFile)(sourceName));
+    },
+    (sourceFile) => modules.forSourceFile(sourceFile)?.modulePath ?? Object.freeze([]),
   );
   for (const issue of projectTypes.issues) {
     diagnostics.push(diagnostic(issue.code, issue.message, issue.node));
@@ -136,13 +164,14 @@ export function analyzeMojoTargetProgram(
           ));
           continue;
         }
-        const name = globalNameByDeclaration.get(statement) ?? globalNames(ast.text(nameNode));
+        const name = globalNameByDeclaration.get(statement) ?? globalNames(sourceFile)(ast.text(nameNode));
         bindingNames.set(statement, name);
+        bindingSourceFiles.set(statement, sourceFile);
         classDrafts.push(Object.freeze({
           declaration: statement,
           sourceFile,
           name,
-          stateName: globalNames(`${name}State`),
+          stateName: globalNames(sourceFile)(`${name}State`),
         }));
         continue;
       }
@@ -164,8 +193,9 @@ export function analyzeMojoTargetProgram(
         ));
         continue;
       }
-      const name = globalNameByDeclaration.get(statement) ?? globalNames(ast.text(nameNode));
+      const name = globalNameByDeclaration.get(statement) ?? globalNames(sourceFile)(ast.text(nameNode));
       bindingNames.set(statement, name);
+      bindingSourceFiles.set(statement, sourceFile);
       functionDrafts.push(Object.freeze({
         declaration: statement,
         sourceFile,
@@ -196,12 +226,16 @@ export function analyzeMojoTargetProgram(
     if (function_ === undefined) continue;
     functions.push(function_);
     functionByDeclaration.set(draft.declaration, function_);
+    for (const parameter of function_.parameters) {
+      bindingSourceFiles.set(parameter.declaration, draft.sourceFile);
+    }
     allocateLocalBindings(
       draft.body,
       draft.localNames,
       bindingNames,
       ast,
       diagnostics,
+      bindingSourceFiles,
     );
   }
 
@@ -220,10 +254,17 @@ export function analyzeMojoTargetProgram(
       diagnostics,
       createNameAllocator,
       allocateLocalBindings(body, allocate) {
-        allocateLocalBindings(body, allocate, bindingNames, ast, diagnostics);
+        allocateLocalBindings(body, allocate, bindingNames, ast, diagnostics, bindingSourceFiles);
       },
     });
     if (analyzed === undefined) continue;
+    for (const field of analyzed.fields) bindingSourceFiles.set(field.declaration, draft.sourceFile);
+    for (const callable of analyzed.callables) {
+      bindingSourceFiles.set(callable.declaration, draft.sourceFile);
+      for (const parameter of callable.parameters) {
+        bindingSourceFiles.set(parameter.declaration, draft.sourceFile);
+      }
+    }
     classes.push(analyzed.class_);
     classByDeclaration.set(draft.declaration, analyzed.class_);
     if (analyzed.class_.targetType.kind === "target-named") {
@@ -269,6 +310,7 @@ export function analyzeMojoTargetProgram(
             valueSelections.set(node, value.selection);
           }
         }
+        if (reference !== undefined) bindingSourceFiles.set(node, reference.sourceFile);
         const inferred = inferMojoExpressionType(node, ast, expressionTypes);
         if (inferred !== undefined) expressionTypes.set(node, inferred);
       });
@@ -315,6 +357,7 @@ export function analyzeMojoTargetProgram(
           ? undefined
           : bindingNames.get(reference.declaration);
         if (referencedName !== undefined) bindingNames.set(node, referencedName);
+        if (reference !== undefined) bindingSourceFiles.set(node, reference.sourceFile);
         const referencedType = reference === undefined
           ? undefined
           : bindingTypes.get(reference.declaration);
@@ -441,6 +484,9 @@ export function analyzeMojoTargetProgram(
         functionByDeclaration,
         classByDeclaration,
         classByTypeId,
+        modulePathForSourceFile(sourceFile) {
+          return modules.forSourceFile(sourceFile)?.modulePath ?? Object.freeze([]);
+        },
       });
       if (analyzedCall.kind === "unsupported") {
         diagnostics.push(diagnostic(analyzedCall.code, analyzedCall.reason, node));
@@ -565,6 +611,9 @@ export function analyzeMojoTargetProgram(
     bindingName(referenceOrDeclaration: Node): string | undefined {
       return bindingNames.get(referenceOrDeclaration);
     },
+    bindingSourceFile(referenceOrDeclaration: Node): SourceFile | undefined {
+      return bindingSourceFiles.get(referenceOrDeclaration);
+    },
     bindingType(declaration: Node): MojoTargetTypeRef | undefined {
       return bindingTypes.get(declaration);
     },
@@ -596,6 +645,7 @@ export function analyzeMojoTargetProgram(
     configuration,
     source: targetSourceSyntaxProgram(input.source),
     projectTypes,
+    modules,
     declarations: Object.freeze(declarations),
     queries,
     runtimePackages: analyzeMojoRuntimePackages(input.runtimeReferences),
@@ -621,6 +671,7 @@ function allocateLocalBindings(
   bindings: WeakMap<Node, string>,
   ast: import("@tsonic/tsts").AstReader,
   diagnostics: TargetDiagnostic[],
+  bindingSourceFiles: WeakMap<Node, SourceFile>,
 ): void {
   walkSourceTree(body, ast, (node): void => {
     if (!ast.is.IsVariableDeclaration(node)) return;
@@ -634,6 +685,8 @@ function allocateLocalBindings(
       return;
     }
     bindings.set(node, allocate(ast.text(nameNode)));
+    const sourceFile = ast.getSourceFile(node);
+    if (sourceFile !== undefined) bindingSourceFiles.set(node, sourceFile);
   });
 }
 

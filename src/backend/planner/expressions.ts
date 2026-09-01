@@ -19,8 +19,12 @@ import type {
   MojoExpression,
   MojoStatement,
 } from "../target-ast/nodes.js";
-import { allocateMojoSyntheticName, appendMojoPlanningDiagnostic } from "./context.js";
-import { registerMojoModuleImport } from "./context.js";
+import {
+  allocateMojoSyntheticName,
+  appendMojoPlanningDiagnostic,
+  mojoQualifiedModuleMember,
+  registerMojoModuleImport,
+} from "./context.js";
 import type { MojoPlanningContext } from "./context.js";
 import { mojoTypeName, registerMojoTypeImports } from "./types/render.js";
 import { mojoValue, withMojoValue } from "./value-plan.js";
@@ -278,7 +282,15 @@ function planMojoExpressionOnly(
         );
         return undefined;
       }
-      planned = { kind: "path", path: name };
+      const ownerModule = context.program.modules.forSourceFile(
+        context.program.queries.bindingSourceFile(node),
+      );
+      planned = {
+        kind: "path",
+        path: ownerModule === undefined
+          ? name
+          : mojoQualifiedModuleMember(context, ownerModule.modulePath, name),
+      };
     }
   } else if (ast.is.IsStringLiteral(node) || ast.is.IsNoSubstitutionTemplateLiteral(node)) {
     planned = { kind: "string-literal", value: ast.text(node) };
@@ -738,7 +750,14 @@ function planCall(node: Node, context: MojoPlanningContext): MojoValuePlan | und
         before = ordered.before;
         call = {
           kind: "call",
-          callee: { kind: "path", path: selection.target.name },
+          callee: {
+            kind: "path",
+            path: mojoQualifiedModuleMember(
+              context,
+              selection.target.modulePath,
+              selection.target.name,
+            ),
+          },
           ...(selection.genericArguments.length === 0 ? {} : { genericArguments: selection.genericArguments }),
           arguments: ordered.arguments,
         };
@@ -781,7 +800,7 @@ function planCall(node: Node, context: MojoPlanningContext): MojoValuePlan | und
         before = ordered.before;
         call = {
           kind: "method-call",
-          receiver: { kind: "path", path: requiredMojoTypeName(selection.target.owner) },
+          receiver: { kind: "path", path: requiredMojoTypeName(selection.target.owner, context) },
           name: selection.target.name,
           ...(selection.genericArguments.length === 0 ? {} : { genericArguments: selection.genericArguments }),
           arguments: ordered.arguments,
@@ -1245,8 +1264,8 @@ function isJsString(type: MojoTargetTypeRef): boolean {
   return type.kind === "target-named" && type.id === "tsonic.mojo.js.JsString";
 }
 
-function requiredMojoTypeName(type: MojoTargetTypeRef): string {
-  const name = mojoTypeName(type);
+function requiredMojoTypeName(type: MojoTargetTypeRef, context: MojoPlanningContext): string {
+  const name = mojoTypeName(type, context.module.modulePath);
   if (name === undefined) throw new Error("A Mojo unit type cannot own a static method.");
   return name;
 }

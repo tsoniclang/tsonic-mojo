@@ -11,6 +11,7 @@ import type {
   MojoTargetTypeRef,
 } from "../../target-model/provider/model.js";
 import type { MojoProjectTypeCatalog } from "../types/project-catalog.js";
+import type { MojoSourceModuleCatalog } from "../modules/model.js";
 
 export interface MojoTargetAnalysisRequest {
   readonly input: TargetCompileInput;
@@ -186,7 +187,11 @@ export type MojoCallSelection =
   | {
       readonly kind: "project";
       readonly target:
-        | { readonly kind: "function"; readonly name: string }
+        | {
+            readonly kind: "function";
+            readonly name: string;
+            readonly modulePath: readonly string[];
+          }
         | {
             readonly kind: "method";
             readonly name: string;
@@ -214,6 +219,7 @@ export type MojoCallSelection =
 
 export interface MojoProgramQueries {
   bindingName(referenceOrDeclaration: Node): string | undefined;
+  bindingSourceFile(referenceOrDeclaration: Node): SourceFile | undefined;
   bindingType(declaration: Node): MojoTargetTypeRef | undefined;
   expressionType(expression: Node): MojoTargetTypeRef | undefined;
   expressionConversion(
@@ -241,6 +247,7 @@ export interface MojoTargetProgram {
   readonly configuration: MojoTargetConfiguration;
   readonly source: TargetSourceSyntaxProgram;
   readonly projectTypes: MojoProjectTypeCatalog;
+  readonly modules: MojoSourceModuleCatalog;
   readonly declarations: readonly MojoAnalyzedDeclaration[];
   readonly queries: MojoProgramQueries;
   readonly runtimePackages: readonly MojoRuntimePackagePlan[];

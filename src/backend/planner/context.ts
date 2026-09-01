@@ -1,19 +1,25 @@
 import type { Node } from "@tsonic/tsts";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { MojoTargetProgram } from "../../analysis/program/model.js";
+import type { MojoSourceModuleDefinition } from "../../analysis/modules/model.js";
 import type { MojoImportDeclaration } from "../target-ast/nodes.js";
 
 export interface MojoPlanningContext {
   readonly program: MojoTargetProgram;
+  readonly module: MojoSourceModuleDefinition;
   readonly diagnostics: TargetDiagnostic[];
   readonly imports: Map<string, MojoImportDeclaration>;
   readonly usedNames: Set<string>;
   syntheticNameCounter: number;
 }
 
-export function createMojoPlanningContext(program: MojoTargetProgram): MojoPlanningContext {
+export function createMojoPlanningContext(
+  program: MojoTargetProgram,
+  module: MojoSourceModuleDefinition,
+): MojoPlanningContext {
   return {
     program,
+    module,
     diagnostics: [],
     imports: new Map<string, MojoImportDeclaration>(),
     usedNames: new Set(program.reservedNames),
@@ -38,7 +44,7 @@ export function registerMojoModuleImport(
   context: MojoPlanningContext,
   modulePath: readonly string[],
 ): void {
-  if (modulePath.length === 0) return;
+  if (modulePath.length === 0 || sameModulePath(modulePath, context.module.modulePath)) return;
   const identity = `module:${modulePath.join(".")}`;
   const declaration = Object.freeze({
     kind: "module" as const,
@@ -49,6 +55,16 @@ export function registerMojoModuleImport(
     throw new Error(`Mojo import '${identity}' has conflicting sealed declarations.`);
   }
   context.imports.set(identity, declaration);
+}
+
+export function mojoQualifiedModuleMember(
+  context: MojoPlanningContext,
+  modulePath: readonly string[],
+  memberName: string,
+): string {
+  if (sameModulePath(modulePath, context.module.modulePath)) return memberName;
+  registerMojoModuleImport(context, modulePath);
+  return [...modulePath, memberName].join(".");
 }
 
 export function registerMojoSymbolImport(
@@ -90,4 +106,8 @@ export function appendMojoPlanningDiagnostic(
     sourceNode,
     evidence: Object.freeze(["target.capability=mojo.backend.planning"]),
   }));
+}
+
+function sameModulePath(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((segment, index) => segment === right[index]);
 }

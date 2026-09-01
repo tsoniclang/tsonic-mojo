@@ -74,7 +74,10 @@ export function registerMojoTypeImports(type: MojoTargetTypeRef, context: MojoPl
   }
 }
 
-export function mojoTypeName(type: MojoTargetTypeRef): string | undefined {
+export function mojoTypeName(
+  type: MojoTargetTypeRef,
+  currentModulePath: readonly string[] = Object.freeze([]),
+): string | undefined {
   switch (type.kind) {
     case "native-string": return "String";
     case "unit": return undefined;
@@ -107,36 +110,39 @@ export function mojoTypeName(type: MojoTargetTypeRef): string | undefined {
         case "decimal": return undefined;
       }
     case "target-named": {
-      const base = [...type.modulePath, type.name].join(".");
+      const base = sameModulePath(type.modulePath, currentModulePath)
+        ? type.name
+        : [...type.modulePath, type.name].join(".");
       const arguments_ = type.genericArguments ?? [];
       return arguments_.length === 0
         ? base
-        : `${base}[${arguments_.map(renderGenericArgument).join(", ")}]`;
+        : `${base}[${arguments_.map((argument) => renderGenericArgument(argument, currentModulePath)).join(", ")}]`;
     }
-    case "list": return `List[${requiredTypeName(type.element)}]`;
-    case "fixed-array": return `Array[${requiredTypeName(type.element)}, ${renderConstArgument(type.length)}]`;
-    case "dictionary": return `Dict[${requiredTypeName(type.key)}, ${requiredTypeName(type.value)}]`;
-    case "optional": return `Optional[${requiredTypeName(type.value)}]`;
-    case "union": return `Variant[${type.members.map(requiredTypeName).join(", ")}]`;
-    case "tuple": return `(${type.elements.map(requiredTypeName).join(", ")})`;
+    case "list": return `List[${requiredTypeName(type.element, currentModulePath)}]`;
+    case "fixed-array": return `Array[${requiredTypeName(type.element, currentModulePath)}, ${renderConstArgument(type.length)}]`;
+    case "dictionary": return `Dict[${requiredTypeName(type.key, currentModulePath)}, ${requiredTypeName(type.value, currentModulePath)}]`;
+    case "optional": return `Optional[${requiredTypeName(type.value, currentModulePath)}]`;
+    case "union": return `Variant[${type.members.map((member) => requiredTypeName(member, currentModulePath)).join(", ")}]`;
+    case "tuple": return `(${type.elements.map((element) => requiredTypeName(element, currentModulePath)).join(", ")})`;
     case "associated": {
-      const base = `${requiredTypeName(type.owner)}.${type.memberPath.join(".")}`;
+      const base = `${requiredTypeName(type.owner, currentModulePath)}.${type.memberPath.join(".")}`;
       return type.genericArguments.length === 0
         ? base
-        : `${base}[${type.genericArguments.map(renderGenericArgument).join(", ")}]`;
+        : `${base}[${type.genericArguments.map((argument) => renderGenericArgument(argument, currentModulePath)).join(", ")}]`;
     }
     case "compiler-expression": return type.expression;
-    case "reference": return `ref[${type.origin}] ${requiredTypeName(type.value)}`;
+    case "reference": return `ref[${type.origin}] ${requiredTypeName(type.value, currentModulePath)}`;
     case "function": {
-      const generics = mojoGenericParametersText(type.genericParameters);
-      const parameters = type.parameters.map(renderFunctionParameter).join(", ");
-      const result = mojoTypeName(type.result) ?? "None";
+      const generics = mojoGenericParametersText(type.genericParameters, currentModulePath);
+      const parameters = type.parameters.map((parameter) =>
+        renderFunctionParameter(parameter, currentModulePath)).join(", ");
+      const result = mojoTypeName(type.result, currentModulePath) ?? "None";
       const capture = type.capture === undefined
         ? ""
         : type.capture === "*"
           ? " capturing"
           : ` capturing[${type.capture}]`;
-      const error = type.errorType === undefined ? "" : ` ${requiredTypeName(type.errorType)}`;
+      const error = type.errorType === undefined ? "" : ` ${requiredTypeName(type.errorType, currentModulePath)}`;
       return `${type.asynchronous ? "async " : ""}def${generics}(${parameters})${
         type.thin ? " thin" : ""
       }${capture}${type.raises ? ` raises${error}` : ""} -> ${result}`;
@@ -156,21 +162,23 @@ function renderConstArgument(
 
 function renderFunctionParameter(
   parameter: Extract<MojoTargetTypeRef, { readonly kind: "function" }>["parameters"][number],
+  currentModulePath: readonly string[],
 ): string {
   if (parameter.convention === "ref" && parameter.type.kind === "reference") {
     const prefix = `ref[${parameter.type.origin}]`;
     return parameter.name === undefined
-      ? `${prefix} ${requiredTypeName(parameter.type.value)}`
-      : `${prefix} ${parameter.name}: ${requiredTypeName(parameter.type.value)}`;
+      ? `${prefix} ${requiredTypeName(parameter.type.value, currentModulePath)}`
+      : `${prefix} ${parameter.name}: ${requiredTypeName(parameter.type.value, currentModulePath)}`;
   }
   const convention = parameter.convention === "imm" ? "" : `${parameter.convention} `;
   return parameter.name === undefined
-    ? `${convention}${requiredTypeName(parameter.type)}`
-    : `${convention}${parameter.name}: ${requiredTypeName(parameter.type)}`;
+    ? `${convention}${requiredTypeName(parameter.type, currentModulePath)}`
+    : `${convention}${parameter.name}: ${requiredTypeName(parameter.type, currentModulePath)}`;
 }
 
 export function mojoGenericParametersText(
   parameters: readonly import("../../../target-model/provider/model.js").MojoProviderTargetGenericParameter[],
+  currentModulePath: readonly string[] = Object.freeze([]),
 ): string {
   if (parameters.length === 0) return "";
   const parts: string[] = [];
@@ -181,10 +189,10 @@ export function mojoGenericParametersText(
     const name = `${parameter.variadic ? "*" : ""}${parameter.name}`;
     const constraints = parameter.constraints.length === 0
       ? "AnyType"
-      : parameter.constraints.map(requiredTypeName).join(" & ");
+      : parameter.constraints.map((constraint) => requiredTypeName(constraint, currentModulePath)).join(" & ");
     const defaultArgument = parameter.defaultArgument === undefined
       ? ""
-      : ` = ${renderGenericArgument(parameter.defaultArgument)}`;
+      : ` = ${renderGenericArgument(parameter.defaultArgument, currentModulePath)}`;
     parts.push(`${name}: ${constraints}${defaultArgument}`);
     const next = parameters[index + 1];
     if (parameter.position === "inferred" && next?.position !== "inferred") parts.push("//");
@@ -195,17 +203,22 @@ export function mojoGenericParametersText(
 
 function renderGenericArgument(
   argument: NonNullable<Extract<MojoTargetTypeRef, { readonly kind: "target-named" }>['genericArguments']>[number],
+  currentModulePath: readonly string[],
 ): string {
   const value = argument.kind === "type"
-    ? requiredTypeName(argument.type)
+    ? requiredTypeName(argument.type, currentModulePath)
     : argument.kind === "value" || argument.kind === "type-expression" || argument.kind === "compiler-expression"
       ? argument.expression
       : "_";
   return argument.name === undefined ? value : `${argument.name}=${value}`;
 }
 
-function requiredTypeName(type: MojoTargetTypeRef): string {
-  const name = mojoTypeName(type);
+function requiredTypeName(type: MojoTargetTypeRef, currentModulePath: readonly string[]): string {
+  const name = mojoTypeName(type, currentModulePath);
   if (name === undefined) throw new Error("Mojo unit cannot appear in a value type position.");
   return name;
+}
+
+function sameModulePath(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((segment, index) => segment === right[index]);
 }
