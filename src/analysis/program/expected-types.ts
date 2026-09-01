@@ -51,8 +51,12 @@ export function expectedExpressionType(
       return selection.fields.find((candidate) => candidate.element === parent)?.storageType;
     }
     const contribution = selection?.contributions.find((candidate) =>
-      candidate.kind === "field" && candidate.element === parent);
-    return contribution?.kind === "field" ? contribution.fieldType : undefined;
+      (candidate.kind === "field" || candidate.kind === "index-entry") && candidate.element === parent);
+    return contribution?.kind === "field"
+      ? contribution.fieldType
+      : contribution?.kind === "index-entry"
+        ? contribution.valueType
+        : undefined;
   }
   const parentOperator = ast.operatorKindName(parent);
   if (ast.is.IsBinaryExpression(parent) && BinaryExpression_Right(ast, parent) === node &&

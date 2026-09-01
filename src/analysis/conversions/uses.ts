@@ -115,8 +115,16 @@ export function recordMojoExecutableRegionConversionUses(
         if (property !== undefined && value !== undefined && selection !== undefined) {
           if (selection.kind === "interface") {
             const contribution = selection.contributions.find((candidate) =>
-              candidate.kind === "field" && candidate.element === property);
+              (candidate.kind === "field" || candidate.kind === "index-entry") &&
+              candidate.element === property);
             if (contribution?.kind === "field") record(value, contribution.fieldType);
+            if (contribution?.kind === "index-entry") {
+              record(value, contribution.valueType);
+              if (contribution.key.kind === "expression") {
+                record(contribution.key.expression, contribution.keyType);
+                visitExpression(contribution.key.expression);
+              }
+            }
           } else {
             const field = selection.fields.find((candidate) => candidate.element === property);
             if (field !== undefined) record(value, field.storageType);

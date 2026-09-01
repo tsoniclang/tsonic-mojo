@@ -31,9 +31,9 @@ export function planMojoElement(
     );
     return undefined;
   }
-  const sourceReceiverType = selection.kind === "native"
-    ? selection.receiverType
-    : selection.sourceReceiverType;
+  const sourceReceiverType = selection.kind === "provider"
+    ? selection.sourceReceiverType
+    : selection.receiverType;
   const preparedReceiver = prepareMojoReceiver(
     selection.receiver,
     sourceReceiverType,
@@ -66,24 +66,34 @@ export function planMojoElement(
       return undefined;
     }
   }
-  const receiverType = selection.kind === "native" ? selection.receiverType : operation?.receiverType;
-  const indexType = selection.kind === "native" ? selection.indexType : operation?.parameterTypes[0];
+  const receiverType = selection.kind === "provider" ? operation?.receiverType : selection.receiverType;
+  const indexType = selection.kind === "provider" ? operation?.parameterTypes[0] : selection.indexType;
   if (receiverType === undefined || indexType === undefined) return undefined;
   const ordered = orderMojoValues([
     Object.freeze({ plan: receiver, type: receiverType, role: "element_receiver" }),
     Object.freeze({ plan: index, type: indexType, role: "element_index" }),
   ], context, stabilizeComponents);
+  const indexedReceiver: MojoExpression = selection.kind !== "project-index"
+    ? ordered.values[0]!
+    : {
+        kind: "member",
+        receiver: {
+          kind: "postfix-deref",
+          expression: { kind: "member", receiver: ordered.values[0]!, name: "_state" },
+        },
+        name: selection.storageName,
+      };
   const access: MojoExpression = selection.kind === "provider" &&
       operation?.target.kind === "index-read" && operation.target.access.kind === "method"
     ? {
         kind: "method-call",
-        receiver: ordered.values[0]!,
+        receiver: indexedReceiver,
         name: operation.target.access.name,
         arguments: Object.freeze([Object.freeze({ value: ordered.values[1]! })]),
       }
     : {
         kind: "element",
-        receiver: ordered.values[0]!,
+        receiver: indexedReceiver,
         index: ordered.values[1]!,
       };
   const operationPlan = mode !== "read" || selection.readResultConversion === undefined

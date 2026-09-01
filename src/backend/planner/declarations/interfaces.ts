@@ -41,25 +41,46 @@ export function planMojoInterface(
   });
   registerMojoTypeImports(arcType, context);
   for (const field of interface_.fields) registerMojoTypeImports(field.type, context);
+  const indexStorage = interface_.indexSignatures.map((indexSignature) => Object.freeze({
+    indexSignature,
+    type: Object.freeze({
+      kind: "dictionary" as const,
+      key: indexSignature.keyType,
+      value: indexSignature.valueType,
+    }),
+  }));
+  for (const storage of indexStorage) registerMojoTypeImports(storage.type, context);
   const state: MojoStructDeclaration = Object.freeze({
     kind: "struct",
     name: interface_.stateName,
     genericParameters,
     conformances: Object.freeze([]),
-    fields: Object.freeze(interface_.fields.map((field) => Object.freeze({
-      name: field.name,
-      type: field.type,
-      compileTime: false,
-    }))),
+    fields: Object.freeze([
+      ...interface_.fields.map((field) => Object.freeze({
+        name: field.name,
+        type: field.type,
+        compileTime: false,
+      })),
+      ...indexStorage.map(({ indexSignature, type }) => Object.freeze({
+        name: indexSignature.storageName,
+        type,
+        compileTime: false,
+      })),
+    ]),
     methods: Object.freeze([]),
     decorators: Object.freeze(["fieldwise_init"]),
   });
   const stateConstruction = Object.freeze({
     kind: "construct" as const,
     type: stateType,
-    arguments: Object.freeze(interface_.fields.map((field) => Object.freeze({
-      value: Object.freeze({ kind: "path" as const, path: field.name }),
-    }))),
+    arguments: Object.freeze([
+      ...interface_.fields.map((field) => Object.freeze({
+        value: Object.freeze({ kind: "path" as const, path: field.name }),
+      })),
+      ...indexStorage.map(({ indexSignature }) => Object.freeze({
+        value: Object.freeze({ kind: "path" as const, path: indexSignature.storageName }),
+      })),
+    ]),
   });
   const initialize: MojoStatement = Object.freeze({
     kind: "assignment",
@@ -79,11 +100,18 @@ export function planMojoInterface(
     kind: "function",
     name: "__init__",
     genericParameters: Object.freeze([]),
-    parameters: Object.freeze(interface_.fields.map((field) => Object.freeze({
-      name: field.name,
-      type: field.type,
-      convention: "imm" as const,
-    }))),
+    parameters: Object.freeze([
+      ...interface_.fields.map((field) => Object.freeze({
+        name: field.name,
+        type: field.type,
+        convention: "imm" as const,
+      })),
+      ...indexStorage.map(({ indexSignature, type }) => Object.freeze({
+        name: indexSignature.storageName,
+        type,
+        convention: "var" as const,
+      })),
+    ]),
     resultType: Object.freeze({ kind: "unit" }),
     asynchronous: false,
     raises: false,

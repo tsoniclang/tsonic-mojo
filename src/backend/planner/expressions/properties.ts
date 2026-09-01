@@ -16,6 +16,7 @@ import {
 import type { MojoValuePlanner } from "./support.js";
 import { mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
+import { planDictionaryKey } from "./conditional-values.js";
 
 export function planMojoProperty(
   node: Node,
@@ -150,7 +151,7 @@ export function planMojoProperty(
     }
     return withMojoValue(ordered.before, expression);
   }
-  const sourceReceiverType = selection.kind === "project-field"
+  const sourceReceiverType = selection.kind === "project-field" || selection.kind === "project-index-property"
     ? selection.receiverType
     : selection.sourceReceiverType;
   const receiver = prepareMojoReceiver(
@@ -173,6 +174,34 @@ export function planMojoProperty(
       },
       name: selection.fieldName,
     });
+    return finishOptionalMojoOperation(node, receiver, operation, context);
+  }
+  if (selection.kind === "project-index-property") {
+    const key = planDictionaryKey(selection.key, selection.keyType, context);
+    if (key === undefined) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROJECT_INDEX_PROPERTY_KEY_UNSUPPORTED",
+        "A selected project index property has no exact Mojo dictionary-key carrier.",
+        node,
+      );
+      return undefined;
+    }
+    const ordered = orderMojoValues([
+      Object.freeze({ plan: receiver.plan, type: selection.receiverType, role: "index_property_receiver" }),
+    ], context, stabilizeReceiver);
+    const operation = withMojoValue(ordered.before, Object.freeze({
+      kind: "element",
+      receiver: Object.freeze({
+        kind: "member",
+        receiver: Object.freeze({
+          kind: "postfix-deref",
+          expression: Object.freeze({ kind: "member", receiver: ordered.values[0]!, name: "_state" }),
+        }),
+        name: selection.storageName,
+      }),
+      index: key,
+    }));
     return finishOptionalMojoOperation(node, receiver, operation, context);
   }
   const operation = mode === "read" ? selection.readOperation : selection.writeOperation;

@@ -1,8 +1,9 @@
-import type { Node, ResolvedSourcePropertyAccessInfo } from "@tsonic/tsts";
+import type { AstReader, Node, ResolvedSourcePropertyAccessInfo } from "@tsonic/tsts";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import { substituteMojoTargetType } from "../../target-model/types/substitution.js";
 import type {
+  MojoAnalyzedInterfaceIndexSignature,
   MojoAnalyzedProjectProperty,
   MojoPropertySelection,
 } from "../program/model.js";
@@ -21,6 +22,7 @@ export function analyzeMojoProjectProperty(
   fieldByDeclaration: WeakMap<Node, MojoAnalyzedProjectProperty>,
   receiverType: MojoTargetTypeRef | undefined,
   selectedSubjects: readonly object[],
+  ast: AstReader,
 ): MojoProjectFieldAnalysis {
   if (source.callCallee) return { kind: "not-project-field" };
   if (source.accessMode === "delete") {
@@ -71,6 +73,47 @@ export function analyzeMojoProjectProperty(
       }),
     };
   }
+  if (field.kind === "interface-index-signature") {
+    if (receiverType === undefined) {
+      return {
+        kind: "unsupported",
+        code: "MOJO_PROJECT_INDEX_PROPERTY_RECEIVER_NOT_CLOSED",
+        reason: "Selected project index-property receiver has no exact non-null Mojo carrier.",
+      };
+    }
+    const instantiated = instantiateProjectIndexSignature(field, receiverType);
+    const propertyName = ast.name(source.expression);
+    const key = propertyName === undefined ? "" : ast.text(propertyName);
+    if (instantiated === undefined || key === "") {
+      return {
+        kind: "unsupported",
+        code: "MOJO_PROJECT_INDEX_PROPERTY_INSTANTIATION_UNRESOLVED",
+        reason: "Selected project index property does not exactly instantiate its receiver and authored key.",
+      };
+    }
+    if (field.readonly && source.accessMode !== "read") {
+      return {
+        kind: "unsupported",
+        code: "MOJO_PROJECT_INDEX_READONLY_WRITE",
+        reason: "A readonly project index signature cannot be selected for a write.",
+      };
+    }
+    return {
+      kind: "resolved",
+      expressionType: optionalAccessResult(instantiated.valueType, source.optionalChain),
+      selection: Object.freeze({
+        kind: "project-index-property",
+        receiver: source.receiver.expression,
+        receiverType,
+        storageName: field.storageName,
+        key,
+        keyType: instantiated.keyType,
+        fieldType: instantiated.valueType,
+        accessMode: source.accessMode,
+        optionalChain: source.optionalChain,
+      }),
+    };
+  }
   if (receiverType === undefined) {
     return {
       kind: "unsupported",
@@ -99,6 +142,28 @@ export function analyzeMojoProjectProperty(
       optionalChain: source.optionalChain,
     }),
   };
+}
+
+export function instantiateProjectIndexSignature(
+  indexSignature: MojoAnalyzedInterfaceIndexSignature,
+  receiverType: MojoTargetTypeRef,
+): { readonly keyType: MojoTargetTypeRef; readonly valueType: MojoTargetTypeRef } | undefined {
+  if (indexSignature.ownerType.kind !== "target-named" || receiverType.kind !== "target-named" ||
+    indexSignature.ownerType.id !== receiverType.id) return undefined;
+  const arguments_ = receiverType.genericArguments ?? [];
+  if (arguments_.length !== indexSignature.ownerTypeParameters.length ||
+    arguments_.some((argument) => argument.kind !== "type")) return undefined;
+  const types = new Map<string, MojoTargetTypeRef>();
+  for (const [index, name] of indexSignature.ownerTypeParameters.entries()) {
+    const argument = arguments_[index];
+    if (argument?.kind !== "type") return undefined;
+    types.set(name, argument.type);
+  }
+  const substitutions = { types, values: new Map<string, never>(), packs: new Map<string, never>() };
+  return Object.freeze({
+    keyType: substituteMojoTargetType(indexSignature.keyType, substitutions),
+    valueType: substituteMojoTargetType(indexSignature.valueType, substitutions),
+  });
 }
 
 function analyzeProjectUnionProperty(

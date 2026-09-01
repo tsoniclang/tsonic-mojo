@@ -180,7 +180,9 @@
       "source": "interface Values { [key: string]: number; }",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact map-backed index storage, selected key/value carriers, source-ordered construction, and copy-or-clone reads",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "note": "Exact checker-selected index declarations lower to map-backed project storage for object construction, spread, property keys, and element read/write operations."
     },
     {
       "id": "declarations.enums",

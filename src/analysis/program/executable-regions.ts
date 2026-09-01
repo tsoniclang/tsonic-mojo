@@ -544,6 +544,7 @@ function analyzeProperty(
       ...semantics.facts.selectedSubjects(selected.selectedSymbol, selected.selectedDeclaration),
       ...semantics.facts.selectedSubjects(selected.sourceSymbol, selected.sourceDeclaration),
     ]),
+    input.source.ast,
   );
   const property = project.kind === "not-project-field"
     ? analyzeMojoProviderProperty(selected, {
@@ -582,6 +583,7 @@ function analyzeElement(
     sourceProfiles: input.sourceProfiles,
     conversions: input.conversions,
     expressionTypes: input.expressionTypes,
+    projectPropertyByDeclaration: input.fieldByDeclaration,
     resolveType(type) {
       return resolveType(type, undefined, input, semantics);
     },

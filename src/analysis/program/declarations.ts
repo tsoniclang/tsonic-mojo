@@ -112,6 +112,10 @@ export function analyzeMojoProjectDeclarations(input: {
       input.bindingSourceFiles.set(field.declaration, draft.sourceFile);
       input.fieldByDeclaration.set(field.declaration, field);
     }
+    for (const indexSignature of analyzed.indexSignatures) {
+      input.bindingSourceFiles.set(indexSignature.declaration, draft.sourceFile);
+      input.fieldByDeclaration.set(indexSignature.declaration, indexSignature);
+    }
   }
 
   for (const draft of input.drafts.classes) {

@@ -1,4 +1,4 @@
-import type { ResolvedSourceElementAccessInfo, Type } from "@tsonic/tsts";
+import type { Node, ResolvedSourceElementAccessInfo, Type } from "@tsonic/tsts";
 import { tsonicFixedArrayProviderMember } from "@tsonic/source-core/facts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
@@ -15,6 +15,8 @@ import { instantiateMojoProviderPropertyOperation } from "../../policy/operation
 import { selectedProviderDeclarationIdentity } from "../../policy/operations/provider-selection.js";
 import type { MojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
 import { selectedMojoSourceProfileDeclarationIdentity } from "../../policy/operations/source-profile-selection.js";
+import type { MojoAnalyzedProjectProperty } from "../program/model.js";
+import { instantiateProjectIndexSignature } from "./project-fields.js";
 
 export type MojoElementAnalysis =
   | { readonly kind: "resolved"; readonly selection: MojoElementSelection; readonly expressionType: MojoTargetTypeRef }
@@ -27,6 +29,7 @@ export interface MojoElementAnalysisContext {
   readonly resolveType: (type: Type) => MojoTargetTypeRef | undefined;
   readonly conversions: MojoConversionIndex;
   readonly expressionTypes: WeakMap<import("@tsonic/tsts").Node, MojoTargetTypeRef>;
+  readonly projectPropertyByDeclaration: WeakMap<Node, MojoAnalyzedProjectProperty>;
 }
 
 export function analyzeMojoElementAccess(
@@ -56,6 +59,8 @@ export function analyzeMojoElementAccess(
       "Selected element receiver or index has no exact Mojo carrier.",
     );
   }
+  const project = analyzeProjectIndex(source, accessMode, receiver, index, context);
+  if (project !== undefined) return project;
   const identity = selectedProviderDeclarationIdentity(context.source, [
     source.selectedDeclaration,
     source.selectedSymbol,
@@ -77,6 +82,72 @@ export function analyzeMojoElementAccess(
   );
   if (sourceProfile !== undefined) return sourceProfile;
   return analyzeNativeElement(source, accessMode, receiver, index, context.conversions);
+}
+
+function analyzeProjectIndex(
+  source: ResolvedSourceElementAccessInfo,
+  accessMode: "read" | "write" | "read-write",
+  receiver: MojoTargetTypeRef,
+  index: MojoTargetTypeRef,
+  context: MojoElementAnalysisContext,
+): MojoElementAnalysis | undefined {
+  const candidates = [source.selectedDeclaration].map((declaration) => declaration === undefined
+    ? undefined
+    : context.projectPropertyByDeclaration.get(declaration))
+    .filter((candidate): candidate is Extract<MojoAnalyzedProjectProperty, {
+      readonly kind: "interface-index-signature";
+    }> => candidate?.kind === "interface-index-signature");
+  const unique = [...new Set(candidates)];
+  if (unique.length === 0) return undefined;
+  if (unique.length !== 1) {
+    return unsupported(
+      "MOJO_PROJECT_INDEX_IDENTITY_CONFLICT",
+      "Selected project index evidence resolves to multiple index-signature declarations.",
+    );
+  }
+  const selected = unique[0]!;
+  const instantiated = instantiateProjectIndexSignature(selected, receiver);
+  if (instantiated === undefined) {
+    return unsupported(
+      "MOJO_PROJECT_INDEX_INSTANTIATION_UNRESOLVED",
+      "Selected project index signature does not exactly instantiate its receiver carrier.",
+    );
+  }
+  if (selected.readonly && accessMode !== "read") {
+    return unsupported(
+      "MOJO_PROJECT_INDEX_READONLY_WRITE",
+      "A readonly project index signature cannot be selected for a write.",
+    );
+  }
+  const indexConversion = context.conversions.record(
+    source.argument.expression,
+    index,
+    instantiated.keyType,
+  );
+  if (indexConversion.kind === "unsupported") {
+    return unsupported("MOJO_PROJECT_INDEX_KEY_CONVERSION_UNPROVEN", indexConversion.reason);
+  }
+  return {
+    kind: "resolved",
+    expressionType: instantiated.valueType,
+    selection: Object.freeze({
+      kind: "project-index",
+      receiver: source.receiver.expression,
+      index: source.argument.expression,
+      accessMode,
+      receiverType: receiver,
+      storageName: selected.storageName,
+      indexType: instantiated.keyType,
+      ...(accessMode === "read" || accessMode === "read-write"
+        ? { readType: instantiated.valueType }
+        : {}),
+      ...(accessMode === "write" || accessMode === "read-write"
+        ? { writeType: instantiated.valueType }
+        : {}),
+      indexConversion: indexConversion.conversion,
+      optionalChain: source.optionalChain,
+    }),
+  };
 }
 
 function analyzeSourceProfileElement(

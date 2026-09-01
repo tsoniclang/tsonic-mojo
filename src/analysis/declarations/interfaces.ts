@@ -8,6 +8,7 @@ import { mojoAnalysisDiagnostic } from "../diagnostics.js";
 import type {
   MojoAnalyzedInterface,
   MojoAnalyzedInterfaceField,
+  MojoAnalyzedInterfaceIndexSignature,
 } from "../program/model.js";
 import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
 import { resolveMojoTargetType } from "../../policy/types/resolution.js";
@@ -61,9 +62,36 @@ export function analyzeMojoInterface(
     return undefined;
   }
   const fields: MojoAnalyzedInterfaceField[] = [];
+  const indexSignatures: MojoAnalyzedInterfaceIndexSignature[] = [];
   const names = input.createNameAllocator();
   const semantics = source.semantics.forFile(input.sourceFile);
   for (const member of members as readonly Node[]) {
+    if (ast.is.IsIndexSignatureDeclaration(member)) {
+      const parameters = ast.parameters(member);
+      const parameter = parameters.length === 1 ? parameters[0] : undefined;
+      if (parameter === undefined || !ast.is.IsParameterDeclaration(parameter)) {
+        append(input, "MOJO_INTERFACE_INDEX_PARAMETER_UNRESOLVED", "An interface index signature requires one exact parameter declaration.", member);
+        continue;
+      }
+      const key = declaredType(parameter, semantics, ast);
+      const value = declaredType(member, semantics, ast);
+      const resolvedKey = resolveInterfaceType(input, key, ast.typeNode(parameter), parameter);
+      const resolvedValue = resolveInterfaceType(input, value, ast.typeNode(member), member);
+      if (resolvedKey === undefined || resolvedValue === undefined) continue;
+      const indexSignature = Object.freeze({
+        kind: "interface-index-signature" as const,
+        declaration: member,
+        storageName: names("_index"),
+        keyType: resolvedKey,
+        valueType: resolvedValue,
+        ownerType: targetType,
+        ownerTypeParameters: Object.freeze([...definition.typeParameterNames]),
+        readonly: ast.hasModifierKind(member, "readonly"),
+      });
+      indexSignatures.push(indexSignature);
+      input.bindingTypes.set(member, resolvedValue);
+      continue;
+    }
     if (!ast.is.IsPropertySignatureDeclaration(member)) {
       append(
         input,
@@ -108,7 +136,7 @@ export function analyzeMojoInterface(
     input.bindingNames.set(member, name);
     input.bindingTypes.set(member, resolved.type);
   }
-  if (fields.length !== members.length) return undefined;
+  if (fields.length + indexSignatures.length !== members.length) return undefined;
   const typeParameters = analyzeMojoTypeParameters({
     source,
     providerSemantics: input.providerSemantics,
@@ -133,8 +161,31 @@ export function analyzeMojoInterface(
     stateName: input.stateName,
     typeParameters,
     fields: Object.freeze(fields),
+    indexSignatures: Object.freeze(indexSignatures),
     targetType,
   });
+}
+
+function resolveInterfaceType(
+  input: MojoInterfaceAnalysisInput,
+  type: Type | undefined,
+  authoredTypeNode: Node | undefined,
+  evidence: Node,
+): MojoTargetTypeRef | undefined {
+  const resolved = resolveMojoTargetType(type, authoredTypeNode, {
+    ast: input.source.ast,
+    semantics: input.source.semantics.forFile(input.sourceFile),
+    sourceFacts: input.source.sourceFacts,
+    providerSemantics: input.providerSemantics,
+    projectTypes: input.projectTypes,
+    sourceProfiles: input.sourceProfiles,
+    jsEnabled: input.jsEnabled,
+  });
+  if (resolved.kind === "unsupported") {
+    append(input, "MOJO_TARGET_TYPE_UNSUPPORTED", `Selected interface type cannot be represented exactly in Mojo: ${resolved.reason}.`, evidence);
+    return undefined;
+  }
+  return resolved.type;
 }
 
 function declaredType(

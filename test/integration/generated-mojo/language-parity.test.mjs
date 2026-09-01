@@ -791,3 +791,42 @@ test("native length reads retain their exact numeric conversion in comparisons",
   assert.match(source.text, /Float64\([^\n]*\.__len__\(\)\) >= 0/u);
   assert.match(source.text, /Float64\([^\n]*\.__len__\(\)\) <= 3/u);
 });
+
+test("project interface index signatures retain exact map-backed storage and source order", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        "interface Scores { [name: string]: i32; }",
+        "function total(name: string): i32 {",
+        "  const initial: Scores = { first: 1, [name]: 2 };",
+        "  initial.second = 3;",
+        '  initial["first"] += 4;',
+        "  const copied: Scores = { ...initial, fourth: 5 };",
+        '  return copied.first + copied[name] + copied["second"] + copied.fourth;',
+        "}",
+        'export function main(): void { if (total("third") !== 15) return; }',
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("struct ScoresState"));
+  assert.ok(source);
+  assert.match(source.text, /var _index: Dict\[String, Int32\]/u);
+  assert.match(source.text, /for __tsonic_object_index_key_/u);
+  assert.match(source.text, /\._state\[\]\._index\["first"\] \+= Int32\(4\)/u);
+  assert.match(source.text, /\._state\[\]\._index\[name\]/u);
+});
+
+test("readonly project index signatures reject exact selected writes", () => {
+  assert.throws(() => compileMojo({
+    files: {
+      "index.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        "interface Scores { readonly [name: string]: i32; }",
+        "function update(scores: Scores): void { scores.value = 1; }",
+        "export function main(): void {}",
+      ].join("\n"),
+    },
+  }), /TS2542/u);
+});

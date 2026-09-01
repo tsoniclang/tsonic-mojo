@@ -92,6 +92,17 @@ export interface MojoAnalyzedInterfaceField {
   readonly optional: boolean;
 }
 
+export interface MojoAnalyzedInterfaceIndexSignature {
+  readonly kind: "interface-index-signature";
+  readonly declaration: Node;
+  readonly storageName: string;
+  readonly keyType: MojoTargetTypeRef;
+  readonly valueType: MojoTargetTypeRef;
+  readonly ownerType: MojoTargetTypeRef;
+  readonly ownerTypeParameters: readonly string[];
+  readonly readonly: boolean;
+}
+
 export interface MojoAnalyzedStaticClassField {
   readonly kind: "static-field";
   readonly declaration: Node;
@@ -127,6 +138,7 @@ export interface MojoAnalyzedInterface {
   readonly stateName: string;
   readonly typeParameters: readonly MojoAnalyzedTypeParameter[];
   readonly fields: readonly MojoAnalyzedInterfaceField[];
+  readonly indexSignatures: readonly MojoAnalyzedInterfaceIndexSignature[];
   readonly targetType: MojoTargetTypeRef;
 }
 
@@ -151,6 +163,7 @@ export interface MojoAnalyzedEnum {
 export type MojoAnalyzedProjectProperty =
   | MojoAnalyzedProjectField
   | MojoAnalyzedInterfaceField
+  | MojoAnalyzedInterfaceIndexSignature
   | MojoAnalyzedEnumMember;
 
 export type MojoAnalyzedDeclaration =
@@ -209,6 +222,17 @@ export type MojoPropertySelection =
       readonly fieldName: string;
       readonly fieldType: MojoTargetTypeRef;
       readonly receiverType: MojoTargetTypeRef;
+      readonly accessMode: "read" | "write" | "read-write";
+      readonly optionalChain: boolean;
+    }
+  | {
+      readonly kind: "project-index-property";
+      readonly receiver: Node;
+      readonly receiverType: MojoTargetTypeRef;
+      readonly storageName: string;
+      readonly key: string;
+      readonly keyType: MojoTargetTypeRef;
+      readonly fieldType: MojoTargetTypeRef;
       readonly accessMode: "read" | "write" | "read-write";
       readonly optionalChain: boolean;
     }
@@ -310,6 +334,19 @@ export type MojoElementSelection = {
   readonly selectedElementIndex?: number;
   readonly optionalChain: boolean;
 } | {
+  readonly kind: "project-index";
+  readonly receiver: Node;
+  readonly index: Node;
+  readonly accessMode: "read" | "write" | "read-write";
+  readonly receiverType: MojoTargetTypeRef;
+  readonly storageName: string;
+  readonly indexType: MojoTargetTypeRef;
+  readonly readType?: MojoTargetTypeRef;
+  readonly writeType?: MojoTargetTypeRef;
+  readonly indexConversion: MojoValueConversion;
+  readonly readResultConversion?: MojoValueConversion;
+  readonly optionalChain: boolean;
+} | {
   readonly kind: "provider";
   readonly receiver: Node;
   readonly index: Node;
@@ -406,6 +443,22 @@ export type MojoObjectLiteralContribution =
         readonly field: MojoAnalyzedInterfaceField;
         readonly fieldType: MojoTargetTypeRef;
       }[];
+      readonly indexSignatures: readonly {
+        readonly indexSignature: MojoAnalyzedInterfaceIndexSignature;
+        readonly keyType: MojoTargetTypeRef;
+        readonly valueType: MojoTargetTypeRef;
+      }[];
+    }
+  | {
+      readonly kind: "index-entry";
+      readonly element: Node;
+      readonly value: Node;
+      readonly key:
+        | { readonly kind: "literal"; readonly value: string; readonly literalKind: "string" | "number" }
+        | { readonly kind: "expression"; readonly expression: Node };
+      readonly indexSignature: MojoAnalyzedInterfaceIndexSignature;
+      readonly keyType: MojoTargetTypeRef;
+      readonly valueType: MojoTargetTypeRef;
     };
 
 export type MojoObjectLiteralSelection =
@@ -418,6 +471,11 @@ export type MojoObjectLiteralSelection =
       readonly fields: readonly {
         readonly field: MojoAnalyzedInterfaceField;
         readonly fieldType: MojoTargetTypeRef;
+      }[];
+      readonly indexSignatures: readonly {
+        readonly indexSignature: MojoAnalyzedInterfaceIndexSignature;
+        readonly keyType: MojoTargetTypeRef;
+        readonly valueType: MojoTargetTypeRef;
       }[];
       readonly contributions: readonly MojoObjectLiteralContribution[];
     }

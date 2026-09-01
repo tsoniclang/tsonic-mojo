@@ -134,10 +134,16 @@ export function validateMojoFunctionSyntax(
     if (ast.is.IsObjectLiteralExpression(expression)) {
       const selected = objectLiterals.get(expression);
       if (selected !== undefined) {
-        const values = selected.kind === "interface"
-          ? selected.contributions.map((contribution) => contribution.value)
-          : selected.fields.map((field) => field.value);
-        for (const value of values) validateExpression(value);
+        if (selected.kind === "interface") {
+          for (const contribution of selected.contributions) {
+            if (contribution.kind === "index-entry" && contribution.key.kind === "expression") {
+              validateExpression(contribution.key.expression);
+            }
+            validateExpression(contribution.value);
+          }
+        } else {
+          for (const field of selected.fields) validateExpression(field.value);
+        }
         return;
       }
       for (const property of ast.properties(expression)) {

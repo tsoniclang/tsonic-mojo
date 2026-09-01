@@ -13,6 +13,7 @@ import { mojoAnalysisDiagnostic } from "../diagnostics.js";
 import type {
   MojoAnalyzedInterface,
   MojoAnalyzedInterfaceField,
+  MojoAnalyzedInterfaceIndexSignature,
   MojoAnalyzedProjectProperty,
   MojoObjectLiteralContribution,
   MojoObjectLiteralSelection,
@@ -66,6 +67,12 @@ export function analyzeMojoObjectLiteral(
     return undefined;
   }
   const fieldTypes = new Map(instantiatedFields.map((field) => [field.field.declaration, field] as const));
+  const instantiatedIndexSignatures = instantiateIndexSignatures(interface_, constructionType);
+  if (instantiatedIndexSignatures === undefined) {
+    reject(input, "MOJO_OBJECT_INDEX_INSTANTIATION_UNRESOLVED", "Object literal interface arguments do not exactly instantiate its declared index signatures.", expression);
+    return undefined;
+  }
+  const indexTypes = new Map(instantiatedIndexSignatures.map((entry) => [entry.indexSignature.declaration, entry] as const));
   const contributions: MojoObjectLiteralContribution[] = [];
   const assigned = new Set<Node>();
   for (const element of ast.properties(expression)) {
@@ -86,6 +93,7 @@ export function analyzeMojoObjectLiteral(
         value,
         sourceType,
         fields: Object.freeze(instantiatedFields),
+        indexSignatures: instantiatedIndexSignatures,
       }));
       for (const field of instantiatedFields) assigned.add(field.field.declaration);
       continue;
@@ -95,16 +103,51 @@ export function analyzeMojoObjectLiteral(
     }
     const selected = semantics.operations.objectLiteralElement(element);
     const value = ObjectLiteralProperty_Value(ast, element);
-    const selectedField = selected?.sourceSelectedDeclaration === undefined
-      ? undefined
-      : input.fieldByDeclaration.get(selected.sourceSelectedDeclaration);
+    const selectedCandidates = selected === undefined
+      ? []
+      : [selected.sourceSelectedDeclaration, ...selected.sourceSelectedDeclarations]
+          .flatMap((declaration) => declaration === undefined
+            ? []
+            : [input.fieldByDeclaration.get(declaration)])
+          .filter((candidate): candidate is MojoAnalyzedProjectProperty => candidate !== undefined);
+    const selectedUnique = [...new Set(selectedCandidates)];
+    const selectedField = selectedUnique.length === 1
+      ? selectedUnique[0]
+      : selectedUnique.length === 0 && instantiatedIndexSignatures.length === 1
+        ? instantiatedIndexSignatures[0]!.indexSignature
+        : undefined;
     const instantiated = selectedField?.kind === "interface-field"
       ? fieldTypes.get(selectedField.declaration)
       : undefined;
+    const instantiatedIndex = selectedField?.kind === "interface-index-signature"
+      ? indexTypes.get(selectedField.declaration)
+      : undefined;
     const expectedKind = ast.is.IsPropertyAssignment(element) ? "property" : "shorthand";
     if (selected === undefined || selected.objectLiteral !== expression || selected.element !== element ||
-      selected.elementKind !== expectedKind || value === undefined || instantiated === undefined) {
+      selected.elementKind !== expectedKind || value === undefined ||
+      (instantiated === undefined && instantiatedIndex === undefined)) {
       reject(input, "MOJO_OBJECT_FIELD_SELECTION_UNRESOLVED", "Object property requires one exact checker-selected project-interface field.", element);
+      return undefined;
+    }
+    if (instantiatedIndex !== undefined) {
+      const key = objectIndexKey(element, instantiatedIndex.keyType, source);
+      if (key === undefined) {
+        reject(input, "MOJO_OBJECT_INDEX_KEY_UNSUPPORTED", "Object index entry requires one exact literal or computed key compatible with its selected index signature.", element);
+        return undefined;
+      }
+      contributions.push(Object.freeze({
+        kind: "index-entry",
+        element,
+        value,
+        key,
+        indexSignature: instantiatedIndex.indexSignature,
+        keyType: instantiatedIndex.keyType,
+        valueType: instantiatedIndex.valueType,
+      }));
+      continue;
+    }
+    if (instantiated === undefined) {
+      reject(input, "MOJO_OBJECT_FIELD_SELECTION_UNRESOLVED", "Object property has no exact instantiated project-interface field.", element);
       return undefined;
     }
     contributions.push(Object.freeze({
@@ -129,6 +172,7 @@ export function analyzeMojoObjectLiteral(
     resultType,
     resultConversion: resultConversion.conversion,
     fields: instantiatedFields,
+    indexSignatures: instantiatedIndexSignatures,
     contributions: Object.freeze(contributions),
   });
 }
@@ -161,13 +205,69 @@ function selectConstructionType(
     const field = selected?.sourceSelectedDeclaration === undefined
       ? undefined
       : input.fieldByDeclaration.get(selected.sourceSelectedDeclaration);
-    if (field?.kind !== "interface-field" || field.ownerType.kind !== "target-named") return undefined;
+    if ((field?.kind !== "interface-field" && field?.kind !== "interface-index-signature") ||
+      field.ownerType.kind !== "target-named") return undefined;
     ownerIds.add(field.ownerType.id);
   }
   if (ownerIds.size !== 1) return undefined;
   const ownerId = [...ownerIds][0]!;
   const matches = interfaceMembers.filter((member) => member.id === ownerId);
   return matches.length === 1 ? matches[0] : undefined;
+}
+
+function instantiateIndexSignatures(
+  interface_: MojoAnalyzedInterface,
+  targetType: MojoTargetTypeRef,
+): readonly {
+  readonly indexSignature: MojoAnalyzedInterfaceIndexSignature;
+  readonly keyType: MojoTargetTypeRef;
+  readonly valueType: MojoTargetTypeRef;
+}[] | undefined {
+  if (targetType.kind !== "target-named" || interface_.targetType.kind !== "target-named" ||
+    targetType.id !== interface_.targetType.id) return undefined;
+  const arguments_ = targetType.genericArguments ?? [];
+  if (arguments_.length !== interface_.typeParameters.length ||
+    arguments_.some((argument) => argument.kind !== "type")) return undefined;
+  const types = new Map<string, MojoTargetTypeRef>();
+  for (const [index, parameter] of interface_.typeParameters.entries()) {
+    const argument = arguments_[index];
+    if (argument?.kind !== "type") return undefined;
+    types.set(parameter.name, argument.type);
+  }
+  const substitutions = { types, values: new Map<string, never>(), packs: new Map<string, never>() };
+  return Object.freeze(interface_.indexSignatures.map((indexSignature) => Object.freeze({
+    indexSignature,
+    keyType: substituteMojoTargetType(indexSignature.keyType, substitutions),
+    valueType: substituteMojoTargetType(indexSignature.valueType, substitutions),
+  })));
+}
+
+function objectIndexKey(
+  element: Node,
+  keyType: MojoTargetTypeRef,
+  source: TargetSourceProgram,
+): Extract<MojoObjectLiteralContribution, { readonly kind: "index-entry" }>[
+  "key"
+] | undefined {
+  const name = source.ast.name(element);
+  if (name === undefined) return undefined;
+  if (source.ast.is.IsComputedPropertyName(name)) {
+    const expression = source.ast.as.AsComputedPropertyName(name)?.Expression;
+    return expression === undefined ? undefined : Object.freeze({ kind: "expression", expression });
+  }
+  if (source.ast.is.IsNumericLiteral(name)) {
+    return keyType.kind === "source-primitive" && keyType.name !== "bool" && keyType.name !== "char"
+      ? Object.freeze({ kind: "literal", value: source.ast.text(name), literalKind: "number" })
+      : undefined;
+  }
+  if (source.ast.is.IsIdentifier(name) || source.ast.is.IsStringLiteral(name) ||
+    source.ast.is.IsNoSubstitutionTemplateLiteral(name)) {
+    return keyType.kind === "native-string" ||
+        keyType.kind === "target-named" && keyType.id === "tsonic.mojo.js.JsString"
+      ? Object.freeze({ kind: "literal", value: source.ast.text(name), literalKind: "string" })
+      : undefined;
+  }
+  return undefined;
 }
 
 function uniqueTargetTypes(
