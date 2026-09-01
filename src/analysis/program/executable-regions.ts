@@ -125,7 +125,7 @@ export function analyzeMojoExecutableRegion(
   while (pendingObjects.size !== 0 && progressed) {
     progressed = false;
     for (const node of pendingObjects) {
-      const expectedType = expectedObjectType(node, input);
+      const expectedType = expectedExpressionType(node, input);
       const inferredType = input.expressionTypes.get(node);
       const candidate = expectedType ?? inferredType;
       if (candidate?.kind !== "target-named" || !input.interfaceByTypeId.has(candidate.id)) {
@@ -184,7 +184,7 @@ export function analyzeMojoExecutableRegion(
   return Object.freeze({ dependencies, raises: regionRaises(root, input) });
 }
 
-function expectedObjectType(
+function expectedExpressionType(
   node: Node,
   input: MojoExecutableRegionAnalysisInput,
 ): MojoTargetTypeRef | undefined {
@@ -278,7 +278,9 @@ function analyzeExpressionCarrier(
   if (referencedName !== undefined) input.bindingNames.set(node, referencedName);
   if (reference !== undefined) input.bindingSourceFiles.set(node, reference.sourceFile);
   const referencedType = reference === undefined ? undefined : input.bindingTypes.get(reference.declaration);
-  const resolved = referencedType ?? resolveType(semantics.types.expressionType(node), undefined, input, semantics);
+  const contextualExpected = expectedExpressionType(node, input);
+  const resolved = referencedType ?? contextualExpected ??
+    resolveType(semantics.types.expressionType(node), undefined, input, semantics);
   if (resolved !== undefined) input.expressionTypes.set(node, resolved);
   if (ast.is.IsIdentifier(node) && referencedName === undefined && resolved !== undefined &&
     providerValueReferenceRole(node, ast)) {
@@ -355,6 +357,7 @@ function analyzeElement(
     source: input.source,
     providerSemantics: input.providerSemantics,
     conversions: input.conversions,
+    expressionTypes: input.expressionTypes,
     resolveType(type) {
       return resolveType(type, undefined, input, semantics);
     },

@@ -290,7 +290,9 @@
       "source": "switch (value) { case 1: hit(); default: finish(); }",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain strict selection and source fallthrough",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/language-parity.test.mjs",
+      "note": "The selector is evaluated once, clauses are selected in source order, fallthrough is explicit, and break exits the generated dispatch region."
     },
     {
       "id": "control.try-catch-finally",
@@ -298,7 +300,9 @@
       "source": "try { run(); } catch (error) { recover(error); } finally { close(); }",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain explicit result and completion-flow lowering",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/language-parity.test.mjs",
+      "note": "Try, caught Error binding, throw, and mandatory finally cleanup lower through one structured Mojo error boundary."
     },
     {
       "id": "iteration.sync-async",
@@ -379,8 +383,9 @@
       "source": "const tuple: [number, string] = [1, \"one\"];",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact tuple and homogeneous fixed-array carriers",
-      "status": "partial",
-      "note": "Foundation coverage exists but does not satisfy the complete mature-target lane."
+      "status": "matched",
+      "proof": "test/language-parity.test.mjs",
+      "note": "Authored list and heterogeneous tuple component carriers remain exact through aggregate construction and indexing."
     },
     {
       "id": "types.fixed-array-lengths",
@@ -388,7 +393,9 @@
       "source": "declare const bytes: FixedArray<uint8, 32>;",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact source-core FixedArray<T, N> facts and native target array lowering without syntax or name inference",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/language-parity.test.mjs",
+      "note": "Exact source-core element and length facts produce native Array[T, N] construction and index carriers."
     },
     {
       "id": "types.open-dynamic-values",

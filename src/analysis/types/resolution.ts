@@ -12,6 +12,7 @@ import type {
 } from "@tsonic/tsts";
 import { tsonicFixedArrayFactKey } from "@tsonic/source-core/facts";
 import type { SourceFileSemantics } from "@tsonic/target-api/source";
+import { ArrayTypeNode_ElementType } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics, MojoProviderTypeRow } from "../../providers/packages/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/provider/equality.js";
 import type {
@@ -246,11 +247,16 @@ function resolveMojoTargetTypeWithState(
           reason: "optional, rest, and variadic tuple elements require a closed Mojo tuple ABI",
         };
       }
+      const authoredElements = authoredTupleElements(authoredTypeNode, context.ast);
       const elements: MojoTargetTypeRef[] = [];
-      for (const info of infos) {
+      for (const [index, info] of infos.entries()) {
         const element = resolveMojoTargetTypeWithState(
           info.type,
-          info.declaration === undefined ? undefined : context.ast.typeNode(info.declaration),
+          authoredElements.length === infos.length
+            ? authoredElements[index]
+            : info.declaration === undefined
+              ? undefined
+              : context.ast.typeNode(info.declaration),
           context,
           resolving,
         );
@@ -501,9 +507,29 @@ function authoredTypeArguments(
   authoredTypeNode: Node | undefined,
   ast: AstReader,
 ): readonly Node[] {
-  return authoredTypeNode !== undefined && ast.is.IsTypeReferenceNode(authoredTypeNode)
-    ? Object.freeze(ast.typeArguments(authoredTypeNode).filter((node): node is Node => node !== undefined))
-    : Object.freeze([]);
+  if (authoredTypeNode === undefined) return Object.freeze([]);
+  if (ast.is.IsTypeReferenceNode(authoredTypeNode)) {
+    return Object.freeze(ast.typeArguments(authoredTypeNode).filter((node): node is Node => node !== undefined));
+  }
+  const arrayElement = ArrayTypeNode_ElementType(ast, authoredTypeNode);
+  return arrayElement === undefined ? Object.freeze([]) : Object.freeze([arrayElement]);
+}
+
+function authoredTupleElements(
+  authoredTypeNode: Node | undefined,
+  ast: AstReader,
+): readonly Node[] {
+  if (authoredTypeNode === undefined || !ast.is.IsTupleTypeNode(authoredTypeNode)) {
+    return Object.freeze([]);
+  }
+  return Object.freeze(ast.elements(authoredTypeNode).flatMap((node) => {
+    if (node === undefined) return [];
+    if (ast.is.IsNamedTupleMember(node)) {
+      const type = ast.as.AsNamedTupleMember(node)?.Type;
+      return type === undefined ? [] : [type];
+    }
+    return [node];
+  }));
 }
 
 function uniqueFact<T>(values: readonly (T | undefined)[]):

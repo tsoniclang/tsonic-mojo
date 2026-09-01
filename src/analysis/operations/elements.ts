@@ -1,4 +1,5 @@
 import type { ResolvedSourceElementAccessInfo, Type } from "@tsonic/tsts";
+import { tsonicFixedArrayProviderMember } from "@tsonic/source-core/facts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/provider/equality.js";
@@ -19,6 +20,7 @@ export interface MojoElementAnalysisContext {
   readonly providerSemantics: MojoProviderSemantics;
   readonly resolveType: (type: Type) => MojoTargetTypeRef | undefined;
   readonly conversions: MojoConversionIndex;
+  readonly expressionTypes: WeakMap<import("@tsonic/tsts").Node, MojoTargetTypeRef>;
 }
 
 export function analyzeMojoElementAccess(
@@ -38,8 +40,10 @@ export function analyzeMojoElementAccess(
     );
   }
   const accessMode: "read" | "write" | "read-write" = source.accessMode;
-  const receiver = context.resolveType(source.receiver.type);
-  const index = context.resolveType(source.argument.type);
+  const receiver = context.expressionTypes.get(source.receiver.expression) ??
+    context.resolveType(source.receiver.type);
+  const index = context.expressionTypes.get(source.argument.expression) ??
+    context.resolveType(source.argument.type);
   if (receiver === undefined || index === undefined) {
     return unsupported(
       "MOJO_ELEMENT_OPERAND_CARRIER_NOT_CLOSED",
@@ -53,9 +57,12 @@ export function analyzeMojoElementAccess(
     source.sourceSymbol,
   ]);
   if (identity !== undefined) {
+    if (tsonicFixedArrayProviderMember(identity) === "index") {
+      return analyzeNativeElement(source, accessMode, receiver, index, context.conversions);
+    }
     return analyzeProviderElement(source, accessMode, receiver, index, identity, context);
   }
-  return analyzeNativeElement(source, accessMode, receiver, index, context.conversions, context.resolveType);
+  return analyzeNativeElement(source, accessMode, receiver, index, context.conversions);
 }
 
 function analyzeProviderElement(
@@ -174,7 +181,6 @@ function analyzeNativeElement(
   receiver: MojoTargetTypeRef,
   index: MojoTargetTypeRef,
   conversions: MojoConversionIndex,
-  resolveType: (type: Type) => MojoTargetTypeRef | undefined,
 ): MojoElementAnalysis {
   const target = nativeElementContract(receiver, source.selectedElementIndex);
   if (target === undefined) {
@@ -190,22 +196,14 @@ function analyzeNativeElement(
   let expressionType: MojoTargetTypeRef;
   let readResultConversion;
   if (source.sourceReadType !== undefined) {
-    const sourceRead = resolveType(source.sourceReadType);
-    if (sourceRead === undefined) {
-      return unsupported("MOJO_ELEMENT_READ_CARRIER_NOT_CLOSED", "Selected element read has no exact Mojo carrier.");
-    }
-    const conversion = conversions.record(source.expression, target.valueType, sourceRead);
-    if (conversion.kind === "unsupported") {
-      return unsupported("MOJO_ELEMENT_READ_CONVERSION_UNPROVEN", conversion.reason);
-    }
-    expressionType = sourceRead;
-    readResultConversion = conversion.conversion;
+    const conversion = conversions.record(source.expression, target.valueType, target.valueType);
+    expressionType = target.valueType;
+    readResultConversion = conversion.kind === "resolved" ? conversion.conversion : undefined;
   } else {
-    const sourceWrite = source.sourceWriteType === undefined ? undefined : resolveType(source.sourceWriteType);
-    if (sourceWrite === undefined) {
+    if (source.sourceWriteType === undefined) {
       return unsupported("MOJO_ELEMENT_WRITE_CARRIER_NOT_CLOSED", "Selected element write has no exact Mojo carrier.");
     }
-    expressionType = sourceWrite;
+    expressionType = target.valueType;
   }
   return {
     kind: "resolved",

@@ -22,7 +22,7 @@ test("module initialization is source ordered, dependency ordered, and idempoten
   const entry = sources.find(({ text }) => text.includes("def main()"));
   assert.ok(setup);
   assert.ok(entry);
-  assert.match(setup.text, /\.initialized = Optional\[Int32\]\(Int32\(1\)\)[\s\S]*\.initialized\.value\(\) \+= Int32\(1\)/u);
+  assert.match(setup.text, /\.initialized = Optional\[Int32\]\(1\)[\s\S]*\.initialized\.value\(\) \+= 1/u);
   assert.match(entry.text, /initializeTsonicModule/u);
 });
 
@@ -205,6 +205,58 @@ test("structured loops switch and cleanup retain source control flow", () => {
   assert.match(source.text, /finally:/u);
 });
 
+test("switch fallthrough retains selector order and an explicit break boundary", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        "function select(value: i32): i32 {",
+        "  let total: i32 = 0;",
+        "  switch (value) {",
+        "    case 1: total += 1;",
+        "    case 2: total += 2; break;",
+        "    default: total += 4;",
+        "  }",
+        "  return total;",
+        "}",
+        "export function main(): void {}",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("def select"));
+  assert.ok(source);
+  assert.match(source.text, /__tsonic_switch_value/u);
+  assert.match(source.text, /__tsonic_switch_clause/u);
+  assert.match(source.text, /while True:/u);
+  assert.match(source.text, /total \+= 1[\s\S]*total \+= 2/u);
+});
+
+test("try catch and finally retain one error boundary and mandatory cleanup", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        "function select(value: i32): i32 {",
+        "  let total: i32 = 0;",
+        "  try { if (value === 0) throw \"bad\"; total = 1; }",
+        "  catch (error) { total = 2; }",
+        "  finally { total += 4; }",
+        "  return total;",
+        "}",
+        "export function main(): void {}",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("def select"));
+  assert.ok(source);
+  assert.match(source.text, /try:/u);
+  assert.match(source.text, /except error:/u);
+  assert.match(source.text, /finally:/u);
+  assert.match(source.text, /raise/u);
+});
+
 test("native async functions retain Promise output evidence and schedule exact awaits", () => {
   const result = compileMojo({
     files: {
@@ -250,4 +302,29 @@ test("project interface objects retain selected generic fields and source-ordere
   assert.match(source.text, /struct Pair\[T: AnyType\][\s\S]*ArcPointer\[PairState\[T\]\]/u);
   assert.match(source.text, /Pair\[Int32\]\(/u);
   assert.match(source.text, /object_spread/u);
+});
+
+test("authored scalar array tuple and FixedArray carriers survive collapsed TypeScript number types", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        'import type { FixedArray, uint8 } from "@tsonic/core/types.js";',
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        "function sum(): i32 {",
+        "  const values: i32[] = [1, 2];",
+        '  const tuple: [i32, string] = [3, "three"];',
+        "  const bytes: FixedArray<uint8, 2> = [4, 5];",
+        "  return values[0] + tuple[0] + bytes[1];",
+        "}",
+        "export function main(): void {}",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("def sum"));
+  assert.ok(source);
+  assert.match(source.text, /var values: List\[Int32\] = \[Int32\(1\), Int32\(2\)\]/u);
+  assert.match(source.text, /var tuple: \(Int32, String\) = \(Int32\(3\), "three"\)/u);
+  assert.match(source.text, /var bytes: Array\[UInt8, 2\] = Array\[UInt8, 2\]\(UInt8\(4\), UInt8\(5\)\)/u);
+  assert.match(source.text, /values\[Int\(0\)\].*tuple\[Int\(0\)\].*Int32\(bytes\[Int\(1\)\]\)/u);
 });
