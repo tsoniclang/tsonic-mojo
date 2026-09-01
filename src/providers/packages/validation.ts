@@ -233,6 +233,21 @@ function validateOperation(
       operation.receiverType === undefined || (operation.parameterTypes ?? []).length !== 1) {
       throw new Error(`Provider property write '${operation.exportId}' requires an exact member, receiver, value, and property-write target.`);
     }
+  } else if (operation.operationKind === "indexer") {
+    const member = operation.memberId === undefined ? undefined : declarations.members.get(operation.memberId);
+    if (member?.declaration.kind !== "indexer" || signature === undefined ||
+      operation.target.kind !== "index-read" || operation.receiverType === undefined ||
+      (operation.parameterTypes ?? []).length !== 1 || signature.declaration.parameters.length !== 1) {
+      throw new Error(`Provider indexer '${operation.exportId}' requires an exact index signature, receiver, index, and index-read target.`);
+    }
+  } else if (operation.operationKind === "index-set") {
+    const member = operation.memberId === undefined ? undefined : declarations.members.get(operation.memberId);
+    if (member?.declaration.kind !== "indexer" || member.declaration.readonly === true || signature === undefined ||
+      operation.target.kind !== "index-write" || operation.receiverType === undefined ||
+      (operation.parameterTypes ?? []).length !== 2 || signature.declaration.parameters.length !== 1 ||
+      operation.resultType.kind !== "unit") {
+      throw new Error(`Provider index write '${operation.exportId}' requires a writable exact index signature, receiver, index, value, and unit result.`);
+    }
   } else {
     throw new Error(`Provider operation kind '${operation.operationKind}' has no current Mojo target form.`);
   }
@@ -257,7 +272,7 @@ function validateOperation(
       }
     }
   }
-  if (!identifierPattern.test(operation.target.name)) {
+  if ("name" in operation.target && !identifierPattern.test(operation.target.name)) {
     throw new Error(`Provider operation '${operation.exportId}' has invalid Mojo name '${operation.target.name}'.`);
   }
   if (operation.target.kind === "function-call" || operation.target.kind === "instance-call") {
@@ -283,6 +298,28 @@ function validateOperation(
     if (operation.target.value.position === "keyword" && operation.target.value.nativeName === undefined) {
       throw new Error(`Provider property write '${operation.exportId}' has a keyword value without its exact Mojo name.`);
     }
+  }
+  if (operation.target.kind === "index-read" || operation.target.kind === "index-write") {
+    validateOperationArgument(operation.target.index, operation.exportId, "index");
+    if (operation.target.kind === "index-write") {
+      validateOperationArgument(operation.target.value, operation.exportId, "value");
+    }
+  }
+}
+
+function validateOperationArgument(
+  argument: import("../../target-model/provider/model.js").MojoProviderTargetArgument,
+  exportId: string,
+  role: string,
+): void {
+  if (argument.variadic === true) {
+    throw new Error(`Provider operation '${exportId}' has a variadic ${role} operand.`);
+  }
+  if (argument.position === "keyword" && argument.nativeName === undefined) {
+    throw new Error(`Provider operation '${exportId}' has a keyword ${role} operand without its exact Mojo name.`);
+  }
+  if (argument.nativeName !== undefined && !identifierPattern.test(argument.nativeName)) {
+    throw new Error(`Provider operation '${exportId}' has invalid Mojo ${role} name '${argument.nativeName}'.`);
   }
 }
 

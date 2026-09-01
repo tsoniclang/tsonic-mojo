@@ -352,12 +352,30 @@ function planElement(
     );
     return undefined;
   }
-  const receiver = planMojoExpression(selection.receiver, context);
+  const rawReceiver = planMojoExpression(selection.receiver, context);
+  const receiver = rawReceiver === undefined
+    ? undefined
+    : selection.kind === "provider"
+      ? applyMojoConversion(rawReceiver, selection.receiverConversion, context)
+      : rawReceiver;
   const rawIndex = planMojoExpression(selection.index, context);
   const index = rawIndex === undefined
     ? undefined
     : applyMojoConversion(rawIndex, selection.indexConversion, context);
   if (receiver === undefined || index === undefined) return undefined;
+  if (selection.kind === "provider") {
+    const operation = mode === "read" ? selection.readOperation : selection.writeOperation;
+    const expectedKind = mode === "read" ? "index-read" : "index-write";
+    if (operation?.target.kind !== expectedKind) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROVIDER_ELEMENT_FORM_INVALID",
+        `Provider element ${mode} has no sealed '${expectedKind}' form.`,
+        node,
+      );
+      return undefined;
+    }
+  }
   const access: MojoExpression = { kind: "element", receiver, index };
   return mode === "read" && selection.readResultConversion !== undefined
     ? applyMojoConversion(access, selection.readResultConversion, context)
@@ -516,6 +534,7 @@ function planProperty(
     ? receiver
     : applyMojoConversion(receiver, selection.receiverConversion, context);
   if (convertedReceiver === undefined) return undefined;
+  if (target.kind !== "property-read" && target.kind !== "property-write") return undefined;
   const member: MojoExpression = { kind: "member", receiver: convertedReceiver, name: target.name };
   return mode === "read" && selection.readResultConversion !== undefined
     ? applyMojoConversion(member, selection.readResultConversion, context)

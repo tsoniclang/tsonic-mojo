@@ -223,6 +223,15 @@ const apiModule = {
           argument("self", "mut", "pos_or_kw", "Self"),
           argument("amount", "imm", "pos_or_kw", "Int32", int32),
         ], typeValue("Int32", int32))]),
+        group("__getitem__", [overload("__getitem__", [
+          argument("self", "ref", "pos_or_kw", "Self"),
+          argument("index", "imm", "pos_or_kw", "Int32", int32),
+        ], typeValue("Int32", int32))]),
+        group("__setitem__", [overload("__setitem__", [
+          argument("self", "mut", "pos_or_kw", "Self"),
+          argument("index", "imm", "pos_or_kw", "Int32", int32),
+          argument("value", "imm", "pos_or_kw", "Int32", int32),
+        ], undefined)]),
       ],
       isStabilityTracked: false,
       isStable: false,

@@ -349,15 +349,19 @@ export function analyzeMojoTargetProgram(
         } else {
           const element = analyzeMojoElementAccess(
             selectedElement,
-            (type) => {
-              const resolved = resolveMojoTargetType(
-                type,
-                undefined,
-                { ast, semantics, sourceFacts: input.source.sourceFacts, providerSemantics, projectTypes, jsEnabled },
-              );
-              return resolved.kind === "resolved" ? resolved.type : undefined;
+            {
+              source: input.source,
+              providerSemantics,
+              conversions,
+              resolveType(type) {
+                const resolved = resolveMojoTargetType(
+                  type,
+                  undefined,
+                  { ast, semantics, sourceFacts: input.source.sourceFacts, providerSemantics, projectTypes, jsEnabled },
+                );
+                return resolved.kind === "resolved" ? resolved.type : undefined;
+              },
             },
-            conversions,
           );
           if (element.kind === "unsupported") {
             diagnostics.push(diagnostic(element.code, element.reason, node));

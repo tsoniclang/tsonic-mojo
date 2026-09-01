@@ -102,6 +102,24 @@ test("compiler metadata extraction normalizes exact conventions, keywords, const
     assert.equal(sumOperation.target.arguments[1].position, "keyword");
     assert.equal(projection.operations.some(({ operationKind }) => operationKind === "constructor"), true);
     assert.equal(projection.operations.some(({ operationKind }) => operationKind === "property-set"), true);
+    const indexMember = projection.declarationModel.exports
+      .find(({ name }) => name === "Counter").members
+      .find(({ kind }) => kind === "indexer");
+    assert.equal(indexMember.readonly, undefined);
+    assert.equal(indexMember.signatures.length, 1);
+    assert.deepEqual(
+      projection.operations
+        .filter(({ memberId }) => memberId === indexMember.id)
+        .map(({ operationKind, target, parameterTypes }) => [
+          operationKind,
+          target.kind,
+          parameterTypes.length,
+        ]),
+      [
+        ["indexer", "index-read", 1],
+        ["index-set", "index-write", 2],
+      ],
+    );
     const collectOperation = projection.operations.find(({ exportId }) =>
       exportId.endsWith("::export:collect"));
     assert.deepEqual(collectOperation.target.genericParameters.map((parameter) => ({

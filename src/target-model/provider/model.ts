@@ -151,6 +151,17 @@ export type MojoProviderOperationForm =
       readonly value: MojoProviderTargetArgument;
     }
   | {
+      readonly kind: "index-read";
+      readonly receiver: MojoCallArgumentConvention;
+      readonly index: MojoProviderTargetArgument;
+    }
+  | {
+      readonly kind: "index-write";
+      readonly receiver: MojoCallArgumentConvention;
+      readonly index: MojoProviderTargetArgument;
+      readonly value: MojoProviderTargetArgument;
+    }
+  | {
       readonly kind: "constant";
       readonly modulePath: readonly string[];
       readonly name: string;

@@ -21,6 +21,7 @@ import type {
   MojoProviderTypeDefinition,
 } from "../../packages/model.js";
 import type { MojoProviderTargetArgument } from "../../../target-model/provider/model.js";
+import { mojoTargetTypeEquals } from "../../../target-model/provider/equality.js";
 import type { MojoCompilerProviderProjection } from "./model.js";
 import {
   projectMojoCompilerType,
@@ -288,12 +289,29 @@ function projectStructMembers(
       resultType: Object.freeze({ kind: "unit" }),
     }));
   }
-  for (const [name, functions] of groupByName(declaration.functions)) {
+  const functionsByName = groupByName(declaration.functions);
+  const projectedIndex = projectStructIndexers(
+    declaration,
+    exportId,
+    ownerTarget,
+    context,
+    operations,
+    functionsByName.get("__getitem__") ?? [],
+    functionsByName.get("__setitem__") ?? [],
+  );
+  if (projectedIndex.member !== undefined) members.push(projectedIndex.member);
+  for (const [name, functions] of functionsByName) {
+    const retainedFunctions = name === "__getitem__"
+      ? []
+      : name === "__setitem__"
+        ? functions.filter((function_) => !projectedIndex.consumedSetters.has(function_))
+        : functions;
+    if (retainedFunctions.length === 0) continue;
     const constructor = name === "__init__";
     if (name === "__deinit__") continue;
     const memberId = `${exportId}::${constructor ? "constructor" : "method"}:${name}`;
     const signatures: ProviderSignatureDeclaration[] = [];
-    for (const function_ of functions) {
+    for (const function_ of retainedFunctions) {
       const receiver = function_.arguments.find(({ name: argumentName }) => argumentName === "self");
       if (!constructor && !function_.static && receiver === undefined) {
         throw new Error(`Mojo method '${declaration.name}.${name}' has no compiler-owned receiver convention.`);
@@ -335,12 +353,113 @@ function projectStructMembers(
       id: memberId,
       name: constructor ? "constructor" : name,
       kind: constructor ? "constructor" : "method",
-      ...(constructor ? {} : { static: functions.every(({ static: static_ }) => static_) }),
+      ...(constructor ? {} : { static: retainedFunctions.every(({ static: static_ }) => static_) }),
       signatures: Object.freeze(signatures),
-      ...firstDocumentation(functions),
+      ...firstDocumentation(retainedFunctions),
     }));
   }
   return members;
+}
+
+function projectStructIndexers(
+  declaration: MojoCompilerStruct,
+  exportId: string,
+  ownerTarget: import("../../../target-model/provider/model.js").MojoTargetTypeRef,
+  context: MojoCompilerTypeProjectionContext,
+  operations: MojoProviderOperationDefinition[],
+  getters: readonly MojoCompilerFunction[],
+  setters: readonly MojoCompilerFunction[],
+): {
+  readonly member?: ProviderMemberDeclaration;
+  readonly consumedSetters: ReadonlySet<MojoCompilerFunction>;
+} {
+  if (getters.length === 0) return { consumedSetters: new Set() };
+  const memberId = `${exportId}::indexer`;
+  const getterRows = getters.map((function_) => {
+    const receiver = function_.arguments.find(({ name }) => name === "self");
+    if (function_.static || receiver === undefined) {
+      throw new Error(`Mojo index getter '${declaration.name}.__getitem__' has no compiler-owned instance receiver.`);
+    }
+    const projected = projectFunctionSignature(function_, context, memberId);
+    if (projected.parameterTargets.length !== 1 || projected.resultTarget.kind === "unit") {
+      throw new Error(`Mojo index getter '${declaration.name}.__getitem__' must have one index and one value result.`);
+    }
+    return Object.freeze({ function_, receiver, projected });
+  });
+  const setterRows = setters.map((function_) => {
+    const receiver = function_.arguments.find(({ name }) => name === "self");
+    if (function_.static || receiver === undefined) {
+      throw new Error(`Mojo index setter '${declaration.name}.__setitem__' has no compiler-owned instance receiver.`);
+    }
+    const projected = projectFunctionSignature(function_, context, memberId);
+    if (projected.parameterTargets.length !== 2 || projected.resultTarget.kind !== "unit") {
+      throw new Error(`Mojo index setter '${declaration.name}.__setitem__' must have one index, one value, and no result.`);
+    }
+    return Object.freeze({ function_, receiver, projected });
+  });
+  const consumedSetters = new Set<MojoCompilerFunction>();
+  const signatures: ProviderSignatureDeclaration[] = [];
+  let writableSignatureCount = 0;
+  for (const getter of getterRows) {
+    signatures.push(getter.projected.signature);
+    operations.push(Object.freeze({
+      exportId,
+      memberId,
+      signatureId: getter.projected.signature.id,
+      operationKind: "indexer",
+      target: Object.freeze({
+        kind: "index-read",
+        receiver: getter.receiver.convention,
+        index: getter.projected.targetArguments[0]!,
+      }),
+      receiverType: ownerTarget,
+      parameterTypes: getter.projected.parameterTargets,
+      resultType: getter.projected.resultTarget,
+      ...(getter.function_.raises ? { raises: true } : {}),
+    }));
+    const matchingSetters = setterRows.filter(({ projected }) =>
+      mojoTargetTypeEquals(projected.parameterTargets[0]!, getter.projected.parameterTargets[0]!) &&
+      mojoTargetTypeEquals(projected.parameterTargets[1]!, getter.projected.resultTarget));
+    if (matchingSetters.length > 1) {
+      throw new Error(`Mojo index getter '${declaration.name}.__getitem__' has ${matchingSetters.length} exact setter ABIs.`);
+    }
+    const setter = matchingSetters[0];
+    if (setter === undefined) continue;
+    writableSignatureCount += 1;
+    consumedSetters.add(setter.function_);
+    operations.push(Object.freeze({
+      exportId,
+      memberId,
+      signatureId: getter.projected.signature.id,
+      operationKind: "index-set",
+      target: Object.freeze({
+        kind: "index-write",
+        receiver: setter.receiver.convention,
+        index: setter.projected.targetArguments[0]!,
+        value: setter.projected.targetArguments[1]!,
+      }),
+      receiverType: ownerTarget,
+      parameterTypes: setter.projected.parameterTargets,
+      resultType: Object.freeze({ kind: "unit" }),
+      ...(setter.function_.raises ? { raises: true } : {}),
+    }));
+  }
+  if (writableSignatureCount !== 0 && writableSignatureCount !== getterRows.length) {
+    throw new Error(
+      `Mojo indexer '${declaration.name}' mixes writable and read-only overloads that one TypeScript index contract cannot represent exactly.`,
+    );
+  }
+  return {
+    member: Object.freeze({
+      id: memberId,
+      name: "index",
+      kind: "indexer",
+      ...(writableSignatureCount === 0 ? { readonly: true } : {}),
+      signatures: Object.freeze(signatures),
+      ...firstDocumentation(getters),
+    }),
+    consumedSetters,
+  };
 }
 
 function projectTraitMembers(

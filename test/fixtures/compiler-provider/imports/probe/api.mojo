@@ -11,3 +11,9 @@ struct Counter:
     def increment(mut self, amount: Int32) -> Int32:
         self.value += amount
         return self.value
+
+    def __getitem__(ref self, index: Int32) -> Int32:
+        return self.value + index
+
+    def __setitem__(mut self, index: Int32, value: Int32):
+        self.value = value + index

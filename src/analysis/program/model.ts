@@ -127,7 +127,7 @@ export type MojoPropertySelection =
       readonly readResultConversion?: MojoValueConversion;
     };
 
-export interface MojoElementSelection {
+export type MojoElementSelection = {
   readonly kind: "native";
   readonly receiver: Node;
   readonly index: Node;
@@ -139,7 +139,19 @@ export interface MojoElementSelection {
   readonly indexConversion: MojoValueConversion;
   readonly readResultConversion?: MojoValueConversion;
   readonly selectedElementIndex?: number;
-}
+} | {
+  readonly kind: "provider";
+  readonly receiver: Node;
+  readonly index: Node;
+  readonly accessMode: "read" | "write" | "read-write";
+  readonly readOperation?: MojoSelectedProviderOperation;
+  readonly writeOperation?: MojoSelectedProviderOperation;
+  readonly receiverConversion: MojoValueConversion;
+  readonly indexConversion: MojoValueConversion;
+  readonly readType?: MojoTargetTypeRef;
+  readonly writeType?: MojoTargetTypeRef;
+  readonly readResultConversion?: MojoValueConversion;
+};
 
 export interface MojoIterationSelection {
   readonly kind: "for-of" | "for-in";
