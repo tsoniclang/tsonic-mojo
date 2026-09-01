@@ -175,7 +175,7 @@ export function analyzeMojoProviderProperty(
     const rows = context.providerSemantics.operations.filter((row) =>
       providerOwnerMatches(row, selectedIdentity) && row.exportId === selectedIdentity.exportId &&
       row.memberId === undefined && row.signatureId === undefined && row.operationKind === "property" &&
-      row.target.kind === "constant");
+      (row.target.kind === "constant" || row.target.kind === "function-read"));
     if (rows.length !== 1) {
       return {
         kind: "unsupported",

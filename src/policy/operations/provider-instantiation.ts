@@ -186,8 +186,8 @@ export function instantiateMojoProviderConstantOperation(
   row: MojoProviderOperationRow,
 ): MojoProviderOperationInstantiation {
   if (row.receiverType !== undefined || (row.parameterTypes ?? []).length !== 0 ||
-    row.target.kind !== "constant") {
-    return { kind: "unsupported", reason: "selected provider constant has a receiver, parameters, or non-constant target" };
+    (row.target.kind !== "constant" && row.target.kind !== "function-read")) {
+    return { kind: "unsupported", reason: "selected provider value has a receiver, parameters, or non-value target" };
   }
   return {
     kind: "resolved",

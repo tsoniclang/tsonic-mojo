@@ -53,4 +53,9 @@ export type MojoProviderOperationForm =
       readonly kind: "constant";
       readonly modulePath: readonly string[];
       readonly name: string;
+    }
+  | {
+      readonly kind: "function-read";
+      readonly modulePath: readonly string[];
+      readonly name: string;
     };

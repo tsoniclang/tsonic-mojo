@@ -58,13 +58,23 @@ export function planProviderConstant(
   resultConversion: MojoValueConversion,
   context: MojoPlanningContext,
 ): MojoExpression | undefined {
-  if (operation.target.kind !== "constant") return undefined;
+  if (operation.target.kind !== "constant" && operation.target.kind !== "function-read") return undefined;
   registerMojoModuleImport(context, operation.target.modulePath);
+  const selected: MojoExpression = operation.target.kind === "constant"
+    ? {
+        kind: "path",
+        path: [...operation.target.modulePath, operation.target.name].join("."),
+      }
+    : {
+        kind: "call",
+        callee: Object.freeze({
+          kind: "path",
+          path: [...operation.target.modulePath, operation.target.name].join("."),
+        }),
+        arguments: Object.freeze([]),
+      };
   return applyMojoConversion(
-    {
-      kind: "path",
-      path: [...operation.target.modulePath, operation.target.name].join("."),
-    },
+    selected,
     resultConversion,
     context,
   );

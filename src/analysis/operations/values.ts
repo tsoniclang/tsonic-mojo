@@ -36,12 +36,12 @@ export function analyzeMojoProviderValue(
   const rows = providerSemantics.operations.filter((row) =>
     providerOwnerMatches(row, identity) && row.exportId === identity.exportId &&
     row.memberId === undefined && row.signatureId === undefined && row.operationKind === "property" &&
-    row.target.kind === "constant");
+    (row.target.kind === "constant" || row.target.kind === "function-read"));
   if (rows.length !== 1) {
     return {
       kind: "unsupported",
       code: rows.length === 0 ? "MOJO_PROVIDER_VALUE_OPERATION_MISSING" : "MOJO_PROVIDER_VALUE_OPERATION_AMBIGUOUS",
-      reason: `Selected provider value has ${rows.length} exact Mojo constant operations.`,
+      reason: `Selected provider value has ${rows.length} exact Mojo value operations.`,
     };
   }
   const instantiated = instantiateMojoProviderConstantOperation(rows[0]!);

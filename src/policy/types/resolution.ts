@@ -278,6 +278,27 @@ function resolveMojoTargetTypeWithState(
             ),
           };
     }
+    if (sourceProfile?.name === "IterableIterator") {
+      const arguments_ = resolveSourceProfileTypeArguments(
+        selectedType,
+        authoredTypeNode,
+        1,
+        context,
+        resolving,
+      );
+      if (arguments_.kind === "unsupported") return arguments_;
+      return context.jsEnabled
+        ? {
+            kind: "resolved",
+            type: namedType(
+              "tsonic.mojo.js.JsArray",
+              ["tsonic_js"],
+              "JsArray",
+              arguments_.types,
+            ),
+          }
+        : { kind: "resolved", type: { kind: "list", element: arguments_.types[0]! } };
+    }
     if (sourceProfile?.name === "Date") {
       return sourceProfile.profile === "js"
         ? {

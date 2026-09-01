@@ -226,7 +226,7 @@ function validateOperation(
     const exported = declarations.exports.get(operation.exportId)!;
     const moduleConstant = operation.memberId === undefined &&
       operation.signatureId === undefined &&
-      operation.target.kind === "constant" &&
+      (operation.target.kind === "constant" || operation.target.kind === "function-read") &&
       operation.receiverType === undefined &&
       (operation.parameterTypes ?? []).length === 0 &&
       exported.kind === "value";
@@ -266,7 +266,8 @@ function validateOperation(
       `Provider function call '${operation.exportId}' must declare both or neither of its helper receiver ABI and receiver carrier.`,
     );
   }
-  if (operation.target.kind === "function-call" || operation.target.kind === "constant") {
+  if (operation.target.kind === "function-call" || operation.target.kind === "constant" ||
+    operation.target.kind === "function-read") {
     if (operation.target.modulePath.length === 0) {
       throw new Error(`Provider operation '${operation.exportId}' has an empty Mojo module path.`);
     }
