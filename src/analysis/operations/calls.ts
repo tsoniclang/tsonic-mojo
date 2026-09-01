@@ -14,6 +14,12 @@ import { instantiateMojoProviderOperation } from "../../policy/operations/provid
 import { analyzeMojoTypedLocation } from "../../policy/operations/typed-locations.js";
 import { analyzeMojoRawPointer } from "../../policy/operations/raw-pointers.js";
 import { selectMojoSourceProfileCallRow } from "../../policy/operations/source-profile-selection.js";
+import type { MojoSourceProfileParameterContract } from "../../policy/operations/source-profile-selection.js";
+import {
+  mojoDynamicTargetType,
+  mojoNamedTargetType,
+  mojoPrimitiveTargetType,
+} from "../../target-model/types/constructors.js";
 import type {
   MojoAnalyzedClass,
   MojoAnalyzedCallArgument,
@@ -233,8 +239,20 @@ function analyzeSourceProfileCall(
     readonly variadic: boolean;
     readonly passing: "plain";
   }[] = [];
-  for (const parameter of sourceCall.sourceSelectedSignatureParameters) {
-    const resolved = resolve(parameter.selectedType, parameter.authoredTypeNode);
+  const parameterContract = selected.row.parameterContract;
+  if (parameterContract !== undefined &&
+    parameterContract.length !== sourceCall.sourceSelectedSignatureParameters.length) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_SOURCE_PROFILE_PARAMETER_CONTRACT_INVALID",
+      reason: `The exact source-profile overload '${selected.row.owner}.${selected.row.member}' and its Mojo runtime parameter contract have different arities.`,
+    };
+  }
+  for (const [parameterIndex, parameter] of sourceCall.sourceSelectedSignatureParameters.entries()) {
+    const explicitContract = parameterContract?.[parameterIndex];
+    const resolved = explicitContract === undefined
+      ? resolve(parameter.selectedType, parameter.authoredTypeNode)
+      : sourceProfileParameterType(explicitContract);
     const target = parameter.rest === true && resolved !== undefined
       ? restCallableElementType(resolved)
       : resolved;
@@ -350,6 +368,23 @@ function analyzeSourceProfileCall(
       optionalChain: sourceCall.optionalChain,
     }),
   };
+}
+
+function sourceProfileParameterType(
+  contract: MojoSourceProfileParameterContract,
+): MojoTargetTypeRef {
+  switch (contract) {
+    case "float64":
+      return mojoPrimitiveTargetType("float64");
+    case "js-string":
+      return mojoNamedTargetType(
+        "tsonic.mojo.js.JsString",
+        ["tsonic_js"],
+        "JsString",
+      );
+    case "js-value":
+      return mojoDynamicTargetType("js");
+  }
 }
 
 function analyzeCallableValueCall(

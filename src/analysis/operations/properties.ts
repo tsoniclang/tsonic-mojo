@@ -468,12 +468,6 @@ function sourceProfilePropertyAccess(
   if ((owner === "Map" || owner === "ReadonlyMap" || owner === "Set" || owner === "ReadonlySet") && member === "size") {
     return { kind: "method", name: "js_size" };
   }
-  if (owner === "RegExp" && ["source", "flags", "global", "ignoreCase", "multiline"].includes(member)) {
-    return { kind: "method", name: `get_${snakeCase(member)}` };
-  }
-  if (owner === "RegExp" && member === "lastIndex") {
-    return { kind: "member", name: "last_index" };
-  }
   return undefined;
 }
 
@@ -486,14 +480,21 @@ function sourceProfileConstantName(
   if (owner === "Math" && ["E", "LN10", "LN2", "LOG10E", "LOG2E", "PI", "SQRT1_2", "SQRT2"].includes(member)) {
     return `MATH_${member}`;
   }
-  if (owner === "NumberConstructor" && ["EPSILON", "MAX_SAFE_INTEGER", "MAX_VALUE", "MIN_SAFE_INTEGER", "MIN_VALUE", "NaN", "NEGATIVE_INFINITY", "POSITIVE_INFINITY"].includes(member)) {
-    return `NUMBER_${snakeCase(member).toUpperCase()}`;
-  }
-  return undefined;
+  return owner === "NumberConstructor" ? numberConstantName(member) : undefined;
 }
 
-function snakeCase(value: string): string {
-  return value.replace(/[A-Z]/gu, (letter, index) => `${index === 0 ? "" : "_"}${letter.toLowerCase()}`);
+function numberConstantName(member: string): string | undefined {
+  switch (member) {
+    case "EPSILON": return "NUMBER_EPSILON";
+    case "MAX_SAFE_INTEGER": return "NUMBER_MAX_SAFE_INTEGER";
+    case "MAX_VALUE": return "NUMBER_MAX_VALUE";
+    case "MIN_SAFE_INTEGER": return "NUMBER_MIN_SAFE_INTEGER";
+    case "MIN_VALUE": return "NUMBER_MIN_VALUE";
+    case "NaN": return "NUMBER_NAN";
+    case "NEGATIVE_INFINITY": return "NUMBER_NEGATIVE_INFINITY";
+    case "POSITIVE_INFINITY": return "NUMBER_POSITIVE_INFINITY";
+    default: return undefined;
+  }
 }
 
 function selectOperation(

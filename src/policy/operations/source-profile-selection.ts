@@ -11,6 +11,7 @@ export interface MojoSourceProfileCallRow {
   readonly owner: string;
   readonly member: string;
   readonly argumentCount?: number;
+  readonly parameterContract?: readonly MojoSourceProfileParameterContract[];
   readonly target:
     | {
         readonly kind: "instance";
@@ -25,6 +26,11 @@ export interface MojoSourceProfileCallRow {
       };
   readonly raises?: boolean;
 }
+
+export type MojoSourceProfileParameterContract =
+  | "float64"
+  | "js-string"
+  | "js-value";
 
 export type MojoSourceProfileCallRowSelection =
   | { readonly kind: "not-source-profile" }
@@ -157,7 +163,7 @@ const jsStaticRows = (
   });
 });
 
-const jsConstructorRows = ["ArrayConstructor", "MapConstructor", "SetConstructor", "DateConstructor", "RegExpConstructor"]
+const jsConstructorRows = ["ArrayConstructor", "MapConstructor", "SetConstructor", "DateConstructor"]
   .map((owner): MojoSourceProfileCallRow => Object.freeze({
     profile: "js",
     kind: "construct",
@@ -174,11 +180,28 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
   ...jsConstructorRows,
   ...jsInstanceRows("String", "imm", [
     "at", "charAt", "charCodeAt", "codePointAt", "concat", "endsWith", "includes",
-    "indexOf", "lastIndexOf", "match", "matchAll", "normalize", "padEnd", "padStart",
-    "repeat", "replace", "replaceAll", "search", "slice", "startsWith",
+    "indexOf", "lastIndexOf", "padEnd", "padStart",
+    "repeat", "slice", "startsWith",
     "substr", "substring", "toLowerCase", "toString", "toUpperCase", "toWellFormed",
     "trim", "trimEnd", "trimLeft", "trimRight", "trimStart", "valueOf", "isWellFormed",
   ]),
+  Object.freeze({
+    profile: "js",
+    kind: "call",
+    owner: "String",
+    member: "replace",
+    target: Object.freeze({ kind: "instance", name: "replace", receiver: "imm" }),
+    parameterContract: Object.freeze(["js-string", "js-string"]),
+  }),
+  Object.freeze({
+    profile: "js",
+    kind: "call",
+    owner: "String",
+    member: "replaceAll",
+    target: Object.freeze({ kind: "instance", name: "replace_all", receiver: "imm" }),
+    parameterContract: Object.freeze(["js-string", "js-string"]),
+    raises: true,
+  }),
   Object.freeze({
     profile: "js",
     kind: "call",
@@ -190,6 +213,7 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
       name: "string_split",
       receiver: "imm",
     }),
+    parameterContract: Object.freeze(["js-string", "float64"]),
   }),
   ...jsInstanceRows("Array", "mut", [
     "copyWithin", "fill", "pop", "push", "reverse", "shift", "sort", "splice", "unshift",
@@ -214,13 +238,17 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
   ]),
   ...jsInstanceRows("ReadonlySet", "imm", ["entries", "forEach", "has", "keys", "values"]),
   ...jsInstanceRows("Date", "imm", [
-    "getTime", "getUTCDate", "getUTCDay", "getUTCFullYear", "getUTCHours",
-    "getUTCMilliseconds", "getUTCMinutes", "getUTCMonth", "getUTCSeconds",
-    "toJSON", "toString", "toUTCString", "valueOf",
+    "getTime", ["getUTCDate", "get_utc_date"], ["getUTCDay", "get_utc_day"],
+    ["getUTCFullYear", "get_utc_full_year"], ["getUTCHours", "get_utc_hours"],
+    ["getUTCMilliseconds", "get_utc_milliseconds"], ["getUTCMinutes", "get_utc_minutes"],
+    ["getUTCMonth", "get_utc_month"], ["getUTCSeconds", "get_utc_seconds"],
+    ["toJSON", "to_json"], "toString", ["toUTCString", "to_utc_string"], "valueOf",
   ]),
   ...jsInstanceRows("Date", "mut", [
-    "setTime", "setUTCDate", "setUTCFullYear", "setUTCHours",
-    "setUTCMilliseconds", "setUTCMinutes", "setUTCMonth", "setUTCSeconds",
+    "setTime", ["setUTCDate", "set_utc_date"], ["setUTCFullYear", "set_utc_full_year"],
+    ["setUTCHours", "set_utc_hours"], ["setUTCMilliseconds", "set_utc_milliseconds"],
+    ["setUTCMinutes", "set_utc_minutes"], ["setUTCMonth", "set_utc_month"],
+    ["setUTCSeconds", "set_utc_seconds"],
   ]),
   Object.freeze({
     profile: "js",
@@ -230,14 +258,48 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     target: Object.freeze({ kind: "instance", name: "to_iso_string", receiver: "imm" }),
     raises: true,
   }),
-  ...jsInstanceRows("RegExp", "mut", ["exec", "test"]),
-  ...jsStaticRows("ArrayConstructor", ["from", "isArray"]),
+  Object.freeze({
+    profile: "js",
+    kind: "call",
+    owner: "Boolean",
+    member: "toString",
+    target: Object.freeze({
+      kind: "function",
+      modulePath: Object.freeze(["tsonic_js"]),
+      name: "boolean_to_string",
+      receiver: "imm",
+    }),
+  }),
+  Object.freeze({
+    profile: "js",
+    kind: "call",
+    owner: "Boolean",
+    member: "valueOf",
+    target: Object.freeze({
+      kind: "function",
+      modulePath: Object.freeze(["tsonic_js"]),
+      name: "boolean_value_of",
+      receiver: "imm",
+    }),
+  }),
   ...jsStaticRows("StringConstructor", ["fromCharCode", "fromCodePoint"]),
   ...jsStaticRows("DateConstructor", ["now", "parse", ["UTC", "date_utc"]]),
-  ...jsStaticRows("JSON", ["parse", "stringify"]),
-  ...jsStaticRows("ObjectConstructor", ["entries", "hasOwn", "is", "keys", "values"]),
+  Object.freeze({
+    profile: "js",
+    kind: "call",
+    owner: "ObjectConstructor",
+    member: "is",
+    argumentCount: 2,
+    parameterContract: Object.freeze(["js-value", "js-value"]),
+    target: Object.freeze({
+      kind: "function",
+      modulePath: Object.freeze(["tsonic_js"]),
+      name: "object_is",
+    }),
+  }),
   ...jsStaticRows("NumberConstructor", [
-    "isFinite", "isInteger", "isNaN", "isSafeInteger", "parseFloat", "parseInt",
+    "isFinite", "isInteger", ["isNaN", "number_is_nan"], "isSafeInteger",
+    "parseFloat", "parseInt",
   ]),
   ...jsStaticRows("Math", [
     "abs", "acos", "acosh", "asin", "asinh", "atan", "atan2", "atanh", "cbrt", "ceil",

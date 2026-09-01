@@ -290,15 +290,12 @@ function resolveMojoTargetTypeWithState(
           };
     }
     if (sourceProfile?.name === "RegExp") {
-      return sourceProfile.profile === "js"
-        ? {
-            kind: "resolved",
-            type: namedType("tsonic.mojo.js.JsRegExp", ["tsonic_js"], "JsRegExp"),
-          }
-        : {
-            kind: "unsupported",
-            reason: "RegExp values require the explicit JavaScript source profile",
-          };
+      return {
+        kind: "unsupported",
+        reason: sourceProfile.profile === "js"
+          ? "the pinned Mojo runtime has no exact ECMAScript RegExp engine"
+          : "RegExp values require the explicit JavaScript source profile",
+      };
     }
     const typeParameter = resolveTypeParameter(symbol, context);
     if (typeParameter !== undefined) return { kind: "resolved", type: typeParameter };
