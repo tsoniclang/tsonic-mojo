@@ -523,6 +523,8 @@ function analyzeCallableValueCall(
     })),
     resolve,
     context.expressionTypes,
+    undefined,
+    (expression) => context.source.ast.is.IsObjectLiteralExpression(expression),
   );
   if (arguments_.kind === "unsupported") return arguments_;
   const callableTargets = callableType.parameters.map((parameter) => Object.freeze({

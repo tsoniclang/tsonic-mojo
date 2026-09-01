@@ -8,6 +8,7 @@ import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { substituteMojoTargetType } from "../../target-model/types/substitution.js";
+import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
 import type {
   MojoAnalyzedInterface,
@@ -41,18 +42,25 @@ export function analyzeMojoObjectLiteral(
     ? input.resolveType(contextualSelection.type)
     : undefined;
   const inferredType = input.expressionTypes.get(expression);
-  const targetType = input.expectedType?.kind === "target-named" &&
-      input.interfaceByTypeId.has(input.expectedType.id)
-    ? input.expectedType
-    : contextualType?.kind === "target-named" &&
-      input.interfaceByTypeId.has(contextualType.id)
-    ? contextualType
-    : inferredType;
-  const interface_ = targetType?.kind === "target-named"
-    ? input.interfaceByTypeId.get(targetType.id)
+  const resultType = input.expectedType ?? contextualType ?? inferredType;
+  const constructionType = selectConstructionType(
+    resultType,
+    contextualType,
+    inferredType,
+    expression,
+    input,
+    semantics,
+  );
+  const interface_ = constructionType?.kind === "target-named"
+    ? input.interfaceByTypeId.get(constructionType.id)
     : undefined;
-  if (targetType === undefined || interface_ === undefined) return undefined;
-  const instantiatedFields = instantiateFields(interface_, targetType);
+  if (resultType === undefined || constructionType === undefined || interface_ === undefined) return undefined;
+  const resultConversion = classifyMojoValueConversion(constructionType, resultType);
+  if (resultConversion.kind === "unsupported") {
+    reject(input, "MOJO_OBJECT_RESULT_CONVERSION_UNPROVEN", resultConversion.reason, expression);
+    return undefined;
+  }
+  const instantiatedFields = instantiateFields(interface_, constructionType);
   if (instantiatedFields === undefined) {
     reject(input, "MOJO_OBJECT_INTERFACE_INSTANTIATION_UNRESOLVED", "Object literal interface arguments do not exactly instantiate its declared fields.", expression);
     return undefined;
@@ -68,7 +76,7 @@ export function analyzeMojoObjectLiteral(
     if (ast.is.IsSpreadAssignment(element)) {
       const value = SpreadAssignment_Expression(ast, element);
       const sourceType = value === undefined ? undefined : input.expressionTypes.get(value);
-      if (value === undefined || sourceType === undefined || !mojoTargetTypeEquals(sourceType, targetType)) {
+      if (value === undefined || sourceType === undefined || !mojoTargetTypeEquals(sourceType, constructionType)) {
         reject(input, "MOJO_OBJECT_SPREAD_CARRIER_UNPROVEN", "Object spread requires one exact value of the same sealed project-interface carrier.", element);
         return undefined;
       }
@@ -113,14 +121,63 @@ export function analyzeMojoObjectLiteral(
     reject(input, "MOJO_OBJECT_REQUIRED_FIELD_MISSING", "Object literal omits a required checker-selected project-interface field.", expression);
     return undefined;
   }
-  input.expressionTypes.set(expression, targetType);
+  input.expressionTypes.set(expression, resultType);
   return Object.freeze({
     kind: "interface",
     interface: interface_,
-    targetType,
+    constructionType,
+    resultType,
+    resultConversion: resultConversion.conversion,
     fields: instantiatedFields,
     contributions: Object.freeze(contributions),
   });
+}
+
+function selectConstructionType(
+  resultType: MojoTargetTypeRef | undefined,
+  contextualType: MojoTargetTypeRef | undefined,
+  inferredType: MojoTargetTypeRef | undefined,
+  expression: Node,
+  input: MojoObjectLiteralAnalysisInput,
+  semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
+): MojoTargetTypeRef | undefined {
+  if (resultType?.kind === "target-named" && input.interfaceByTypeId.has(resultType.id)) {
+    return resultType;
+  }
+  if (resultType?.kind !== "union") return undefined;
+  const interfaceMembers = resultType.members.filter((member): member is Extract<MojoTargetTypeRef, { readonly kind: "target-named" }> =>
+    member.kind === "target-named" && input.interfaceByTypeId.has(member.id));
+  const semanticCandidates = [contextualType, inferredType].filter((candidate): candidate is MojoTargetTypeRef =>
+    candidate !== undefined && interfaceMembers.some((member) => mojoTargetTypeEquals(member, candidate)));
+  const exactSemanticCandidates = uniqueTargetTypes(semanticCandidates);
+  if (exactSemanticCandidates.length === 1) return exactSemanticCandidates[0];
+
+  const ownerIds = new Set<string>();
+  for (const element of input.source.ast.properties(expression)) {
+    if (element === undefined || input.source.ast.is.IsSpreadAssignment(element)) continue;
+    if (!input.source.ast.is.IsPropertyAssignment(element) &&
+      !input.source.ast.is.IsShorthandPropertyAssignment(element)) return undefined;
+    const selected = semantics.operations.objectLiteralElement(element);
+    const field = selected?.sourceSelectedDeclaration === undefined
+      ? undefined
+      : input.fieldByDeclaration.get(selected.sourceSelectedDeclaration);
+    if (field?.kind !== "interface-field" || field.ownerType.kind !== "target-named") return undefined;
+    ownerIds.add(field.ownerType.id);
+  }
+  if (ownerIds.size !== 1) return undefined;
+  const ownerId = [...ownerIds][0]!;
+  const matches = interfaceMembers.filter((member) => member.id === ownerId);
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+function uniqueTargetTypes(
+  types: readonly MojoTargetTypeRef[],
+): readonly MojoTargetTypeRef[] {
+  const unique: MojoTargetTypeRef[] = [];
+  for (const type of types) {
+    if (!unique.some((candidate) => mojoTargetTypeEquals(candidate, type))) unique.push(type);
+  }
+  return unique;
 }
 
 function instantiateFields(

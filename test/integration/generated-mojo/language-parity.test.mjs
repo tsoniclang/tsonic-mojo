@@ -659,6 +659,9 @@ test("native pointers lower only inside an exact explicit unsafe region", () => 
     "  storeNativePointer(destination, loadNativePointer(source));",
     "  return offsetNativePointer(source, offset);",
     "}",
+    "export function read(source: NativePointer<int32>): int32 {",
+    "  return unsafeContext(loadNativePointer(source));",
+    "}",
     "export function main(): void {}",
   ].join("\n");
   const result = compileMojo({ files: { "index.ts": source } });
@@ -683,6 +686,90 @@ test("native pointers lower only inside an exact explicit unsafe region", () => 
   assert.equal(rejected.artifacts.length, 0);
   assert.ok(rejected.diagnostics.some(({ code }) =>
     code === "MOJO_NATIVE_POINTER_UNSAFE_CONTEXT_REQUIRED"));
+
+  const conflictingPointee = compileMojo({
+    files: {
+      "index.ts": [
+        'import { loadNativePointer, unsafeContext } from "@tsonic/core/lang.js";',
+        'import type { NativePointer, int32, uint8 } from "@tsonic/core/types.js";',
+        "export function read(pointer: NativePointer<int32>): uint8 {",
+        "  return unsafeContext(loadNativePointer<uint8>(pointer as unknown as NativePointer<uint8>));",
+        "}",
+        "export function main(): void {}",
+      ].join("\n"),
+    },
+  });
+  assert.equal(conflictingPointee.artifacts.length, 0);
+  assert.ok(conflictingPointee.diagnostics.some(({ code }) =>
+    code === "MOJO_NATIVE_POINTER_POINTEE_CONFLICT"));
+});
+
+test("raw pointer identity is closed only from exact source-core facts", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        'import { bindRawPointer, equalRawPointer, hashRawPointer } from "@tsonic/core/lang.js";',
+        'import type { float64 } from "@tsonic/core/types.js";',
+        "class Box { value: float64 = 1; }",
+        "export function main(): void {",
+        "  const box = new Box();",
+        "  const first = bindRawPointer(box);",
+        "  const second = bindRawPointer(box);",
+        "  const same = equalRawPointer(first, second);",
+        "  const hash = hashRawPointer(first);",
+        "  if (!same || hash < 0) return;",
+        "}",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const generated = artifactTexts(result).find(({ text }) => text.includes("struct Box"));
+  assert.ok(generated);
+  assert.match(generated.text, /raw_pointer_from_arc\(box\._state\)/u);
+  assert.match(generated.text, /equal_raw_pointer\(/u);
+  assert.match(generated.text, /hash_raw_pointer\(/u);
+  assert.doesNotMatch(generated.text, /bindRawPointer|equalRawPointer|hashRawPointer/u);
+});
+
+test("discriminated project unions select one exact object constituent and common read", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        'interface Circle { kind: "circle"; radius: i32; }',
+        'interface Square { kind: "square"; side: i32; }',
+        "type Shape = Circle | Square;",
+        "function area(shape: Shape): i32 {",
+        '  if (shape.kind === "circle") return shape.radius;',
+        "  return shape.side;",
+        "}",
+        'export function main(): void { area({ kind: "circle", radius: 2 }); }',
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const generated = artifactTexts(result).find(({ text }) => text.includes("def area"));
+  assert.ok(generated);
+  assert.match(generated.text, /Variant\[Circle, Square\]\(Circle\(/u);
+  assert.match(generated.text, /\.isa\[Circle\]\(\)/u);
+  assert.match(generated.text, /shape\[Circle\].*\.radius/u);
+  assert.match(generated.text, /shape\[Square\].*\.side/u);
+
+  const divergent = compileMojo({
+    files: {
+      "index.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        "interface TextValue { value: string; }",
+        "interface NumberValue { value: i32; }",
+        "type Mixed = TextValue | NumberValue;",
+        "function read(value: Mixed): string | i32 { return value.value; }",
+        "export function main(): void {}",
+      ].join("\n"),
+    },
+  });
+  assert.equal(divergent.artifacts.length, 0);
+  assert.ok(divergent.diagnostics.some(({ code }) =>
+    code === "MOJO_PROJECT_UNION_PROPERTY_RESULT_UNCLOSED"));
 });
 
 test("native length reads retain their exact numeric conversion in comparisons", () => {

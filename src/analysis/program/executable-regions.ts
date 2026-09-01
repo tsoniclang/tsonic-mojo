@@ -1,10 +1,5 @@
 import type { Node, SourceFile, Type } from "@tsonic/tsts";
-import {
-  BinaryExpression_Left,
-  BinaryExpression_Right,
-  Node_Expression,
-  Node_Initializer,
-} from "@tsonic/target-api/source";
+import { BinaryExpression_Left, BinaryExpression_Right, Node_Expression, Node_Initializer } from "@tsonic/target-api/source";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
@@ -19,11 +14,10 @@ import { analyzeMojoElementAccess } from "../operations/elements.js";
 import { analyzeMojoIteration } from "../operations/iterations.js";
 import { analyzeMojoBindingPattern } from "../bindings/patterns.js";
 import { mojoLocationTargetType } from "../operations/typed-locations.js";
-import { pointerOperationFactKey } from "@tsonic/tsts";
-import {
-  analyzeMojoProjectProperty,
-  analyzeMojoProviderProperty,
-} from "../operations/properties.js";
+import { pointerOperationFactKey, rawPointerOperationFactKey } from "@tsonic/tsts";
+import { mojoRawPointerTargetType } from "../operations/raw-pointers.js";
+import { analyzeMojoProjectProperty } from "../operations/project-fields.js";
+import { analyzeMojoProviderProperty } from "../operations/properties.js";
 import { analyzeMojoObjectLiteral } from "../objects/object-literals.js";
 import { analyzeMojoProviderRecordLiteral } from "../objects/provider-records.js";
 import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
@@ -182,11 +176,16 @@ export function analyzeMojoExecutableRegion(
       const expectedType = expectedExpressionType(node, input);
       const inferredType = input.expressionTypes.get(node);
       const candidate = expectedType ?? inferredType;
-      if (candidate?.kind !== "target-named") {
+      const projectInterfaceCandidate = candidate?.kind === "target-named"
+        ? input.interfaceByTypeId.has(candidate.id)
+        : candidate?.kind === "union" && candidate.members.some((member) =>
+          member.kind === "target-named" && input.interfaceByTypeId.has(member.id));
+      if (candidate === undefined ||
+        (candidate.kind !== "target-named" && candidate.kind !== "union")) {
         pendingObjects.delete(node);
         continue;
       }
-      const selection = input.interfaceByTypeId.has(candidate.id)
+      const selection = projectInterfaceCandidate
         ? analyzeMojoObjectLiteral({
             source: input.source,
             sourceFile,
@@ -200,7 +199,7 @@ export function analyzeMojoExecutableRegion(
             },
             diagnostics: input.diagnostics,
           })
-        : analyzeMojoProviderRecordLiteral({
+        : candidate.kind === "target-named" ? analyzeMojoProviderRecordLiteral({
             source: input.source,
             sourceFile,
             expression: node,
@@ -212,7 +211,7 @@ export function analyzeMojoExecutableRegion(
               return resolveType(type, undefined, input, semantics);
             },
             diagnostics: input.diagnostics,
-          });
+          }) : undefined;
       pendingObjects.delete(node);
       if (selection !== undefined) {
         input.objectLiteralSelections.set(node, selection);
@@ -406,6 +405,8 @@ function resolveInferredBindingCarrier(
   input: MojoExecutableRegionAnalysisInput,
   semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
 ): MojoTargetTypeRef | undefined {
+  const rawPointer = input.source.sourceFacts.getFact(initializer, rawPointerOperationFactKey);
+  if (rawPointer?.operation === "bind-raw-pointer") return mojoRawPointerTargetType();
   const pointer = input.source.sourceFacts.getFact(initializer, pointerOperationFactKey);
   if (pointer?.operation === "address-of" || pointer?.operation === "allocate") {
     const exactOperand = pointer.operation === "address-of"
@@ -539,6 +540,10 @@ function analyzeProperty(
     selected,
     input.fieldByDeclaration,
     resolve(selected.receiver.type),
+    Object.freeze([
+      ...semantics.facts.selectedSubjects(selected.selectedSymbol, selected.selectedDeclaration),
+      ...semantics.facts.selectedSubjects(selected.sourceSymbol, selected.sourceDeclaration),
+    ]),
   );
   const property = project.kind === "not-project-field"
     ? analyzeMojoProviderProperty(selected, {

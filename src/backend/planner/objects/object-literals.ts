@@ -9,6 +9,7 @@ import type { MojoPlanningContext } from "../program/context.js";
 import { orderMojoValues } from "../expressions/support.js";
 import type { MojoValuePlanner } from "../expressions/support.js";
 import { registerMojoTypeImports } from "../types/render.js";
+import { applyMojoConversion } from "../expressions/support.js";
 import { withMojoValue } from "../expressions/value-plan.js";
 import type { MojoValuePlan } from "../expressions/value-plan.js";
 
@@ -19,7 +20,8 @@ export function planMojoProjectObjectLiteral(
 ): MojoValuePlan | undefined {
   const selection = context.program.queries.objectLiteralSelection(node);
   if (selection?.kind !== "interface") return undefined;
-  registerMojoTypeImports(selection.targetType, context);
+  registerMojoTypeImports(selection.constructionType, context);
+  registerMojoTypeImports(selection.resultType, context);
   const before: MojoStatement[] = [];
   const values = new Map<Node, MojoExpression>();
   for (const contribution of selection.contributions) {
@@ -74,11 +76,13 @@ export function planMojoProjectObjectLiteral(
     );
     return undefined;
   }
-  return withMojoValue(before, Object.freeze({
+  const constructed = Object.freeze({
     kind: "construct",
-    type: selection.targetType,
+    type: selection.constructionType,
     arguments: Object.freeze(arguments_ as { readonly value: MojoExpression }[]),
-  }));
+  }) satisfies MojoExpression;
+  const converted = applyMojoConversion(constructed, selection.resultConversion, context);
+  return converted === undefined ? undefined : withMojoValue(before, converted);
 }
 
 export function planMojoProviderRecordLiteral(

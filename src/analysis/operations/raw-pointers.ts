@@ -34,7 +34,9 @@ export function analyzeMojoRawPointer(
       "The exact selected arguments do not match the finalized raw-pointer operation fact.",
     );
   }
-  const resultType = input.resolveType(fact.resultType);
+  const resultType = fact.operation === "bind-raw-pointer"
+    ? mojoRawPointerTargetType()
+    : input.resolveType(fact.resultType);
   if (resultType === undefined) {
     return unsupported(
       "MOJO_RAW_POINTER_RESULT_NOT_CLOSED",
@@ -62,14 +64,8 @@ export function analyzeMojoRawPointer(
       });
     }
     case "equal-raw-pointer": {
-      const leftType = input.resolveType(fact.leftType);
-      const rightType = input.resolveType(fact.rightType);
-      if (leftType === undefined || rightType === undefined) {
-        return unsupported(
-          "MOJO_RAW_POINTER_OPERAND_NOT_CLOSED",
-          "Raw-pointer equality requires exact closed operand carriers.",
-        );
-      }
+      const leftType = optionalRawPointerType();
+      const rightType = optionalRawPointerType();
       return resolved({
         kind: "raw-pointer",
         operation: "equal",
@@ -81,13 +77,7 @@ export function analyzeMojoRawPointer(
       });
     }
     case "hash-raw-pointer": {
-      const pointerType = input.resolveType(fact.pointerType);
-      if (pointerType === undefined) {
-        return unsupported(
-          "MOJO_RAW_POINTER_OPERAND_NOT_CLOSED",
-          "Raw-pointer hashing requires one exact closed operand carrier.",
-        );
-      }
+      const pointerType = optionalRawPointerType();
       return resolved({
         kind: "raw-pointer",
         operation: "hash",
@@ -97,6 +87,19 @@ export function analyzeMojoRawPointer(
       });
     }
   }
+}
+
+export function mojoRawPointerTargetType(): MojoTargetTypeRef {
+  return Object.freeze({
+    kind: "target-named",
+    id: "tsonic.mojo.runtime.RawPointer",
+    modulePath: Object.freeze(["tsonic_runtime"]),
+    name: "RawPointer",
+  });
+}
+
+function optionalRawPointerType(): MojoTargetTypeRef {
+  return Object.freeze({ kind: "optional", value: mojoRawPointerTargetType() });
 }
 
 function argumentsMatch(

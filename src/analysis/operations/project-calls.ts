@@ -59,6 +59,8 @@ export function analyzeProjectCall(
     targetArguments,
     resolve,
     context.expressionTypes,
+    undefined,
+    (expression) => context.source.ast.is.IsObjectLiteralExpression(expression),
   );
   if (arguments_.kind === "unsupported") return arguments_;
   const locationConflict = locationBackedMutableArgument(

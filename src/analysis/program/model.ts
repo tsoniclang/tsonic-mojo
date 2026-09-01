@@ -213,6 +213,18 @@ export type MojoPropertySelection =
       readonly optionalChain: boolean;
     }
   | {
+      readonly kind: "project-union-field";
+      readonly receiver: Node;
+      readonly receiverType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
+      readonly fields: readonly {
+        readonly receiverType: MojoTargetTypeRef;
+        readonly fieldName: string;
+        readonly fieldType: MojoTargetTypeRef;
+      }[];
+      readonly resultType: MojoTargetTypeRef;
+      readonly accessMode: "read";
+    }
+  | {
       readonly kind: "project-static-field";
       readonly binding: MojoAnalyzedModuleBinding;
       readonly fieldName: string;
@@ -400,7 +412,9 @@ export type MojoObjectLiteralSelection =
   | {
       readonly kind: "interface";
       readonly interface: MojoAnalyzedInterface;
-      readonly targetType: MojoTargetTypeRef;
+      readonly constructionType: MojoTargetTypeRef;
+      readonly resultType: MojoTargetTypeRef;
+      readonly resultConversion: MojoValueConversion;
       readonly fields: readonly {
         readonly field: MojoAnalyzedInterfaceField;
         readonly fieldType: MojoTargetTypeRef;

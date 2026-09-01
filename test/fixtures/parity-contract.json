@@ -48,7 +48,9 @@
       "source": "const value = await load();",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain asynchronous crate startup",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "note": "Top-level await propagates one exact asynchronous module bootstrap through dependency-ordered initialization."
     },
     {
       "id": "modules.default-expression-export",
@@ -196,7 +198,9 @@
       "source": "type Shape = { kind: \"circle\"; radius: number } | { kind: \"square\"; size: number };",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact tagged Rust enum carriers",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "note": "Closed project-object unions construct one exact Mojo Variant constituent and common reads dispatch across every sealed member."
     },
     {
       "id": "objects.explicit-properties",
@@ -422,7 +426,9 @@
       "source": "const location = addressOf(value); storePointer(location, loadPointer(location) + 1);",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact storage identity and alias proofs",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "note": "Exact source-core location facts retain mutable storage identity through typed load and store operations."
     },
     {
       "id": "safety.raw-pointers",
@@ -430,7 +436,9 @@
       "source": "unsafe(() => loadPointer(rawPointerAs<uint8>(address)));",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain explicit unsafe contracts and native pointer carriers",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "note": "Exact source-core facts close raw-pointer identity plus typed native-pointer load, store, and offset only under explicit unsafe authorization."
     },
     {
       "id": "providers.cargo-dependencies",
@@ -542,8 +550,9 @@
       "source": "console.log(values.map(value => value + 1));",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain every implemented detailed lane and each exact hard rejection or Rust target limit in the dedicated JS and Node inventory",
-      "status": "partial",
-      "note": "Foundation coverage exists but does not satisfy the complete mature-target lane."
+      "status": "matched",
+      "proof": "test/architecture/parity-inventory.test.mjs",
+      "note": "Every detailed JavaScript and Node row has a terminal status and a local positive, exact-rejection, or pinned-Mojo-limit proof."
     },
     {
       "id": "output.generated-cargo",
@@ -1877,7 +1886,9 @@
       "area": "Unions",
       "lane": "discriminated object unions",
       "benchmarkClassification": "implemented",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "note": "Closed project-object unions construct exact Variant members and common field reads dispatch over the sealed member set."
     },
     {
       "id": "js-node.145",

@@ -91,6 +91,65 @@ export function planMojoProperty(
       : mojoModuleBindingWrite(selection.binding, context);
     return field === undefined ? undefined : mojoValue(field);
   }
+  if (selection.kind === "project-union-field") {
+    if (mode !== "read") {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROJECT_UNION_PROPERTY_WRITE_UNSUPPORTED",
+        "A sealed project-union property projection is read-only.",
+        node,
+      );
+      return undefined;
+    }
+    const receiver = prepareMojoReceiver(
+      selection.receiver,
+      selection.receiverType,
+      false,
+      context,
+      planValue,
+    );
+    if (receiver === undefined) return undefined;
+    registerMojoTypeImports(selection.receiverType, context);
+    registerMojoTypeImports(selection.resultType, context);
+    for (const field of selection.fields) registerMojoTypeImports(field.receiverType, context);
+    const ordered = orderMojoValues([
+      Object.freeze({ plan: receiver.plan, type: selection.receiverType, role: "union_property_receiver" }),
+    ], context, true);
+    const receiverValue = ordered.values[0]!;
+    const readField = (field: (typeof selection.fields)[number]): MojoExpression => Object.freeze({
+      kind: "member",
+      receiver: Object.freeze({
+        kind: "postfix-deref",
+        expression: Object.freeze({
+          kind: "member",
+          receiver: Object.freeze({
+            kind: "type-element",
+            receiver: receiverValue,
+            type: field.receiverType,
+          }),
+          name: "_state",
+        }),
+      }),
+      name: field.fieldName,
+    });
+    let expression = readField(selection.fields[selection.fields.length - 1]!);
+    for (let index = selection.fields.length - 2; index >= 0; index -= 1) {
+      const field = selection.fields[index]!;
+      expression = Object.freeze({
+        kind: "conditional",
+        condition: Object.freeze({
+          kind: "method-call",
+          receiver: receiverValue,
+          name: "isa",
+          genericArguments: Object.freeze([Object.freeze({ kind: "type", type: field.receiverType })]),
+          arguments: Object.freeze([]),
+        }),
+        whenTrue: readField(field),
+        whenFalse: expression,
+      });
+    }
+    return withMojoValue(ordered.before, expression);
+  }
   const sourceReceiverType = selection.kind === "project-field"
     ? selection.receiverType
     : selection.sourceReceiverType;

@@ -3,7 +3,7 @@ import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
-import type { MojoAnalyzedProjectProperty, MojoPropertySelection } from "../program/model.js";
+import type { MojoPropertySelection } from "../program/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoSelectedProviderOperation } from "../../target-model/operations/selection.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
@@ -12,7 +12,6 @@ import {
   instantiateMojoProviderConstantOperation,
   instantiateMojoProviderPropertyOperation,
 } from "../../policy/operations/provider-instantiation.js";
-import { substituteMojoTargetType } from "../../target-model/types/substitution.js";
 import { selectedProviderDeclarationIdentity } from "../../policy/operations/provider-selection.js";
 import type { MojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
 import { selectedMojoSourceProfileDeclarationIdentity } from "../../policy/operations/source-profile-selection.js";
@@ -22,120 +21,6 @@ export type MojoPropertyAnalysis =
   | { readonly kind: "resolved"; readonly selection: MojoPropertySelection; readonly expressionType: MojoTargetTypeRef }
   | { readonly kind: "not-project-field" }
   | { readonly kind: "unsupported"; readonly code: string; readonly reason: string };
-
-export function analyzeMojoProjectProperty(
-  source: ResolvedSourcePropertyAccessInfo,
-  fieldByDeclaration: WeakMap<Node, MojoAnalyzedProjectProperty>,
-  receiverType: MojoTargetTypeRef | undefined,
-): MojoPropertyAnalysis {
-  if (source.callCallee) return { kind: "not-project-field" };
-  if (source.accessMode === "delete") {
-    return {
-      kind: "unsupported",
-      code: "MOJO_PROJECT_PROPERTY_DELETE_UNSUPPORTED",
-      reason: "Deleting a statically declared project field has no Mojo storage operation.",
-    };
-  }
-  const candidates = [
-    source.selectedDeclaration,
-    source.selectedReadDeclaration,
-    source.selectedWriteDeclaration,
-  ].map((declaration) => declaration === undefined
-    ? undefined
-    : fieldByDeclaration.get(declaration))
-    .filter((field): field is MojoAnalyzedProjectProperty => field !== undefined);
-  const unique = [...new Set(candidates)];
-  if (unique.length === 0) return { kind: "not-project-field" };
-  if (unique.length !== 1) {
-    return {
-      kind: "unsupported",
-      code: "MOJO_PROJECT_PROPERTY_IDENTITY_CONFLICT",
-      reason: "Selected property read and write declarations resolve to different project fields.",
-    };
-  }
-  const field = unique[0]!;
-  if (field.kind === "enum-member") {
-    return {
-      kind: "resolved",
-      expressionType: field.owner,
-      selection: Object.freeze({
-        kind: "project-enum-member",
-        owner: field.owner,
-        name: field.name,
-        resultType: field.owner,
-      }),
-    };
-  }
-  if (field.kind === "static-field") {
-    return {
-      kind: "resolved",
-      expressionType: field.type,
-      selection: Object.freeze({
-        kind: "project-static-field",
-        binding: field.binding,
-        fieldName: field.name,
-        fieldType: field.type,
-        accessMode: source.accessMode,
-        optionalChain: source.optionalChain,
-      }),
-    };
-  }
-  if (receiverType === undefined) {
-    return {
-      kind: "unsupported",
-      code: "MOJO_PROJECT_PROPERTY_RECEIVER_NOT_CLOSED",
-      reason: "Selected project-property receiver has no exact non-null Mojo carrier.",
-    };
-  }
-  const fieldType = instantiateProjectFieldType(field, receiverType);
-  if (fieldType === undefined) {
-    return {
-      kind: "unsupported",
-      code: "MOJO_PROJECT_PROPERTY_INSTANTIATION_UNRESOLVED",
-      reason: "Selected project-property receiver does not exactly instantiate its declaring owner.",
-    };
-  }
-  return {
-    kind: "resolved",
-    expressionType: optionalAccessResult(fieldType, source.optionalChain),
-    selection: Object.freeze({
-      kind: "project-field",
-      receiver: source.receiver.expression,
-      fieldName: field.name,
-      fieldType,
-      receiverType,
-      accessMode: source.accessMode,
-      optionalChain: source.optionalChain,
-    }),
-  };
-}
-
-function optionalAccessResult(
-  type: MojoTargetTypeRef,
-  optionalChain: boolean,
-): MojoTargetTypeRef {
-  return !optionalChain || type.kind === "optional"
-    ? type
-    : Object.freeze({ kind: "optional", value: type });
-}
-
-export function instantiateProjectFieldType(
-  field: Extract<MojoAnalyzedProjectProperty, { readonly kind: "instance-field" | "interface-field" }>,
-  receiverType: MojoTargetTypeRef,
-): MojoTargetTypeRef | undefined {
-  if (field.ownerType.kind !== "target-named" || receiverType.kind !== "target-named" ||
-    field.ownerType.id !== receiverType.id) return undefined;
-  const arguments_ = receiverType.genericArguments ?? [];
-  if (arguments_.length !== field.ownerTypeParameters.length ||
-    arguments_.some((argument) => argument.kind !== "type")) return undefined;
-  const types = new Map<string, MojoTargetTypeRef>();
-  for (const [index, name] of field.ownerTypeParameters.entries()) {
-    const argument = arguments_[index];
-    if (argument?.kind !== "type") return undefined;
-    types.set(name, argument.type);
-  }
-  return substituteMojoTargetType(field.type, { types, values: new Map(), packs: new Map() });
-}
 
 export interface MojoProviderPropertyAnalysisContext {
   readonly source: TargetSourceProgram;

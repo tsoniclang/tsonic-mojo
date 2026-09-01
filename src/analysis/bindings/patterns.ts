@@ -7,7 +7,7 @@ import {
 } from "@tsonic/target-api/source";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
-import { instantiateProjectFieldType } from "../operations/properties.js";
+import { instantiateProjectFieldType } from "../operations/project-fields.js";
 import type {
   MojoAnalyzedClass,
   MojoAnalyzedInterface,
