@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { printMojoModule } from "../../../dist/backend/emission/printer.js";
+import { printMojoModule } from "../../../dist/print/source/index.js";
 
 test("printer emits assignment as a statement and keeps expressions structured", () => {
   const module = {

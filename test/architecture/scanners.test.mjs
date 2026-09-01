@@ -73,6 +73,8 @@ test("planner and target AST use the shared domain structure", () => {
     "src/backend/target-ast/imports.ts",
     "src/backend/target-ast/modules.ts",
     "src/backend/target-ast/statements.ts",
+    "src/print/project",
+    "src/print/source",
   ]) {
     assert.equal(existsSync(join(repoRoot, path)), true, `missing canonical layer '${path}'`);
   }
@@ -81,6 +83,7 @@ test("planner and target AST use the shared domain structure", () => {
     "src/backend/planner/expressions.ts",
     "src/backend/planner/statements.ts",
     "src/backend/target-ast/nodes.ts",
+    "src/backend/emission/printer.ts",
   ]) {
     assert.equal(existsSync(join(repoRoot, path)), false, `obsolete flat module '${path}'`);
   }

@@ -8,12 +8,12 @@ import type {
   MojoStatement,
   MojoStructDeclaration,
   MojoTraitDeclaration,
-} from "../target-ast/index.js";
+} from "../../backend/target-ast/index.js";
 import {
   mojoGenericParametersText,
   mojoTypeName,
   renderGenericArgumentValue,
-} from "../planner/types/render.js";
+} from "../../backend/planner/types/render.js";
 
 export function printMojoModule(module: MojoSourceModule): string {
   const lines = module.imports.map(printImport);
