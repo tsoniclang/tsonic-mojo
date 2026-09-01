@@ -174,7 +174,7 @@ export function planMojoProperty(
         type: directState ? context.initializingState!.stateType : selection.receiverType,
         role: "property_receiver",
       }),
-    ], context, stabilizeReceiver);
+    ], context, stabilizeReceiver && !directState);
     const operation = withMojoValue(ordered.before, {
       kind: "member",
       receiver: directState

@@ -387,6 +387,7 @@ export function planMojoCall(
       plan: receiver,
       type: selection.operation.receiverType,
       role: "call_receiver",
+      ...(target.receiver === "mut" ? { stabilize: true } : {}),
     }));
     before = ordered.before;
     call = {

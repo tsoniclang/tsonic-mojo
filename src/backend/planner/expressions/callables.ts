@@ -32,7 +32,7 @@ export function planMojoCallableExpression(
   node: Node,
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
-  widenRaises = false,
+  widenedCallableType?: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
 ): MojoValuePlan | undefined {
   const selection = context.program.queries.callableExpressionSelection(node);
   if (selection === undefined) {
@@ -56,9 +56,7 @@ export function planMojoCallableExpression(
   }
 
   registerMojoModuleImport(context, runtimeModule);
-  const callableType = widenRaises
-    ? Object.freeze({ ...selection.callableType, raises: true })
-    : selection.callableType;
+  const callableType = widenedCallableType ?? selection.callableType;
   registerMojoTypeImports(callableType, context);
   const environmentName = context.callableArtifactNames.get(node) ??
     allocateMojoSyntheticName(context, "callable_environment");
@@ -69,19 +67,43 @@ export function planMojoCallableExpression(
       environmentName,
       context,
       planValue,
-      widenRaises,
+      callableType,
     );
     if (declaration === undefined) return undefined;
     context.syntheticDeclarations.push(declaration);
   }
 
   const environmentType = localNamedType(context, environmentName);
-  const captures: MojoExpression[] = selection.captures.map((capture) => Object.freeze({
+  const captureValues: MojoExpression[] = selection.captures.map((capture) => Object.freeze({
     kind: "method-call" as const,
     receiver: Object.freeze({ kind: "path" as const, path: capture.name }),
     name: "copy",
     arguments: Object.freeze([]),
   }));
+  const before: MojoStatement[] = [];
+  const recursiveStorageName = selection.recursiveBinding === undefined
+    ? undefined
+    : allocateMojoSyntheticName(context, "recursive_callable_storage");
+  if (recursiveStorageName !== undefined) {
+    const storageType = locationType(optionalType(callableType));
+    registerMojoTypeImports(storageType, context);
+    before.push(Object.freeze({
+      kind: "variable",
+      name: recursiveStorageName,
+      type: storageType,
+      initializer: Object.freeze({
+        kind: "construct",
+        type: storageType,
+        arguments: Object.freeze([Object.freeze({
+          value: Object.freeze({
+            kind: "construct",
+            type: optionalType(callableType),
+            arguments: Object.freeze([]),
+          }),
+        })]),
+      }),
+    }));
+  }
   const ownerName = allocateMojoSyntheticName(context, "callable_owner");
   const allocation: MojoExpression = Object.freeze({
     kind: "call",
@@ -94,7 +116,14 @@ export function planMojoCallableExpression(
         value: Object.freeze({
           kind: "construct",
           type: environmentType,
-          arguments: Object.freeze(captures.map((value) => Object.freeze({ value }))),
+          arguments: Object.freeze([
+            ...captureValues.map((value) => Object.freeze({ value })),
+            ...(recursiveStorageName === undefined
+              ? []
+              : [Object.freeze({
+                  value: Object.freeze({ kind: "path" as const, path: recursiveStorageName }),
+                })]),
+          ]),
         }),
       }),
       Object.freeze({
@@ -102,18 +131,44 @@ export function planMojoCallableExpression(
       }),
     ]),
   });
-  return withMojoValue(Object.freeze([Object.freeze({
+  before.push(Object.freeze({
     kind: "variable",
     name: ownerName,
     initializer: allocation,
-  })]), Object.freeze({
+  }));
+  const callable = Object.freeze({
     kind: "construct",
     type: callableType,
     arguments: Object.freeze([
       Object.freeze({ value: Object.freeze({ kind: "path", path: ownerName }) }),
       Object.freeze({ value: Object.freeze({ kind: "path", path: `${environmentName}.invoke` }) }),
     ]),
+  } satisfies MojoExpression);
+  if (recursiveStorageName === undefined) return withMojoValue(before, callable);
+  const callableValueName = allocateMojoSyntheticName(context, "recursive_callable_value");
+  before.push(Object.freeze({
+    kind: "variable",
+    name: callableValueName,
+    type: callableType,
+    initializer: callable,
+  }), Object.freeze({
+    kind: "expression",
+    expression: Object.freeze({
+      kind: "method-call",
+      receiver: Object.freeze({ kind: "path", path: recursiveStorageName }),
+      name: "write",
+      arguments: Object.freeze([Object.freeze({
+        value: Object.freeze({
+          kind: "construct",
+          type: optionalType(callableType),
+          arguments: Object.freeze([Object.freeze({
+            value: Object.freeze({ kind: "path", path: callableValueName }),
+          })]),
+        }),
+      })]),
+    }),
   }));
+  return withMojoValue(before, Object.freeze({ kind: "path", path: callableValueName }));
 }
 
 function planCallableEnvironment(
@@ -121,7 +176,7 @@ function planCallableEnvironment(
   environmentName: string,
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
-  widenRaises: boolean,
+  callableType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
 ): MojoStructDeclaration | undefined {
   const environmentType = localNamedType(context, environmentName);
   const contextType = runtimeNamedType(
@@ -145,6 +200,15 @@ function planCallableEnvironment(
       compileTime: false,
     });
   });
+  if (selection.recursiveBinding !== undefined) {
+    const type = locationType(optionalType(callableType));
+    registerMojoTypeImports(type, context);
+    fields.push(Object.freeze({
+      name: selection.recursiveBinding.name,
+      type,
+      compileTime: false,
+    }));
+  }
   const contextName = `${environmentName}_context`;
   const argumentsName = `${environmentName}_arguments`;
   const pointerName = `${environmentName}_pointer`;
@@ -169,6 +233,27 @@ function planCallableEnvironment(
           })
         : field,
       storage: capture.storage,
+    }));
+  }
+  if (selection.recursiveBinding !== undefined) {
+    const field: MojoExpression = Object.freeze({
+      kind: "member",
+      receiver: environmentValue,
+      name: selection.recursiveBinding.name,
+    });
+    overrides.set(selection.recursiveBinding.declaration, Object.freeze({
+      expression: Object.freeze({
+        kind: "method-call",
+        receiver: Object.freeze({
+          kind: "method-call",
+          receiver: field,
+          name: "borrow",
+          arguments: Object.freeze([]),
+        }),
+        name: "value",
+        arguments: Object.freeze([]),
+      }),
+      storage: "value",
     }));
   }
   const callableContext = withMojoBindingOverrides(context, overrides);
@@ -202,8 +287,8 @@ function planCallableEnvironment(
     ]),
     resultType: selection.resultType,
     asynchronous: false,
-    raises: selection.raises || widenRaises,
-    ...(selection.errorType === undefined ? {} : { errorType: selection.errorType }),
+    raises: callableType.raises,
+    ...(callableType.errorType === undefined ? {} : { errorType: callableType.errorType }),
     decorators: Object.freeze(["staticmethod"]),
     statements: Object.freeze([
       Object.freeze({
@@ -322,4 +407,8 @@ function locationType(value: MojoTargetTypeRef): MojoTargetTypeRef {
     name: "Location",
     genericArguments: Object.freeze([Object.freeze({ kind: "type", type: value })]),
   });
+}
+
+function optionalType(value: MojoTargetTypeRef): MojoTargetTypeRef {
+  return Object.freeze({ kind: "optional", value });
 }

@@ -485,10 +485,17 @@ export interface MojoCallableCapture {
   readonly storage: "value" | "location";
 }
 
+export interface MojoRecursiveCallableBinding {
+  readonly declaration: Node;
+  readonly name: string;
+  readonly type: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
+}
+
 export interface MojoCallableExpressionSelection {
   readonly expression: Node;
   readonly parameters: readonly MojoAnalyzedParameter[];
   readonly captures: readonly MojoCallableCapture[];
+  readonly recursiveBinding?: MojoRecursiveCallableBinding;
   readonly resultType: MojoTargetTypeRef;
   readonly body: Node;
   readonly raises: boolean;

@@ -37,6 +37,7 @@ export interface OrderedMojoValue {
   readonly plan: MojoValuePlan;
   readonly type: MojoTargetTypeRef;
   readonly role: string;
+  readonly stabilize?: boolean;
 }
 
 export interface PlannedMojoCallArgument {
@@ -91,7 +92,14 @@ export function planSelectedArgument(
     (context.program.source.ast.is.IsArrowFunction(argument.expression) ||
       context.program.source.ast.is.IsFunctionExpression(argument.expression));
   const expression = directCallableWidening
-    ? planMojoCallableExpression(argument.expression, context, planValue, true)
+    ? planMojoCallableExpression(
+        argument.expression,
+        context,
+        planValue,
+        argument.conversion.targetType.kind === "callable"
+          ? argument.conversion.targetType
+          : undefined,
+      )
     : planValue(argument.expression, context);
   if (expression === undefined) return undefined;
   const converted = directCallableWidening
@@ -162,7 +170,7 @@ export function orderMojoValues(
   const expressions: MojoExpression[] = [];
   for (const [index, value] of values.entries()) {
     before.push(...value.plan.before);
-    if (stabilizeAll || index < finalPreludeIndex) {
+    if (value.stabilize === true || stabilizeAll || index < finalPreludeIndex) {
       registerMojoTypeImports(value.type, context);
       const name = allocateMojoSyntheticName(context, value.role);
       before.push(Object.freeze({
@@ -370,9 +378,39 @@ export function applyMojoConversion(
     case "callable-raise-widen":
       registerMojoModuleImport(context, ["tsonic_runtime"]);
       registerMojoTypeImports(conversion.targetType, context);
+      if (conversion.targetType.kind !== "callable" || !conversion.targetType.raises) {
+        return undefined;
+      }
       return {
         kind: "call",
         callee: { kind: "path", path: "tsonic_runtime.widen_callable" },
+        genericArguments: Object.freeze([
+          Object.freeze({
+            kind: "type" as const,
+            type: Object.freeze({
+              kind: "tuple" as const,
+              elements: Object.freeze(conversion.targetType.parameters.map((parameter) => parameter.type)),
+            }),
+          }),
+          Object.freeze({ kind: "type" as const, type: conversion.targetType.result }),
+          Object.freeze({
+            kind: "type" as const,
+            type: conversion.targetType.errorType ?? Object.freeze({
+              kind: "target-named" as const,
+              id: "mojo.builtin.Error",
+              modulePath: Object.freeze([]),
+              name: "Error",
+            }),
+          }),
+        ]),
+        arguments: Object.freeze([{ value: expression }]),
+      };
+    case "callable-error-erase":
+      registerMojoModuleImport(context, ["tsonic_runtime"]);
+      registerMojoTypeImports(conversion.targetType, context);
+      return {
+        kind: "call",
+        callee: { kind: "path", path: "tsonic_runtime.erase_callable_error" },
         arguments: Object.freeze([{ value: expression }]),
       };
     case "js-truthiness":

@@ -497,7 +497,12 @@ function selectReturnValueTransfer(
   input: MojoExecutableRegionAnalysisInput,
 ): boolean {
   const { ast } = input.source;
-  if (!ast.is.IsIdentifier(expression)) return false;
+  const expressionType = input.expressionTypes.get(expression);
+  if (!ast.is.IsIdentifier(expression) || input.returnType === undefined ||
+    expressionType === undefined || input.valueRefinements.has(expression) ||
+    !mojoTargetTypeEquals(expressionType, input.returnType)) {
+    return false;
+  }
   const reference = input.source.navigation.sourceReferenceFor(expression);
   const declaration = reference?.project === true ? reference.declaration : undefined;
   if (declaration === undefined || input.locationStorageNames.has(declaration) ||

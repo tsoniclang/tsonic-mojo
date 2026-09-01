@@ -13,6 +13,7 @@ import type {
   MojoAnalyzedFunction,
   MojoCallableCapture,
   MojoCallableExpressionSelection,
+  MojoRecursiveCallableBinding,
 } from "../program/model.js";
 import { walkSourceTree } from "../program/traversal.js";
 import {
@@ -111,13 +112,18 @@ export interface MojoCallableCaptureInput {
   readonly ensureLocationStorage: (declaration: Node, bindingName: string) => string;
   readonly moduleBindingByDeclaration: WeakMap<Node, unknown>;
   readonly diagnostics: TargetDiagnostic[];
+  readonly recursiveDeclaration?: Node;
 }
 
 export function collectMojoCallableCaptures(
   input: MojoCallableCaptureInput,
-): readonly MojoCallableCapture[] | undefined {
+): {
+  readonly captures: readonly MojoCallableCapture[];
+  readonly recursiveBinding?: MojoRecursiveCallableBinding;
+} | undefined {
   const { ast } = input.source;
   const captures = new Map<Node, MojoCallableCapture>();
+  let recursiveBinding: MojoRecursiveCallableBinding | undefined;
   let valid = true;
   let capturesSelf = false;
   for (const root of input.roots) {
@@ -148,6 +154,19 @@ export function collectMojoCallableCaptures(
         valid = false;
         return;
       }
+      if (declaration === input.recursiveDeclaration) {
+        if (type.kind !== "callable") {
+          input.diagnostics.push(mojoAnalysisDiagnostic(
+            "MOJO_RECURSIVE_CALLABLE_CARRIER_NOT_CLOSED",
+            "A recursive callable binding requires one exact callable carrier.",
+            node,
+          ));
+          valid = false;
+          return;
+        }
+        recursiveBinding = Object.freeze({ declaration, name: bindingName, type });
+        return;
+      }
       const mutated = input.source.navigation.bindingWritesWithin(symbol, input.sourceFile).length > 0;
       const existingLocation = input.locationStorageNames.get(declaration);
       const storage = existingLocation !== undefined || mutated ? "location" : "value";
@@ -173,7 +192,10 @@ export function collectMojoCallableCaptures(
       storage: "value",
     }));
   }
-  return Object.freeze(ordered);
+  return Object.freeze({
+    captures: Object.freeze(ordered),
+    ...(recursiveBinding === undefined ? {} : { recursiveBinding }),
+  });
 }
 
 export interface MojoCallableExpressionAnalysisInput {
@@ -323,7 +345,8 @@ export function analyzeAndSealMojoCallableExpression(
       return;
     }
   }
-  const captures = collectMojoCallableCaptures({
+  const declaration = callableExpressionDeclaration(input.expression, environment.source);
+  const captureAnalysis = collectMojoCallableCaptures({
     expression: input.expression,
     roots: Object.freeze([...initializerRoots, callable.body]),
     sourceFile: input.sourceFile,
@@ -336,11 +359,12 @@ export function analyzeAndSealMojoCallableExpression(
     ensureLocationStorage: input.ensureLocationStorage,
     moduleBindingByDeclaration: input.moduleBindingByDeclaration,
     diagnostics: environment.diagnostics,
+    ...(declaration === undefined ? {} : { recursiveDeclaration: declaration }),
   });
   const selectedType = environment.expressionTypes.get(input.expression);
-  if (captures === undefined || selectedType?.kind !== "callable" ||
+  if (captureAnalysis === undefined || selectedType?.kind !== "callable" ||
     selectedType.parameters.length !== callable.parameters.length) {
-    if (captures !== undefined) {
+    if (captureAnalysis !== undefined) {
       environment.diagnostics.push(mojoAnalysisDiagnostic(
         "MOJO_CALLABLE_EXPRESSION_CARRIER_NOT_CLOSED",
         "A callable expression requires one exact function carrier aligned with its authored parameters.",
@@ -358,13 +382,15 @@ export function analyzeAndSealMojoCallableExpression(
   input.selections.set(input.expression, Object.freeze({
     expression: input.expression,
     parameters: callable.parameters,
-    captures,
+    captures: captureAnalysis.captures,
+    ...(captureAnalysis.recursiveBinding === undefined
+      ? {}
+      : { recursiveBinding: captureAnalysis.recursiveBinding }),
     resultType: callable.resultType,
     body: callable.body,
     raises,
     callableType,
   }));
-  const declaration = callableExpressionDeclaration(input.expression, environment.source);
   if (declaration !== undefined) {
     input.byDeclaration.set(declaration, input.expression);
     input.declarationByExpression.set(input.expression, declaration);

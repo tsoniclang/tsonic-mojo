@@ -24,6 +24,7 @@ export type MojoTruthinessConversion =
 export type MojoValueConversion =
   | { readonly kind: "identity" }
   | { readonly kind: "callable-raise-widen"; readonly targetType: MojoTargetTypeRef }
+  | { readonly kind: "callable-error-erase"; readonly targetType: MojoTargetTypeRef }
   | { readonly kind: "js-truthiness"; readonly conversion: MojoTruthinessConversion }
   | {
       readonly kind: "js-callback-truthiness";

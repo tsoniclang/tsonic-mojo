@@ -69,6 +69,12 @@ export function classifyMojoValueConversion(
       conversion: Object.freeze({ kind: "callable-raise-widen", targetType: expected }),
     };
   }
+  if (isCallableErrorErasure(actual, expected)) {
+    return {
+      kind: "resolved",
+      conversion: Object.freeze({ kind: "callable-error-erase", targetType: expected }),
+    };
+  }
   if (expected.kind === "source-primitive" && expected.name === "bool") {
     const conversion = classifyTruthiness(actual);
     if (conversion !== undefined) {
@@ -338,9 +344,34 @@ function isNonRaisingFunctionWidening(
     return false;
   }
   return mojoTargetTypeEquals(
-    Object.freeze({ ...actual, raises: true }),
+    Object.freeze({
+      ...actual,
+      raises: true,
+      ...(expected.errorType === undefined ? {} : { errorType: expected.errorType }),
+    }),
     expected,
   );
+}
+
+function isCallableErrorErasure(
+  actual: MojoTargetTypeRef,
+  expected: MojoTargetTypeRef,
+): boolean {
+  if (actual.kind !== "callable" || expected.kind !== "callable" ||
+    !actual.raises || !expected.raises || !isNativeErrorType(expected.errorType)) {
+    return false;
+  }
+  const actualError = actual.errorType;
+  if (actualError === undefined || isNativeErrorType(actualError)) return false;
+  return mojoTargetTypeEquals(
+    Object.freeze({ ...actual, errorType: expected.errorType }),
+    expected,
+  );
+}
+
+function isNativeErrorType(type: MojoTargetTypeRef | undefined): boolean {
+  return type === undefined || (type.kind === "target-named" &&
+    type.id === "mojo.builtin.Error");
 }
 
 function isTriviallyCopyableMojoType(type: MojoTargetTypeRef): boolean {

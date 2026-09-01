@@ -20,7 +20,10 @@ import {
   analyzeAndSealMojoCallableExpression,
   resolveMojoCallableExpressionDependency,
 } from "../callables/expressions.js";
-import { createMojoConversionIndex } from "../../policy/conversions/selection.js";
+import {
+  classifyMojoValueConversion,
+  createMojoConversionIndex,
+} from "../../policy/conversions/selection.js";
 import { recordMojoExecutableRegionConversionUses } from "../conversions/uses.js";
 import { analyzeMojoRuntimePackages } from "../runtime/references.js";
 import { createMojoProjectTypeCatalog } from "../project-types/catalog.js";
@@ -49,6 +52,7 @@ import type {
   MojoValueSelection,
 } from "./model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import type { MojoValueConversion } from "../../target-model/conversions/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import { validateMojoFunctionSyntax } from "./syntax-validation.js";
@@ -76,6 +80,10 @@ import {
   closeMojoDeclarationErrorEffects,
   collectMojoEscapingErrorTypes,
 } from "./error-regions.js";
+import type {
+  MojoAnalyzedCallArgument,
+  MojoCallableArgumentSlot,
+} from "./call-model.js";
 
 export function analyzeMojoTargetProgram(
   request: MojoTargetAnalysisRequest,
@@ -639,10 +647,90 @@ export function analyzeMojoTargetProgram(
       ...selection,
       raises: errorType !== undefined,
       ...(errorType === undefined ? {} : { errorType }),
+      ...(selection.recursiveBinding === undefined
+        ? {}
+        : { recursiveBinding: Object.freeze({ ...selection.recursiveBinding, type: callableType }) }),
       callableType,
     }));
     const declaration = callableDeclarationByExpression.get(expression);
     if (declaration !== undefined) sealCallableDeclaration(declaration, callableType);
+  }
+  const finalizeCallableArgument = (
+    argument: MojoAnalyzedCallArgument,
+  ): MojoAnalyzedCallArgument => {
+    const dependency = resolveMojoCallableExpressionDependency(
+      argument.expression,
+      input.source,
+      callableExpressionSelections,
+      callableExpressionByDeclaration,
+    );
+    const callable = dependency === undefined
+      ? undefined
+      : callableExpressionSelections.get(dependency);
+    if (callable === undefined) return argument;
+    let conversion: MojoValueConversion | undefined;
+    let incompatibilityReason: string | undefined;
+    if (argument.conversion.kind === "js-callback-truthiness") {
+      conversion = Object.freeze({
+        ...argument.conversion,
+        widenRaises: !callable.callableType.raises,
+      });
+    } else {
+      const classified = classifyMojoValueConversion(
+        callable.callableType,
+        argument.parameterType,
+      );
+      conversion = classified.kind === "resolved" ? classified.conversion : undefined;
+      incompatibilityReason = classified.kind === "unsupported" ? classified.reason : undefined;
+    }
+    if (conversion === undefined) {
+      diagnostics.push(diagnostic(
+        "MOJO_CALLABLE_ARGUMENT_FINAL_CONVERSION_UNPROVEN",
+        `A finalized callable argument is incompatible with its exact selected parameter carrier${
+          incompatibilityReason === undefined ? "." : `: ${incompatibilityReason}`}`,
+        argument.expression,
+      ));
+      return argument;
+    }
+    return Object.freeze({
+      ...argument,
+      sourceType: callable.callableType,
+      conversion,
+    });
+  };
+  const finalizeCallableArgumentSlot = (
+    slot: MojoCallableArgumentSlot,
+    replacements: ReadonlyMap<MojoAnalyzedCallArgument, MojoAnalyzedCallArgument>,
+  ): MojoCallableArgumentSlot => slot.kind === "value"
+    ? Object.freeze({ kind: "value", argument: replacements.get(slot.argument) ?? slot.argument })
+    : slot.kind === "rest"
+      ? Object.freeze({
+          ...slot,
+          arguments: Object.freeze(slot.arguments.map((argument) =>
+            replacements.get(argument) ?? argument)),
+        })
+      : slot;
+  for (const callNode of callNodes) {
+    const selection = callSelections.get(callNode);
+    if (selection === undefined || selection.kind === "explicit-safety" ||
+      selection.kind === "native-pointer" || selection.kind === "raw-pointer" ||
+      selection.kind === "typed-location") continue;
+    const replacements = new Map<MojoAnalyzedCallArgument, MojoAnalyzedCallArgument>();
+    const arguments_ = selection.arguments.map((argument) => {
+      const finalized = finalizeCallableArgument(argument);
+      replacements.set(argument, finalized);
+      return finalized;
+    });
+    callSelections.set(callNode, Object.freeze({
+      ...selection,
+      arguments: Object.freeze(arguments_),
+      ...(selection.kind === "callable"
+        ? {
+            argumentSlots: Object.freeze(selection.argumentSlots.map((slot) =>
+              finalizeCallableArgumentSlot(slot, replacements))),
+          }
+        : {}),
+    }));
   }
   for (const callNode of callNodes) {
     const selection = callSelections.get(callNode);

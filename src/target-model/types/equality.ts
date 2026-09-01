@@ -5,6 +5,13 @@ import type {
   MojoTargetTypeRef,
 } from "./model.js";
 
+const nativeErrorType: MojoTargetTypeRef = Object.freeze({
+  kind: "target-named",
+  id: "mojo.builtin.Error",
+  modulePath: Object.freeze([]),
+  name: "Error",
+});
+
 export function mojoTargetTypeEquals(
   left: MojoTargetTypeRef,
   right: MojoTargetTypeRef,
@@ -70,9 +77,7 @@ export function mojoTargetTypeEquals(
           (parameter.omissionKind ?? "required") === (other.omissionKind ?? "required") &&
           mojoTargetTypeEquals(parameter.type, other.type)) &&
         mojoTargetTypeEquals(left.result, right.result) &&
-        (left.errorType === undefined
-          ? right.errorType === undefined
-          : right.errorType !== undefined && mojoTargetTypeEquals(left.errorType, right.errorType));
+        callableErrorTypesEqual(left.raises, left.errorType, right.errorType);
     case "function":
       return right.kind === "function" && left.thin === right.thin &&
         left.asynchronous === right.asynchronous && left.raises === right.raises &&
@@ -83,10 +88,17 @@ export function mojoTargetTypeEquals(
           parameter.passing === other.passing &&
           mojoTargetTypeEquals(parameter.type, other.type)) &&
         mojoTargetTypeEquals(left.result, right.result) &&
-        (left.errorType === undefined
-          ? right.errorType === undefined
-          : right.errorType !== undefined && mojoTargetTypeEquals(left.errorType, right.errorType));
+        callableErrorTypesEqual(left.raises, left.errorType, right.errorType);
   }
+}
+
+function callableErrorTypesEqual(
+  raises: boolean,
+  left: MojoTargetTypeRef | undefined,
+  right: MojoTargetTypeRef | undefined,
+): boolean {
+  if (!raises) return left === undefined && right === undefined;
+  return mojoTargetTypeEquals(left ?? nativeErrorType, right ?? nativeErrorType);
 }
 
 function genericParametersEqual(

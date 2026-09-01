@@ -377,7 +377,10 @@ export function planMojoValue(
       node,
       context,
       planMojoValue,
-      inlineCallableWidening,
+      inlineCallableWidening && conversion?.kind === "callable-raise-widen" &&
+          conversion.targetType.kind === "callable"
+        ? conversion.targetType
+        : undefined,
     );
   } else if (ast.is.IsCallExpression(node) || ast.is.IsNewExpression(node)) {
     plan = planMojoCall(node, context, planMojoValue);
