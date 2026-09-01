@@ -7,7 +7,10 @@ import type { MojoAnalyzedClassField, MojoPropertySelection } from "../program/m
 import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/provider/equality.js";
 import { providerOwnerMatches } from "../types/resolution.js";
-import { instantiateMojoProviderPropertyOperation } from "./provider-instantiation.js";
+import {
+  instantiateMojoProviderConstantOperation,
+  instantiateMojoProviderPropertyOperation,
+} from "./provider-instantiation.js";
 import { selectedProviderDeclarationIdentity } from "./provider-selection.js";
 
 export type MojoPropertyAnalysis =
@@ -90,6 +93,56 @@ export function analyzeMojoProviderProperty(
       code: "MOJO_PROVIDER_PROPERTY_DELETE_UNSUPPORTED",
       reason: "Selected provider property has no delete operation contract.",
     };
+  }
+  const selectedIdentity = selectedProviderDeclarationIdentity(context.source, [
+    source.selectedDeclaration,
+    source.selectedSymbol,
+    source.sourceDeclaration,
+    source.sourceSymbol,
+  ]);
+  if (selectedIdentity?.exportId !== undefined && selectedIdentity.memberId === undefined) {
+    if (source.accessMode !== "read" || source.sourceReadType === undefined) {
+      return {
+        kind: "unsupported",
+        code: "MOJO_PROVIDER_CONSTANT_WRITE_UNSUPPORTED",
+        reason: "A provider module constant can only be selected as a read.",
+      };
+    }
+    const rows = context.providerSemantics.operations.filter((row) =>
+      providerOwnerMatches(row, selectedIdentity) && row.exportId === selectedIdentity.exportId &&
+      row.memberId === undefined && row.signatureId === undefined && row.operationKind === "property" &&
+      row.target.kind === "constant");
+    if (rows.length !== 1) {
+      return {
+        kind: "unsupported",
+        code: rows.length === 0 ? "MOJO_PROVIDER_CONSTANT_OPERATION_MISSING" : "MOJO_PROVIDER_CONSTANT_OPERATION_AMBIGUOUS",
+        reason: `Selected provider module constant has ${rows.length} exact Mojo operation rows.`,
+      };
+    }
+    const instantiated = instantiateMojoProviderConstantOperation(rows[0]!);
+    if (instantiated.kind === "unsupported") {
+      return { kind: "unsupported", code: "MOJO_PROVIDER_CONSTANT_NOT_CLOSED", reason: instantiated.reason };
+    }
+    const selectedRead = context.resolveType(source.sourceReadType);
+    if (selectedRead === undefined) {
+      return {
+        kind: "unsupported",
+        code: "MOJO_PROVIDER_CONSTANT_READ_TYPE_NOT_CLOSED",
+        reason: "Selected provider module constant has no exact source carrier.",
+      };
+    }
+    const conversion = context.conversions.record(source.expression, instantiated.operation.resultType, selectedRead);
+    return conversion.kind === "unsupported"
+      ? { kind: "unsupported", code: "MOJO_PROVIDER_CONSTANT_CONVERSION_UNPROVEN", reason: conversion.reason }
+      : {
+          kind: "resolved",
+          expressionType: selectedRead,
+          selection: Object.freeze({
+            kind: "provider-constant",
+            operation: instantiated.operation,
+            readResultConversion: conversion.conversion,
+          }),
+        };
   }
   const receiverType = context.resolveType(source.receiver.type);
   if (receiverType === undefined) {

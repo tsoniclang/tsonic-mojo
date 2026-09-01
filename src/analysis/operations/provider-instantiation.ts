@@ -124,6 +124,26 @@ export function instantiateMojoProviderPropertyOperation(
   };
 }
 
+export function instantiateMojoProviderConstantOperation(
+  row: MojoProviderOperationRow,
+): MojoProviderOperationInstantiation {
+  if (row.receiverType !== undefined || (row.parameterTypes ?? []).length !== 0 ||
+    row.target.kind !== "constant") {
+    return { kind: "unsupported", reason: "selected provider constant has a receiver, parameters, or non-constant target" };
+  }
+  return {
+    kind: "resolved",
+    operation: Object.freeze({
+      target: row.target,
+      parameterTypes: Object.freeze([]),
+      resultType: row.resultType,
+      genericArguments: Object.freeze([]),
+      genericParameters: Object.freeze([]),
+      raises: row.raises === true,
+    }),
+  };
+}
+
 function substituteOperationForm(
   target: MojoProviderOperationForm,
   substitutions: Parameters<typeof substituteMojoTargetType>[1],

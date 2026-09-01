@@ -137,6 +137,15 @@ export function planMojoExpression(
   const { ast } = context.program.source;
   let planned: MojoExpression | undefined;
   if (ast.is.IsIdentifier(node) || ast.kindName(node) === "KindThisKeyword") {
+    const selectedValue = context.program.queries.valueSelection(node);
+    if (selectedValue !== undefined) {
+      planned = planProviderConstant(
+        selectedValue.operation,
+        selectedValue.resultConversion,
+        context,
+      );
+      if (planned === undefined) return undefined;
+    } else {
     const name = context.program.queries.bindingName(node);
     if (name === undefined) {
       appendMojoPlanningDiagnostic(
@@ -148,6 +157,7 @@ export function planMojoExpression(
       return undefined;
     }
     planned = { kind: "path", path: name };
+    }
   } else if (ast.is.IsStringLiteral(node) || ast.is.IsNoSubstitutionTemplateLiteral(node)) {
     planned = { kind: "string-literal", value: ast.text(node) };
   } else if (ast.is.IsNumericLiteral(node)) {
@@ -497,6 +507,22 @@ function planProperty(
     );
     return undefined;
   }
+  if (selection.kind === "provider-constant") {
+    if (mode !== "read") {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROVIDER_CONSTANT_WRITE_UNSUPPORTED",
+        "A provider module constant cannot be planned as a writable location.",
+        node,
+      );
+      return undefined;
+    }
+    return planProviderConstant(
+      selection.operation,
+      selection.readResultConversion,
+      context,
+    );
+  }
   const receiver = planMojoExpression(selection.receiver, context);
   if (receiver === undefined) return undefined;
   if (selection.kind === "project-field") {
@@ -539,6 +565,23 @@ function planProperty(
   return mode === "read" && selection.readResultConversion !== undefined
     ? applyMojoConversion(member, selection.readResultConversion, context)
     : member;
+}
+
+function planProviderConstant(
+  operation: import("../../analysis/program/model.js").MojoSelectedProviderOperation,
+  resultConversion: MojoValueConversion,
+  context: MojoPlanningContext,
+): MojoExpression | undefined {
+  if (operation.target.kind !== "constant") return undefined;
+  registerMojoModuleImport(context, operation.target.modulePath);
+  return applyMojoConversion(
+    {
+      kind: "path",
+      path: [...operation.target.modulePath, operation.target.name].join("."),
+    },
+    resultConversion,
+    context,
+  );
 }
 
 function planSelectedArgument(

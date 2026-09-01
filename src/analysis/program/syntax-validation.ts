@@ -15,6 +15,7 @@ import type {
   MojoElementSelection,
   MojoIterationSelection,
   MojoPropertySelection,
+  MojoValueSelection,
 } from "./model.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 
@@ -64,6 +65,7 @@ export function validateMojoFunctionSyntax(
   properties: WeakMap<Node, MojoPropertySelection>,
   elements: WeakMap<Node, MojoElementSelection>,
   iterations: WeakMap<Node, MojoIterationSelection>,
+  values: WeakMap<Node, MojoValueSelection>,
   bindings: WeakMap<Node, string>,
   diagnostics: TargetDiagnostic[],
 ): void {
@@ -73,7 +75,7 @@ export function validateMojoFunctionSyntax(
   ): void => {
     if (expression === undefined) return;
     if (ast.is.IsIdentifier(expression) || ast.kindName(expression) === "KindThisKeyword") {
-      if (bindings.get(expression) === undefined) {
+      if (bindings.get(expression) === undefined && values.get(expression) === undefined) {
         diagnostics.push(diagnostic(
           "MOJO_IDENTIFIER_BINDING_UNRESOLVED",
           `Identifier '${ast.text(expression)}' has no exact project binding or selected provider operation.`,

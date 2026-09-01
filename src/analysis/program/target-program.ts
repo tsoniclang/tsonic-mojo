@@ -26,6 +26,7 @@ import {
   analyzeMojoProjectProperty,
   analyzeMojoProviderProperty,
 } from "../operations/properties.js";
+import { analyzeMojoProviderValue } from "../operations/values.js";
 import { analyzeMojoRuntimePackages } from "../runtime/references.js";
 import {
   resolveMojoTargetType,
@@ -48,6 +49,7 @@ import type {
   MojoProgramQueries,
   MojoTargetAnalysisRequest,
   MojoTargetProgram,
+  MojoValueSelection,
 } from "./model.js";
 import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
@@ -72,6 +74,7 @@ export function analyzeMojoTargetProgram(
   const propertySelections = new WeakMap<Node, MojoPropertySelection>();
   const elementSelections = new WeakMap<Node, MojoElementSelection>();
   const iterationSelections = new WeakMap<Node, MojoIterationSelection>();
+  const valueSelections = new WeakMap<Node, MojoValueSelection>();
   const conversions = createMojoConversionIndex();
   const functionByDeclaration = new WeakMap<Node, MojoAnalyzedFunction>();
   const classByDeclaration = new WeakMap<Node, MojoAnalyzedClass>();
@@ -241,6 +244,27 @@ export function analyzeMojoTargetProgram(
           { ast, semantics, sourceFacts: input.source.sourceFacts, providerSemantics, projectTypes, jsEnabled },
         );
         if (resolved.kind === "resolved") expressionTypes.set(node, resolved.type);
+        const reference = ast.is.IsIdentifier(node)
+          ? input.source.navigation.sourceReferenceFor(node)
+          : undefined;
+        const referencedName = reference === undefined
+          ? undefined
+          : bindingNames.get(reference.declaration);
+        if (ast.is.IsIdentifier(node) && referencedName === undefined && resolved.kind === "resolved" &&
+          providerValueReferenceRole(node, ast)) {
+          const value = analyzeMojoProviderValue(
+            node,
+            resolved.type,
+            input.source,
+            providerSemantics,
+            conversions,
+          );
+          if (value.kind === "unsupported") {
+            diagnostics.push(diagnostic(value.code, value.reason, node));
+          } else if (value.kind === "resolved") {
+            valueSelections.set(node, value.selection);
+          }
+        }
         const inferred = inferMojoExpressionType(node, ast, expressionTypes);
         if (inferred !== undefined) expressionTypes.set(node, inferred);
       });
@@ -299,6 +323,21 @@ export function analyzeMojoTargetProgram(
             )
           : { kind: "resolved" as const, type: referencedType };
         if (resolved.kind === "resolved") expressionTypes.set(node, resolved.type);
+        if (ast.is.IsIdentifier(node) && referencedName === undefined && resolved.kind === "resolved" &&
+          providerValueReferenceRole(node, ast)) {
+          const value = analyzeMojoProviderValue(
+            node,
+            resolved.type,
+            input.source,
+            providerSemantics,
+            conversions,
+          );
+          if (value.kind === "unsupported") {
+            diagnostics.push(diagnostic(value.code, value.reason, node));
+          } else if (value.kind === "resolved") {
+            valueSelections.set(node, value.selection);
+          }
+        }
         if (ast.kindName(node) === "KindThisKeyword" && function_.owner !== undefined) {
           bindingNames.set(node, "self");
           expressionTypes.set(node, function_.owner.type);
@@ -466,7 +505,15 @@ export function analyzeMojoTargetProgram(
             selection.writeOperation?.raises === true ||
             selection.receiverConversion?.kind === "js-to-native-string" ||
             selection.readResultConversion?.kind === "js-to-native-string";
+        } else if (selection?.kind === "provider-constant") {
+          functionRaises = functionRaises || selection.operation.raises === true ||
+            selection.readResultConversion.kind === "js-to-native-string";
         }
+      }
+      if (ast.is.IsIdentifier(node)) {
+        const selection = valueSelections.get(node);
+        functionRaises = functionRaises || selection?.operation.raises === true ||
+          selection?.resultConversion.kind === "js-to-native-string";
       }
     });
     directRaises.set(function_.declaration, functionRaises);
@@ -498,6 +545,7 @@ export function analyzeMojoTargetProgram(
       propertySelections,
       elementSelections,
       iterationSelections,
+      valueSelections,
       bindingNames,
       diagnostics,
     );
@@ -523,6 +571,9 @@ export function analyzeMojoTargetProgram(
     propertySelection(access: Node): MojoPropertySelection | undefined {
       return propertySelections.get(access);
     },
+    valueSelection(expression: Node): MojoValueSelection | undefined {
+      return valueSelections.get(expression);
+    },
     elementSelection(access: Node): MojoElementSelection | undefined {
       return elementSelections.get(access);
     },
@@ -540,6 +591,18 @@ export function analyzeMojoTargetProgram(
     queries,
     runtimePackages: analyzeMojoRuntimePackages(input.runtimeReferences),
   }));
+}
+
+function providerValueReferenceRole(
+  node: Node,
+  ast: import("@tsonic/tsts").AstReader,
+): boolean {
+  const parent = ast.parent(node);
+  if (parent === undefined) return true;
+  if ((ast.is.IsCallExpression(parent) || ast.is.IsNewExpression(parent)) &&
+    Node_Expression(ast, parent) === node) return false;
+  if (ast.is.IsPropertyAccessExpression(parent)) return false;
+  return true;
 }
 
 function allocateLocalBindings(

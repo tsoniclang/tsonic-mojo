@@ -125,7 +125,18 @@ export type MojoPropertySelection =
       readonly receiver: Node;
       readonly receiverConversion?: MojoValueConversion;
       readonly readResultConversion?: MojoValueConversion;
+    }
+  | {
+      readonly kind: "provider-constant";
+      readonly operation: MojoSelectedProviderOperation;
+      readonly readResultConversion: MojoValueConversion;
     };
+
+export interface MojoValueSelection {
+  readonly kind: "provider-constant";
+  readonly operation: MojoSelectedProviderOperation;
+  readonly resultConversion: MojoValueConversion;
+}
 
 export type MojoElementSelection = {
   readonly kind: "native";
@@ -196,6 +207,7 @@ export interface MojoProgramQueries {
   ): MojoValueConversion | undefined;
   callSelection(call: Node): MojoCallSelection | undefined;
   propertySelection(access: Node): MojoPropertySelection | undefined;
+  valueSelection(expression: Node): MojoValueSelection | undefined;
   elementSelection(access: Node): MojoElementSelection | undefined;
   iterationSelection(statement: Node): MojoIterationSelection | undefined;
 }
