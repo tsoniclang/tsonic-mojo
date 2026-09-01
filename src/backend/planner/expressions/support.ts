@@ -317,6 +317,26 @@ export function applyMojoConversion(
         callee: { kind: "path", path: "tsonic_runtime.widen_callable" },
         arguments: Object.freeze([{ value: expression }]),
       };
+    case "js-callback-truthiness": {
+      registerMojoModuleImport(context, ["tsonic_js"]);
+      registerMojoTypeImports(conversion.targetType, context);
+      const callable = conversion.widenRaises
+        ? Object.freeze({
+            kind: "call" as const,
+            callee: Object.freeze({ kind: "path" as const, path: "tsonic_runtime.widen_callable" }),
+            arguments: Object.freeze([{ value: expression }]),
+          })
+        : expression;
+      if (conversion.widenRaises) registerMojoModuleImport(context, ["tsonic_runtime"]);
+      return Object.freeze({
+        kind: "call",
+        callee: Object.freeze({
+          kind: "path",
+          path: `tsonic_js.adapt_truthy_${conversion.source.replace(/-/gu, "_")}_callback`,
+        }),
+        arguments: Object.freeze([{ value: callable }]),
+      });
+    }
     case "js-to-native-string":
       registerMojoModuleImport(context, ["tsonic_js"]);
       return { kind: "method-call", receiver: expression, name: "to_native_strict", arguments: Object.freeze([]) };

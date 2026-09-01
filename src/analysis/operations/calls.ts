@@ -260,14 +260,18 @@ function analyzeSourceProfileCall(
       );
   if (callback?.kind === "unsupported") return callback;
   if (parameterContract !== undefined &&
-    parameterContract.length !== sourceCall.sourceSelectedSignatureParameters.length) {
+    parameterContract.length !== sourceCall.sourceSelectedSignatureParameters.length &&
+    !(parameterContract.length === 0 && sourceCall.sourceArguments.length === 0)) {
     return {
       kind: "unsupported",
       code: "MOJO_SOURCE_PROFILE_PARAMETER_CONTRACT_INVALID",
       reason: `The exact source-profile overload '${selected.row.owner}.${selected.row.member}' and its Mojo runtime parameter contract have different arities.`,
     };
   }
-  for (const [parameterIndex, parameter] of sourceCall.sourceSelectedSignatureParameters.entries()) {
+  const selectedParameters = parameterContract?.length === 0
+    ? []
+    : sourceCall.sourceSelectedSignatureParameters;
+  for (const [parameterIndex, parameter] of selectedParameters.entries()) {
     const explicitContract = parameterContract?.[parameterIndex];
     const resolved = callback?.parameterIndex === parameterIndex
       ? callback.type
@@ -298,6 +302,9 @@ function analyzeSourceProfileCall(
     targetArguments,
     resolve,
     context.expressionTypes,
+    callback?.conversion === undefined
+      ? undefined
+      : new Map([[callback.parameterIndex, callback.conversion]]),
   );
   if (arguments_.kind === "unsupported") return arguments_;
   const resultType = resolve(sourceCall.sourceResultType);

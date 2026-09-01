@@ -3,6 +3,12 @@ import type { MojoTargetTypeRef } from "../types/model.js";
 export type MojoValueConversion =
   | { readonly kind: "identity" }
   | { readonly kind: "callable-raise-widen"; readonly targetType: MojoTargetTypeRef }
+  | {
+      readonly kind: "js-callback-truthiness";
+      readonly targetType: MojoTargetTypeRef;
+      readonly source: "number" | "string" | "dynamic" | "always-true" | "always-false";
+      readonly widenRaises: boolean;
+    }
   | { readonly kind: "primitive-cast"; readonly targetType: MojoTargetTypeRef }
   | { readonly kind: "reference-copy"; readonly targetType: MojoTargetTypeRef }
   | {

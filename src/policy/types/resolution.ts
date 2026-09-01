@@ -206,6 +206,20 @@ function resolveMojoTargetTypeWithState(
     const symbol = context.semantics.declarations.typeAliasSymbol(selectedType) ??
       context.semantics.declarations.typeSymbol(selectedType);
     const sourceProfile = context.sourceProfiles.typeIdentity(symbol, context.semantics);
+    if (sourceProfile?.name === "Boolean") {
+      return { kind: "resolved", type: { kind: "source-primitive", name: "bool" } };
+    }
+    if (sourceProfile?.name === "Number") {
+      return { kind: "resolved", type: { kind: "source-primitive", name: "float64" } };
+    }
+    if (sourceProfile?.name === "String") {
+      return context.jsEnabled
+        ? {
+            kind: "resolved",
+            type: namedType("tsonic.mojo.js.JsString", ["tsonic_js"], "JsString"),
+          }
+        : { kind: "resolved", type: { kind: "native-string" } };
+    }
     if (sourceProfile?.name === "Promise" || sourceProfile?.name === "PromiseLike") {
       const sourceArguments = types.effectiveTypeArguments(selectedType) ??
         types.typeArguments(selectedType);
@@ -294,7 +308,7 @@ function resolveMojoTargetTypeWithState(
       const arguments_ = resolveSourceProfileTypeArguments(
         selectedType,
         authoredTypeNode,
-        1,
+        3,
         context,
         (type, node) => resolveMojoTargetTypeWithState(type, node, context, resolving),
       );
@@ -306,7 +320,7 @@ function resolveMojoTargetTypeWithState(
               "tsonic.mojo.js.JsArray",
               ["tsonic_js"],
               "JsArray",
-              arguments_.types,
+              [arguments_.types[0]!],
             ),
           }
         : { kind: "resolved", type: { kind: "list", element: arguments_.types[0]! } };

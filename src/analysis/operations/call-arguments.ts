@@ -30,6 +30,7 @@ export function analyzeArguments(
   targetArguments: readonly MojoCallArgumentTarget[],
   resolve: (type: Type) => MojoTargetTypeRef | undefined,
   expressionTypes: WeakMap<Node, MojoTargetTypeRef>,
+  conversionOverrides?: ReadonlyMap<number, MojoValueConversion>,
 ): { readonly kind: "resolved"; readonly arguments: readonly MojoAnalyzedCallArgument[] } |
   { readonly kind: "unsupported"; readonly code: string; readonly reason: string } {
   if (parameterTypes.length !== targetArguments.length) {
@@ -77,7 +78,10 @@ export function analyzeArguments(
         reason: `Source call argument ${sourceArgumentIndex} spreads into a non-variadic Mojo parameter.`,
       };
     }
-    const conversion = classifyMojoValueConversion(sourceType, parameterType);
+    const overriddenConversion = conversionOverrides?.get(parameterIndex);
+    const conversion = overriddenConversion === undefined
+      ? classifyMojoValueConversion(sourceType, parameterType)
+      : { kind: "resolved" as const, conversion: overriddenConversion };
     if (conversion.kind === "unsupported") {
       return {
         kind: "unsupported",
