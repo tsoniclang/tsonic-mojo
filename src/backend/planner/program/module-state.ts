@@ -19,7 +19,6 @@ import type {
 import type { MojoPlanningContext } from "./context.js";
 import {
   allocateMojoSyntheticName,
-  appendMojoPlanningDiagnostic,
   mojoQualifiedModuleMember,
   registerMojoModuleImport,
   registerMojoSymbolImport,

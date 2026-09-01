@@ -91,6 +91,9 @@ export function createMojoProjectTypeCatalog(
     definitionForDeclaration(declaration: Node | undefined) {
       return declaration === undefined ? undefined : byDeclaration.get(declaration);
     },
+    definitionForId(id: string) {
+      return byId.get(id);
+    },
     definitionForSymbol(
       symbol: Symbol | undefined,
       declarations: (symbol: Symbol) => readonly Node[],

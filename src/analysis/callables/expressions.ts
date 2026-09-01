@@ -186,7 +186,6 @@ export function analyzeAndSealMojoCallableExpression(
     jsEnabled: environment.jsEnabled,
     allocateLocalName: input.allocateLocalName,
     bindingNames: environment.bindingNames,
-    locationStorageNames: environment.locationStorageNames,
     bindingTypes: environment.bindingTypes,
     bindingSourceFiles: environment.bindingSourceFiles,
     diagnostics: environment.diagnostics,
@@ -240,6 +239,7 @@ export function analyzeAndSealMojoCallableExpression(
     ...(input.owner === undefined ? {} : { owner: input.owner }),
     source: environment.source,
     bindingNames: environment.bindingNames,
+    locationStorageNames: environment.locationStorageNames,
     moduleBindingByDeclaration: input.moduleBindingByDeclaration,
     diagnostics: environment.diagnostics,
   });

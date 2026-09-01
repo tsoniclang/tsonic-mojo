@@ -293,10 +293,37 @@ export interface MojoIterationSelection {
   readonly bindingName: string;
   readonly iterableType: MojoTargetTypeRef;
   readonly elementType: MojoTargetTypeRef;
-  readonly target: "native-values" | "dictionary-keys";
+  readonly target:
+    | "native-values"
+    | "dictionary-keys"
+    | "js-map-entries"
+    | "js-set-values";
 }
 
 export type MojoCallSelection =
+  | {
+      readonly kind: "raw-pointer";
+      readonly operation: "bind";
+      readonly identityExpression: Node;
+      readonly identityType: MojoTargetTypeRef;
+      readonly resultType: MojoTargetTypeRef;
+    }
+  | {
+      readonly kind: "raw-pointer";
+      readonly operation: "equal";
+      readonly leftExpression: Node;
+      readonly leftType: MojoTargetTypeRef;
+      readonly rightExpression: Node;
+      readonly rightType: MojoTargetTypeRef;
+      readonly resultType: MojoTargetTypeRef;
+    }
+  | {
+      readonly kind: "raw-pointer";
+      readonly operation: "hash";
+      readonly pointerExpression: Node;
+      readonly pointerType: MojoTargetTypeRef;
+      readonly resultType: MojoTargetTypeRef;
+    }
   | {
       readonly kind: "typed-location";
       readonly operation: "address-of";

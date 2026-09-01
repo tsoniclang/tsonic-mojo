@@ -28,6 +28,7 @@ export interface MojoProjectTypeCatalog {
   readonly definitions: readonly MojoProjectTypeDefinition[];
   readonly issues: readonly MojoProjectTypeIssue[];
   definitionForDeclaration(declaration: Node | undefined): MojoProjectTypeDefinition | undefined;
+  definitionForId(id: string): MojoProjectTypeDefinition | undefined;
   definitionForSymbol(
     symbol: Symbol | undefined,
     declarations: (symbol: Symbol) => readonly Node[],

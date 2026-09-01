@@ -12,6 +12,7 @@ import { resolveMojoNonTypeGenericArguments } from "../../policy/types/generic-a
 import { selectMojoProviderCall } from "../../policy/operations/provider-selection.js";
 import { instantiateMojoProviderOperation } from "../../policy/operations/provider-instantiation.js";
 import { analyzeMojoTypedLocation } from "../../policy/operations/typed-locations.js";
+import { analyzeMojoRawPointer } from "../../policy/operations/raw-pointers.js";
 import { selectMojoSourceProfileCallRow } from "../../policy/operations/source-profile-selection.js";
 import type {
   MojoAnalyzedClass,
@@ -59,6 +60,17 @@ export function analyzeMojoCall(
   };
   const selectedDeclaration = sourceCall.sourceCallee.selectedDeclaration ??
     sourceCall.sourceCalleeAccess?.selectedDeclaration;
+  const rawPointer = analyzeMojoRawPointer({
+    call: callNode,
+    sourceCall,
+    source: context.source,
+    projectTypes: context.projectTypes,
+    resolveType: resolve,
+  });
+  if (rawPointer.kind === "unsupported") return rawPointer;
+  if (rawPointer.kind === "resolved") {
+    return { kind: "resolved", selection: rawPointer.selection };
+  }
   const typedLocation = analyzeMojoTypedLocation({
     call: callNode,
     sourceCall,
@@ -230,7 +242,7 @@ function analyzeSourceProfileCall(
       return {
         kind: "unsupported",
         code: "MOJO_SOURCE_PROFILE_PARAMETER_NOT_CLOSED",
-        reason: `Source-profile parameter ${parameter.index} has no exact Mojo carrier.`,
+        reason: `Source-profile parameter ${parameter.parameterIndex} has no exact Mojo carrier.`,
       };
     }
     parameterTypes.push(target);

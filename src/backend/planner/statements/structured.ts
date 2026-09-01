@@ -253,14 +253,18 @@ function planStatement(
     if (selection === undefined || body === undefined) return undefined;
     const sourceIterable = planMojoValue(selection.iterable, context);
     if (sourceIterable === undefined) return undefined;
-    const iterable = selection.target === "dictionary-keys"
-      ? Object.freeze({
+    const iterable = selection.target === "native-values"
+      ? sourceIterable.value
+      : Object.freeze({
           kind: "method-call" as const,
           receiver: sourceIterable.value,
-          name: "keys",
+          name: selection.target === "dictionary-keys"
+            ? "keys"
+            : selection.target === "js-map-entries"
+              ? "iter_entries"
+              : "iter_values",
           arguments: Object.freeze([]),
-        })
-      : sourceIterable.value;
+        });
     const statements = planStatementBody(body, scope, context, loopFlowContext(Object.freeze([])));
     return statements === undefined
       ? undefined

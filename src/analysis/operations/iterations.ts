@@ -98,10 +98,37 @@ function selectedBindingDeclaration(statement: Node, ast: AstReader): Node | und
 function targetIterationContract(
   kind: "for-of" | "for-in",
   iterable: MojoTargetTypeRef,
-): { readonly target: "native-values" | "dictionary-keys"; readonly elementType: MojoTargetTypeRef } | undefined {
+): {
+  readonly target: MojoIterationSelection["target"];
+  readonly elementType: MojoTargetTypeRef;
+} | undefined {
   if (kind === "for-of") {
     if (iterable.kind === "list" || iterable.kind === "fixed-array") {
       return { target: "native-values", elementType: iterable.element };
+    }
+    if (iterable.kind === "target-named" &&
+      iterable.id === "tsonic.mojo.js.JsMap" &&
+      iterable.genericArguments?.length === 2) {
+      const key = iterable.genericArguments[0];
+      const value = iterable.genericArguments[1];
+      if (key?.kind === "type" && value?.kind === "type") {
+        return {
+          target: "js-map-entries",
+          elementType: Object.freeze({
+            kind: "tuple",
+            elements: Object.freeze([key.type, value.type]),
+          }),
+        };
+      }
+    }
+    if (iterable.kind === "target-named" &&
+      iterable.id === "tsonic.mojo.js.JsSet" &&
+      iterable.genericArguments?.length === 1 &&
+      iterable.genericArguments[0]?.kind === "type") {
+      return {
+        target: "js-set-values",
+        elementType: iterable.genericArguments[0].type,
+      };
     }
     return undefined;
   }

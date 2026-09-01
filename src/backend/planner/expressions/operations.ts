@@ -121,6 +121,43 @@ export function planMojoCall(
     appendMojoPlanningDiagnostic(context, "MOJO_CALL_PLAN_MISSING", "Call expression has no sealed target selection.", node);
     return undefined;
   }
+  if (selection.kind === "raw-pointer") {
+    registerMojoModuleImport(context, Object.freeze(["tsonic_runtime"]));
+    if (selection.operation === "bind") {
+      const identity = planValue(selection.identityExpression, context, selection.identityType);
+      return identity === undefined
+        ? undefined
+        : withMojoValue(identity.before, Object.freeze({
+            kind: "call",
+            callee: Object.freeze({ kind: "path", path: "tsonic_runtime.raw_pointer_from_arc" }),
+            arguments: Object.freeze([Object.freeze({
+              value: Object.freeze({ kind: "member", receiver: identity.value, name: "_state" }),
+            })]),
+          }));
+    }
+    if (selection.operation === "equal") {
+      const left = planValue(selection.leftExpression, context, selection.leftType);
+      const right = planValue(selection.rightExpression, context, selection.rightType);
+      if (left === undefined || right === undefined) return undefined;
+      const ordered = orderMojoValues([
+        Object.freeze({ plan: left, type: selection.leftType, role: "raw_pointer_left" }),
+        Object.freeze({ plan: right, type: selection.rightType, role: "raw_pointer_right" }),
+      ], context);
+      return withMojoValue(ordered.before, Object.freeze({
+        kind: "call",
+        callee: Object.freeze({ kind: "path", path: "tsonic_runtime.equal_raw_pointer" }),
+        arguments: Object.freeze(ordered.values.map((value) => Object.freeze({ value }))),
+      }));
+    }
+    const pointer = planValue(selection.pointerExpression, context, selection.pointerType);
+    return pointer === undefined
+      ? undefined
+      : withMojoValue(pointer.before, Object.freeze({
+          kind: "call",
+          callee: Object.freeze({ kind: "path", path: "tsonic_runtime.hash_raw_pointer" }),
+          arguments: Object.freeze([Object.freeze({ value: pointer.value })]),
+        }));
+  }
   if (selection.kind === "typed-location") {
     registerMojoTypeImports(selection.locationType, context);
     switch (selection.operation) {

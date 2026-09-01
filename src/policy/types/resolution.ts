@@ -1,6 +1,7 @@
 import {
   pointerFactKey,
   providerVirtualDeclarationFactKey,
+  rawPointerFactKey,
   sourcePrimitiveFactKey,
 } from "@tsonic/tsts";
 import type {
@@ -62,6 +63,25 @@ function resolveMojoTargetTypeWithState(
     return { kind: "unsupported", reason: "the selected TypeScript type is recursively self-referential" };
   }
   const subjects = typeSubjects(selectedType, authoredTypeNode, context);
+  const rawPointer = uniqueFact(
+    subjects.map((subject) => context.sourceFacts.getFact(subject, rawPointerFactKey)),
+  );
+  if (rawPointer.kind === "conflict") {
+    return { kind: "unsupported", reason: "selected raw-pointer facts conflict" };
+  }
+  if (rawPointer.value !== undefined) {
+    return rawPointer.value.representation === "opaque-identity"
+      ? {
+          kind: "resolved",
+          type: Object.freeze({
+            kind: "target-named",
+            id: "tsonic.mojo.runtime.RawPointer",
+            modulePath: Object.freeze(["tsonic_runtime"]),
+            name: "RawPointer",
+          }),
+        }
+      : { kind: "unsupported", reason: "selected raw-pointer representation is not opaque identity" };
+  }
   const pointer = uniqueFact(
     subjects.map((subject) => context.sourceFacts.getFact(subject, pointerFactKey)),
   );

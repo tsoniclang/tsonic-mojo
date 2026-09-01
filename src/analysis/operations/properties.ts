@@ -5,6 +5,7 @@ import { classifyMojoValueConversion } from "../../policy/conversions/selection.
 import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
 import type { MojoAnalyzedProjectProperty, MojoPropertySelection } from "../program/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import type { MojoSelectedProviderOperation } from "../../target-model/operations/selection.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import { providerOwnerMatches } from "../../policy/types/resolution.js";
 import {
