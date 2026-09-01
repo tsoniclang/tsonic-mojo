@@ -22,22 +22,28 @@ export type MojoProviderOperationForm =
     }
   | {
       readonly kind: "property-read";
-      readonly name: string;
+      readonly access:
+        | { readonly kind: "member"; readonly name: string }
+        | { readonly kind: "method"; readonly name: string };
       readonly receiver: MojoCallArgumentConvention;
     }
   | {
       readonly kind: "property-write";
-      readonly name: string;
+      readonly access: { readonly kind: "member"; readonly name: string };
       readonly receiver: MojoCallArgumentConvention;
       readonly value: MojoProviderTargetArgument;
     }
   | {
       readonly kind: "index-read";
+      readonly access:
+        | { readonly kind: "element" }
+        | { readonly kind: "method"; readonly name: string };
       readonly receiver: MojoCallArgumentConvention;
       readonly index: MojoProviderTargetArgument;
     }
   | {
       readonly kind: "index-write";
+      readonly access: { readonly kind: "element" };
       readonly receiver: MojoCallArgumentConvention;
       readonly index: MojoProviderTargetArgument;
       readonly value: MojoProviderTargetArgument;

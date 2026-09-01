@@ -12,6 +12,7 @@ import { resolveMojoNonTypeGenericArguments } from "../../policy/types/generic-a
 import { selectMojoProviderCall } from "../../policy/operations/provider-selection.js";
 import { instantiateMojoProviderOperation } from "../../policy/operations/provider-instantiation.js";
 import { analyzeMojoTypedLocation } from "../../policy/operations/typed-locations.js";
+import { selectMojoSourceProfileCallRow } from "../../policy/operations/source-profile-selection.js";
 import type {
   MojoAnalyzedClass,
   MojoAnalyzedCallArgument,
@@ -88,6 +89,14 @@ export function analyzeMojoCall(
   if (projectClass !== undefined) {
     return analyzeImplicitProjectConstruction(callNode, sourceCall, projectClass, resolve, context);
   }
+
+  const sourceProfile = analyzeSourceProfileCall(
+    callNode,
+    sourceCall,
+    resolve,
+    context,
+  );
+  if (sourceProfile !== undefined) return sourceProfile;
 
   const selectedProvider = selectMojoProviderCall(context.source, sourceCall, context.providerSemantics);
   if (selectedProvider.kind === "ambiguous") {
@@ -177,6 +186,149 @@ export function analyzeMojoCall(
       operation: instantiated.operation,
       arguments: arguments_.arguments,
       ...(sourceCall.sourceReceiver === undefined ? {} : { receiver: sourceCall.sourceReceiver.expression }),
+      ...(sourceReceiverType === undefined ? {} : { sourceReceiverType }),
+      ...(receiverConversion === undefined ? {} : { receiverConversion }),
+      resultConversion: result.conversion,
+      optionalChain: sourceCall.optionalChain,
+    }),
+  };
+}
+
+function analyzeSourceProfileCall(
+  callNode: Node,
+  sourceCall: ResolvedSourceCallInfo,
+  resolve: (type: Type, authoredTypeNode?: Node) => MojoTargetTypeRef | undefined,
+  context: MojoCallAnalysisContext,
+): MojoCallAnalysis | undefined {
+  const selected = selectMojoSourceProfileCallRow(
+    context.source,
+    sourceCall,
+    context.sourceProfiles,
+  );
+  if (selected.kind === "not-source-profile") return undefined;
+  if (selected.kind === "unsupported") return selected;
+  if (sourceCall.sourceSelectedSignatureKind !== "resolved") {
+    return {
+      kind: "unsupported",
+      code: "MOJO_SOURCE_PROFILE_SIGNATURE_NOT_RESOLVED",
+      reason: "A source-profile call requires one exact resolved source signature.",
+    };
+  }
+  const parameterTypes: MojoTargetTypeRef[] = [];
+  const targetArguments: {
+    readonly convention: "imm";
+    readonly position: "positional-or-keyword";
+    readonly variadic: boolean;
+    readonly passing: "plain";
+  }[] = [];
+  for (const parameter of sourceCall.sourceSelectedSignatureParameters) {
+    const resolved = resolve(parameter.selectedType, parameter.authoredTypeNode);
+    const target = parameter.rest === true && resolved !== undefined
+      ? restCallableElementType(resolved)
+      : resolved;
+    if (target === undefined) {
+      return {
+        kind: "unsupported",
+        code: "MOJO_SOURCE_PROFILE_PARAMETER_NOT_CLOSED",
+        reason: `Source-profile parameter ${parameter.index} has no exact Mojo carrier.`,
+      };
+    }
+    parameterTypes.push(target);
+    targetArguments.push(Object.freeze({
+      convention: "imm",
+      position: "positional-or-keyword",
+      variadic: parameter.rest,
+      passing: "plain",
+    }));
+  }
+  const arguments_ = analyzeArguments(
+    sourceCall,
+    parameterTypes,
+    targetArguments,
+    resolve,
+    context.expressionTypes,
+  );
+  if (arguments_.kind === "unsupported") return arguments_;
+  const resultType = resolve(sourceCall.sourceResultType);
+  if (resultType === undefined) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_SOURCE_PROFILE_RESULT_NOT_CLOSED",
+      reason: "The selected source-profile call result has no exact Mojo carrier.",
+    };
+  }
+  const result = closeResultConversion(
+    callNode,
+    resultType,
+    sourceCall.sourceResultType,
+    resolve,
+    context.conversions,
+  );
+  if (result.kind === "unsupported") return result;
+  const genericArguments: MojoTargetGenericArgument[] = [];
+  for (const selectedArgument of sourceCall.sourceSelectedMethodTypeArguments ?? []) {
+    const argument = resolve(selectedArgument.selectedType, selectedArgument.explicitTypeNode);
+    if (argument === undefined) {
+      return {
+        kind: "unsupported",
+        code: "MOJO_SOURCE_PROFILE_TYPE_ARGUMENT_NOT_CLOSED",
+        reason: `Selected source-profile type argument '${selectedArgument.typeParameterName}' has no exact Mojo carrier.`,
+      };
+    }
+    genericArguments.push(Object.freeze({ kind: "type", type: argument }));
+  }
+  const target = selected.row.target.kind === "instance"
+    ? Object.freeze({
+        kind: "instance-call" as const,
+        name: selected.row.target.name,
+        receiver: selected.row.target.receiver,
+        genericParameters: Object.freeze([]),
+        arguments: Object.freeze(targetArguments),
+      })
+    : Object.freeze({
+        kind: "function-call" as const,
+        modulePath: selected.row.target.modulePath,
+        name: selected.row.target.name,
+        genericParameters: Object.freeze([]),
+        arguments: Object.freeze(targetArguments),
+      });
+  let receiver: Node | undefined;
+  let sourceReceiverType: MojoTargetTypeRef | undefined;
+  let receiverConversion;
+  if (selected.row.target.kind === "instance") {
+    const sourceReceiver = sourceCall.sourceReceiver;
+    sourceReceiverType = sourceReceiver === undefined ? undefined : resolve(sourceReceiver.type);
+    if (sourceReceiver === undefined || sourceReceiverType === undefined) {
+      return {
+        kind: "unsupported",
+        code: "MOJO_SOURCE_PROFILE_RECEIVER_NOT_CLOSED",
+        reason: "The selected source-profile instance call has no exact receiver carrier.",
+      };
+    }
+    receiver = sourceReceiver.expression;
+    const conversion = classifyMojoValueConversion(sourceReceiverType, sourceReceiverType);
+    if (conversion.kind === "unsupported") return {
+      kind: "unsupported",
+      code: "MOJO_SOURCE_PROFILE_RECEIVER_CONVERSION_UNPROVEN",
+      reason: conversion.reason,
+    };
+    receiverConversion = conversion.conversion;
+  }
+  return {
+    kind: "resolved",
+    selection: Object.freeze({
+      kind: "provider",
+      operation: Object.freeze({
+        target,
+        ...(sourceReceiverType === undefined ? {} : { receiverType: sourceReceiverType }),
+        parameterTypes: Object.freeze(parameterTypes),
+        resultType,
+        genericArguments: Object.freeze(genericArguments),
+        genericParameters: Object.freeze([]),
+        raises: selected.row.raises === true,
+      }),
+      arguments: arguments_.arguments,
+      ...(receiver === undefined ? {} : { receiver }),
       ...(sourceReceiverType === undefined ? {} : { sourceReceiverType }),
       ...(receiverConversion === undefined ? {} : { receiverConversion }),
       resultConversion: result.conversion,

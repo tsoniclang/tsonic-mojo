@@ -403,6 +403,7 @@ function analyzeProperty(
     ? analyzeMojoProviderProperty(selected, {
         source: input.source,
         providerSemantics: input.providerSemantics,
+        sourceProfiles: input.sourceProfiles,
         conversions: input.conversions,
         resolveType: resolve,
       })
@@ -432,6 +433,7 @@ function analyzeElement(
   const element = analyzeMojoElementAccess(selected, {
     source: input.source,
     providerSemantics: input.providerSemantics,
+    sourceProfiles: input.sourceProfiles,
     conversions: input.conversions,
     expressionTypes: input.expressionTypes,
     resolveType(type) {

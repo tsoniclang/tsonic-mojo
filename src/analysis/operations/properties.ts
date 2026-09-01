@@ -13,6 +13,8 @@ import {
 } from "../../policy/operations/provider-instantiation.js";
 import { substituteMojoTargetType } from "../../target-model/types/substitution.js";
 import { selectedProviderDeclarationIdentity } from "../../policy/operations/provider-selection.js";
+import type { MojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
+import { selectedMojoSourceProfileDeclarationIdentity } from "../../policy/operations/source-profile-selection.js";
 
 export type MojoPropertyAnalysis =
   | { readonly kind: "resolved"; readonly selection: MojoPropertySelection; readonly expressionType: MojoTargetTypeRef }
@@ -136,6 +138,7 @@ export function instantiateProjectFieldType(
 export interface MojoProviderPropertyAnalysisContext {
   readonly source: TargetSourceProgram;
   readonly providerSemantics: MojoProviderSemantics;
+  readonly sourceProfiles: MojoSourceProfileRegistry;
   readonly conversions: MojoConversionIndex;
   readonly resolveType: (type: Type) => MojoTargetTypeRef | undefined;
 }
@@ -152,6 +155,8 @@ export function analyzeMojoProviderProperty(
       reason: "Selected provider property has no delete operation contract.",
     };
   }
+  const sourceProfile = analyzeSourceProfileProperty(source, context);
+  if (sourceProfile !== undefined) return sourceProfile;
   const selectedIdentity = selectedProviderDeclarationIdentity(context.source, [
     source.selectedDeclaration,
     source.selectedSymbol,
@@ -289,6 +294,205 @@ export function analyzeMojoProviderProperty(
       optionalChain: source.optionalChain,
     }),
   };
+}
+
+function analyzeSourceProfileProperty(
+  source: ResolvedSourcePropertyAccessInfo,
+  context: MojoProviderPropertyAnalysisContext,
+): MojoPropertyAnalysis | undefined {
+  const identity = selectedMojoSourceProfileDeclarationIdentity(
+    context.source,
+    context.sourceProfiles,
+    [source.selectedDeclaration, source.selectedReadDeclaration, source.selectedWriteDeclaration],
+  );
+  if (identity === undefined) return undefined;
+  const owner = identity.declaringName;
+  const member = identity.name;
+  if (owner === undefined || member === undefined || identity.kind !== "member") {
+    return {
+      kind: "unsupported",
+      code: "MOJO_SOURCE_PROFILE_PROPERTY_IDENTITY_INCOMPLETE",
+      reason: "The exact selected source-profile property has no owner and member identity.",
+    };
+  }
+  const constantName = sourceProfileConstantName(identity.profile, owner, member);
+  if (constantName !== undefined) {
+    if (source.accessMode !== "read" || source.sourceReadType === undefined) {
+      return {
+        kind: "unsupported",
+        code: "MOJO_SOURCE_PROFILE_CONSTANT_WRITE_UNSUPPORTED",
+        reason: `The source-profile constant '${owner}.${member}' is immutable.`,
+      };
+    }
+    const resultType = context.resolveType(source.sourceReadType);
+    if (resultType === undefined) {
+      return {
+        kind: "unsupported",
+        code: "MOJO_SOURCE_PROFILE_CONSTANT_TYPE_NOT_CLOSED",
+        reason: `The source-profile constant '${owner}.${member}' has no exact Mojo carrier.`,
+      };
+    }
+    const operation: MojoSelectedProviderOperation = Object.freeze({
+      target: Object.freeze({
+        kind: "constant",
+        modulePath: Object.freeze(["tsonic_js"]),
+        name: constantName,
+      }),
+      parameterTypes: Object.freeze([]),
+      resultType,
+      genericArguments: Object.freeze([]),
+      genericParameters: Object.freeze([]),
+      raises: false,
+    });
+    const conversion = context.conversions.record(source.expression, resultType, resultType);
+    return conversion.kind === "unsupported"
+      ? { kind: "unsupported", code: "MOJO_SOURCE_PROFILE_CONSTANT_CONVERSION_UNPROVEN", reason: conversion.reason }
+      : {
+          kind: "resolved",
+          expressionType: resultType,
+          selection: Object.freeze({
+            kind: "provider-constant",
+            operation,
+            readResultConversion: conversion.conversion,
+          }),
+        };
+  }
+  const access = sourceProfilePropertyAccess(identity.profile, owner, member);
+  if (access === undefined) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_SOURCE_PROFILE_PROPERTY_UNSUPPORTED",
+      reason: `The exact source-profile property '${owner}.${member}' has no Mojo policy row.`,
+    };
+  }
+  const receiverType = context.resolveType(source.receiver.type);
+  if (receiverType === undefined) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_SOURCE_PROFILE_PROPERTY_RECEIVER_NOT_CLOSED",
+      reason: `The source-profile property '${owner}.${member}' has no exact receiver carrier.`,
+    };
+  }
+  const receiverConversion = classifyMojoValueConversion(receiverType, receiverType);
+  if (receiverConversion.kind === "unsupported") {
+    return { kind: "unsupported", code: "MOJO_SOURCE_PROFILE_PROPERTY_RECEIVER_CONFLICT", reason: receiverConversion.reason };
+  }
+  const readType = source.sourceReadType === undefined ? undefined : context.resolveType(source.sourceReadType);
+  const writeType = source.sourceWriteType === undefined ? undefined : context.resolveType(source.sourceWriteType);
+  if ((source.accessMode === "read" || source.accessMode === "read-write") && readType === undefined ||
+    (source.accessMode === "write" || source.accessMode === "read-write") && writeType === undefined) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_SOURCE_PROFILE_PROPERTY_CARRIER_NOT_CLOSED",
+      reason: `The source-profile property '${owner}.${member}' has no exact read or write carrier.`,
+    };
+  }
+  if (access.kind === "method" && writeType !== undefined) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_SOURCE_PROFILE_METHOD_PROPERTY_WRITE_UNSUPPORTED",
+      reason: `The computed source-profile property '${owner}.${member}' is not a writable Mojo location.`,
+    };
+  }
+  const readOperation: MojoSelectedProviderOperation | undefined = readType === undefined
+    ? undefined
+    : Object.freeze({
+        target: Object.freeze({
+          kind: "property-read",
+          access: Object.freeze(access),
+          receiver: "ref",
+        }),
+        receiverType,
+        parameterTypes: Object.freeze([]),
+        resultType: readType,
+        genericArguments: Object.freeze([]),
+        genericParameters: Object.freeze([]),
+        raises: false,
+      });
+  const writeOperation: MojoSelectedProviderOperation | undefined = writeType === undefined
+    ? undefined
+    : Object.freeze({
+        target: Object.freeze({
+          kind: "property-write",
+          access: Object.freeze({ kind: "member", name: access.name }),
+          receiver: "mut",
+          value: Object.freeze({ convention: "imm", position: "positional-or-keyword" }),
+        }),
+        receiverType,
+        parameterTypes: Object.freeze([writeType]),
+        resultType: Object.freeze({ kind: "unit" }),
+        genericArguments: Object.freeze([]),
+        genericParameters: Object.freeze([]),
+        raises: false,
+      });
+  const readResultConversion = readType === undefined
+    ? undefined
+    : context.conversions.record(source.expression, readType, readType);
+  if (readResultConversion?.kind === "unsupported") {
+    return { kind: "unsupported", code: "MOJO_SOURCE_PROFILE_PROPERTY_READ_CONVERSION_UNPROVEN", reason: readResultConversion.reason };
+  }
+  return {
+    kind: "resolved",
+    expressionType: readType ?? writeType!,
+    selection: Object.freeze({
+      kind: "provider",
+      ...(readOperation === undefined ? {} : { readOperation }),
+      ...(writeOperation === undefined ? {} : { writeOperation }),
+      receiver: source.receiver.expression,
+      sourceReceiverType: receiverType,
+      receiverConversion: receiverConversion.conversion,
+      ...(readResultConversion?.kind !== "resolved" ? {} : { readResultConversion: readResultConversion.conversion }),
+      optionalChain: source.optionalChain,
+    }),
+  };
+}
+
+function sourceProfilePropertyAccess(
+  profile: "native" | "js",
+  owner: string,
+  member: string,
+): { readonly kind: "member" | "method"; readonly name: string } | undefined {
+  if (profile === "native") {
+    if ((owner === "Array" || owner === "ReadonlyArray") && member === "length") {
+      return { kind: "method", name: "__len__" };
+    }
+    if ((owner === "Map" || owner === "ReadonlyMap" || owner === "Set" || owner === "ReadonlySet") && member === "size") {
+      return { kind: "method", name: "__len__" };
+    }
+    return undefined;
+  }
+  if ((owner === "String" || owner === "Array" || owner === "ReadonlyArray") && member === "length") {
+    return { kind: "method", name: "js_length" };
+  }
+  if ((owner === "Map" || owner === "ReadonlyMap" || owner === "Set" || owner === "ReadonlySet") && member === "size") {
+    return { kind: "method", name: "js_size" };
+  }
+  if (owner === "RegExp" && ["source", "flags", "global", "ignoreCase", "multiline"].includes(member)) {
+    return { kind: "method", name: `get_${snakeCase(member)}` };
+  }
+  if (owner === "RegExp" && member === "lastIndex") {
+    return { kind: "member", name: "last_index" };
+  }
+  return undefined;
+}
+
+function sourceProfileConstantName(
+  profile: "native" | "js",
+  owner: string,
+  member: string,
+): string | undefined {
+  if (profile !== "js") return undefined;
+  if (owner === "Math" && ["E", "LN10", "LN2", "LOG10E", "LOG2E", "PI", "SQRT1_2", "SQRT2"].includes(member)) {
+    return `MATH_${member}`;
+  }
+  if (owner === "NumberConstructor" && ["EPSILON", "MAX_SAFE_INTEGER", "MAX_VALUE", "MIN_SAFE_INTEGER", "MIN_VALUE", "NaN", "NEGATIVE_INFINITY", "POSITIVE_INFINITY"].includes(member)) {
+    return `NUMBER_${snakeCase(member).toUpperCase()}`;
+  }
+  return undefined;
+}
+
+function snakeCase(value: string): string {
+  return value.replace(/[A-Z]/gu, (letter, index) => `${index === 0 ? "" : "_"}${letter.toLowerCase()}`);
 }
 
 function selectOperation(

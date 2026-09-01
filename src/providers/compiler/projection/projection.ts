@@ -281,7 +281,11 @@ function projectStructMembers(
       exportId,
       memberId,
       operationKind: "property",
-      target: Object.freeze({ kind: "property-read", name: field.name, receiver: "ref" }),
+      target: Object.freeze({
+        kind: "property-read",
+        access: Object.freeze({ kind: "member", name: field.name }),
+        receiver: "ref",
+      }),
       receiverType: ownerTarget,
       resultType: projected.target,
     }));
@@ -291,7 +295,7 @@ function projectStructMembers(
       operationKind: "property-set",
       target: Object.freeze({
         kind: "property-write",
-        name: field.name,
+        access: Object.freeze({ kind: "member", name: field.name }),
         receiver: "mut",
         value: Object.freeze({ convention: "var", position: "positional-or-keyword" }),
       }),
@@ -436,6 +440,7 @@ function projectStructIndexers(
       operationKind: "indexer",
       target: Object.freeze({
         kind: "index-read",
+        access: Object.freeze({ kind: "element" }),
         receiver: getter.receiver.convention,
         index: getter.projected.targetArguments[0]!,
       }),
@@ -461,6 +466,7 @@ function projectStructIndexers(
       operationKind: "index-set",
       target: Object.freeze({
         kind: "index-write",
+        access: Object.freeze({ kind: "element" }),
         receiver: setter.receiver.convention,
         index: setter.projected.targetArguments[0]!,
         value: setter.projected.targetArguments[1]!,
@@ -507,7 +513,11 @@ function projectTraitMembers(
       exportId,
       memberId,
       operationKind: "property",
-      target: Object.freeze({ kind: "property-read", name: field.name, receiver: "ref" }),
+      target: Object.freeze({
+        kind: "property-read",
+        access: Object.freeze({ kind: "member", name: field.name }),
+        receiver: "ref",
+      }),
       receiverType: ownerTarget,
       resultType: projected.target,
     }));

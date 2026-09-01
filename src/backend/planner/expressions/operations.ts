@@ -86,11 +86,19 @@ export function planMojoElement(
     Object.freeze({ plan: receiver, type: receiverType, role: "element_receiver" }),
     Object.freeze({ plan: index, type: indexType, role: "element_index" }),
   ], context, stabilizeComponents);
-  const access: MojoExpression = {
-    kind: "element",
-    receiver: ordered.values[0]!,
-    index: ordered.values[1]!,
-  };
+  const access: MojoExpression = selection.kind === "provider" &&
+      operation?.target.kind === "index-read" && operation.target.access.kind === "method"
+    ? {
+        kind: "method-call",
+        receiver: ordered.values[0]!,
+        name: operation.target.access.name,
+        arguments: Object.freeze([Object.freeze({ value: ordered.values[1]! })]),
+      }
+    : {
+        kind: "element",
+        receiver: ordered.values[0]!,
+        index: ordered.values[1]!,
+      };
   const operationPlan = mode !== "read" || selection.readResultConversion === undefined
     ? withMojoValue(ordered.before, access)
     : convertMojoValue(
@@ -452,7 +460,14 @@ export function planMojoProperty(
     Object.freeze({ plan: convertedReceiver, type: operation.receiverType, role: "property_receiver" }),
   ], context, stabilizeReceiver);
   if (target.kind !== "property-read" && target.kind !== "property-write") return undefined;
-  const member: MojoExpression = { kind: "member", receiver: ordered.values[0]!, name: target.name };
+  const member: MojoExpression = target.access.kind === "member"
+    ? { kind: "member", receiver: ordered.values[0]!, name: target.access.name }
+    : {
+        kind: "method-call",
+        receiver: ordered.values[0]!,
+        name: target.access.name,
+        arguments: Object.freeze([]),
+      };
   const operationPlan = mode !== "read" || selection.readResultConversion === undefined
     ? withMojoValue(ordered.before, member)
     : convertMojoValue(withMojoValue(ordered.before, member), selection.readResultConversion, context);

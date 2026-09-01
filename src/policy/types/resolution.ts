@@ -201,6 +201,85 @@ function resolveMojoTargetTypeWithState(
             }),
           };
     }
+    if (sourceProfile?.name === "Map" || sourceProfile?.name === "ReadonlyMap") {
+      const arguments_ = resolveSourceProfileTypeArguments(
+        selectedType,
+        authoredTypeNode,
+        2,
+        context,
+        resolving,
+      );
+      if (arguments_.kind === "unsupported") return arguments_;
+      return context.jsEnabled
+        ? {
+            kind: "resolved",
+            type: namedType(
+              "tsonic.mojo.js.JsMap",
+              ["tsonic_js"],
+              "JsMap",
+              arguments_.types,
+            ),
+          }
+        : {
+            kind: "resolved",
+            type: Object.freeze({
+              kind: "dictionary",
+              key: arguments_.types[0]!,
+              value: arguments_.types[1]!,
+            }),
+          };
+    }
+    if (sourceProfile?.name === "Set" || sourceProfile?.name === "ReadonlySet") {
+      const arguments_ = resolveSourceProfileTypeArguments(
+        selectedType,
+        authoredTypeNode,
+        1,
+        context,
+        resolving,
+      );
+      if (arguments_.kind === "unsupported") return arguments_;
+      return context.jsEnabled
+        ? {
+            kind: "resolved",
+            type: namedType(
+              "tsonic.mojo.js.JsSet",
+              ["tsonic_js"],
+              "JsSet",
+              arguments_.types,
+            ),
+          }
+        : {
+            kind: "resolved",
+            type: namedType(
+              "tsonic.mojo.native.Set",
+              ["std", "collections"],
+              "Set",
+              arguments_.types,
+            ),
+          };
+    }
+    if (sourceProfile?.name === "Date") {
+      return sourceProfile.profile === "js"
+        ? {
+            kind: "resolved",
+            type: namedType("tsonic.mojo.js.JsDate", ["tsonic_js"], "JsDate"),
+          }
+        : {
+            kind: "unsupported",
+            reason: "Date values require the explicit JavaScript source profile",
+          };
+    }
+    if (sourceProfile?.name === "RegExp") {
+      return sourceProfile.profile === "js"
+        ? {
+            kind: "resolved",
+            type: namedType("tsonic.mojo.js.JsRegExp", ["tsonic_js"], "JsRegExp"),
+          }
+        : {
+            kind: "unsupported",
+            reason: "RegExp values require the explicit JavaScript source profile",
+          };
+    }
     const typeParameter = resolveTypeParameter(symbol, context);
     if (typeParameter !== undefined) return { kind: "resolved", type: typeParameter };
 
@@ -372,6 +451,37 @@ function resolveMojoTargetTypeWithState(
   } finally {
     resolving.delete(selectedType);
   }
+}
+
+function resolveSourceProfileTypeArguments(
+  selectedType: Type,
+  authoredTypeNode: Node | undefined,
+  expectedCount: number,
+  context: MojoTypeResolutionContext,
+  resolving: Set<Type>,
+): { readonly kind: "resolved"; readonly types: readonly MojoTargetTypeRef[] } |
+  { readonly kind: "unsupported"; readonly reason: string } {
+  const sourceArguments = context.semantics.types.effectiveTypeArguments(selectedType) ??
+    context.semantics.types.typeArguments(selectedType);
+  if (sourceArguments.length !== expectedCount) {
+    return {
+      kind: "unsupported",
+      reason: `selected source-profile type has ${sourceArguments.length} arguments for ${expectedCount} target parameters`,
+    };
+  }
+  const authoredArguments = authoredTypeArguments(authoredTypeNode, context.ast);
+  const types: MojoTargetTypeRef[] = [];
+  for (const [index, sourceArgument] of sourceArguments.entries()) {
+    const resolved = resolveMojoTargetTypeWithState(
+      sourceArgument,
+      authoredArguments.length === sourceArguments.length ? authoredArguments[index] : undefined,
+      context,
+      resolving,
+    );
+    if (resolved.kind === "unsupported") return resolved;
+    types.push(resolved.type);
+  }
+  return { kind: "resolved", types: Object.freeze(types) };
 }
 
 function instantiateProviderType(

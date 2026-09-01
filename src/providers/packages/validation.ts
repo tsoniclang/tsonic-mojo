@@ -277,8 +277,13 @@ function validateOperation(
       }
     }
   }
-  if ("name" in operation.target && !identifierPattern.test(operation.target.name)) {
-    throw new Error(`Provider operation '${operation.exportId}' has invalid Mojo name '${operation.target.name}'.`);
+  const targetName = "name" in operation.target
+    ? operation.target.name
+    : "access" in operation.target && operation.target.access.kind !== "element"
+      ? operation.target.access.name
+      : undefined;
+  if (targetName !== undefined && !identifierPattern.test(targetName)) {
+    throw new Error(`Provider operation '${operation.exportId}' has invalid Mojo name '${targetName}'.`);
   }
   if (operation.target.kind === "function-call" || operation.target.kind === "instance-call") {
     const genericNames = new Set<string>();
