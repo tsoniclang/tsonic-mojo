@@ -15,6 +15,7 @@ import {
 } from "../operations/properties.js";
 import { analyzeMojoProviderValue } from "../operations/values.js";
 import type { MojoProjectTypeCatalog } from "../types/project-catalog.js";
+import type { MojoSourceProfileRegistry } from "../types/source-profile.js";
 import { resolveMojoTargetType } from "../types/resolution.js";
 import { providerCallRequiresRaisingConversion } from "./effects.js";
 import { inferMojoExpressionType, isMojoExpressionNode } from "./expression-types.js";
@@ -39,6 +40,7 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly source: TargetSourceProgram;
   readonly providerSemantics: MojoProviderSemantics;
   readonly projectTypes: MojoProjectTypeCatalog;
+  readonly sourceProfiles: MojoSourceProfileRegistry;
   readonly modules: MojoSourceModuleCatalog;
   readonly jsEnabled: boolean;
   readonly diagnostics: TargetDiagnostic[];
@@ -56,6 +58,8 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly classByDeclaration: WeakMap<Node, MojoAnalyzedClass>;
   readonly classByTypeId: ReadonlyMap<string, MojoAnalyzedClass>;
   readonly fieldByDeclaration: WeakMap<Node, MojoAnalyzedProjectProperty>;
+  readonly sourceValueOccurrenceKinds: WeakMap<Node, "runtime" | "non-runtime">;
+  readonly indexedSourceUseDeclarations: WeakSet<Node>;
 }
 
 export type MojoExecutableRegionAnalysisEnvironment = Omit<
@@ -86,7 +90,9 @@ export function analyzeMojoExecutableRegion(
         input.bindingTypes.set(node, resolved);
       }
     }
-    if (isMojoExpressionNode(node, ast)) analyzeExpressionCarrier(node, input, semantics);
+    if (isMojoExpressionNode(node, ast) && isRuntimeValueOccurrence(node, input)) {
+      analyzeExpressionCarrier(node, input, semantics);
+    }
     if (ast.is.IsForOfStatement(node) || ast.is.IsForInStatement(node)) iterationNodes.push(node);
   }, (node, regionRoot) => descendWithinExecutableRegion(node, regionRoot, ast));
 
@@ -96,7 +102,7 @@ export function analyzeMojoExecutableRegion(
     if (ast.is.IsCallExpression(node) || ast.is.IsNewExpression(node)) {
       analyzeCall(node, input, semantics, dependencies);
     }
-    if (!isMojoExpressionNode(node, ast)) return;
+    if (!isMojoExpressionNode(node, ast) || !isRuntimeValueOccurrence(node, input)) return;
     const inferred = inferMojoExpressionType(node, ast, input.expressionTypes);
     if (inferred !== undefined) input.expressionTypes.set(node, inferred);
   }, (node, regionRoot) => descendWithinExecutableRegion(node, regionRoot, ast));
@@ -151,6 +157,7 @@ function analyzeCall(
     source: input.source,
     providerSemantics: input.providerSemantics,
     projectTypes: input.projectTypes,
+    sourceProfiles: input.sourceProfiles,
     jsEnabled: input.jsEnabled,
     expressionTypes: input.expressionTypes,
     conversions: input.conversions,
@@ -167,6 +174,9 @@ function analyzeCall(
   }
   if (analyzed.dependency !== undefined) dependencies.add(analyzed.dependency);
   input.callSelections.set(node, analyzed.selection);
+  if (analyzed.selection.kind === "project") {
+    input.expressionTypes.set(node, analyzed.selection.resultType);
+  }
 }
 
 function analyzeExpressionCarrier(
@@ -333,6 +343,7 @@ function resolveType(
     sourceFacts: input.source.sourceFacts,
     providerSemantics: input.providerSemantics,
     projectTypes: input.projectTypes,
+    sourceProfiles: input.sourceProfiles,
     jsEnabled: input.jsEnabled,
   });
   return resolved.kind === "resolved" ? resolved.type : undefined;
@@ -358,6 +369,25 @@ function providerValueReferenceRole(node: Node, ast: TargetSourceProgram["ast"])
     Node_Expression(ast, parent) === node) return false;
   if (ast.is.IsPropertyAccessExpression(parent)) return false;
   return true;
+}
+
+function isRuntimeValueOccurrence(
+  node: Node,
+  input: MojoExecutableRegionAnalysisInput,
+): boolean {
+  if (!input.source.ast.is.IsIdentifier(node)) return true;
+  const reference = input.source.navigation.sourceReferenceFor(node);
+  if (reference === undefined) return true;
+  if (!input.indexedSourceUseDeclarations.has(reference.declaration)) {
+    input.indexedSourceUseDeclarations.add(reference.declaration);
+    for (const use of input.source.navigation.declarationUses(reference.declaration)) {
+      input.sourceValueOccurrenceKinds.set(
+        use.reference,
+        use.kind === "type-only" || use.kind === "source-linkage" ? "non-runtime" : "runtime",
+      );
+    }
+  }
+  return input.sourceValueOccurrenceKinds.get(node) === "runtime";
 }
 
 function typeDiagnostic(node: Node, reason: string): TargetDiagnostic {

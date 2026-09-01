@@ -4,6 +4,7 @@ import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import { substituteMojoTargetType } from "../../target-model/provider/substitution.js";
 import type { MojoTargetGenericArgument, MojoTargetTypeRef } from "../../target-model/provider/model.js";
 import type { MojoProjectTypeCatalog } from "../types/project-catalog.js";
+import type { MojoSourceProfileRegistry } from "../types/source-profile.js";
 import { resolveMojoTargetType } from "../types/resolution.js";
 import type { MojoConversionIndex } from "../conversions/classification.js";
 import { classifyMojoValueConversion } from "../conversions/classification.js";
@@ -24,6 +25,7 @@ export interface MojoCallAnalysisContext {
   readonly source: TargetSourceProgram;
   readonly providerSemantics: MojoProviderSemantics;
   readonly projectTypes: MojoProjectTypeCatalog;
+  readonly sourceProfiles: MojoSourceProfileRegistry;
   readonly jsEnabled: boolean;
   readonly expressionTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly conversions: MojoConversionIndex;
@@ -39,13 +41,14 @@ export function analyzeMojoCall(
   context: MojoCallAnalysisContext,
 ): MojoCallAnalysis {
   const semantics = context.source.semantics.forNode(callNode);
-  const resolve = (type: Type): MojoTargetTypeRef | undefined => {
-    const result = resolveMojoTargetType(type, undefined, {
+  const resolve = (type: Type, authoredTypeNode?: Node): MojoTargetTypeRef | undefined => {
+    const result = resolveMojoTargetType(type, authoredTypeNode, {
       ast: context.source.ast,
       semantics,
       sourceFacts: context.source.sourceFacts,
       providerSemantics: context.providerSemantics,
       projectTypes: context.projectTypes,
+      sourceProfiles: context.sourceProfiles,
       jsEnabled: context.jsEnabled,
     });
     return result.kind === "resolved" ? result.type : undefined;
@@ -150,7 +153,7 @@ function analyzeProjectCall(
   callNode: Node,
   sourceCall: ResolvedSourceCallInfo,
   function_: MojoAnalyzedFunction,
-  resolve: (type: Type) => MojoTargetTypeRef | undefined,
+  resolve: (type: Type, authoredTypeNode?: Node) => MojoTargetTypeRef | undefined,
   context: MojoCallAnalysisContext,
 ): MojoCallAnalysis {
   const typeSubstitutions = new Map<string, MojoTargetTypeRef>();
@@ -165,7 +168,10 @@ function analyzeProjectCall(
         reason: `Selected project call type parameter '${parameter.name}' has ${selected.length} exact arguments.`,
       };
     }
-    const targetType = resolve(selected[0]!.selectedType);
+    const targetType = resolve(
+      selected[0]!.selectedType,
+      selected[0]!.explicitTypeNode,
+    );
     if (targetType === undefined) {
       return {
         kind: "unsupported",
@@ -193,7 +199,14 @@ function analyzeProjectCall(
     context.expressionTypes,
   );
   if (arguments_.kind === "unsupported") return arguments_;
-  const targetResult = substituteMojoTargetType(function_.resultType, substitutions);
+  const targetOutput = substituteMojoTargetType(function_.resultType, substitutions);
+  const targetResult = function_.asynchronous
+    ? Object.freeze({
+        kind: "future" as const,
+        domain: function_.asyncDomain ?? "native",
+        output: targetOutput,
+      })
+    : targetOutput;
   const callResult = function_.kind === "constructor"
     ? function_.owner?.type
     : targetResult;
@@ -204,13 +217,7 @@ function analyzeProjectCall(
       reason: "Project constructor has no exact owning class carrier.",
     };
   }
-  const result = closeResultConversion(
-    callNode,
-    callResult,
-    sourceCall.sourceResultType,
-    resolve,
-    context.conversions,
-  );
+  const result = closeCanonicalProjectResult(callNode, callResult, context.conversions);
   if (result.kind === "unsupported") return result;
   const target = projectCallTarget(function_, sourceCall, callResult, context);
   if (target.kind === "unsupported") return target;
@@ -304,13 +311,7 @@ function analyzeImplicitProjectConstruction(
       reason: "Implicit project construction has no exact closed class result carrier.",
     };
   }
-  const result = closeResultConversion(
-    callNode,
-    sourceResult,
-    sourceCall.sourceResultType,
-    resolve,
-    context.conversions,
-  );
+  const result = closeCanonicalProjectResult(callNode, sourceResult, context.conversions);
   if (result.kind === "unsupported") return result;
   return {
     kind: "resolved",
@@ -430,5 +431,17 @@ function closeResultConversion(
   const conversion = conversions.record(callNode, targetResult, sourceCarrier);
   return conversion.kind === "unsupported"
     ? { kind: "unsupported", code: "MOJO_CALL_RESULT_CONVERSION_UNPROVEN", reason: conversion.reason }
+    : { kind: "resolved", conversion: conversion.conversion };
+}
+
+function closeCanonicalProjectResult(
+  callNode: Node,
+  targetResult: MojoTargetTypeRef,
+  conversions: MojoConversionIndex,
+): { readonly kind: "resolved"; readonly conversion: import("../program/model.js").MojoValueConversion } |
+  { readonly kind: "unsupported"; readonly code: string; readonly reason: string } {
+  const conversion = conversions.record(callNode, targetResult, targetResult);
+  return conversion.kind === "unsupported"
+    ? { kind: "unsupported", code: "MOJO_PROJECT_CALL_RESULT_CONFLICT", reason: conversion.reason }
     : { kind: "resolved", conversion: conversion.conversion };
 }

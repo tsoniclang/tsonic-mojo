@@ -53,6 +53,7 @@ export interface MojoAnalyzedFunction {
   readonly resultType: MojoTargetTypeRef;
   readonly body: Node;
   readonly asynchronous: boolean;
+  readonly asyncDomain?: "native" | "js";
   readonly raises: boolean;
   readonly static?: boolean;
   readonly owner?: MojoAnalyzedClassOwner;

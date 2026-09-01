@@ -18,6 +18,7 @@ import { createMojoConversionIndex } from "../conversions/classification.js";
 import { recordMojoExecutableRegionConversionUses } from "../conversions/uses.js";
 import { analyzeMojoRuntimePackages } from "../runtime/references.js";
 import { createMojoProjectTypeCatalog } from "../types/project-catalog.js";
+import { createMojoSourceProfileRegistry } from "../types/source-profile.js";
 import {
   propagateRaisingEffects,
 } from "./effects.js";
@@ -31,7 +32,6 @@ import type {
   MojoElementSelection,
   MojoIterationSelection,
   MojoPropertySelection,
-  MojoProgramQueries,
   MojoTargetAnalysisRequest,
   MojoTargetProgram,
   MojoValueSelection,
@@ -48,6 +48,7 @@ import {
   finalizeMojoModuleEffects,
 } from "./module-effects.js";
 import type { MojoAnalyzedModuleRegionFacts } from "./module-effects.js";
+import { createMojoProgramQueries } from "./queries.js";
 
 export function analyzeMojoTargetProgram(
   request: MojoTargetAnalysisRequest,
@@ -59,6 +60,11 @@ export function analyzeMojoTargetProgram(
       sourceFile !== undefined &&
       !ast.isDeclarationFile(sourceFile),
   ));
+  const sourceProfiles = createMojoSourceProfileRegistry(
+    input.source.sourceFiles.filter((sourceFile): sourceFile is SourceFile => sourceFile !== undefined),
+    ast,
+    jsEnabled,
+  );
   const diagnostics: TargetDiagnostic[] = [];
   const moduleAnalysis = analyzeMojoSourceModules(input, configuration.packageName, sourceFiles);
   if (moduleAnalysis.kind === "rejected") {
@@ -92,6 +98,8 @@ export function analyzeMojoTargetProgram(
   >();
   const directRaises = new Map<Node, boolean>();
   const projectDependencies = new Map<Node, Set<Node>>();
+  const sourceValueOccurrenceKinds = new WeakMap<Node, "runtime" | "non-runtime">();
+  const indexedSourceUseDeclarations = new WeakSet<Node>();
   const reservedNames = new Set<string>();
   const createNameAllocator = (): ((name: string) => string) =>
     createMojoNameAllocator([], (name) => reservedNames.add(name));
@@ -153,6 +161,7 @@ export function analyzeMojoTargetProgram(
     modules,
     providerSemantics,
     projectTypes,
+    sourceProfiles,
     jsEnabled,
     diagnostics,
     allocateModuleName(sourceFile, name) {
@@ -269,6 +278,7 @@ export function analyzeMojoTargetProgram(
       source: input.source,
       providerSemantics,
       projectTypes,
+      sourceProfiles,
       jsEnabled,
       declaration: draft.declaration,
       sourceFile: draft.sourceFile,
@@ -300,6 +310,7 @@ export function analyzeMojoTargetProgram(
       source: input.source,
       providerSemantics,
       projectTypes,
+      sourceProfiles,
       jsEnabled,
       declaration: draft.declaration,
       sourceFile: draft.sourceFile,
@@ -360,6 +371,7 @@ export function analyzeMojoTargetProgram(
     source: input.source,
     providerSemantics,
     projectTypes,
+    sourceProfiles,
     modules,
     jsEnabled,
     diagnostics,
@@ -377,6 +389,8 @@ export function analyzeMojoTargetProgram(
     classByDeclaration,
     classByTypeId,
     fieldByDeclaration,
+    sourceValueOccurrenceKinds,
+    indexedSourceUseDeclarations,
   };
 
   for (const class_ of classes) {
@@ -539,46 +553,20 @@ export function analyzeMojoTargetProgram(
   }
   if (diagnostics.length > 0) return rejectedTargetStage(diagnostics);
 
-  const queries: MojoProgramQueries = Object.freeze({
-    bindingName(referenceOrDeclaration: Node): string | undefined {
-      return bindingNames.get(referenceOrDeclaration);
-    },
-    bindingSourceFile(referenceOrDeclaration: Node): SourceFile | undefined {
-      return bindingSourceFiles.get(referenceOrDeclaration);
-    },
-    bindingType(declaration: Node): MojoTargetTypeRef | undefined {
-      return bindingTypes.get(declaration);
-    },
-    expressionType(expression: Node): MojoTargetTypeRef | undefined {
-      return expressionTypes.get(expression);
-    },
-    expressionConversion(expression: Node, expectedType: MojoTargetTypeRef) {
-      return conversions.get(expression, expectedType);
-    },
-    callSelection(call: Node): MojoCallSelection | undefined {
-      return callSelections.get(call);
-    },
-    propertySelection(access: Node): MojoPropertySelection | undefined {
-      return propertySelections.get(access);
-    },
-    valueSelection(expression: Node): MojoValueSelection | undefined {
-      return valueSelections.get(expression);
-    },
-    elementSelection(access: Node): MojoElementSelection | undefined {
-      return elementSelections.get(access);
-    },
-    iterationSelection(statement: Node): MojoIterationSelection | undefined {
-      return iterationSelections.get(statement);
-    },
-    moduleForSourceFile(sourceFile: SourceFile) {
-      return finalizedModuleBySourceFile.get(sourceFile);
-    },
-    moduleBinding(referenceOrDeclaration: Node) {
-      const direct = moduleBindingByDeclaration.get(referenceOrDeclaration);
-      if (direct !== undefined) return direct;
-      const reference = input.source.navigation.sourceReferenceFor(referenceOrDeclaration);
-      return reference === undefined ? undefined : moduleBindingByDeclaration.get(reference.declaration);
-    },
+  const queries = createMojoProgramQueries({
+    source: input.source,
+    bindingNames,
+    bindingSourceFiles,
+    bindingTypes,
+    expressionTypes,
+    conversions,
+    callSelections,
+    propertySelections,
+    valueSelections,
+    elementSelections,
+    iterationSelections,
+    moduleBySourceFile: finalizedModuleBySourceFile,
+    moduleBindingByDeclaration,
   });
   const topLevelFunctions = finalizedFunctions.filter((function_) => function_.kind === "function");
   const declarations: MojoAnalyzedDeclaration[] = [

@@ -372,6 +372,9 @@ function validateType(type: MojoTargetTypeRef): void {
       validateType(type.key);
       validateType(type.value);
       return;
+    case "future":
+      validateType(type.output);
+      return;
     case "optional":
       validateType(type.value);
       return;

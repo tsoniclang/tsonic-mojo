@@ -55,6 +55,12 @@ export function substituteMojoTargetType(
         key: substituteMojoTargetType(type.key, substitutions),
         value: substituteMojoTargetType(type.value, substitutions),
       });
+    case "future":
+      return Object.freeze({
+        kind: "future",
+        domain: type.domain,
+        output: substituteMojoTargetType(type.output, substitutions),
+      });
     case "optional":
       return Object.freeze({
         kind: "optional",

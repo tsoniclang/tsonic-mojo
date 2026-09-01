@@ -8,6 +8,7 @@ import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
 import type { MojoProjectTypeCatalog } from "../types/project-catalog.js";
+import type { MojoSourceProfileRegistry } from "../types/source-profile.js";
 import { resolveMojoTargetType } from "../types/resolution.js";
 import {
   analyzeMojoFunctionSignature,
@@ -24,6 +25,7 @@ export interface MojoClassAnalysisInput {
   readonly source: TargetSourceProgram;
   readonly providerSemantics: MojoProviderSemantics;
   readonly projectTypes: MojoProjectTypeCatalog;
+  readonly sourceProfiles: MojoSourceProfileRegistry;
   readonly jsEnabled: boolean;
   readonly declaration: Node;
   readonly sourceFile: SourceFile;
@@ -205,6 +207,7 @@ function signatureInput(
     source: input.source,
     providerSemantics: input.providerSemantics,
     projectTypes: input.projectTypes,
+    sourceProfiles: input.sourceProfiles,
     jsEnabled: input.jsEnabled,
     declaration,
     sourceFile: input.sourceFile,
@@ -288,6 +291,7 @@ function resolveType(
     sourceFacts: input.source.sourceFacts,
     providerSemantics: input.providerSemantics,
     projectTypes: input.projectTypes,
+    sourceProfiles: input.sourceProfiles,
     jsEnabled: input.jsEnabled,
   });
   if (result.kind === "resolved") return result.type;

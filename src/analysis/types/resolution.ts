@@ -20,6 +20,7 @@ import type {
 } from "../../target-model/provider/model.js";
 import { substituteMojoTargetType } from "../../target-model/provider/substitution.js";
 import type { MojoProjectTypeCatalog } from "./project-catalog.js";
+import type { MojoSourceProfileRegistry } from "./source-profile.js";
 
 export interface MojoTypeResolutionContext {
   readonly ast: AstReader;
@@ -27,6 +28,7 @@ export interface MojoTypeResolutionContext {
   readonly sourceFacts: import("@tsonic/tsts").ReadonlySourceFactResolver;
   readonly providerSemantics: MojoProviderSemantics;
   readonly projectTypes: MojoProjectTypeCatalog;
+  readonly sourceProfiles: MojoSourceProfileRegistry;
   readonly jsEnabled: boolean;
 }
 
@@ -128,18 +130,58 @@ function resolveMojoTargetTypeWithState(
           reason: `selected provider type has ${candidates.length} Mojo carrier relations`,
         };
       }
-      return instantiateProviderType(candidates[0]!, selectedType, context, resolving);
+      return instantiateProviderType(
+        candidates[0]!,
+        selectedType,
+        authoredTypeNode,
+        context,
+        resolving,
+      );
     }
 
     const symbol = context.semantics.declarations.typeAliasSymbol(selectedType) ??
       context.semantics.declarations.typeSymbol(selectedType);
+    const sourceProfile = context.sourceProfiles.typeIdentity(symbol, context.semantics);
+    if (sourceProfile?.name === "Promise" || sourceProfile?.name === "PromiseLike") {
+      const sourceArguments = types.effectiveTypeArguments(selectedType) ??
+        types.typeArguments(selectedType);
+      const authoredArguments = authoredTypeArguments(authoredTypeNode, context.ast);
+      if (sourceArguments.length !== 1) {
+        return {
+          kind: "unsupported",
+          reason: `selected ${sourceProfile.name} type has ${sourceArguments.length} output arguments`,
+        };
+      }
+      const output = resolveMojoTargetTypeWithState(
+        sourceArguments[0],
+        authoredArguments.length === 1 ? authoredArguments[0] : undefined,
+        context,
+        resolving,
+      );
+      return output.kind === "unsupported"
+        ? output
+        : {
+            kind: "resolved",
+            type: Object.freeze({
+              kind: "future",
+              domain: sourceProfile.profile,
+              output: output.type,
+            }),
+          };
+    }
     const typeParameter = resolveTypeParameter(symbol, context);
     if (typeParameter !== undefined) return { kind: "resolved", type: typeParameter };
 
     const sourceArguments = types.effectiveTypeArguments(selectedType) ?? types.typeArguments(selectedType);
+    const authoredArguments = authoredTypeArguments(authoredTypeNode, context.ast);
     const targetArguments: MojoTargetTypeRef[] = [];
-    for (const sourceArgument of sourceArguments) {
-      const argument = resolveMojoTargetTypeWithState(sourceArgument, undefined, context, resolving);
+    for (const [index, sourceArgument] of sourceArguments.entries()) {
+      const argument = resolveMojoTargetTypeWithState(
+        sourceArgument,
+        authoredArguments.length === sourceArguments.length ? authoredArguments[index] : undefined,
+        context,
+        resolving,
+      );
       if (argument.kind === "unsupported") return argument;
       targetArguments.push(argument.type);
     }
@@ -291,6 +333,7 @@ function resolveMojoTargetTypeWithState(
 function instantiateProviderType(
   row: MojoProviderTypeRow,
   selectedType: Type,
+  authoredTypeNode: Node | undefined,
   context: MojoTypeResolutionContext,
   resolving: Set<Type>,
 ): MojoTypeResolution {
@@ -304,6 +347,7 @@ function instantiateProviderType(
   }
   const typeSubstitutions = new Map<string, MojoTargetTypeRef>();
   const constantSubstitutions = new Map<string, MojoTargetConstArgument>();
+  const authoredArguments = authoredTypeArguments(authoredTypeNode, context.ast);
   for (const [index, parameter] of row.sourceGenericParameters.entries()) {
     const sourceArgument = sourceArguments[index]!;
     if (parameter.targetKind !== "type") {
@@ -312,7 +356,12 @@ function instantiateProviderType(
         reason: `Mojo ${parameter.targetKind} parameter '${parameter.targetName}' requires exact source generic-value evidence`,
       };
     }
-    const resolved = resolveMojoTargetTypeWithState(sourceArgument, undefined, context, resolving);
+    const resolved = resolveMojoTargetTypeWithState(
+      sourceArgument,
+      authoredArguments.length === sourceArguments.length ? authoredArguments[index] : undefined,
+      context,
+      resolving,
+    );
     if (resolved.kind === "unsupported") return resolved;
     typeSubstitutions.set(parameter.targetName, resolved.type);
   }
@@ -436,10 +485,25 @@ function typeSubjects(
 ): readonly ExtensionFactSubject[] {
   const subjects: ExtensionFactSubject[] = [];
   if (authoredTypeNode !== undefined) {
-    subjects.push(authoredTypeNode, ...context.semantics.facts.authoredTypeSubjects(authoredTypeNode));
+    subjects.push(authoredTypeNode);
+    if (context.ast.is.IsTypeReferenceNode(authoredTypeNode)) {
+      const typeName = context.ast.as.AsTypeReferenceNode(authoredTypeNode)?.TypeName;
+      if (typeName !== undefined) {
+        subjects.push(typeName);
+      }
+    }
   }
   subjects.push(...context.semantics.facts.typeSubjects(type));
   return Object.freeze([...new Set(subjects)]);
+}
+
+function authoredTypeArguments(
+  authoredTypeNode: Node | undefined,
+  ast: AstReader,
+): readonly Node[] {
+  return authoredTypeNode !== undefined && ast.is.IsTypeReferenceNode(authoredTypeNode)
+    ? Object.freeze(ast.typeArguments(authoredTypeNode).filter((node): node is Node => node !== undefined))
+    : Object.freeze([]);
 }
 
 function uniqueFact<T>(values: readonly (T | undefined)[]):

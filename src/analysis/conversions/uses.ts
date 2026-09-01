@@ -12,6 +12,10 @@ import {
   PrefixUnaryExpression_Operand,
   CaseBlock_Clauses,
   CaseOrDefaultClause_Expression,
+  ForStatement_Condition,
+  ForStatement_Incrementor,
+  ForStatement_Initializer,
+  IterationStatement_Statement,
   SwitchStatement_CaseBlock,
   SwitchStatement_Expression,
   VariableDeclarationList_Declarations,
@@ -190,6 +194,26 @@ export function recordMojoExecutableRegionConversionUses(
         if (expected !== undefined) record(initializer, expected);
         visitExpression(initializer);
       }
+      return;
+    }
+    if (ast.is.IsForStatement(statement)) {
+      const initializer = ForStatement_Initializer(ast, statement);
+      if (initializer !== undefined && ast.is.IsVariableDeclarationList(initializer)) {
+        for (const declaration of VariableDeclarationList_Declarations(ast, initializer) ?? []) {
+          if (declaration === undefined) continue;
+          const value = Node_Initializer(ast, declaration);
+          const expected = bindingTypes.get(declaration);
+          if (expected !== undefined) record(value, expected);
+          visitExpression(value);
+        }
+      } else {
+        visitExpression(initializer);
+      }
+      const condition = ForStatement_Condition(ast, statement);
+      record(condition, { kind: "source-primitive", name: "bool" });
+      visitExpression(condition);
+      visitExpression(ForStatement_Incrementor(ast, statement));
+      visitStatement(IterationStatement_Statement(ast, statement));
       return;
     }
     if (ast.is.IsIfStatement(statement) || ast.is.IsWhileStatement(statement) || ast.is.IsDoStatement(statement)) {

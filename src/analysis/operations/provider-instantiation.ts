@@ -227,6 +227,10 @@ export function bindTargetTypePattern(
       return bindTargetTypePattern(pattern.key, actual.key, bindings) ??
         bindTargetTypePattern(pattern.value, actual.value, bindings);
     }
+    case "future":
+      return actual.kind === "future"
+        ? bindTargetTypePattern(pattern.output, actual.output, bindings)
+        : "future carriers differ";
     case "optional":
       return actual.kind === "optional" ? bindTargetTypePattern(pattern.value, actual.value, bindings) : "optional carriers differ";
     case "union":

@@ -7,6 +7,7 @@ import type { SourceCallableTypeEvidence } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
 import type { MojoProjectTypeCatalog } from "../types/project-catalog.js";
+import type { MojoSourceProfileRegistry } from "../types/source-profile.js";
 import { resolveMojoTargetType } from "../types/resolution.js";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
 import type {
@@ -19,6 +20,7 @@ export interface MojoFunctionSignatureInput {
   readonly source: TargetSourceProgram;
   readonly providerSemantics: MojoProviderSemantics;
   readonly projectTypes: MojoProjectTypeCatalog;
+  readonly sourceProfiles: MojoSourceProfileRegistry;
   readonly jsEnabled: boolean;
   readonly declaration: Node;
   readonly sourceFile: SourceFile;
@@ -91,12 +93,26 @@ export function analyzeMojoFunctionSignature(
         : { initializer: Node_Initializer(ast, parameter)! }),
     }));
   }
-  const resultType = input.resultType ?? resolve(
+  const selectedResultType = input.resultType ?? resolve(
     input,
     callable.result.selectedType,
     callable.result.authoredTypeNode ?? ast.typeNode(declaration),
   );
-  if (resultType === undefined) return undefined;
+  if (selectedResultType === undefined) return undefined;
+  const asynchronous = ast.hasModifierKind(declaration, "async");
+  if (asynchronous && selectedResultType.kind !== "future") {
+    append(
+      input,
+      "MOJO_ASYNC_RESULT_CARRIER_NOT_CLOSED",
+      "An async declaration requires one exact source-profile Promise output carrier.",
+      declaration,
+    );
+    return undefined;
+  }
+  const asyncResult = asynchronous && selectedResultType.kind === "future"
+    ? selectedResultType
+    : undefined;
+  const resultType = asyncResult?.output ?? selectedResultType;
   return Object.freeze({
     kind: input.kind ?? "function",
     declaration,
@@ -106,7 +122,8 @@ export function analyzeMojoFunctionSignature(
     parameters: Object.freeze(parameters),
     resultType,
     body: input.body,
-    asynchronous: ast.hasModifierKind(declaration, "async"),
+    asynchronous,
+    ...(asyncResult === undefined ? {} : { asyncDomain: asyncResult.domain }),
     raises: false,
     ...(input.static === undefined ? {} : { static: input.static }),
     ...(input.owner === undefined ? {} : { owner: input.owner }),
@@ -153,6 +170,7 @@ function resolve(
     sourceFacts: input.source.sourceFacts,
     providerSemantics: input.providerSemantics,
     projectTypes: input.projectTypes,
+    sourceProfiles: input.sourceProfiles,
     jsEnabled: input.jsEnabled,
   });
   if (resolved.kind === "resolved") return resolved.type;

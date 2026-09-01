@@ -40,6 +40,9 @@ export function mojoTargetTypeEquals(
       return right.kind === "dictionary" &&
         mojoTargetTypeEquals(left.key, right.key) &&
         mojoTargetTypeEquals(left.value, right.value);
+    case "future":
+      return right.kind === "future" && left.domain === right.domain &&
+        mojoTargetTypeEquals(left.output, right.output);
     case "optional":
       return right.kind === "optional" && mojoTargetTypeEquals(left.value, right.value);
     case "union":

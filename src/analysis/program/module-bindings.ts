@@ -13,6 +13,7 @@ import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
 import type { MojoSourceModuleCatalog } from "../modules/model.js";
 import type { MojoProjectTypeCatalog } from "../types/project-catalog.js";
+import type { MojoSourceProfileRegistry } from "../types/source-profile.js";
 import { resolveMojoTargetType } from "../types/resolution.js";
 import type {
   MojoAnalyzedModule,
@@ -26,6 +27,7 @@ export interface MojoModuleBindingAnalysisInput {
   readonly modules: MojoSourceModuleCatalog;
   readonly providerSemantics: MojoProviderSemantics;
   readonly projectTypes: MojoProjectTypeCatalog;
+  readonly sourceProfiles: MojoSourceProfileRegistry;
   readonly jsEnabled: boolean;
   readonly diagnostics: TargetDiagnostic[];
   readonly allocateModuleName: (sourceFile: SourceFile, name: string) => string;
@@ -125,6 +127,7 @@ export function analyzeMojoModuleBindings(
               sourceFacts: input.source.sourceFacts,
               providerSemantics: input.providerSemantics,
               projectTypes: input.projectTypes,
+              sourceProfiles: input.sourceProfiles,
               jsEnabled: input.jsEnabled,
             },
           );
@@ -181,6 +184,7 @@ export function analyzeMojoModuleBindings(
             sourceFacts: input.source.sourceFacts,
             providerSemantics: input.providerSemantics,
             projectTypes: input.projectTypes,
+            sourceProfiles: input.sourceProfiles,
             jsEnabled: input.jsEnabled,
           },
         );
@@ -270,6 +274,7 @@ export function analyzeMojoModuleBindings(
               sourceFacts: input.source.sourceFacts,
               providerSemantics: input.providerSemantics,
               projectTypes: input.projectTypes,
+              sourceProfiles: input.sourceProfiles,
               jsEnabled: input.jsEnabled,
             });
             if (resolved.kind === "unsupported") {

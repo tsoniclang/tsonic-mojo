@@ -40,6 +40,10 @@ export function registerMojoTypeImports(type: MojoTargetTypeRef, context: MojoPl
       registerMojoTypeImports(type.key, context);
       registerMojoTypeImports(type.value, context);
       return;
+    case "future":
+      if (type.domain === "js") registerMojoModuleImport(context, ["tsonic_js"]);
+      registerMojoTypeImports(type.output, context);
+      return;
     case "optional":
       registerMojoSymbolImport(context, ["std", "collections"], "Optional");
       registerMojoTypeImports(type.value, context);
@@ -121,6 +125,9 @@ export function mojoTypeName(
     case "list": return `List[${requiredTypeName(type.element, currentModulePath)}]`;
     case "fixed-array": return `Array[${requiredTypeName(type.element, currentModulePath)}, ${renderConstArgument(type.length)}]`;
     case "dictionary": return `Dict[${requiredTypeName(type.key, currentModulePath)}, ${requiredTypeName(type.value, currentModulePath)}]`;
+    case "future": return type.domain === "js"
+      ? `tsonic_js.JsPromise[${requiredTypeName(type.output, currentModulePath)}]`
+      : `Coroutine[${requiredTypeName(type.output, currentModulePath)}, ...]`;
     case "optional": return `Optional[${requiredTypeName(type.value, currentModulePath)}]`;
     case "union": return `Variant[${type.members.map((member) => requiredTypeName(member, currentModulePath)).join(", ")}]`;
     case "tuple": return `(${type.elements.map((element) => requiredTypeName(element, currentModulePath)).join(", ")})`;

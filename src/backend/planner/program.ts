@@ -209,14 +209,6 @@ function planBinaryEntry(
     ));
     return undefined;
   }
-  if (function_.asynchronous) {
-    diagnostics.push(planningDiagnostic(
-      "MOJO_ASYNC_BINARY_ENTRYPOINT_UNSUPPORTED",
-      "The pinned Mojo toolchain does not expose a proven native async program-entry contract.",
-      function_.declaration,
-    ));
-    return undefined;
-  }
   const importedName = "__tsonic_entry";
   const analyzedEntry = program.queries.moduleForSourceFile(entry.sourceFile);
   if (analyzedEntry === undefined) {
@@ -236,11 +228,22 @@ function planBinaryEntry(
   ];
   const module: MojoSourceModule = Object.freeze({
     modulePath: Object.freeze([]),
-    imports: Object.freeze([Object.freeze({
-      kind: "symbols" as const,
-      modulePath: entry.modulePath,
-      symbols: Object.freeze(importedSymbols),
-    })]),
+    imports: Object.freeze([
+      Object.freeze({
+        kind: "symbols" as const,
+        modulePath: entry.modulePath,
+        symbols: Object.freeze(importedSymbols),
+      }),
+      ...(function_.asynchronous
+        ? [Object.freeze({
+            kind: "symbols" as const,
+            modulePath: Object.freeze(["std", "runtime", "_asyncrt"]),
+            symbols: Object.freeze([Object.freeze({
+              name: function_.raises ? "create_raising_task" : "create_task",
+            })]),
+          })]
+        : []),
+    ]),
     declarations: Object.freeze([Object.freeze({
       kind: "function" as const,
       name: "main",
@@ -262,11 +265,31 @@ function planBinaryEntry(
           : []),
         Object.freeze({
           kind: "expression" as const,
-          expression: Object.freeze({
-            kind: "call" as const,
-            callee: Object.freeze({ kind: "path" as const, path: importedName }),
-            arguments: Object.freeze([]),
-          }),
+          expression: function_.asynchronous
+            ? Object.freeze({
+                kind: "method-call" as const,
+                receiver: Object.freeze({
+                  kind: "call" as const,
+                  callee: Object.freeze({
+                    kind: "path" as const,
+                    path: function_.raises ? "create_raising_task" : "create_task",
+                  }),
+                  arguments: Object.freeze([Object.freeze({
+                    value: Object.freeze({
+                      kind: "call" as const,
+                      callee: Object.freeze({ kind: "path" as const, path: importedName }),
+                      arguments: Object.freeze([]),
+                    }),
+                  })]),
+                }),
+                name: "wait",
+                arguments: Object.freeze([]),
+              })
+            : Object.freeze({
+                kind: "call" as const,
+                callee: Object.freeze({ kind: "path" as const, path: importedName }),
+                arguments: Object.freeze([]),
+              }),
         }),
       ]),
     })]),

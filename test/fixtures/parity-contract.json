@@ -28,8 +28,9 @@
       "source": "export function value(): number { return 1; }",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact source-reference linkage",
-      "status": "partial",
-      "note": "Foundation coverage exists but does not satisfy the complete mature-target lane."
+      "status": "matched",
+      "proof": "test/language-parity.test.mjs",
+      "note": "Exact imported declaration identity and dependency-ordered initialization are proven by test/language-parity.test.mjs."
     },
     {
       "id": "modules.side-effect-imports",
@@ -37,7 +38,9 @@
       "source": "import \"./setup.js\";",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain dependency-ordered module initialization",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/language-parity.test.mjs",
+      "note": "Side-effect-only imports participate in the sealed source module dependency graph."
     },
     {
       "id": "modules.top-level-await",
@@ -53,7 +56,9 @@
       "source": "export default makeValue();",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain one source-ordered immutable module binding and exact default-import identity",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/language-parity.test.mjs",
+      "note": "The expression executes once into a source-ordered module cell selected by default-import identity."
     },
     {
       "id": "modules.runtime-cycles",
@@ -61,7 +66,9 @@
       "source": "import { b } from \"./b.js\"; export const a = b;",
       "benchmarkClassification": "shared-rejection",
       "benchmarkAction": "retain deterministic rejection until shared live-binding and temporal-dead-zone evidence exists",
-      "status": "pending"
+      "status": "matched-rejection",
+      "proof": "test/language-parity.test.mjs",
+      "note": "Runtime-reachable initialization cycles reject before output planning."
     },
     {
       "id": "declarations.functions",
@@ -69,8 +76,9 @@
       "source": "export function identity<T>(value: T): T { return value; }",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact generic callable contracts",
-      "status": "partial",
-      "note": "Foundation coverage exists but does not satisfy the complete mature-target lane."
+      "status": "matched",
+      "proof": "test/language-parity.test.mjs",
+      "note": "Generic signatures and exact explicit selected type arguments are proven through emitted Mojo."
     },
     {
       "id": "declarations.classes",
@@ -78,7 +86,9 @@
       "source": "class Counter { value = 0; increment(): void { this.value++; } }",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain generated state and impl separation",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/language-parity.test.mjs",
+      "note": "Project classes use reference-identity wrappers over declaration-owned state."
     },
     {
       "id": "declarations.private-fields",
@@ -86,7 +96,9 @@
       "source": "class Box { #value = 1; read(): number { return this.#value; } }",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain declaration-identity-backed storage",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/language-parity.test.mjs",
+      "note": "Private fields lower from exact declaration identity to private generated state storage."
     },
     {
       "id": "declarations.static-fields",
@@ -94,7 +106,9 @@
       "source": "class Counter { static total = mark(1); }",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain source-order module-cell initialization",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/language-parity.test.mjs",
+      "note": "Static fields share the source module state and ordered initialization transaction."
     },
     {
       "id": "declarations.static-fields-default-initializer",
@@ -102,7 +116,9 @@
       "source": "class Counter { static total: number; }",
       "benchmarkClassification": "shared-rejection",
       "benchmarkAction": "retain the exact rejection; use an explicit initializer or defaultValue<T>() instead of silently replacing TypeScript undefined with a target-native default",
-      "status": "pending"
+      "status": "matched-rejection",
+      "proof": "test/language-parity.test.mjs",
+      "note": "A missing source initializer rejects rather than inventing a Mojo default."
     },
     {
       "id": "declarations.class-static-blocks",
@@ -110,7 +126,9 @@
       "source": "class Registry { static { register(); } }",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain one source-ordered class initialization plan for static fields and blocks",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/language-parity.test.mjs",
+      "note": "Static blocks and fields retain one source-ordered module initialization plan."
     },
     {
       "id": "declarations.inheritance",
@@ -166,7 +184,9 @@
       "source": "enum Mode { Off, On = 4 }",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain checker-evaluated discriminants",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/language-parity.test.mjs",
+      "note": "Checker-evaluated enum values and selected enum member identity are retained."
     },
     {
       "id": "declarations.closed-unions",
@@ -254,8 +274,9 @@
       "source": "for (let i = 0; i < 3; i++) { if (i === 1) continue; }",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain structured control-flow planning",
-      "status": "partial",
-      "note": "Foundation coverage exists but does not satisfy the complete mature-target lane."
+      "status": "matched",
+      "proof": "test/language-parity.test.mjs",
+      "note": "For-loop initialization, condition, increment, continue, and nested conditionals retain sealed carriers and source order."
     },
     {
       "id": "control.switch-fallthrough",
