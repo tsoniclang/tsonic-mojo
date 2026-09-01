@@ -22,6 +22,7 @@ import {
   VariableStatement_DeclarationList,
 } from "@tsonic/target-api/source";
 import type { MojoAnalyzedFunction } from "../../analysis/program/model.js";
+import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
 import type { MojoExpression, MojoStatement } from "../target-ast/nodes.js";
 import type { MojoPlanningContext } from "./context.js";
 import { allocateMojoSyntheticName, appendMojoPlanningDiagnostic } from "./context.js";
@@ -32,7 +33,29 @@ export function planMojoFunctionStatements(
   function_: MojoAnalyzedFunction,
   context: MojoPlanningContext,
 ): readonly MojoStatement[] | undefined {
-  return planBlock(function_.body, function_, context, emptyFlowContext);
+  return planBlock(
+    function_.body,
+    Object.freeze({ resultType: function_.resultType, returnAllowed: true }),
+    context,
+    emptyFlowContext,
+  );
+}
+
+export function planMojoStatementRegion(
+  nodes: readonly (Node | undefined)[],
+  context: MojoPlanningContext,
+): readonly MojoStatement[] | undefined {
+  return planStatementNodes(
+    nodes,
+    Object.freeze({ returnAllowed: false }),
+    context,
+    emptyFlowContext,
+  );
+}
+
+interface MojoStatementPlanningScope {
+  readonly resultType?: MojoTargetTypeRef;
+  readonly returnAllowed: boolean;
 }
 
 interface MojoFlowPlanningContext {
@@ -43,14 +66,14 @@ const emptyFlowContext: MojoFlowPlanningContext = Object.freeze({});
 
 function planBlock(
   block: Node,
-  function_: MojoAnalyzedFunction,
+  scope: MojoStatementPlanningScope,
   context: MojoPlanningContext,
   flow: MojoFlowPlanningContext,
 ): readonly MojoStatement[] | undefined {
   const statements: MojoStatement[] = [];
   for (const sourceStatement of context.program.source.ast.statements(block)) {
     if (sourceStatement === undefined) continue;
-    const planned = planStatement(sourceStatement, function_, context, flow);
+    const planned = planStatement(sourceStatement, scope, context, flow);
     if (planned === undefined) return undefined;
     statements.push(...planned);
   }
@@ -59,16 +82,25 @@ function planBlock(
 
 function planStatement(
   node: Node,
-  function_: MojoAnalyzedFunction,
+  scope: MojoStatementPlanningScope,
   context: MojoPlanningContext,
   flow: MojoFlowPlanningContext,
 ): readonly MojoStatement[] | undefined {
   const { ast } = context.program.source;
   if (ast.is.IsReturnStatement(node)) {
+    if (!scope.returnAllowed || scope.resultType === undefined) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_RETURN_OUTSIDE_CALLABLE",
+        "A return statement cannot appear in a module or class initialization region.",
+        node,
+      );
+      return undefined;
+    }
     const sourceExpression = Node_Expression(ast, node);
     const expression = sourceExpression === undefined
       ? undefined
-      : planMojoValue(sourceExpression, context, function_.resultType);
+      : planMojoValue(sourceExpression, context, scope.resultType);
     if (sourceExpression !== undefined && expression === undefined) return undefined;
     return Object.freeze([
       ...(expression?.before ?? []),
@@ -113,8 +145,8 @@ function planStatement(
     const condition = conditionNode === undefined
       ? undefined
       : planMojoValue(conditionNode, context, { kind: "source-primitive", name: "bool" });
-    const thenStatements = thenNode === undefined ? undefined : planStatementBody(thenNode, function_, context, flow);
-    const elseStatements = elseNode === undefined ? undefined : planStatementBody(elseNode, function_, context, flow);
+    const thenStatements = thenNode === undefined ? undefined : planStatementBody(thenNode, scope, context, flow);
+    const elseStatements = elseNode === undefined ? undefined : planStatementBody(elseNode, scope, context, flow);
     if (condition === undefined || thenStatements === undefined ||
       (elseNode !== undefined && elseStatements === undefined)) return undefined;
     return Object.freeze([...condition.before, {
@@ -132,7 +164,7 @@ function planStatement(
       : planMojoValue(conditionNode, context, { kind: "source-primitive", name: "bool" });
     const statements = body === undefined
       ? undefined
-      : planStatementBody(body, function_, context, loopFlowContext(Object.freeze([])));
+      : planStatementBody(body, scope, context, loopFlowContext(Object.freeze([])));
     if (condition === undefined || statements === undefined) return undefined;
     if (condition.before.length === 0) {
       return Object.freeze([{ kind: "while", condition: condition.value, statements }]);
@@ -162,7 +194,7 @@ function planStatement(
     });
     const statements = planStatementBody(
       body,
-      function_,
+      scope,
       context,
       loopFlowContext(Object.freeze([...condition.before, conditionExit])),
     );
@@ -190,7 +222,7 @@ function planStatement(
     }
     const statements = planStatementBody(
       body,
-      function_,
+      scope,
       context,
       loopFlowContext(increment),
     );
@@ -228,22 +260,22 @@ function planStatement(
           arguments: Object.freeze([]),
         })
       : sourceIterable.value;
-    const statements = planStatementBody(body, function_, context, loopFlowContext(Object.freeze([])));
+    const statements = planStatementBody(body, scope, context, loopFlowContext(Object.freeze([])));
     return statements === undefined
       ? undefined
       : Object.freeze([...sourceIterable.before, { kind: "for", binding: selection.bindingName, iterable, statements }]);
   }
   if (ast.is.IsSwitchStatement(node)) {
-    return planSwitchStatement(node, function_, context, flow);
+    return planSwitchStatement(node, scope, context, flow);
   }
   if (ast.is.IsTryStatement(node)) {
     const tryBlock = TryStatement_TryBlock(ast, node);
     const catchClause = TryStatement_CatchClause(ast, node);
     const finallyBlock = TryStatement_FinallyBlock(ast, node);
-    const tryStatements = tryBlock === undefined ? undefined : planBlock(tryBlock, function_, context, flow);
+    const tryStatements = tryBlock === undefined ? undefined : planBlock(tryBlock, scope, context, flow);
     const catchBlock = CatchClause_Block(ast, catchClause);
-    const catchStatements = catchBlock === undefined ? undefined : planBlock(catchBlock, function_, context, flow);
-    const finallyStatements = finallyBlock === undefined ? undefined : planBlock(finallyBlock, function_, context, flow);
+    const catchStatements = catchBlock === undefined ? undefined : planBlock(catchBlock, scope, context, flow);
+    const finallyStatements = finallyBlock === undefined ? undefined : planBlock(finallyBlock, scope, context, flow);
     if (tryStatements === undefined || (catchBlock !== undefined && catchStatements === undefined) ||
       (finallyBlock !== undefined && finallyStatements === undefined)) return undefined;
     const catchDeclaration = CatchClause_VariableDeclaration(ast, catchClause);
@@ -277,7 +309,7 @@ function planStatement(
 
 function planSwitchStatement(
   node: Node,
-  function_: MojoAnalyzedFunction,
+  scope: MojoStatementPlanningScope,
   context: MojoPlanningContext,
   flow: MojoFlowPlanningContext,
 ): readonly MojoStatement[] | undefined {
@@ -383,7 +415,7 @@ function planSwitchStatement(
   for (const [index, clause] of (clauses as readonly Node[]).entries()) {
     const statements = planStatementNodes(
       CaseOrDefaultClause_Statements(ast, clause) ?? [],
-      function_,
+      scope,
       context,
       Object.freeze({ continueStatements: switchContinue }),
     );
@@ -426,14 +458,14 @@ function planSwitchStatement(
 
 function planStatementNodes(
   nodes: readonly (Node | undefined)[],
-  function_: MojoAnalyzedFunction,
+  scope: MojoStatementPlanningScope,
   context: MojoPlanningContext,
   flow: MojoFlowPlanningContext,
 ): readonly MojoStatement[] | undefined {
   const statements: MojoStatement[] = [];
   for (const node of nodes) {
     if (node === undefined) return undefined;
-    const planned = planStatement(node, function_, context, flow);
+    const planned = planStatement(node, scope, context, flow);
     if (planned === undefined) return undefined;
     statements.push(...planned);
   }
@@ -457,13 +489,13 @@ function loopFlowContext(prefix: readonly MojoStatement[]): MojoFlowPlanningCont
 
 function planStatementBody(
   node: Node,
-  function_: MojoAnalyzedFunction,
+  scope: MojoStatementPlanningScope,
   context: MojoPlanningContext,
   flow: MojoFlowPlanningContext,
 ): readonly MojoStatement[] | undefined {
   return context.program.source.ast.is.IsBlock(node)
-    ? planBlock(node, function_, context, flow)
-    : planStatement(node, function_, context, flow);
+    ? planBlock(node, scope, context, flow)
+    : planStatement(node, scope, context, flow);
 }
 
 function planVariableDeclarationList(

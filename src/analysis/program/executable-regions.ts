@@ -20,9 +20,9 @@ import { providerCallRequiresRaisingConversion } from "./effects.js";
 import { inferMojoExpressionType, isMojoExpressionNode } from "./expression-types.js";
 import type {
   MojoAnalyzedClass,
-  MojoAnalyzedClassField,
   MojoAnalyzedClassOwner,
   MojoAnalyzedFunction,
+  MojoAnalyzedProjectProperty,
   MojoCallSelection,
   MojoElementSelection,
   MojoIterationSelection,
@@ -55,8 +55,13 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly functionByDeclaration: WeakMap<Node, MojoAnalyzedFunction>;
   readonly classByDeclaration: WeakMap<Node, MojoAnalyzedClass>;
   readonly classByTypeId: ReadonlyMap<string, MojoAnalyzedClass>;
-  readonly fieldByDeclaration: WeakMap<Node, MojoAnalyzedClassField>;
+  readonly fieldByDeclaration: WeakMap<Node, MojoAnalyzedProjectProperty>;
 }
+
+export type MojoExecutableRegionAnalysisEnvironment = Omit<
+  MojoExecutableRegionAnalysisInput,
+  "root" | "sourceFile" | "owner"
+>;
 
 export interface MojoExecutableRegionAnalysis {
   readonly dependencies: ReadonlySet<Node>;

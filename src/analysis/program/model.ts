@@ -59,12 +59,27 @@ export interface MojoAnalyzedFunction {
 }
 
 export interface MojoAnalyzedClassField {
+  readonly kind: "instance-field";
   readonly declaration: Node;
   readonly name: string;
   readonly type: MojoTargetTypeRef;
   readonly initializer: Node;
   readonly visibility: "public" | "private";
 }
+
+export interface MojoAnalyzedStaticClassField {
+  readonly kind: "static-field";
+  readonly declaration: Node;
+  readonly sourceFile: SourceFile;
+  readonly sourceName: string;
+  readonly name: string;
+  readonly type: MojoTargetTypeRef;
+  readonly binding: MojoAnalyzedModuleBinding;
+}
+
+export type MojoAnalyzedProjectField =
+  | MojoAnalyzedClassField
+  | MojoAnalyzedStaticClassField;
 
 export interface MojoAnalyzedClass {
   readonly kind: "class";
@@ -79,9 +94,32 @@ export interface MojoAnalyzedClass {
   readonly targetType: MojoTargetTypeRef;
 }
 
-export type MojoAnalyzedDeclaration = MojoAnalyzedFunction | MojoAnalyzedClass;
+export interface MojoAnalyzedEnumMember {
+  readonly kind: "enum-member";
+  readonly declaration: Node;
+  readonly sourceName: string;
+  readonly name: string;
+  readonly value: number;
+  readonly owner: MojoTargetTypeRef;
+}
+
+export interface MojoAnalyzedEnum {
+  readonly kind: "enum";
+  readonly declaration: Node;
+  readonly sourceFile: SourceFile;
+  readonly name: string;
+  readonly targetType: MojoTargetTypeRef;
+  readonly members: readonly MojoAnalyzedEnumMember[];
+}
+
+export type MojoAnalyzedProjectProperty =
+  | MojoAnalyzedProjectField
+  | MojoAnalyzedEnumMember;
+
+export type MojoAnalyzedDeclaration = MojoAnalyzedFunction | MojoAnalyzedClass | MojoAnalyzedEnum;
 
 export interface MojoAnalyzedModuleBinding {
+  readonly kind: "module-binding" | "class-static-field";
   readonly declaration: Node;
   readonly sourceFile: SourceFile;
   readonly sourceName: string;
@@ -89,8 +127,24 @@ export interface MojoAnalyzedModuleBinding {
   readonly declarationKind: "const" | "let" | "var";
   readonly storage: "comptime" | "cell";
   readonly type: MojoTargetTypeRef;
-  readonly initializer?: Node;
+  readonly initializer: Node;
 }
+
+export type MojoModuleInitializationStep =
+  | {
+      readonly kind: "binding";
+      readonly binding: MojoAnalyzedModuleBinding;
+    }
+  | {
+      readonly kind: "statement";
+      readonly statement: Node;
+    }
+  | {
+      readonly kind: "class-static-block";
+      readonly declaration: Node;
+      readonly body: Node;
+      readonly statements: readonly Node[];
+    };
 
 export interface MojoAnalyzedModule {
   readonly sourceFile: SourceFile;
@@ -99,8 +153,9 @@ export interface MojoAnalyzedModule {
   readonly cellName: string;
   readonly initializeName: string;
   readonly bindings: readonly MojoAnalyzedModuleBinding[];
-  readonly executableStatements: readonly Node[];
+  readonly initializationSteps: readonly MojoModuleInitializationStep[];
   readonly asynchronous: boolean;
+  readonly raises: boolean;
   readonly runtimeInitializationRequired: boolean;
 }
 
@@ -143,6 +198,20 @@ export type MojoPropertySelection =
       readonly receiverType: MojoTargetTypeRef;
       readonly accessMode: "read" | "write" | "read-write";
       readonly optionalChain: boolean;
+    }
+  | {
+      readonly kind: "project-static-field";
+      readonly binding: MojoAnalyzedModuleBinding;
+      readonly fieldName: string;
+      readonly fieldType: MojoTargetTypeRef;
+      readonly accessMode: "read" | "write" | "read-write";
+      readonly optionalChain: boolean;
+    }
+  | {
+      readonly kind: "project-enum-member";
+      readonly owner: MojoTargetTypeRef;
+      readonly name: string;
+      readonly resultType: MojoTargetTypeRef;
     }
   | {
       readonly kind: "provider";

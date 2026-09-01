@@ -1,6 +1,7 @@
 import type { Node, SourceFile } from "@tsonic/tsts";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import {
+  ClassStaticBlock_Body,
   Node_Expression,
   Node_Initializer,
   VariableDeclarationList_Declarations,
@@ -16,6 +17,7 @@ import { resolveMojoTargetType } from "../types/resolution.js";
 import type {
   MojoAnalyzedModule,
   MojoAnalyzedModuleBinding,
+  MojoModuleInitializationStep,
 } from "./model.js";
 
 export interface MojoModuleBindingAnalysisInput {
@@ -49,7 +51,7 @@ export function analyzeMojoModuleBindings(
     }
     const semantics = input.source.semantics.forFile(sourceFile);
     const bindings: MojoAnalyzedModuleBinding[] = [];
-    const executableStatements: Node[] = [];
+    const initializationSteps: MojoModuleInitializationStep[] = [];
     for (const statement of ast.statements(sourceFile)) {
       if (statement === undefined) {
         input.diagnostics.push(diagnostic(
@@ -82,7 +84,6 @@ export function analyzeMojoModuleBindings(
           ));
           continue;
         }
-        let runtimeStatement = false;
         for (const declaration of declarations as readonly Node[]) {
           const nameNode = ast.name(declaration);
           if (nameNode === undefined || !ast.is.IsIdentifier(nameNode)) {
@@ -94,13 +95,21 @@ export function analyzeMojoModuleBindings(
             continue;
           }
           const initializer = Node_Initializer(ast, declaration);
+          if (initializer === undefined) {
+            input.diagnostics.push(diagnostic(
+              "MOJO_MODULE_BINDING_INITIALIZER_REQUIRED",
+              "A runtime module binding requires an explicit initializer; Mojo cannot silently replace TypeScript undefined with a native default.",
+              declaration,
+            ));
+            continue;
+          }
           const authoredTypeNode = ast.typeNode(declaration);
           const selectedType = semantics.declarations.declaredValueType(declaration) ??
             semantics.declarations.declaredType(declaration) ??
             (authoredTypeNode === undefined
               ? undefined
               : semantics.types.authoredType(authoredTypeNode)) ??
-            (initializer === undefined ? undefined : semantics.types.expressionType(initializer));
+            semantics.types.expressionType(initializer);
           const resolved = resolveMojoTargetType(
             selectedType,
             authoredTypeNode,
@@ -123,11 +132,12 @@ export function analyzeMojoModuleBindings(
           }
           const sourceName = ast.text(nameNode);
           const name = input.allocateModuleName(sourceFile, sourceName);
-          const storage = declarationKind === "const" && initializer !== undefined &&
+          const storage = declarationKind === "const" &&
               isNativeComptimeInitializer(initializer, resolved.type, input.source)
             ? "comptime"
             : "cell";
           const binding = Object.freeze({
+            kind: "module-binding" as const,
             declaration,
             sourceFile,
             sourceName,
@@ -135,19 +145,22 @@ export function analyzeMojoModuleBindings(
             declarationKind,
             storage,
             type: resolved.type,
-            ...(initializer === undefined ? {} : { initializer }),
+            initializer,
           }) satisfies MojoAnalyzedModuleBinding;
           bindings.push(binding);
           input.bindName(declaration, name);
           input.bindSourceFile(declaration, sourceFile);
           input.bindType(declaration, resolved.type);
-          runtimeStatement = runtimeStatement || storage === "cell";
+          if (storage === "cell") {
+            initializationSteps.push(Object.freeze({ kind: "binding", binding }));
+          }
         }
-        if (runtimeStatement) executableStatements.push(statement);
         continue;
       }
       if (ast.is.IsExpressionStatement(statement)) {
-        if (Node_Expression(ast, statement) !== undefined) executableStatements.push(statement);
+        if (Node_Expression(ast, statement) !== undefined) {
+          initializationSteps.push(Object.freeze({ kind: "statement", statement }));
+        }
         continue;
       }
       if (ast.is.IsExportAssignment(statement)) {
@@ -183,6 +196,7 @@ export function analyzeMojoModuleBindings(
         }
         const name = input.allocateModuleName(sourceFile, "defaultExport");
         const binding = Object.freeze({
+          kind: "module-binding" as const,
           declaration: statement,
           sourceFile,
           sourceName: "default",
@@ -196,7 +210,115 @@ export function analyzeMojoModuleBindings(
         input.bindName(statement, name);
         input.bindSourceFile(statement, sourceFile);
         input.bindType(statement, resolved.type);
-        executableStatements.push(statement);
+        initializationSteps.push(Object.freeze({ kind: "binding", binding }));
+        continue;
+      }
+      if (ast.is.IsClassDeclaration(statement)) {
+        const definition = input.projectTypes.definitionForDeclaration(statement);
+        if (definition?.kind !== "class") {
+          input.diagnostics.push(diagnostic(
+            "MOJO_CLASS_STATIC_OWNER_UNRESOLVED",
+            "Class static initialization requires one exact project-class owner.",
+            statement,
+          ));
+          continue;
+        }
+        const members = ast.members(statement);
+        if (members.some((member) => member === undefined)) {
+          input.diagnostics.push(diagnostic(
+            "MOJO_CLASS_STATIC_MEMBER_EVIDENCE_INCOMPLETE",
+            "Class static initialization requires a dense member list.",
+            statement,
+          ));
+          continue;
+        }
+        for (const member of members as readonly Node[]) {
+          if (ast.is.IsPropertyDeclaration(member) && ast.hasModifierKind(member, "static")) {
+            const nameNode = ast.name(member);
+            const initializer = Node_Initializer(ast, member);
+            if (nameNode === undefined ||
+              (!ast.is.IsIdentifier(nameNode) && !ast.is.IsPrivateIdentifier(nameNode))) {
+              input.diagnostics.push(diagnostic(
+                "MOJO_CLASS_STATIC_FIELD_NAME_UNSUPPORTED",
+                "Class static fields require one exact identifier or private-identifier name.",
+                member,
+              ));
+              continue;
+            }
+            if (initializer === undefined) {
+              input.diagnostics.push(diagnostic(
+                "MOJO_CLASS_STATIC_FIELD_INITIALIZER_REQUIRED",
+                "A class static field requires an explicit initializer; Mojo cannot silently replace TypeScript undefined with a native default.",
+                member,
+              ));
+              continue;
+            }
+            const authoredTypeNode = ast.typeNode(member);
+            const selectedType = semantics.declarations.declaredValueType(member) ??
+              semantics.declarations.declaredType(member) ??
+              (authoredTypeNode === undefined ? undefined : semantics.types.authoredType(authoredTypeNode)) ??
+              semantics.types.expressionType(initializer);
+            const resolved = resolveMojoTargetType(selectedType, authoredTypeNode, {
+              ast,
+              semantics,
+              sourceFacts: input.source.sourceFacts,
+              providerSemantics: input.providerSemantics,
+              projectTypes: input.projectTypes,
+              jsEnabled: input.jsEnabled,
+            });
+            if (resolved.kind === "unsupported") {
+              input.diagnostics.push(diagnostic(
+                "MOJO_TARGET_TYPE_UNSUPPORTED",
+                `Selected class static field type cannot be represented exactly in Mojo: ${resolved.reason}.`,
+                member,
+              ));
+              continue;
+            }
+            const sourceName = ast.text(nameNode);
+            const name = input.allocateModuleName(
+              sourceFile,
+              `${definition.targetName}_${sourceName.replace(/^#/u, "private_")}`,
+            );
+            const binding = Object.freeze({
+              kind: "class-static-field" as const,
+              declaration: member,
+              sourceFile,
+              sourceName,
+              name,
+              declarationKind: "let" as const,
+              storage: "cell" as const,
+              type: resolved.type,
+              initializer,
+            }) satisfies MojoAnalyzedModuleBinding;
+            bindings.push(binding);
+            input.bindName(member, name);
+            input.bindSourceFile(member, sourceFile);
+            input.bindType(member, resolved.type);
+            initializationSteps.push(Object.freeze({ kind: "binding", binding }));
+            continue;
+          }
+          if (ast.kindName(member) === "KindClassStaticBlockDeclaration") {
+            const body = ClassStaticBlock_Body(ast, member);
+            const statements = body === undefined ? undefined : ast.statements(body);
+            if (body === undefined || statements === undefined ||
+              statements.some((entry) => entry === undefined)) {
+              input.diagnostics.push(diagnostic(
+                "MOJO_CLASS_STATIC_BLOCK_EVIDENCE_INCOMPLETE",
+                "A class static block requires one exact dense statement body.",
+                member,
+              ));
+              continue;
+            }
+            if (statements.length > 0) {
+              initializationSteps.push(Object.freeze({
+                kind: "class-static-block",
+                declaration: member,
+                body,
+                statements: Object.freeze(statements as readonly Node[]),
+              }));
+            }
+          }
+        }
       }
     }
     analyzed.push(Object.freeze({
@@ -206,9 +328,10 @@ export function analyzeMojoModuleBindings(
       cellName: input.allocateModuleName(sourceFile, "tsonicModuleState"),
       initializeName: input.allocateModuleName(sourceFile, "initializeTsonicModule"),
       bindings: Object.freeze(bindings),
-      executableStatements: Object.freeze(executableStatements),
+      initializationSteps: Object.freeze(initializationSteps),
       asynchronous: definition.topLevelAwait,
-      runtimeInitializationRequired: executableStatements.length > 0,
+      raises: false,
+      runtimeInitializationRequired: initializationSteps.length > 0,
     }));
   }
   return Object.freeze(analyzed);

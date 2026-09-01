@@ -19,6 +19,7 @@ import { planMojoFunctionStatements } from "./statements.js";
 import { registerMojoTypeImports } from "./types/render.js";
 import type {
   MojoAnalyzedClass,
+  MojoAnalyzedEnum,
   MojoAnalyzedFunction,
   MojoTargetProgram,
 } from "../../analysis/program/model.js";
@@ -83,6 +84,10 @@ function planSourceModule(
     if (declaration.kind === "class") {
       const planned = planClass(declaration, context);
       if (planned !== undefined) declarations.push(...planned);
+      continue;
+    }
+    if (declaration.kind === "enum") {
+      declarations.push(planEnum(declaration));
       continue;
     }
     const planned = planFunction(declaration, context);
@@ -243,7 +248,7 @@ function planBinaryEntry(
       parameters: Object.freeze([]),
       resultType: Object.freeze({ kind: "unit" as const }),
       asynchronous: false,
-      raises: function_.raises || analyzedEntry.runtimeInitializationRequired,
+      raises: function_.raises || analyzedEntry.raises,
       statements: Object.freeze([
         ...(analyzedEntry.runtimeInitializationRequired
           ? [Object.freeze({
@@ -443,6 +448,54 @@ function planClass(
     methods: Object.freeze(methods),
   });
   return Object.freeze([state, wrapper]);
+}
+
+function planEnum(enum_: MojoAnalyzedEnum): MojoStructDeclaration {
+  const enumType = enum_.targetType;
+  const int64Type: MojoTargetTypeRef = Object.freeze({
+    kind: "source-primitive",
+    name: "int64",
+  });
+  return Object.freeze({
+    kind: "struct",
+    name: enum_.name,
+    genericParameters: Object.freeze([]),
+    conformances: Object.freeze([
+      Object.freeze({
+        kind: "target-named",
+        id: "mojo.builtin.Equatable",
+        modulePath: Object.freeze([]),
+        name: "Equatable",
+      }),
+      Object.freeze({
+        kind: "target-named",
+        id: "mojo.builtin.TrivialRegisterPassable",
+        modulePath: Object.freeze([]),
+        name: "TrivialRegisterPassable",
+      }),
+    ]),
+    fields: Object.freeze([
+      Object.freeze({
+        name: "value",
+        type: int64Type,
+        compileTime: false,
+      }),
+      ...enum_.members.map((member) => Object.freeze({
+        name: member.name,
+        type: enumType,
+        compileTime: true,
+        initializer: Object.freeze({
+          kind: "construct" as const,
+          type: enumType,
+          arguments: Object.freeze([Object.freeze({
+            value: Object.freeze({ kind: "number-literal" as const, text: String(member.value) }),
+          })]),
+        }),
+      })),
+    ]),
+    methods: Object.freeze([]),
+    decorators: Object.freeze(["fieldwise_init"]),
+  });
 }
 
 function genericParameters(

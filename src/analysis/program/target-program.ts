@@ -13,6 +13,7 @@ import {
 import { createMojoNameAllocator } from "../names/identifiers.js";
 import { analyzeMojoFunctionSignature } from "../callables/signatures.js";
 import { analyzeMojoClass } from "../declarations/classes.js";
+import { analyzeMojoEnum } from "../declarations/enums.js";
 import { createMojoConversionIndex } from "../conversions/classification.js";
 import { recordMojoFunctionConversionUses } from "../conversions/uses.js";
 import { analyzeMojoRuntimePackages } from "../runtime/references.js";
@@ -22,9 +23,10 @@ import {
 } from "./effects.js";
 import type {
   MojoAnalyzedClass,
-  MojoAnalyzedClassField,
   MojoAnalyzedDeclaration,
+  MojoAnalyzedEnum,
   MojoAnalyzedFunction,
+  MojoAnalyzedProjectProperty,
   MojoCallSelection,
   MojoElementSelection,
   MojoIterationSelection,
@@ -37,10 +39,15 @@ import type {
 import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import { validateMojoFunctionSyntax } from "./syntax-validation.js";
-import { walkSourceTree } from "./traversal.js";
 import { analyzeMojoSourceModules } from "../modules/index.js";
 import { analyzeMojoModuleBindings } from "./module-bindings.js";
 import { analyzeMojoExecutableRegion } from "./executable-regions.js";
+import type { MojoExecutableRegionAnalysisEnvironment } from "./executable-regions.js";
+import { allocateMojoLocalBindings } from "./local-bindings.js";
+import {
+  finalizeMojoModuleEffects,
+} from "./module-effects.js";
+import type { MojoAnalyzedModuleRegionFacts } from "./module-effects.js";
 
 export function analyzeMojoTargetProgram(
   request: MojoTargetAnalysisRequest,
@@ -78,7 +85,7 @@ export function analyzeMojoTargetProgram(
   const functionByDeclaration = new WeakMap<Node, MojoAnalyzedFunction>();
   const classByDeclaration = new WeakMap<Node, MojoAnalyzedClass>();
   const classByTypeId = new Map<string, MojoAnalyzedClass>();
-  const fieldByDeclaration = new WeakMap<Node, MojoAnalyzedClassField>();
+  const fieldByDeclaration = new WeakMap<Node, MojoAnalyzedProjectProperty>();
   const moduleBindingByDeclaration = new WeakMap<
     Node,
     import("./model.js").MojoAnalyzedModuleBinding
@@ -110,6 +117,11 @@ export function analyzeMojoTargetProgram(
     readonly sourceFile: SourceFile;
     readonly name: string;
     readonly stateName: string;
+  }[] = [];
+  const enumDrafts: {
+    readonly declaration: Node;
+    readonly sourceFile: SourceFile;
+    readonly name: string;
   }[] = [];
 
   for (const sourceFile of sourceFiles) {
@@ -157,12 +169,21 @@ export function analyzeMojoTargetProgram(
     },
   });
   for (const module of analyzedModules) {
-    for (const binding of module.bindings) moduleBindingByDeclaration.set(binding.declaration, binding);
+    for (const binding of module.bindings) {
+      moduleBindingByDeclaration.set(binding.declaration, binding);
+      if (binding.kind === "class-static-field") {
+        fieldByDeclaration.set(binding.declaration, Object.freeze({
+          kind: "static-field",
+          declaration: binding.declaration,
+          sourceFile: binding.sourceFile,
+          sourceName: binding.sourceName,
+          name: binding.name,
+          type: binding.type,
+          binding,
+        }));
+      }
+    }
   }
-  const analyzedModuleBySourceFile = new WeakMap(
-    analyzedModules.map((module) => [module.sourceFile, module] as const),
-  );
-
   for (const sourceFile of sourceFiles) {
     for (const statement of ast.statements(sourceFile)) {
       if (statement === undefined || ast.is.IsImportDeclaration(statement) ||
@@ -191,6 +212,22 @@ export function analyzeMojoTargetProgram(
           name,
           stateName: globalNames(sourceFile)(`${name}State`),
         }));
+        continue;
+      }
+      if (ast.is.IsEnumDeclaration(statement)) {
+        const nameNode = ast.name(statement);
+        if (nameNode === undefined || !ast.is.IsIdentifier(nameNode)) {
+          diagnostics.push(diagnostic(
+            "MOJO_ENUM_SHAPE_UNSUPPORTED",
+            "Mojo enums require one exact named enum declaration.",
+            statement,
+          ));
+          continue;
+        }
+        const name = globalNameByDeclaration.get(statement) ?? globalNames(sourceFile)(ast.text(nameNode));
+        bindingNames.set(statement, name);
+        bindingSourceFiles.set(statement, sourceFile);
+        enumDrafts.push(Object.freeze({ declaration: statement, sourceFile, name }));
         continue;
       }
       if (!ast.is.IsFunctionDeclaration(statement)) {
@@ -226,6 +263,7 @@ export function analyzeMojoTargetProgram(
 
   const functions: MojoAnalyzedFunction[] = [];
   const classes: MojoAnalyzedClass[] = [];
+  const enums: MojoAnalyzedEnum[] = [];
   for (const draft of functionDrafts) {
     const function_ = analyzeMojoFunctionSignature({
       source: input.source,
@@ -247,7 +285,7 @@ export function analyzeMojoTargetProgram(
     for (const parameter of function_.parameters) {
       bindingSourceFiles.set(parameter.declaration, draft.sourceFile);
     }
-    allocateLocalBindings(
+    allocateMojoLocalBindings(
       draft.body,
       draft.localNames,
       bindingNames,
@@ -272,7 +310,7 @@ export function analyzeMojoTargetProgram(
       diagnostics,
       createNameAllocator,
       allocateLocalBindings(body, allocate) {
-        allocateLocalBindings(body, allocate, bindingNames, ast, diagnostics, bindingSourceFiles);
+        allocateMojoLocalBindings(body, allocate, bindingNames, ast, diagnostics, bindingSourceFiles);
       },
     });
     if (analyzed === undefined) continue;
@@ -295,32 +333,59 @@ export function analyzeMojoTargetProgram(
     }
   }
 
+  for (const draft of enumDrafts) {
+    const analyzed = analyzeMojoEnum({
+      source: input.source,
+      projectTypes,
+      declaration: draft.declaration,
+      sourceFile: draft.sourceFile,
+      name: draft.name,
+      allocateMemberName: createNameAllocator(),
+      bindName(declaration, name) {
+        bindingNames.set(declaration, name);
+        bindingSourceFiles.set(declaration, draft.sourceFile);
+      },
+      diagnostics,
+    });
+    if (analyzed === undefined) continue;
+    enums.push(analyzed);
+    bindingTypes.set(draft.declaration, analyzed.targetType);
+    for (const member of analyzed.members) {
+      fieldByDeclaration.set(member.declaration, member);
+      bindingTypes.set(member.declaration, analyzed.targetType);
+    }
+  }
+
+  const executableEnvironment: MojoExecutableRegionAnalysisEnvironment = {
+    source: input.source,
+    providerSemantics,
+    projectTypes,
+    modules,
+    jsEnabled,
+    diagnostics,
+    bindingNames,
+    bindingSourceFiles,
+    bindingTypes,
+    expressionTypes,
+    callSelections,
+    propertySelections,
+    elementSelections,
+    iterationSelections,
+    valueSelections,
+    conversions,
+    functionByDeclaration,
+    classByDeclaration,
+    classByTypeId,
+    fieldByDeclaration,
+  };
+
   for (const class_ of classes) {
     for (const field of class_.fields) {
       analyzeMojoExecutableRegion({
         root: field.initializer,
         sourceFile: class_.sourceFile,
         owner: Object.freeze({ name: class_.name, stateName: class_.stateName, type: class_.targetType }),
-        source: input.source,
-        providerSemantics,
-        projectTypes,
-        modules,
-        jsEnabled,
-        diagnostics,
-        bindingNames,
-        bindingSourceFiles,
-        bindingTypes,
-        expressionTypes,
-        callSelections,
-        propertySelections,
-        elementSelections,
-        iterationSelections,
-        valueSelections,
-        conversions,
-        functionByDeclaration,
-        classByDeclaration,
-        classByTypeId,
-        fieldByDeclaration,
+        ...executableEnvironment,
       });
       const actual = expressionTypes.get(field.initializer);
       if (actual === undefined) {
@@ -338,53 +403,54 @@ export function analyzeMojoTargetProgram(
     }
   }
 
+  const moduleRegionFacts = new WeakMap<
+    import("./model.js").MojoAnalyzedModule,
+    MojoAnalyzedModuleRegionFacts
+  >();
   for (const module of analyzedModules) {
-    for (const statement of module.executableStatements) {
-      analyzeMojoExecutableRegion({
-        root: statement,
+    const dependencies = new Set<Node>();
+    let directModuleRaises = false;
+    for (const step of module.initializationSteps) {
+      if (step.kind === "class-static-block") {
+        allocateMojoLocalBindings(
+          step.body,
+          createNameAllocator(),
+          bindingNames,
+          ast,
+          diagnostics,
+          bindingSourceFiles,
+        );
+      }
+      const root = step.kind === "binding" ? step.binding.initializer
+        : step.kind === "statement" ? step.statement
+        : step.body;
+      const region = analyzeMojoExecutableRegion({
+        root,
         sourceFile: module.sourceFile,
-        source: input.source,
-        providerSemantics,
-        projectTypes,
-        modules,
-        jsEnabled,
-        diagnostics,
-        bindingNames,
-        bindingSourceFiles,
-        bindingTypes,
-        expressionTypes,
-        callSelections,
-        propertySelections,
-        elementSelections,
-        iterationSelections,
-        valueSelections,
-        conversions,
-        functionByDeclaration,
-        classByDeclaration,
-        classByTypeId,
-        fieldByDeclaration,
+        ...executableEnvironment,
       });
-    }
-    for (const binding of module.bindings) {
-      if (binding.initializer === undefined) continue;
-      const actual = expressionTypes.get(binding.initializer);
+      for (const dependency of region.dependencies) dependencies.add(dependency);
+      directModuleRaises = directModuleRaises || region.raises;
+      if (step.kind !== "binding") continue;
+      const actual = expressionTypes.get(step.binding.initializer);
       if (actual === undefined) {
         diagnostics.push(diagnostic(
           "MOJO_MODULE_INITIALIZER_CARRIER_NOT_CLOSED",
-          `Top-level binding '${binding.sourceName}' has no sealed initializer carrier.`,
-          binding.initializer,
+          `Module binding '${step.binding.sourceName}' has no sealed initializer carrier.`,
+          step.binding.initializer,
         ));
         continue;
       }
-      const conversion = conversions.record(binding.initializer, actual, binding.type);
+      const conversion = conversions.record(step.binding.initializer, actual, step.binding.type);
       if (conversion.kind === "unsupported") {
         diagnostics.push(diagnostic(
           "MOJO_VALUE_CONVERSION_UNPROVEN",
           conversion.reason,
-          binding.initializer,
+          step.binding.initializer,
         ));
       }
     }
+    moduleRegionFacts.set(module, Object.freeze({ dependencies, directRaises: directModuleRaises }));
   }
 
   for (const function_ of functions) {
@@ -392,26 +458,7 @@ export function analyzeMojoTargetProgram(
       root: function_.body,
       sourceFile: function_.sourceFile,
       ...(function_.owner === undefined ? {} : { owner: function_.owner }),
-      source: input.source,
-      providerSemantics,
-      projectTypes,
-      modules,
-      jsEnabled,
-      diagnostics,
-      bindingNames,
-      bindingSourceFiles,
-      bindingTypes,
-      expressionTypes,
-      callSelections,
-      propertySelections,
-      elementSelections,
-      iterationSelections,
-      valueSelections,
-      conversions,
-      functionByDeclaration,
-      classByDeclaration,
-      classByTypeId,
-      fieldByDeclaration,
+      ...executableEnvironment,
     });
     projectDependencies.set(function_.declaration, new Set(region.dependencies));
     recordMojoFunctionConversionUses(
@@ -444,6 +491,15 @@ export function analyzeMojoTargetProgram(
     constructors: Object.freeze(class_.constructors.map((constructor) =>
       finalizedByDeclaration.get(constructor.declaration) ?? constructor)),
   }));
+  const finalizedModules = finalizeMojoModuleEffects(
+    analyzedModules,
+    modules,
+    moduleRegionFacts,
+    finalizedByDeclaration,
+  );
+  const finalizedModuleBySourceFile = new WeakMap(
+    finalizedModules.map((module) => [module.sourceFile, module] as const),
+  );
 
   for (const function_ of finalizedFunctions) {
     validateMojoFunctionSyntax(
@@ -492,7 +548,7 @@ export function analyzeMojoTargetProgram(
       return iterationSelections.get(statement);
     },
     moduleForSourceFile(sourceFile: SourceFile) {
-      return analyzedModuleBySourceFile.get(sourceFile);
+      return finalizedModuleBySourceFile.get(sourceFile);
     },
     moduleBinding(referenceOrDeclaration: Node) {
       const direct = moduleBindingByDeclaration.get(referenceOrDeclaration);
@@ -502,51 +558,20 @@ export function analyzeMojoTargetProgram(
     },
   });
   const topLevelFunctions = finalizedFunctions.filter((function_) => function_.kind === "function");
-  const declarations: MojoAnalyzedDeclaration[] = [...topLevelFunctions, ...finalizedClasses];
+  const declarations: MojoAnalyzedDeclaration[] = [
+    ...topLevelFunctions,
+    ...finalizedClasses,
+    ...enums,
+  ];
   return resolvedTargetStage(Object.freeze({
     configuration,
     source: targetSourceSyntaxProgram(input.source),
     projectTypes,
     modules,
-    analyzedModules,
+    analyzedModules: finalizedModules,
     declarations: Object.freeze(declarations),
     queries,
     runtimePackages: analyzeMojoRuntimePackages(input.runtimeReferences),
     reservedNames: Object.freeze([...reservedNames].sort((left, right) => left.localeCompare(right, "en"))),
   }));
-}
-
-function allocateLocalBindings(
-  body: Node,
-  allocate: (name: string) => string,
-  bindings: WeakMap<Node, string>,
-  ast: import("@tsonic/tsts").AstReader,
-  diagnostics: TargetDiagnostic[],
-  bindingSourceFiles: WeakMap<Node, SourceFile>,
-): void {
-  walkSourceTree(body, ast, (node): void => {
-    if (!ast.is.IsVariableDeclaration(node)) return;
-    const nameNode = ast.name(node);
-    if (nameNode === undefined || !ast.is.IsIdentifier(nameNode)) {
-      diagnostics.push(diagnostic(
-        "MOJO_BINDING_PATTERN_UNSUPPORTED",
-        "Mojo foundation currently requires simple identifier variable bindings.",
-        node,
-      ));
-      return;
-    }
-    bindings.set(node, allocate(ast.text(nameNode)));
-    const sourceFile = ast.getSourceFile(node);
-    if (sourceFile !== undefined) bindingSourceFiles.set(node, sourceFile);
-  }, (node, root) => node === root || !isCallableBoundary(node, ast));
-}
-
-function isCallableBoundary(node: Node, ast: import("@tsonic/tsts").AstReader): boolean {
-  return ast.is.IsFunctionDeclaration(node) ||
-    ast.is.IsFunctionExpression(node) ||
-    ast.is.IsArrowFunction(node) ||
-    ast.is.IsMethodDeclaration(node) ||
-    ast.is.IsGetAccessorDeclaration(node) ||
-    ast.is.IsSetAccessorDeclaration(node) ||
-    ast.is.IsConstructorDeclaration(node);
 }

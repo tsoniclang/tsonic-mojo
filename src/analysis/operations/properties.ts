@@ -3,7 +3,7 @@ import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import { classifyMojoValueConversion } from "../conversions/classification.js";
 import type { MojoConversionIndex } from "../conversions/classification.js";
-import type { MojoAnalyzedClassField, MojoPropertySelection } from "../program/model.js";
+import type { MojoAnalyzedProjectProperty, MojoPropertySelection } from "../program/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/provider/equality.js";
 import { providerOwnerMatches } from "../types/resolution.js";
@@ -20,16 +20,9 @@ export type MojoPropertyAnalysis =
 
 export function analyzeMojoProjectProperty(
   source: ResolvedSourcePropertyAccessInfo,
-  fieldByDeclaration: WeakMap<Node, MojoAnalyzedClassField>,
+  fieldByDeclaration: WeakMap<Node, MojoAnalyzedProjectProperty>,
   receiverType: MojoTargetTypeRef | undefined,
 ): MojoPropertyAnalysis {
-  if (receiverType === undefined) {
-    return {
-      kind: "unsupported",
-      code: "MOJO_PROJECT_PROPERTY_RECEIVER_NOT_CLOSED",
-      reason: "Selected project-property receiver has no exact non-null Mojo carrier.",
-    };
-  }
   if (source.callCallee) return { kind: "not-project-field" };
   if (source.accessMode === "delete") {
     return {
@@ -45,7 +38,7 @@ export function analyzeMojoProjectProperty(
   ].map((declaration) => declaration === undefined
     ? undefined
     : fieldByDeclaration.get(declaration))
-    .filter((field): field is MojoAnalyzedClassField => field !== undefined);
+    .filter((field): field is MojoAnalyzedProjectProperty => field !== undefined);
   const unique = [...new Set(candidates)];
   if (unique.length === 0) return { kind: "not-project-field" };
   if (unique.length !== 1) {
@@ -56,6 +49,39 @@ export function analyzeMojoProjectProperty(
     };
   }
   const field = unique[0]!;
+  if (field.kind === "enum-member") {
+    return {
+      kind: "resolved",
+      expressionType: field.owner,
+      selection: Object.freeze({
+        kind: "project-enum-member",
+        owner: field.owner,
+        name: field.name,
+        resultType: field.owner,
+      }),
+    };
+  }
+  if (field.kind === "static-field") {
+    return {
+      kind: "resolved",
+      expressionType: field.type,
+      selection: Object.freeze({
+        kind: "project-static-field",
+        binding: field.binding,
+        fieldName: field.name,
+        fieldType: field.type,
+        accessMode: source.accessMode,
+        optionalChain: source.optionalChain,
+      }),
+    };
+  }
+  if (receiverType === undefined) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_PROJECT_PROPERTY_RECEIVER_NOT_CLOSED",
+      reason: "Selected project-property receiver has no exact non-null Mojo carrier.",
+    };
+  }
   return {
     kind: "resolved",
     expressionType: field.type,

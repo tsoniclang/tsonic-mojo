@@ -149,3 +149,66 @@ test("printer renders generated generic values from typed syntax", () => {
     ].join("\n"),
   );
 });
+
+test("printer emits closed numeric enums as native compile-time value families", () => {
+  const enumType = {
+    kind: "target-named",
+    id: "fixture.Mode",
+    modulePath: ["fixture"],
+    name: "Mode",
+  };
+  const module = {
+    modulePath: ["fixture"],
+    imports: [],
+    declarations: [{
+      kind: "struct",
+      name: "Mode",
+      genericParameters: [],
+      conformances: [
+        { kind: "target-named", id: "mojo.builtin.Equatable", modulePath: [], name: "Equatable" },
+        {
+          kind: "target-named",
+          id: "mojo.builtin.TrivialRegisterPassable",
+          modulePath: [],
+          name: "TrivialRegisterPassable",
+        },
+      ],
+      fields: [
+        { name: "value", type: { kind: "source-primitive", name: "int64" }, compileTime: false },
+        {
+          name: "Off",
+          type: enumType,
+          compileTime: true,
+          initializer: {
+            kind: "construct",
+            type: enumType,
+            arguments: [{ value: { kind: "number-literal", text: "0" } }],
+          },
+        },
+        {
+          name: "On",
+          type: enumType,
+          compileTime: true,
+          initializer: {
+            kind: "construct",
+            type: enumType,
+            arguments: [{ value: { kind: "number-literal", text: "4" } }],
+          },
+        },
+      ],
+      methods: [],
+      decorators: ["fieldwise_init"],
+    }],
+  };
+  assert.equal(
+    printMojoModule(module),
+    [
+      "@fieldwise_init",
+      "struct Mode(Equatable, TrivialRegisterPassable):",
+      "    var value: Int64",
+      "    comptime Off: Mode = Mode(0)",
+      "    comptime On: Mode = Mode(4)",
+      "",
+    ].join("\n"),
+  );
+});

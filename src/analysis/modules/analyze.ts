@@ -133,6 +133,7 @@ function diagnoseRuntimeCycles(
 ): void {
   const definitionBySourceFile = new Map(definitions.map((definition) =>
     [definition.sourceFile, definition] as const));
+  const runtimeRequired = transitiveRuntimeInitialization(definitions, definitionBySourceFile);
   let nextIndex = 0;
   const indexes = new Map<MojoSourceModuleDefinition, number>();
   const lowLinks = new Map<MojoSourceModuleDefinition, number>();
@@ -164,7 +165,7 @@ function diagnoseRuntimeCycles(
     }
     const cyclic = component.length > 1 || component[0]!.dependencies.some((dependency) =>
       dependency.target.sourceFile === component[0]!.sourceFile);
-    if (!cyclic || !component.some((member) => member.runtimeInitializationRequired)) return;
+    if (!cyclic || !component.some((member) => runtimeRequired.get(member) === true)) return;
     issues.push(issue(
       "MOJO_RUNTIME_MODULE_CYCLE_UNSUPPORTED",
       `Runtime ES module cycle '${component.map((member) => member.relativeSourcePath).sort().join(" -> ")}' requires live-binding and temporal-dead-zone semantics that are not represented by the pinned Mojo compiler.`,
@@ -172,6 +173,29 @@ function diagnoseRuntimeCycles(
     ));
   };
   for (const definition of definitions) if (!indexes.has(definition)) visit(definition);
+}
+
+function transitiveRuntimeInitialization(
+  definitions: readonly MojoSourceModuleDefinition[],
+  definitionBySourceFile: ReadonlyMap<SourceFile, MojoSourceModuleDefinition>,
+): ReadonlyMap<MojoSourceModuleDefinition, boolean> {
+  const required = new Map(definitions.map((definition) =>
+    [definition, definition.runtimeInitializationRequired] as const));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const definition of definitions) {
+      if (required.get(definition) === true) continue;
+      const dependencyRequiresRuntime = definition.dependencies.some((dependency) => {
+        const target = definitionBySourceFile.get(dependency.target.sourceFile);
+        return target !== undefined && required.get(target) === true;
+      });
+      if (!dependencyRequiresRuntime) continue;
+      required.set(definition, true);
+      changed = true;
+    }
+  }
+  return required;
 }
 
 function normalizePath(value: string): string {

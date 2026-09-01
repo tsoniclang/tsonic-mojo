@@ -1,8 +1,5 @@
 import {
   Node_Expression,
-  Node_Initializer,
-  VariableDeclarationList_Declarations,
-  VariableStatement_DeclarationList,
 } from "@tsonic/target-api/source";
 import type {
   MojoAnalyzedModule,
@@ -33,6 +30,7 @@ import {
 } from "./expressions.js";
 import { mojoModuleBindingSlot, mojoModuleStatePointerExpression } from "./module-bindings.js";
 import { registerMojoTypeImports } from "./types/render.js";
+import { planMojoStatementRegion } from "./statements.js";
 
 export function planMojoModuleState(
   program: MojoTargetProgram,
@@ -188,8 +186,12 @@ function planModuleInitializer(
       }),
     }));
   }
-  for (const statement of module.executableStatements) {
-    const planned = planModuleStatement(statement, module, context);
+  for (const step of module.initializationSteps) {
+    const planned = step.kind === "binding"
+      ? planModuleBindingInitialization(step.binding, context)
+      : step.kind === "statement"
+        ? planModuleStatement(step.statement, context)
+        : planMojoStatementRegion(step.statements, context);
     if (planned === undefined) return undefined;
     initialization.push(...planned);
   }
@@ -207,7 +209,7 @@ function planModuleInitializer(
     parameters: Object.freeze([]),
     resultType: Object.freeze({ kind: "unit" }),
     asynchronous: false,
-    raises: true,
+    raises: module.raises,
     statements: Object.freeze([
       Object.freeze({ kind: "variable", name: stateName, initializer: statePointer }),
       Object.freeze({
@@ -232,57 +234,11 @@ function planModuleInitializer(
 
 function planModuleStatement(
   statement: import("@tsonic/tsts").Node,
-  module: MojoAnalyzedModule,
   context: MojoPlanningContext,
 ): readonly MojoStatement[] | undefined {
   const { ast } = context.program.source;
-  if (ast.is.IsVariableStatement(statement)) {
-    const declarations = VariableDeclarationList_Declarations(
-      ast,
-      VariableStatement_DeclarationList(ast, statement),
-    );
-    if (declarations === undefined || declarations.some((declaration) => declaration === undefined)) return undefined;
-    const result: MojoStatement[] = [];
-    for (const declaration of declarations as readonly import("@tsonic/tsts").Node[]) {
-      const binding = context.program.queries.moduleBinding(declaration);
-      if (binding === undefined || binding.storage !== "cell") continue;
-      const initializer = Node_Initializer(ast, declaration);
-      if (initializer === undefined) continue;
-      const value = planMojoValue(initializer, context, binding.type);
-      const slot = mojoModuleBindingSlot(binding, context);
-      if (value === undefined || slot === undefined) return undefined;
-      registerMojoTypeImports(binding.type, context);
-      result.push(...value.before, Object.freeze({
-        kind: "assignment",
-        operator: "=",
-        left: slot,
-        right: Object.freeze({
-          kind: "construct",
-          type: optionalType(binding.type),
-          arguments: Object.freeze([Object.freeze({ value: value.value })]),
-        }),
-      }));
-    }
-    return Object.freeze(result);
-  }
   const sourceExpression = Node_Expression(ast, statement);
   if (sourceExpression === undefined) return Object.freeze([]);
-  if (ast.is.IsExportAssignment(statement)) {
-    const binding = module.bindings.find((candidate) => candidate.declaration === statement);
-    const value = binding === undefined ? undefined : planMojoValue(sourceExpression, context, binding.type);
-    const slot = binding === undefined ? undefined : mojoModuleBindingSlot(binding, context);
-    if (binding === undefined || value === undefined || slot === undefined) return undefined;
-    return Object.freeze([...value.before, Object.freeze({
-      kind: "assignment",
-      operator: "=",
-      left: slot,
-      right: Object.freeze({
-        kind: "construct",
-        type: optionalType(binding.type),
-        arguments: Object.freeze([Object.freeze({ value: value.value })]),
-      }),
-    })]);
-  }
   const assignment = planMojoAssignment(sourceExpression, context);
   if (assignment !== undefined) return Object.freeze([
     ...assignment.before,
@@ -299,11 +255,31 @@ function planModuleStatement(
     : Object.freeze([...value.before, Object.freeze({ kind: "expression", expression: value.value })]);
 }
 
+function planModuleBindingInitialization(
+  binding: MojoAnalyzedModuleBinding,
+  context: MojoPlanningContext,
+): readonly MojoStatement[] | undefined {
+  if (binding.storage !== "cell") return Object.freeze([]);
+  const value = planMojoValue(binding.initializer, context, binding.type);
+  const slot = mojoModuleBindingSlot(binding, context);
+  if (value === undefined || slot === undefined) return undefined;
+  registerMojoTypeImports(binding.type, context);
+  return Object.freeze([...value.before, Object.freeze({
+    kind: "assignment",
+    operator: "=",
+    left: slot,
+    right: Object.freeze({
+      kind: "construct",
+      type: optionalType(binding.type),
+      arguments: Object.freeze([Object.freeze({ value: value.value })]),
+    }),
+  })]);
+}
+
 function planComptimeBinding(
   binding: MojoAnalyzedModuleBinding,
   context: MojoPlanningContext,
 ): MojoComptimeDeclaration | undefined {
-  if (binding.initializer === undefined) return undefined;
   const value = planMojoValue(binding.initializer, context, binding.type);
   if (value === undefined || value.before.length !== 0) return undefined;
   registerMojoTypeImports(binding.type, context);
@@ -341,19 +317,5 @@ function construct(type: MojoTargetTypeRef): MojoExpression {
 }
 
 function emptyModuleBinding(binding: MojoAnalyzedModuleBinding): MojoExpression {
-  if (binding.initializer === undefined && binding.type.kind === "optional") {
-    return Object.freeze({
-      kind: "construct",
-      type: optionalType(binding.type),
-      arguments: Object.freeze([Object.freeze({ value: construct(binding.type) })]),
-    });
-  }
-  if (binding.initializer === undefined && binding.type.kind === "undefined") {
-    return Object.freeze({
-      kind: "construct",
-      type: optionalType(binding.type),
-      arguments: Object.freeze([Object.freeze({ value: construct(binding.type) })]),
-    });
-  }
   return construct(optionalType(binding.type));
 }

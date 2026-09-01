@@ -87,7 +87,6 @@ export function analyzeMojoClass(
   for (const member of members as readonly Node[]) {
     if (ast.is.IsPropertyDeclaration(member)) {
       if (ast.hasModifierKind(member, "static")) {
-        append(input, "MOJO_STATIC_FIELD_REQUIRES_MODULE_STATE", "Static fields require the sealed module-state representation.", member);
         continue;
       }
       const nameNode = ast.name(member);
@@ -108,6 +107,7 @@ export function analyzeMojoClass(
       input.bindingNames.set(member, name);
       input.bindingTypes.set(member, resolved);
       fields.push(Object.freeze({
+        kind: "instance-field",
         declaration: member,
         name,
         type: resolved,
@@ -119,6 +119,7 @@ export function analyzeMojoClass(
       }));
       continue;
     }
+    if (ast.kindName(member) === "KindClassStaticBlockDeclaration") continue;
     if (ast.is.IsMethodDeclaration(member)) {
       const body = ast.body(member);
       const nameNode = ast.name(member);

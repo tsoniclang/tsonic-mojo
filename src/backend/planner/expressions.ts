@@ -29,7 +29,7 @@ import type { MojoPlanningContext } from "./context.js";
 import { mojoTypeName, registerMojoTypeImports } from "./types/render.js";
 import { mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
-import { mojoModuleBindingRead } from "./module-bindings.js";
+import { mojoModuleBindingRead, mojoModuleBindingWrite } from "./module-bindings.js";
 
 const binaryOperatorText = new Map<string, string>([
   ["KindPlusToken", "+"],
@@ -945,6 +945,37 @@ function planProperty(
       context,
     );
     return constant === undefined ? undefined : mojoValue(constant);
+  }
+  if (selection.kind === "project-enum-member") {
+    if (mode !== "read") {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_ENUM_MEMBER_WRITE_UNSUPPORTED",
+        "A project enum member is an immutable compile-time value.",
+        node,
+      );
+      return undefined;
+    }
+    registerMojoTypeImports(selection.owner, context);
+    const owner = mojoTypeName(selection.owner, context.module.modulePath);
+    return owner === undefined
+      ? undefined
+      : mojoValue(Object.freeze({ kind: "path", path: `${owner}.${selection.name}` }));
+  }
+  if (selection.kind === "project-static-field") {
+    if (selection.optionalChain) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_STATIC_FIELD_OPTIONAL_CHAIN_UNSUPPORTED",
+        "A project static field optional chain requires an exact nullable class-value carrier.",
+        node,
+      );
+      return undefined;
+    }
+    const field = mode === "read"
+      ? mojoModuleBindingRead(selection.binding, context)
+      : mojoModuleBindingWrite(selection.binding, context);
+    return field === undefined ? undefined : mojoValue(field);
   }
   const sourceReceiverType = selection.kind === "project-field"
     ? selection.receiverType
