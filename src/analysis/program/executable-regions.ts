@@ -73,6 +73,11 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly fieldByDeclaration: WeakMap<Node, MojoAnalyzedProjectProperty>;
   readonly sourceValueOccurrenceKinds: WeakMap<Node, "runtime" | "non-runtime">;
   readonly indexedSourceUseDeclarations: WeakSet<Node>;
+  readonly analyzeCallableExpression: (
+    expression: Node,
+    sourceFile: SourceFile,
+    owner: MojoAnalyzedClassOwner | undefined,
+  ) => void;
 }
 
 export type MojoExecutableRegionAnalysisEnvironment = Omit<
@@ -94,6 +99,7 @@ export function analyzeMojoExecutableRegion(
   const dependencies = new Set<Node>();
   const iterationNodes: Node[] = [];
   const objectLiteralNodes: Node[] = [];
+  const callableExpressionNodes: Node[] = [];
   walkSourceTree(root, ast, (node): void => {
     if (ast.is.IsVariableDeclaration(node)) {
       const selected = declaredOrInitializerType(node, semantics, ast);
@@ -109,7 +115,12 @@ export function analyzeMojoExecutableRegion(
     }
     if (ast.is.IsForOfStatement(node) || ast.is.IsForInStatement(node)) iterationNodes.push(node);
     if (ast.is.IsObjectLiteralExpression(node)) objectLiteralNodes.push(node);
+    if (ast.is.IsFunctionExpression(node) || ast.is.IsArrowFunction(node)) callableExpressionNodes.push(node);
   }, (node, regionRoot) => descendWithinExecutableRegion(node, regionRoot, ast));
+
+  for (const expression of callableExpressionNodes) {
+    input.analyzeCallableExpression(expression, sourceFile, input.owner);
+  }
 
   walkSourceTreePostOrder(root, ast, (node): void => {
     if (ast.is.IsPropertyAccessExpression(node)) analyzeProperty(node, input, semantics);
@@ -280,7 +291,7 @@ function analyzeCall(
   }
   if (analyzed.dependency !== undefined) dependencies.add(analyzed.dependency);
   input.callSelections.set(node, analyzed.selection);
-  if (analyzed.selection.kind === "project") {
+  if (analyzed.selection.kind === "project" || analyzed.selection.kind === "callable") {
     input.expressionTypes.set(node, analyzed.selection.resultType);
   }
 }

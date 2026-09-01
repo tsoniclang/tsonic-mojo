@@ -192,7 +192,15 @@ function printExpression(expression: MojoExpression, modulePath: readonly string
     case "postfix-deref": return `${printExpression(expression.expression, modulePath)}[]`;
     case "await": return `await ${printExpression(expression.expression, modulePath)}`;
     case "parenthesized": return `(${printExpression(expression.expression, modulePath)})`;
-    case "lambda": return `lambda (${expression.parameters.map((parameter) => printParameter(parameter, modulePath)).join(", ")}): ${printExpression(expression.expression, modulePath)}`;
+    case "lambda": {
+      const captures = expression.captures.length === 0
+        ? ""
+        : ` {${expression.captures.map((capture) => `${capture.convention} ${capture.name}`).join(", ")}}`;
+      const result = mojoTypeName(expression.resultType, modulePath);
+      return `lambda (${expression.parameters.map((parameter) => printParameter(parameter, modulePath)).join(", ")})${
+        expression.raises ? " raises" : ""
+      }${captures}${result === undefined ? "" : ` -> ${result}`}: ${printExpression(expression.expression, modulePath)}`;
+    }
   }
 }
 

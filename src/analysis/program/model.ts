@@ -339,7 +339,32 @@ export type MojoCallSelection =
       readonly receiverConversion?: MojoValueConversion;
       readonly resultConversion: MojoValueConversion;
       readonly optionalChain: boolean;
+    }
+  | {
+      readonly kind: "callable";
+      readonly callee: Node;
+      readonly callableType: Extract<MojoTargetTypeRef, { readonly kind: "function" }>;
+      readonly arguments: readonly MojoAnalyzedCallArgument[];
+      readonly resultType: MojoTargetTypeRef;
+      readonly resultConversion: MojoValueConversion;
+      readonly optionalChain: boolean;
     };
+
+export interface MojoCallableCapture {
+  readonly declaration: Node;
+  readonly name: string;
+  readonly convention: "imm" | "mut";
+}
+
+export interface MojoCallableExpressionSelection {
+  readonly expression: Node;
+  readonly parameters: readonly MojoAnalyzedParameter[];
+  readonly captures: readonly MojoCallableCapture[];
+  readonly resultType: MojoTargetTypeRef;
+  readonly body: Node;
+  readonly raises: boolean;
+  readonly callableType: Extract<MojoTargetTypeRef, { readonly kind: "function" }>;
+}
 
 export type MojoObjectLiteralContribution =
   | {
@@ -386,6 +411,7 @@ export interface MojoProgramQueries {
   elementSelection(access: Node): MojoElementSelection | undefined;
   iterationSelection(statement: Node): MojoIterationSelection | undefined;
   objectLiteralSelection(expression: Node): MojoObjectLiteralSelection | undefined;
+  callableExpressionSelection(expression: Node): MojoCallableExpressionSelection | undefined;
   moduleForSourceFile(sourceFile: SourceFile): MojoAnalyzedModule | undefined;
   moduleBinding(referenceOrDeclaration: Node): MojoAnalyzedModuleBinding | undefined;
 }

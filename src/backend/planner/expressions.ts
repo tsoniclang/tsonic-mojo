@@ -31,7 +31,9 @@ import {
 import { planMojoLeafExpression } from "./expression-leaves.js";
 import {
   applyMojoConversion,
+  isJsArray,
   isJsString,
+  jsArrayElement,
   orderMojoValues,
   requiredConversion,
 } from "./expression-support.js";
@@ -40,6 +42,7 @@ import { registerMojoTypeImports } from "./types/render.js";
 import { mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { planMojoProjectObjectLiteral } from "./object-literals.js";
+import { planMojoCallableExpression } from "./callable-expressions.js";
 
 const binaryOperatorText = new Map<string, string>([
   ["KindPlusToken", "+"], ["KindMinusToken", "-"], ["KindAsteriskToken", "*"],
@@ -215,6 +218,8 @@ export function planMojoValue(
   } else if (ast.is.IsAsExpression(node) || ast.is.IsTypeAssertion(node) ||
     ast.is.IsNonNullExpression(node) || ast.is.IsSatisfiesExpression(node)) {
     plan = planErasedExpression(node, context);
+  } else if (ast.is.IsArrowFunction(node) || ast.is.IsFunctionExpression(node)) {
+    plan = planMojoCallableExpression(node, context, planMojoValue);
   } else if (ast.is.IsCallExpression(node) || ast.is.IsNewExpression(node)) {
     plan = planMojoCall(node, context, planMojoValue);
   } else if (ast.is.IsPropertyAccessExpression(node)) {
@@ -587,14 +592,4 @@ function isComparisonOperator(operator: string): boolean {
     operator === "KindExclamationEqualsEqualsToken" ||
     operator === "KindLessThanToken" || operator === "KindLessThanEqualsToken" ||
     operator === "KindGreaterThanToken" || operator === "KindGreaterThanEqualsToken";
-}
-
-function isJsArray(type: MojoTargetTypeRef): boolean {
-  return type.kind === "target-named" && type.id === "tsonic.mojo.js.JsArray";
-}
-
-function jsArrayElement(type: MojoTargetTypeRef): MojoTargetTypeRef | undefined {
-  if (!isJsArray(type) || type.kind !== "target-named") return undefined;
-  const argument = type.genericArguments?.[0];
-  return argument?.kind === "type" ? argument.type : undefined;
 }

@@ -50,6 +50,7 @@ export function isMojoExpressionNode(node: Node, ast: AstReader): boolean {
     ast.is.IsArrayLiteralExpression(node) || ast.is.IsObjectLiteralExpression(node) ||
     ast.is.IsPrefixUnaryExpression(node) || ast.is.IsPostfixUnaryExpression(node) ||
     ast.is.IsConditionalExpression(node) ||
+    ast.is.IsArrowFunction(node) || ast.is.IsFunctionExpression(node) ||
     ast.is.IsAwaitExpression(node) || ast.is.IsAsExpression(node) || ast.is.IsTypeAssertion(node) ||
     ast.is.IsNonNullExpression(node) || ast.is.IsSatisfiesExpression(node) ||
     ast.is.IsParenthesizedExpression(node) ||

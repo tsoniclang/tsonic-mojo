@@ -12,6 +12,9 @@ import {
 } from "@tsonic/target-api/analysis";
 import { createMojoNameAllocator } from "../names/identifiers.js";
 import { analyzeMojoFunctionSignature } from "../callables/signatures.js";
+import {
+  analyzeAndSealMojoCallableExpression,
+} from "../callables/expressions.js";
 import { analyzeMojoClass } from "../declarations/classes.js";
 import { analyzeMojoEnum } from "../declarations/enums.js";
 import { analyzeMojoInterface } from "../declarations/interfaces.js";
@@ -31,6 +34,7 @@ import type {
   MojoAnalyzedInterface,
   MojoAnalyzedProjectProperty,
   MojoCallSelection,
+  MojoCallableExpressionSelection,
   MojoElementSelection,
   MojoIterationSelection,
   MojoObjectLiteralSelection,
@@ -92,6 +96,8 @@ export function analyzeMojoTargetProgram(
   const iterationSelections = new WeakMap<Node, MojoIterationSelection>();
   const valueSelections = new WeakMap<Node, MojoValueSelection>();
   const objectLiteralSelections = new WeakMap<Node, MojoObjectLiteralSelection>();
+  const callableExpressionSelections = new WeakMap<Node, MojoCallableExpressionSelection>();
+  const analyzedCallableExpressions = new WeakSet<Node>();
   const conversions = createMojoConversionIndex();
   const functionByDeclaration = new WeakMap<Node, MojoAnalyzedFunction>();
   const classByDeclaration = new WeakMap<Node, MojoAnalyzedClass>();
@@ -317,7 +323,24 @@ export function analyzeMojoTargetProgram(
     }
   }
 
-  const executableEnvironment: MojoExecutableRegionAnalysisEnvironment = {
+  let executableEnvironment: MojoExecutableRegionAnalysisEnvironment;
+  const analyzeCallableExpression = (
+    expression: Node,
+    sourceFile: SourceFile,
+    owner: import("./model.js").MojoAnalyzedClassOwner | undefined,
+  ): void => {
+    analyzeAndSealMojoCallableExpression({
+      expression,
+      sourceFile,
+      ...(owner === undefined ? {} : { owner }),
+      allocateLocalName: createNameAllocator(),
+      moduleBindingByDeclaration,
+      selections: callableExpressionSelections,
+      analyzed: analyzedCallableExpressions,
+      environment: executableEnvironment,
+    });
+  };
+  executableEnvironment = {
     source: input.source,
     providerSemantics,
     projectTypes,
@@ -335,6 +358,7 @@ export function analyzeMojoTargetProgram(
     iterationSelections,
     valueSelections,
     objectLiteralSelections,
+    analyzeCallableExpression,
     conversions,
     functionByDeclaration,
     classByDeclaration,
@@ -506,6 +530,7 @@ export function analyzeMojoTargetProgram(
       iterationSelections,
       valueSelections,
       objectLiteralSelections,
+      callableExpressionSelections,
       bindingNames,
       diagnostics,
     );
@@ -525,6 +550,7 @@ export function analyzeMojoTargetProgram(
     elementSelections,
     iterationSelections,
     objectLiteralSelections,
+    callableExpressionSelections,
     moduleBySourceFile: finalizedModuleBySourceFile,
     moduleBindingByDeclaration,
   });

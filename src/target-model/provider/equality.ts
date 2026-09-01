@@ -68,6 +68,7 @@ export function mojoTargetTypeEquals(
         arrayEquals(left.genericParameters, right.genericParameters, genericParametersEqual) &&
         arrayEquals(left.parameters, right.parameters, (parameter, other) =>
           parameter.name === other.name && parameter.convention === other.convention &&
+          parameter.passing === other.passing &&
           mojoTargetTypeEquals(parameter.type, other.type)) &&
         mojoTargetTypeEquals(left.result, right.result) &&
         (left.errorType === undefined

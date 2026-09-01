@@ -368,7 +368,9 @@
       "source": "const operation = condition ? add : subtract; return operation(2, 1);",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact capture and callable ABI facts",
-      "status": "pending"
+      "status": "partial",
+      "proof": "test/language-parity.test.mjs",
+      "note": "Expression-bodied arrows now retain exact parameter, result, direct-call, and immutable-capture contracts. Block-bodied, async, mutable-receiver, generic, and contextual object callables remain open."
     },
     {
       "id": "types.primitives-aliases",

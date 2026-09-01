@@ -159,6 +159,9 @@ export function projectMojoCompilerType(
           parameters: Object.freeze(parameters.map(({ parameter, projected }) => Object.freeze({
             ...(parameter.name === undefined ? {} : { name: parameter.name }),
             convention: parameter.convention,
+            passing: parameter.convention === "var" || parameter.convention === "deinit"
+              ? "consume"
+              : "plain",
             type: projected.target,
           }))),
           result: result.target,

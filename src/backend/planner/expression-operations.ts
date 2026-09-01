@@ -187,6 +187,24 @@ export function planMojoCall(
     const converted = applyMojoConversion(call, selection.resultConversion, context);
     return converted === undefined ? undefined : withMojoValue(before, converted);
   }
+  if (selection.kind === "callable") {
+    if (selection.optionalChain) return unsupportedOptionalCall(node, context);
+    const callee = planValue(selection.callee, context);
+    const arguments_ = selection.arguments.map((argument) => planSelectedArgument(argument, context, planValue));
+    if (callee === undefined || arguments_.some((argument) => argument === undefined)) return undefined;
+    const ordered = orderCallArguments(
+      arguments_ as PlannedMojoCallArgument[],
+      context,
+      Object.freeze({ plan: callee, type: selection.callableType, role: "callable_value" }),
+    );
+    const call: MojoExpression = Object.freeze({
+      kind: "call",
+      callee: ordered.receiver!,
+      arguments: ordered.arguments,
+    });
+    const converted = applyMojoConversion(call, selection.resultConversion, context);
+    return converted === undefined ? undefined : withMojoValue(ordered.before, converted);
+  }
   const target = selection.operation.target;
   if (target.kind !== "function-call" && target.kind !== "instance-call") {
     appendMojoPlanningDiagnostic(

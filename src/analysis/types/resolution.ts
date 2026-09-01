@@ -7,7 +7,6 @@ import type {
   ExtensionFactSubject,
   Node,
   ProviderDeclarationIdentity,
-  SourcePrimitiveFact,
   Type,
 } from "@tsonic/tsts";
 import { tsonicFixedArrayFactKey } from "@tsonic/source-core/facts";
@@ -22,6 +21,9 @@ import type {
 import { substituteMojoTargetType } from "../../target-model/provider/substitution.js";
 import type { MojoProjectTypeCatalog } from "./project-catalog.js";
 import type { MojoSourceProfileRegistry } from "./source-profile.js";
+import { mojoParameterAbi } from "../callables/parameter-abi.js";
+import { argumentPassingFactKey } from "@tsonic/tsts";
+import { resolveMojoSourcePrimitive } from "./primitive-resolution.js";
 
 export interface MojoTypeResolutionContext {
   readonly ast: AstReader;
@@ -64,7 +66,7 @@ function resolveMojoTargetTypeWithState(
   if (primitive.kind === "conflict") {
     return { kind: "unsupported", reason: "selected source primitive facts conflict" };
   }
-  if (primitive.value !== undefined) return supportedPrimitive(primitive.value);
+  if (primitive.value !== undefined) return resolveMojoSourcePrimitive(primitive.value);
 
   const fixedArray = uniqueFixedArrayFact(subjects.map((subject) =>
     context.sourceFacts.getFact(subject, tsonicFixedArrayFactKey)));
@@ -211,9 +213,15 @@ function resolveMojoTargetTypeWithState(
           resolving,
         );
         if (resolved.kind === "unsupported") return resolved;
+        const abi = mojoParameterAbi(
+          parameter.declaration === undefined
+            ? undefined
+            : context.sourceFacts.getFact(parameter.declaration, argumentPassingFactKey)?.mode,
+        );
         parameters.push(Object.freeze({
           name: context.semantics.declarations.symbolName(parameter.sourceSymbol),
-          convention: "imm",
+          convention: abi.convention,
+          passing: abi.passing,
           type: resolved.type,
         }));
       }
@@ -234,6 +242,7 @@ function resolveMojoTargetTypeWithState(
           asynchronous: false,
           thin: false,
           raises: false,
+          capture: "*",
         }),
       };
     }
@@ -454,34 +463,6 @@ export function providerOwnerMatches(
   return row.providerId === identity.providerId &&
     row.providerVersion === identity.providerVersion &&
     row.providerModuleId === identity.providerModuleId;
-}
-
-function supportedPrimitive(fact: SourcePrimitiveFact): MojoTypeResolution {
-  switch (fact.kind) {
-    case "bool":
-    case "char":
-    case "int8":
-    case "uint8":
-    case "int16":
-    case "uint16":
-    case "int32":
-    case "uint32":
-    case "int64":
-    case "uint64":
-    case "native-int":
-    case "native-uint":
-    case "float16":
-    case "float32":
-    case "float64":
-    case "int128":
-    case "uint128":
-      return { kind: "resolved", type: { kind: "source-primitive", name: fact.kind } };
-    case "decimal":
-      return {
-        kind: "unsupported",
-        reason: "Mojo has no certified decimal source-primitive carrier",
-      };
-  }
 }
 
 function typeSubjects(

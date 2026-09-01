@@ -15,6 +15,7 @@ import type {
   MojoAnalyzedParameter,
   MojoAnalyzedTypeParameter,
 } from "../program/model.js";
+import { mojoParameterAbi } from "./parameter-abi.js";
 
 export interface MojoFunctionSignatureInput {
   readonly source: TargetSourceProgram;
@@ -185,24 +186,6 @@ function restElementType(type: MojoTargetTypeRef): MojoTargetTypeRef | undefined
     return argument?.kind === "type" ? argument.type : undefined;
   }
   return undefined;
-}
-
-function mojoParameterAbi(
-  mode: import("@tsonic/tsts").ArgumentPassingMode | undefined,
-): {
-  readonly convention: MojoAnalyzedParameter["convention"];
-  readonly passing: MojoAnalyzedParameter["passing"];
-} {
-  switch (mode) {
-    case "byref-readonly": return { convention: "imm", passing: "plain" };
-    case "byref-readwrite":
-    case "borrow-mut": return { convention: "mut", passing: "plain" };
-    case "byref-writeonly-must-init": return { convention: "out", passing: "plain" };
-    case "borrow-shared": return { convention: "ref", passing: "plain" };
-    case "move": return { convention: "var", passing: "consume" };
-    case "by-value":
-    case undefined: return { convention: "var", passing: "plain" };
-  }
 }
 
 function append(

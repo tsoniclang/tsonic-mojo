@@ -310,6 +310,16 @@ export function isJsString(type: MojoTargetTypeRef): boolean {
   return type.kind === "target-named" && type.id === "tsonic.mojo.js.JsString";
 }
 
+export function isJsArray(type: MojoTargetTypeRef): boolean {
+  return type.kind === "target-named" && type.id === "tsonic.mojo.js.JsArray";
+}
+
+export function jsArrayElement(type: MojoTargetTypeRef): MojoTargetTypeRef | undefined {
+  if (!isJsArray(type) || type.kind !== "target-named") return undefined;
+  const argument = type.genericArguments?.[0];
+  return argument?.kind === "type" ? argument.type : undefined;
+}
+
 export function requiredMojoTypeName(
   type: MojoTargetTypeRef,
   context: MojoPlanningContext,

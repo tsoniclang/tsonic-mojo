@@ -21,6 +21,7 @@ import {
 import type {
   MojoAnalyzedFunction,
   MojoCallSelection,
+  MojoCallableExpressionSelection,
   MojoElementSelection,
   MojoIterationSelection,
   MojoObjectLiteralSelection,
@@ -78,6 +79,7 @@ export function validateMojoFunctionSyntax(
   iterations: WeakMap<Node, MojoIterationSelection>,
   values: WeakMap<Node, MojoValueSelection>,
   objectLiterals: WeakMap<Node, MojoObjectLiteralSelection>,
+  callableExpressions: WeakMap<Node, MojoCallableExpressionSelection>,
   bindings: WeakMap<Node, string>,
   diagnostics: TargetDiagnostic[],
 ): void {
@@ -173,6 +175,20 @@ export function validateMojoFunctionSyntax(
       ast.is.IsTypeAssertion(expression) || ast.is.IsNonNullExpression(expression) ||
       ast.is.IsSatisfiesExpression(expression)) {
       validateExpression(Node_Expression(ast, expression));
+      return;
+    }
+    if (ast.is.IsArrowFunction(expression) || ast.is.IsFunctionExpression(expression)) {
+      const selection = callableExpressions.get(expression);
+      if (selection === undefined) {
+        diagnostics.push(diagnostic(
+          "MOJO_CALLABLE_EXPRESSION_SELECTION_UNRESOLVED",
+          "Callable expression has no sealed Mojo lambda selection.",
+          expression,
+        ));
+        return;
+      }
+      for (const parameter of selection.parameters) validateExpression(parameter.initializer);
+      validateExpression(selection.body);
       return;
     }
     if (ast.is.IsBinaryExpression(expression)) {

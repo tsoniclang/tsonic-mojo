@@ -76,16 +76,23 @@ export function analyzeMojoCall(
   }
 
   const selectedProvider = selectMojoProviderCall(context.source, sourceCall, context.providerSemantics);
-  if (selectedProvider.kind !== "selected") {
+  if (selectedProvider.kind === "ambiguous") {
     return {
       kind: "unsupported",
-      code: selectedProvider.kind === "ambiguous"
-        ? "MOJO_PROVIDER_CALL_AMBIGUOUS"
-        : "MOJO_CALL_TARGET_UNSUPPORTED",
-      reason: selectedProvider.kind === "ambiguous"
-        ? `Selected provider call matches ${selectedProvider.count} Mojo operations.`
-        : selectedProvider.reason,
+      code: "MOJO_PROVIDER_CALL_AMBIGUOUS",
+      reason: `Selected provider call matches ${selectedProvider.count} Mojo operations.`,
     };
+  }
+  if (selectedProvider.kind === "missing") {
+    const callableType = context.expressionTypes.get(sourceCall.sourceCallee.expression) ??
+      resolve(sourceCall.sourceCallee.type, sourceCall.sourceCallee.authoredTypeNode);
+    return callableType?.kind === "function"
+      ? analyzeCallableValueCall(callNode, sourceCall, callableType, resolve, context)
+      : {
+          kind: "unsupported",
+          code: "MOJO_CALL_TARGET_UNSUPPORTED",
+          reason: selectedProvider.reason,
+        };
   }
   const instantiated = instantiateMojoProviderOperation(selectedProvider.operation, sourceCall, resolve);
   if (instantiated.kind === "unsupported") {
@@ -147,6 +154,80 @@ export function analyzeMojoCall(
       optionalChain: sourceCall.optionalChain,
     }),
   };
+}
+
+function analyzeCallableValueCall(
+  callNode: Node,
+  sourceCall: ResolvedSourceCallInfo,
+  callableType: Extract<MojoTargetTypeRef, { readonly kind: "function" }>,
+  resolve: (type: Type, authoredTypeNode?: Node) => MojoTargetTypeRef | undefined,
+  context: MojoCallAnalysisContext,
+): MojoCallAnalysis {
+  if (callableType.genericParameters.length !== 0) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_CALLABLE_VALUE_GENERIC_SELECTION_UNSUPPORTED",
+      reason: "A first-class generic callable requires one exact closed Mojo specialization.",
+    };
+  }
+  const sourceParameters = sourceCall.sourceSelectedSignatureParameters;
+  if (sourceParameters.length !== callableType.parameters.length) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_CALLABLE_VALUE_ABI_MISMATCH",
+      reason: "The selected source callable signature and sealed Mojo function carrier have different arities.",
+    };
+  }
+  const parameterTypes = callableType.parameters.map((parameter, index) => {
+    const selected = sourceParameters[index];
+    return selected?.rest === true ? restCallableElementType(parameter.type) : parameter.type;
+  });
+  if (parameterTypes.some((parameter) => parameter === undefined)) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_CALLABLE_VALUE_REST_CARRIER_UNSUPPORTED",
+      reason: "A variadic callable value requires one exact list element carrier.",
+    };
+  }
+  const arguments_ = analyzeArguments(
+    sourceCall,
+    parameterTypes as readonly MojoTargetTypeRef[],
+    callableType.parameters.map((parameter, index) => Object.freeze({
+      convention: parameter.convention,
+      position: "positional-or-keyword" as const,
+      variadic: sourceParameters[index]!.rest,
+      passing: parameter.passing,
+    })),
+    resolve,
+    context.expressionTypes,
+  );
+  if (arguments_.kind === "unsupported") return arguments_;
+  const targetResult: MojoTargetTypeRef = callableType.asynchronous
+    ? Object.freeze({ kind: "future", domain: "native", output: callableType.result })
+    : callableType.result;
+  const result = closeCanonicalProjectResult(callNode, targetResult, context.conversions);
+  if (result.kind === "unsupported") return result;
+  return {
+    kind: "resolved",
+    selection: Object.freeze({
+      kind: "callable",
+      callee: sourceCall.sourceCallee.expression,
+      callableType,
+      arguments: arguments_.arguments,
+      resultType: targetResult,
+      resultConversion: result.conversion,
+      optionalChain: sourceCall.optionalChain,
+    }),
+  };
+}
+
+function restCallableElementType(type: MojoTargetTypeRef): MojoTargetTypeRef | undefined {
+  if (type.kind === "list") return type.element;
+  if (type.kind === "target-named" && type.id === "tsonic.mojo.js.JsArray") {
+    const argument = type.genericArguments?.[0];
+    return argument?.kind === "type" ? argument.type : undefined;
+  }
+  return undefined;
 }
 
 function analyzeProjectCall(

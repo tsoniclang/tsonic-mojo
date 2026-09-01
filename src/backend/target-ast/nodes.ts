@@ -75,7 +75,19 @@ export type MojoExpression =
   | { readonly kind: "postfix-deref"; readonly expression: MojoExpression }
   | { readonly kind: "await"; readonly expression: MojoExpression }
   | { readonly kind: "parenthesized"; readonly expression: MojoExpression }
-  | { readonly kind: "lambda"; readonly parameters: readonly MojoParameter[]; readonly expression: MojoExpression };
+  | {
+      readonly kind: "lambda";
+      readonly parameters: readonly MojoParameter[];
+      readonly captures: readonly MojoLambdaCapture[];
+      readonly resultType: MojoTargetTypeRef;
+      readonly raises: boolean;
+      readonly expression: MojoExpression;
+    };
+
+export interface MojoLambdaCapture {
+  readonly name: string;
+  readonly convention: "imm" | "mut";
+}
 
 export interface MojoDictionaryEntry {
   readonly key: MojoExpression;

@@ -323,9 +323,9 @@ test("authored scalar array tuple and FixedArray carriers survive collapsed Type
   assert.deepEqual(result.diagnostics, []);
   const source = artifactTexts(result).find(({ text }) => text.includes("def sum"));
   assert.ok(source);
-  assert.match(source.text, /var values: List\[Int32\] = \[Int32\(1\), Int32\(2\)\]/u);
-  assert.match(source.text, /var tuple: \(Int32, String\) = \(Int32\(3\), "three"\)/u);
-  assert.match(source.text, /var bytes: Array\[UInt8, 2\] = Array\[UInt8, 2\]\(UInt8\(4\), UInt8\(5\)\)/u);
+  assert.match(source.text, /var values: List\[Int32\] = \[1, 2\]/u);
+  assert.match(source.text, /var tuple: \(Int32, String\) = \(3, "three"\)/u);
+  assert.match(source.text, /var bytes: Array\[UInt8, 2\] = Array\[UInt8, 2\]\(4, 5\)/u);
   assert.match(source.text, /values\[Int\(0\)\].*tuple\[Int\(0\)\].*Int32\(bytes\[Int\(1\)\]\)/u);
 });
 
@@ -401,4 +401,63 @@ test("open dynamic element access rejects before planning without reflective rec
   });
   assert.equal(result.artifacts.length, 0);
   assert.ok(result.diagnostics.some(({ code }) => code === "MOJO_ELEMENT_TARGET_UNSUPPORTED"));
+});
+
+test("expression callables retain exact parameter result and direct-call contracts", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        "function apply(value: i32, transform: (value: i32) => i32): i32 {",
+        "  return transform(value);",
+        "}",
+        "export function main(): void {",
+        "  const double = (value: i32): i32 => value + value;",
+        "  if (apply(4, double) !== 8) return;",
+        "}",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("def apply"));
+  assert.ok(source);
+  assert.match(source.text, /transform: def\(var value: Int32\) capturing -> Int32/u);
+  assert.match(source.text, /transform\(value\)/u);
+  assert.match(source.text, /lambda \(var value: Int32\) -> Int32: \(value \+ value\)/u);
+});
+
+test("expression callables retain exact immutable captures", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        "function select(base: i32): i32 {",
+        "  const offset: i32 = 3;",
+        "  const add = (value: i32): i32 => value + offset;",
+        "  return add(base);",
+        "}",
+        "export function main(): void {}",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("def select"));
+  assert.ok(source);
+  assert.match(source.text, /lambda \(var value: Int32\) \{imm offset\} -> Int32: \(value \+ offset\)/u);
+});
+
+test("block-bodied callable expressions reject at the exact Mojo native boundary", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        "export function main(): void {",
+        "  const value = (): i32 => { return 1; };",
+        "  value();",
+        "}",
+      ].join("\n"),
+    },
+  });
+  assert.equal(result.artifacts.length, 0);
+  assert.ok(result.diagnostics.some(({ code }) => code === "MOJO_CALLABLE_BLOCK_BODY_NATIVE_LIMIT"));
 });

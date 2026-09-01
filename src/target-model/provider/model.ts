@@ -51,6 +51,7 @@ export type MojoTargetTypeRef =
       readonly parameters: readonly {
         readonly name?: string;
         readonly convention: MojoCallArgumentConvention;
+        readonly passing: "plain" | "consume";
         readonly type: MojoTargetTypeRef;
       }[];
       readonly result: MojoTargetTypeRef;
