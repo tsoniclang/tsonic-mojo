@@ -333,7 +333,7 @@ export function applyMojoConversion(
       registerMojoModuleImport(context, ["tsonic_js"]);
       return {
         kind: "call",
-        callee: { kind: "path", path: `js_value_from_${conversion.source}` },
+        callee: { kind: "path", path: `tsonic_js.js_value_from_${conversion.source}` },
         arguments: conversion.source === "null" || conversion.source === "undefined"
           ? Object.freeze([])
           : Object.freeze([{ value: expression }]),

@@ -149,14 +149,54 @@ interface StringConstructor {
 declare var String: StringConstructor;
 
 interface Array<T> {
+  length: number;
   push(...items: T[]): number;
   pop(): T | undefined;
+  shift(): T | undefined;
+  unshift(...items: T[]): number;
   slice(start?: number, end?: number): T[];
+  splice(start: number, deleteCount?: number, ...items: T[]): T[];
+  concat(...items: (T | readonly T[])[]): T[];
   join(separator?: string): string;
-  includes(value: T, fromIndex?: number): boolean;
-  map<U>(callback: (value: T, index: number, array: T[]) => U): U[];
-  filter(callback: (value: T, index: number, array: T[]) => unknown): T[];
+  at(index: number): T | undefined;
+  includes(searchElement: T, fromIndex?: number): boolean;
+  indexOf(searchElement: T, fromIndex?: number): number;
+  lastIndexOf(searchElement: T, fromIndex?: number): number;
+  reverse(): T[];
+  sort(compareFn?: (left: T, right: T) => number): T[];
+  fill(value: T, start?: number, end?: number): T[];
+  copyWithin(target: number, start: number, end?: number): T[];
   forEach(callback: (value: T, index: number, array: T[]) => void): void;
+  filter(callback: (value: T, index: number, array: T[]) => unknown): T[];
+  find(callback: (value: T, index: number, array: T[]) => unknown): T | undefined;
+  findIndex(callback: (value: T, index: number, array: T[]) => unknown): number;
+  findLast(callback: (value: T, index: number, array: T[]) => unknown): T | undefined;
+  findLastIndex(callback: (value: T, index: number, array: T[]) => unknown): number;
+  some(callback: (value: T, index: number, array: T[]) => unknown): boolean;
+  every(callback: (value: T, index: number, array: T[]) => unknown): boolean;
+  map<U>(callback: (value: T, index: number, array: T[]) => U): U[];
+  reduce(callback: (previousValue: T, currentValue: T, currentIndex: number, array: T[]) => T): T;
+  reduce(callback: (previousValue: T, currentValue: T, currentIndex: number, array: T[]) => T, initialValue: T): T;
+  reduce<U>(callback: (previousValue: U, currentValue: T, currentIndex: number, array: T[]) => U, initialValue: U): U;
+}
+interface ReadonlyArray<T> {
+  readonly length: number;
+  at(index: number): T | undefined;
+  slice(start?: number, end?: number): T[];
+  concat(...items: (T | readonly T[])[]): T[];
+  join(separator?: string): string;
+  includes(searchElement: T, fromIndex?: number): boolean;
+  indexOf(searchElement: T, fromIndex?: number): number;
+  lastIndexOf(searchElement: T, fromIndex?: number): number;
+  forEach(callback: (value: T, index: number, array: readonly T[]) => void): void;
+  filter(callback: (value: T, index: number, array: readonly T[]) => unknown): T[];
+  find(callback: (value: T, index: number, array: readonly T[]) => unknown): T | undefined;
+  findIndex(callback: (value: T, index: number, array: readonly T[]) => unknown): number;
+  findLast(callback: (value: T, index: number, array: readonly T[]) => unknown): T | undefined;
+  findLastIndex(callback: (value: T, index: number, array: readonly T[]) => unknown): number;
+  some(callback: (value: T, index: number, array: readonly T[]) => unknown): boolean;
+  every(callback: (value: T, index: number, array: readonly T[]) => unknown): boolean;
+  map<U>(callback: (value: T, index: number, array: readonly T[]) => U): U[];
 }
 interface ArrayConstructor {
   new <T>(...items: T[]): T[];

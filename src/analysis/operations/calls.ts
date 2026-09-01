@@ -14,6 +14,7 @@ import { analyzeMojoTypedLocation } from "./typed-locations.js";
 import { analyzeMojoRawPointer } from "./raw-pointers.js";
 import { selectMojoSourceProfileCallRow } from "../../policy/operations/source-profile-selection.js";
 import type { MojoSourceProfileParameterContract } from "../../policy/operations/source-profile-selection.js";
+import { selectMojoSourceProfileCallback } from "./source-profile-callbacks.js";
 import {
   mojoDynamicTargetType,
   mojoNamedTargetType,
@@ -249,6 +250,15 @@ function analyzeSourceProfileCall(
     readonly passing: "plain";
   }[] = [];
   const parameterContract = selected.row.parameterContract;
+  const callback = selected.row.callback === undefined
+    ? undefined
+    : selectMojoSourceProfileCallback(
+        selected.row.callback,
+        sourceCall,
+        resolve,
+        context.expressionTypes,
+      );
+  if (callback?.kind === "unsupported") return callback;
   if (parameterContract !== undefined &&
     parameterContract.length !== sourceCall.sourceSelectedSignatureParameters.length) {
     return {
@@ -259,9 +269,11 @@ function analyzeSourceProfileCall(
   }
   for (const [parameterIndex, parameter] of sourceCall.sourceSelectedSignatureParameters.entries()) {
     const explicitContract = parameterContract?.[parameterIndex];
-    const resolved = explicitContract === undefined
-      ? resolve(parameter.selectedType, parameter.authoredTypeNode)
-      : sourceProfileParameterType(explicitContract);
+    const resolved = callback?.parameterIndex === parameterIndex
+      ? callback.type
+      : explicitContract === undefined
+        ? resolve(parameter.selectedType, parameter.authoredTypeNode)
+        : sourceProfileParameterType(explicitContract);
     const target = parameter.rest === true && resolved !== undefined
       ? restCallableElementType(resolved)
       : resolved;
@@ -319,7 +331,7 @@ function analyzeSourceProfileCall(
   const target = selected.row.target.kind === "instance"
     ? Object.freeze({
         kind: "instance-call" as const,
-        name: selected.row.target.name,
+        name: callback?.targetName ?? selected.row.target.name,
         receiver: selected.row.target.receiver,
         genericParameters: Object.freeze([]),
         arguments: Object.freeze(targetArguments),
@@ -327,7 +339,7 @@ function analyzeSourceProfileCall(
     : Object.freeze({
         kind: "function-call" as const,
         modulePath: selected.row.target.modulePath,
-        name: selected.row.target.name,
+        name: callback?.targetName ?? selected.row.target.name,
         ...(selected.row.target.receiver === undefined
           ? {}
           : { receiver: selected.row.target.receiver }),
@@ -367,7 +379,7 @@ function analyzeSourceProfileCall(
         resultType,
         genericArguments: Object.freeze(genericArguments),
         genericParameters: Object.freeze([]),
-        raises: selected.row.raises === true,
+        raises: selected.row.raises === true || callback !== undefined,
       }),
       arguments: arguments_.arguments,
       ...(receiver === undefined ? {} : { receiver }),

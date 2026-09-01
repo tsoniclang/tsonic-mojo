@@ -25,6 +25,18 @@ export interface MojoSourceProfileCallRow {
         readonly receiver?: "imm" | "mut" | "var" | "ref" | "deinit";
       };
   readonly raises?: boolean;
+  readonly callback?: MojoSourceProfileCallbackContract;
+}
+
+export interface MojoSourceProfileCallbackContract {
+  readonly parameterIndex: number;
+  readonly result: "preserve" | "bool" | "float64";
+  readonly variants: readonly MojoSourceProfileCallbackVariant[];
+}
+
+export interface MojoSourceProfileCallbackVariant {
+  readonly arity: number;
+  readonly targetName: string;
 }
 
 export type MojoSourceProfileParameterContract =
@@ -173,6 +185,38 @@ const jsConstructorRows = ["ArrayConstructor", "MapConstructor", "SetConstructor
     }),
   }));
 
+const arrayCallbackVariants = (
+  names: readonly string[],
+): readonly MojoSourceProfileCallbackVariant[] => Object.freeze(names.map((targetName, arity) =>
+  Object.freeze({ arity, targetName })));
+
+const jsCallbackRow = (
+  owner: string,
+  member: string,
+  receiver: "imm" | "mut",
+  result: MojoSourceProfileCallbackContract["result"],
+  names: readonly string[],
+  argumentCount?: number,
+): MojoSourceProfileCallRow => Object.freeze({
+  profile: "js",
+  kind: "call",
+  owner,
+  member,
+  ...(argumentCount === undefined ? {} : { argumentCount }),
+  target: Object.freeze({
+    kind: "function",
+    modulePath: Object.freeze(["tsonic_js"]),
+    name: names[names.length - 1]!,
+    receiver,
+  }),
+  raises: true,
+  callback: Object.freeze({
+    parameterIndex: 0,
+    result,
+    variants: arrayCallbackVariants(names),
+  }),
+});
+
 export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Object.freeze([
   ...jsConstructorRows,
   ...jsInstanceRows("String", "imm", [
@@ -213,27 +257,69 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["js-string", "float64"]),
   }),
   ...jsInstanceRows("Array", "mut", [
-    "copyWithin", "fill", "pop", "push", "reverse", "shift", "sort", "splice", "unshift",
+    "copyWithin", "fill", "pop", "push", "reverse", "shift", "splice", "unshift",
   ]),
   ...jsInstanceRows("Array", "imm", [
-    "at", "every", "filter", "find", "findIndex", "findLast", "findLastIndex",
-    "forEach", "includes", "indexOf", "join", "lastIndexOf", "map", "reduce",
-    "slice", "some",
+    "at", "includes", "indexOf", "join", "lastIndexOf", "slice",
   ]),
   ...jsInstanceRows("ReadonlyArray", "imm", [
-    "at", "every", "filter", "find", "findIndex", "findLast", "findLastIndex",
-    "forEach", "includes", "indexOf", "join", "lastIndexOf", "map", "reduce",
-    "slice", "some",
+    "at", "includes", "indexOf", "join", "lastIndexOf", "slice",
   ]),
+  ...["Array", "ReadonlyArray"].flatMap((owner) => [
+    jsCallbackRow(owner, "map", "imm", "preserve", [
+      "array_map_zero", "array_map_value", "array_map_with_index", "array_map_with_array",
+    ]),
+    jsCallbackRow(owner, "forEach", "imm", "preserve", [
+      "array_for_each_zero", "array_for_each_value", "array_for_each_value_index", "array_for_each_with_array",
+    ]),
+    ...["filter", "some", "every", "find", "findIndex", "findLast", "findLastIndex"].map((member) =>
+      jsCallbackRow(owner, member, "imm", "bool", [
+        `array_${snakeCase(member)}_zero`,
+        `array_${snakeCase(member)}_value`,
+        `array_${snakeCase(member)}_with_index`,
+        `array_${snakeCase(member)}_with_array`,
+      ])),
+    jsCallbackRow(owner, "reduce", "imm", "preserve", [
+      "array_reduce_from_first_zero",
+      "array_reduce_from_first_accumulator",
+      "array_reduce_from_first_value",
+      "array_reduce_from_first_with_index",
+      "array_reduce_from_first_with_array",
+    ], 1),
+    jsCallbackRow(owner, "reduce", "imm", "preserve", [
+      "array_reduce_initial_zero",
+      "array_reduce_initial_accumulator",
+      "array_reduce_initial_value",
+      "array_reduce_initial_with_index",
+      "array_reduce_initial_with_array",
+    ], 2),
+  ]),
+  Object.freeze({
+    profile: "js",
+    kind: "call",
+    owner: "Array",
+    member: "sort",
+    argumentCount: 0,
+    target: Object.freeze({ kind: "instance", name: "sort", receiver: "mut" }),
+  }),
+  jsCallbackRow("Array", "sort", "mut", "float64", [
+    "array_sort_zero", "array_sort_value", "array_sort_compare",
+  ], 1),
   ...jsInstanceRows("Map", "mut", ["clear", "delete", "set"]),
-  ...jsInstanceRows("Map", "imm", ["entries", "forEach", "get", "has", "keys", "values"]),
-  ...jsInstanceRows("ReadonlyMap", "imm", ["entries", "forEach", "get", "has", "keys", "values"]),
+  ...jsInstanceRows("Map", "imm", ["entries", "get", "has", "keys", "values"]),
+  ...jsInstanceRows("ReadonlyMap", "imm", ["entries", "get", "has", "keys", "values"]),
+  ...["Map", "ReadonlyMap"].map((owner) => jsCallbackRow(owner, "forEach", "imm", "preserve", [
+    "map_for_each_zero", "map_for_each_value", "map_for_each_value_key", "map_for_each_with_map",
+  ])),
   ...jsInstanceRows("Set", "mut", ["add", "clear", "delete"]),
   ...jsInstanceRows("Set", "imm", [
-    "difference", "entries", "forEach", "has", "intersection", "isDisjointFrom",
+    "difference", "entries", "has", "intersection", "isDisjointFrom",
     "isSubsetOf", "isSupersetOf", "keys", "symmetricDifference", "union", "values",
   ]),
-  ...jsInstanceRows("ReadonlySet", "imm", ["entries", "forEach", "has", "keys", "values"]),
+  ...jsInstanceRows("ReadonlySet", "imm", ["entries", "has", "keys", "values"]),
+  ...["Set", "ReadonlySet"].map((owner) => jsCallbackRow(owner, "forEach", "imm", "preserve", [
+    "set_for_each_zero", "set_for_each_value", "set_for_each_value_key", "set_for_each_with_set",
+  ])),
   ...jsInstanceRows("Date", "imm", [
     "getTime", ["getUTCDate", "get_utc_date"], ["getUTCDay", "get_utc_day"],
     ["getUTCFullYear", "get_utc_full_year"], ["getUTCHours", "get_utc_hours"],
