@@ -23,6 +23,7 @@ import type {
   MojoCallSelection,
   MojoElementSelection,
   MojoIterationSelection,
+  MojoObjectLiteralSelection,
   MojoPropertySelection,
   MojoValueSelection,
 } from "./model.js";
@@ -76,6 +77,7 @@ export function validateMojoFunctionSyntax(
   elements: WeakMap<Node, MojoElementSelection>,
   iterations: WeakMap<Node, MojoIterationSelection>,
   values: WeakMap<Node, MojoValueSelection>,
+  objectLiterals: WeakMap<Node, MojoObjectLiteralSelection>,
   bindings: WeakMap<Node, string>,
   diagnostics: TargetDiagnostic[],
 ): void {
@@ -114,6 +116,11 @@ export function validateMojoFunctionSyntax(
       return;
     }
     if (ast.is.IsObjectLiteralExpression(expression)) {
+      const selected = objectLiterals.get(expression);
+      if (selected !== undefined) {
+        for (const contribution of selected.contributions) validateExpression(contribution.value);
+        return;
+      }
       for (const property of ast.properties(expression)) {
         if (property === undefined ||
           (!ast.is.IsPropertyAssignment(property) && !ast.is.IsShorthandPropertyAssignment(property))) {

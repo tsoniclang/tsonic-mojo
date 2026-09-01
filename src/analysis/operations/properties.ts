@@ -11,6 +11,7 @@ import {
   instantiateMojoProviderConstantOperation,
   instantiateMojoProviderPropertyOperation,
 } from "./provider-instantiation.js";
+import { substituteMojoTargetType } from "../../target-model/provider/substitution.js";
 import { selectedProviderDeclarationIdentity } from "./provider-selection.js";
 
 export type MojoPropertyAnalysis =
@@ -82,19 +83,45 @@ export function analyzeMojoProjectProperty(
       reason: "Selected project-property receiver has no exact non-null Mojo carrier.",
     };
   }
+  const fieldType = instantiateProjectFieldType(field, receiverType);
+  if (fieldType === undefined) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_PROJECT_PROPERTY_INSTANTIATION_UNRESOLVED",
+      reason: "Selected project-property receiver does not exactly instantiate its declaring owner.",
+    };
+  }
   return {
     kind: "resolved",
-    expressionType: field.type,
+    expressionType: fieldType,
     selection: Object.freeze({
       kind: "project-field",
       receiver: source.receiver.expression,
       fieldName: field.name,
-      fieldType: field.type,
+      fieldType,
       receiverType,
       accessMode: source.accessMode,
       optionalChain: source.optionalChain,
     }),
   };
+}
+
+function instantiateProjectFieldType(
+  field: Extract<MojoAnalyzedProjectProperty, { readonly kind: "instance-field" | "interface-field" }>,
+  receiverType: MojoTargetTypeRef,
+): MojoTargetTypeRef | undefined {
+  if (field.ownerType.kind !== "target-named" || receiverType.kind !== "target-named" ||
+    field.ownerType.id !== receiverType.id) return undefined;
+  const arguments_ = receiverType.genericArguments ?? [];
+  if (arguments_.length !== field.ownerTypeParameters.length ||
+    arguments_.some((argument) => argument.kind !== "type")) return undefined;
+  const types = new Map<string, MojoTargetTypeRef>();
+  for (const [index, name] of field.ownerTypeParameters.entries()) {
+    const argument = arguments_[index];
+    if (argument?.kind !== "type") return undefined;
+    types.set(name, argument.type);
+  }
+  return substituteMojoTargetType(field.type, { types, constants: new Map() });
 }
 
 export interface MojoProviderPropertyAnalysisContext {

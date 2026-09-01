@@ -8,6 +8,7 @@ import type {
   MojoCallSelection,
   MojoElementSelection,
   MojoIterationSelection,
+  MojoObjectLiteralSelection,
   MojoProgramQueries,
   MojoPropertySelection,
   MojoValueSelection,
@@ -25,6 +26,7 @@ export interface MojoProgramQueryIndexes {
   readonly valueSelections: WeakMap<Node, MojoValueSelection>;
   readonly elementSelections: WeakMap<Node, MojoElementSelection>;
   readonly iterationSelections: WeakMap<Node, MojoIterationSelection>;
+  readonly objectLiteralSelections: WeakMap<Node, MojoObjectLiteralSelection>;
   readonly moduleBySourceFile: WeakMap<SourceFile, MojoAnalyzedModule>;
   readonly moduleBindingByDeclaration: WeakMap<Node, MojoAnalyzedModuleBinding>;
 }
@@ -62,6 +64,9 @@ export function createMojoProgramQueries(
     },
     iterationSelection(statement: Node): MojoIterationSelection | undefined {
       return indexes.iterationSelections.get(statement);
+    },
+    objectLiteralSelection(expression: Node): MojoObjectLiteralSelection | undefined {
+      return indexes.objectLiteralSelections.get(expression);
     },
     moduleForSourceFile(sourceFile: SourceFile) {
       return indexes.moduleBySourceFile.get(sourceFile);

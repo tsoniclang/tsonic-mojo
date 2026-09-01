@@ -14,6 +14,7 @@ import { createMojoNameAllocator } from "../names/identifiers.js";
 import { analyzeMojoFunctionSignature } from "../callables/signatures.js";
 import { analyzeMojoClass } from "../declarations/classes.js";
 import { analyzeMojoEnum } from "../declarations/enums.js";
+import { analyzeMojoInterface } from "../declarations/interfaces.js";
 import { createMojoConversionIndex } from "../conversions/classification.js";
 import { recordMojoExecutableRegionConversionUses } from "../conversions/uses.js";
 import { analyzeMojoRuntimePackages } from "../runtime/references.js";
@@ -27,10 +28,12 @@ import type {
   MojoAnalyzedDeclaration,
   MojoAnalyzedEnum,
   MojoAnalyzedFunction,
+  MojoAnalyzedInterface,
   MojoAnalyzedProjectProperty,
   MojoCallSelection,
   MojoElementSelection,
   MojoIterationSelection,
+  MojoObjectLiteralSelection,
   MojoPropertySelection,
   MojoTargetAnalysisRequest,
   MojoTargetProgram,
@@ -49,6 +52,7 @@ import {
 } from "./module-effects.js";
 import type { MojoAnalyzedModuleRegionFacts } from "./module-effects.js";
 import { createMojoProgramQueries } from "./queries.js";
+import { collectMojoDeclarationDrafts } from "./declaration-drafts.js";
 
 export function analyzeMojoTargetProgram(
   request: MojoTargetAnalysisRequest,
@@ -87,10 +91,12 @@ export function analyzeMojoTargetProgram(
   const elementSelections = new WeakMap<Node, MojoElementSelection>();
   const iterationSelections = new WeakMap<Node, MojoIterationSelection>();
   const valueSelections = new WeakMap<Node, MojoValueSelection>();
+  const objectLiteralSelections = new WeakMap<Node, MojoObjectLiteralSelection>();
   const conversions = createMojoConversionIndex();
   const functionByDeclaration = new WeakMap<Node, MojoAnalyzedFunction>();
   const classByDeclaration = new WeakMap<Node, MojoAnalyzedClass>();
   const classByTypeId = new Map<string, MojoAnalyzedClass>();
+  const interfaceByTypeId = new Map<string, MojoAnalyzedInterface>();
   const fieldByDeclaration = new WeakMap<Node, MojoAnalyzedProjectProperty>();
   const moduleBindingByDeclaration = new WeakMap<
     Node,
@@ -113,25 +119,6 @@ export function analyzeMojoTargetProgram(
     return created;
   };
   const globalNameByDeclaration = new WeakMap<Node, string>();
-  const functionDrafts: {
-    readonly declaration: Node;
-    readonly sourceFile: SourceFile;
-    readonly name: string;
-    readonly body: Node;
-    readonly localNames: (sourceName: string) => string;
-  }[] = [];
-  const classDrafts: {
-    readonly declaration: Node;
-    readonly sourceFile: SourceFile;
-    readonly name: string;
-    readonly stateName: string;
-  }[] = [];
-  const enumDrafts: {
-    readonly declaration: Node;
-    readonly sourceFile: SourceFile;
-    readonly name: string;
-  }[] = [];
-
   for (const sourceFile of sourceFiles) {
     for (const statement of ast.statements(sourceFile)) {
       if (statement === undefined) continue;
@@ -193,87 +180,22 @@ export function analyzeMojoTargetProgram(
       }
     }
   }
-  for (const sourceFile of sourceFiles) {
-    for (const statement of ast.statements(sourceFile)) {
-      if (statement === undefined || ast.is.IsImportDeclaration(statement) ||
-        ast.is.IsExportDeclaration(statement) || ast.is.IsTypeAliasDeclaration(statement) ||
-        ast.is.IsInterfaceDeclaration(statement) || ast.is.IsVariableStatement(statement) ||
-        ast.is.IsExpressionStatement(statement) || ast.is.IsExportAssignment(statement) ||
-        ast.is.IsEmptyStatement(statement)) {
-        continue;
-      }
-      if (ast.is.IsClassDeclaration(statement)) {
-        const nameNode = ast.name(statement);
-        if (nameNode === undefined || !ast.is.IsIdentifier(nameNode)) {
-          diagnostics.push(diagnostic(
-            "MOJO_CLASS_SHAPE_UNSUPPORTED",
-            "Mojo classes require one exact named class declaration.",
-            statement,
-          ));
-          continue;
-        }
-        const name = globalNameByDeclaration.get(statement) ?? globalNames(sourceFile)(ast.text(nameNode));
-        bindingNames.set(statement, name);
-        bindingSourceFiles.set(statement, sourceFile);
-        classDrafts.push(Object.freeze({
-          declaration: statement,
-          sourceFile,
-          name,
-          stateName: globalNames(sourceFile)(`${name}State`),
-        }));
-        continue;
-      }
-      if (ast.is.IsEnumDeclaration(statement)) {
-        const nameNode = ast.name(statement);
-        if (nameNode === undefined || !ast.is.IsIdentifier(nameNode)) {
-          diagnostics.push(diagnostic(
-            "MOJO_ENUM_SHAPE_UNSUPPORTED",
-            "Mojo enums require one exact named enum declaration.",
-            statement,
-          ));
-          continue;
-        }
-        const name = globalNameByDeclaration.get(statement) ?? globalNames(sourceFile)(ast.text(nameNode));
-        bindingNames.set(statement, name);
-        bindingSourceFiles.set(statement, sourceFile);
-        enumDrafts.push(Object.freeze({ declaration: statement, sourceFile, name }));
-        continue;
-      }
-      if (!ast.is.IsFunctionDeclaration(statement)) {
-        diagnostics.push(diagnostic(
-          "MOJO_TOP_LEVEL_DECLARATION_UNSUPPORTED",
-          "Executable project declarations require a supported top-level function or class form.",
-          statement,
-        ));
-        continue;
-      }
-      const nameNode = ast.name(statement);
-      const body = ast.body(statement);
-      if (nameNode === undefined || !ast.is.IsIdentifier(nameNode) || body === undefined || !ast.is.IsBlock(body)) {
-        diagnostics.push(diagnostic(
-          "MOJO_FUNCTION_SHAPE_UNSUPPORTED",
-          "Mojo functions require a named TypeScript function declaration with a body.",
-          statement,
-        ));
-        continue;
-      }
-      const name = globalNameByDeclaration.get(statement) ?? globalNames(sourceFile)(ast.text(nameNode));
-      bindingNames.set(statement, name);
-      bindingSourceFiles.set(statement, sourceFile);
-      functionDrafts.push(Object.freeze({
-        declaration: statement,
-        sourceFile,
-        name,
-        body,
-        localNames: createNameAllocator(),
-      }));
-    }
-  }
+  const drafts = collectMojoDeclarationDrafts({
+    sourceFiles,
+    ast,
+    globalNameByDeclaration,
+    globalNames,
+    bindingNames,
+    bindingSourceFiles,
+    createNameAllocator,
+    diagnostics,
+  });
 
   const functions: MojoAnalyzedFunction[] = [];
   const classes: MojoAnalyzedClass[] = [];
+  const interfaces: MojoAnalyzedInterface[] = [];
   const enums: MojoAnalyzedEnum[] = [];
-  for (const draft of functionDrafts) {
+  for (const draft of drafts.functions) {
     const function_ = analyzeMojoFunctionSignature({
       source: input.source,
       providerSemantics,
@@ -305,7 +227,35 @@ export function analyzeMojoTargetProgram(
     );
   }
 
-  for (const draft of classDrafts) {
+  for (const draft of drafts.interfaces) {
+    const analyzed = analyzeMojoInterface({
+      source: input.source,
+      providerSemantics,
+      projectTypes,
+      sourceProfiles,
+      jsEnabled,
+      declaration: draft.declaration,
+      sourceFile: draft.sourceFile,
+      name: draft.name,
+      stateName: draft.stateName,
+      bindingNames,
+      bindingTypes,
+      diagnostics,
+      createNameAllocator,
+    });
+    if (analyzed === undefined) continue;
+    interfaces.push(analyzed);
+    bindingTypes.set(draft.declaration, analyzed.targetType);
+    if (analyzed.targetType.kind === "target-named") {
+      interfaceByTypeId.set(analyzed.targetType.id, analyzed);
+    }
+    for (const field of analyzed.fields) {
+      bindingSourceFiles.set(field.declaration, draft.sourceFile);
+      fieldByDeclaration.set(field.declaration, field);
+    }
+  }
+
+  for (const draft of drafts.classes) {
     const analyzed = analyzeMojoClass({
       source: input.source,
       providerSemantics,
@@ -344,7 +294,7 @@ export function analyzeMojoTargetProgram(
     }
   }
 
-  for (const draft of enumDrafts) {
+  for (const draft of drafts.enums) {
     const analyzed = analyzeMojoEnum({
       source: input.source,
       projectTypes,
@@ -384,10 +334,12 @@ export function analyzeMojoTargetProgram(
     elementSelections,
     iterationSelections,
     valueSelections,
+    objectLiteralSelections,
     conversions,
     functionByDeclaration,
     classByDeclaration,
     classByTypeId,
+    interfaceByTypeId,
     fieldByDeclaration,
     sourceValueOccurrenceKinds,
     indexedSourceUseDeclarations,
@@ -398,6 +350,7 @@ export function analyzeMojoTargetProgram(
       analyzeMojoExecutableRegion({
         root: field.initializer,
         sourceFile: class_.sourceFile,
+        rootExpectedType: field.type,
         owner: Object.freeze({ name: class_.name, stateName: class_.stateName, type: class_.targetType }),
         ...executableEnvironment,
       });
@@ -409,6 +362,7 @@ export function analyzeMojoTargetProgram(
         expressionTypes,
         propertySelections,
         elementSelections,
+        objectLiteralSelections,
         conversions,
         diagnostics,
       );
@@ -452,6 +406,7 @@ export function analyzeMojoTargetProgram(
       const region = analyzeMojoExecutableRegion({
         root,
         sourceFile: module.sourceFile,
+        ...(step.kind === "binding" ? { rootExpectedType: step.binding.type } : {}),
         ...executableEnvironment,
       });
       recordMojoExecutableRegionConversionUses(
@@ -462,6 +417,7 @@ export function analyzeMojoTargetProgram(
         expressionTypes,
         propertySelections,
         elementSelections,
+        objectLiteralSelections,
         conversions,
         diagnostics,
       );
@@ -493,6 +449,7 @@ export function analyzeMojoTargetProgram(
     const region = analyzeMojoExecutableRegion({
       root: function_.body,
       sourceFile: function_.sourceFile,
+      returnType: function_.resultType,
       ...(function_.owner === undefined ? {} : { owner: function_.owner }),
       ...executableEnvironment,
     });
@@ -505,6 +462,7 @@ export function analyzeMojoTargetProgram(
       expressionTypes,
       propertySelections,
       elementSelections,
+      objectLiteralSelections,
       conversions,
       diagnostics,
     );
@@ -547,6 +505,7 @@ export function analyzeMojoTargetProgram(
       elementSelections,
       iterationSelections,
       valueSelections,
+      objectLiteralSelections,
       bindingNames,
       diagnostics,
     );
@@ -565,6 +524,7 @@ export function analyzeMojoTargetProgram(
     valueSelections,
     elementSelections,
     iterationSelections,
+    objectLiteralSelections,
     moduleBySourceFile: finalizedModuleBySourceFile,
     moduleBindingByDeclaration,
   });
@@ -572,6 +532,7 @@ export function analyzeMojoTargetProgram(
   const declarations: MojoAnalyzedDeclaration[] = [
     ...topLevelFunctions,
     ...finalizedClasses,
+    ...interfaces,
     ...enums,
   ];
   return resolvedTargetStage(Object.freeze({

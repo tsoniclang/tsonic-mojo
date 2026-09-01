@@ -160,7 +160,9 @@
       "source": "interface Counter { value: number; increment(): number; }",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain record and polymorphic interface plans",
-      "status": "pending"
+      "status": "partial",
+      "proof": "test/language-parity.test.mjs",
+      "note": "Generic declaration-selected interface fields and reference-identity object carriers are implemented; callable interface slots remain open."
     },
     {
       "id": "declarations.interface-heritage",
@@ -202,7 +204,9 @@
       "source": "const point: Point = { x: 1, y: 2 };",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain finalized ordered record fields",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/language-parity.test.mjs",
+      "note": "Explicit fields use exact selected interface declarations and instantiated target carriers."
     },
     {
       "id": "objects.spread",
@@ -210,7 +214,9 @@
       "source": "const next: Point = { ...previous, x: 2 };",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "record each spread projection and override in source evaluation order, evaluating every source expression once",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/language-parity.test.mjs",
+      "note": "Same-carrier spreads evaluate once, project fields project in declaration order, and later authored overrides win in source order."
     },
     {
       "id": "objects.contextual-method-declarations",

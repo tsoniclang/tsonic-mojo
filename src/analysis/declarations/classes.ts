@@ -113,6 +113,8 @@ export function analyzeMojoClass(
         declaration: member,
         name,
         type: resolved,
+        ownerType: targetType,
+        ownerTypeParameters: Object.freeze([...definition.typeParameterNames]),
         initializer,
         visibility: ast.hasModifierKind(member, "private") ||
             ast.hasModifierKind(member, "protected") || ast.is.IsPrivateIdentifier(nameNode)

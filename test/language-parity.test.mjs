@@ -227,3 +227,27 @@ test("native async functions retain Promise output evidence and schedule exact a
   assert.match(source.text, /await create_task\(value\(\)\)/u);
   assert.match(entry.text, /create_task\(__tsonic_entry\(\)\)\.wait\(\)/u);
 });
+
+test("project interface objects retain selected generic fields and source-ordered spread overrides", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        "interface Pair<T> { left: T; right: T; }",
+        "function sum(): i32 {",
+        "  const first: Pair<i32> = { left: 1, right: 2 };",
+        "  const next: Pair<i32> = { ...first, left: 3 };",
+        "  return next.left + next.right;",
+        "}",
+        "export function main(): void { if (sum() !== 5) return; }",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("struct PairState"));
+  assert.ok(source);
+  assert.match(source.text, /struct PairState\[T: AnyType\]/u);
+  assert.match(source.text, /struct Pair\[T: AnyType\][\s\S]*ArcPointer\[PairState\[T\]\]/u);
+  assert.match(source.text, /Pair\[Int32\]\(/u);
+  assert.match(source.text, /object_spread/u);
+});

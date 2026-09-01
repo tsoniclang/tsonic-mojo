@@ -18,6 +18,7 @@ import {
   IterationStatement_Statement,
   SwitchStatement_CaseBlock,
   SwitchStatement_Expression,
+  SpreadAssignment_Expression,
   VariableDeclarationList_Declarations,
   VariableStatement_DeclarationList,
 } from "@tsonic/target-api/source";
@@ -25,6 +26,7 @@ import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
 import type {
   MojoElementSelection,
+  MojoObjectLiteralSelection,
   MojoPropertySelection,
 } from "../program/model.js";
 import type { MojoConversionIndex } from "./classification.js";
@@ -37,6 +39,7 @@ export function recordMojoExecutableRegionConversionUses(
   expressionTypes: WeakMap<Node, MojoTargetTypeRef>,
   propertySelections: WeakMap<Node, MojoPropertySelection>,
   elementSelections: WeakMap<Node, MojoElementSelection>,
+  objectLiteralSelections: WeakMap<Node, MojoObjectLiteralSelection>,
   conversions: MojoConversionIndex,
   diagnostics: TargetDiagnostic[],
 ): void {
@@ -91,9 +94,23 @@ export function recordMojoExecutableRegionConversionUses(
     }
     if (ast.is.IsObjectLiteralExpression(expression)) {
       const type = expressionTypes.get(expression);
+      const selection = objectLiteralSelections.get(expression);
       for (const property of ast.properties(expression)) {
+        if (property !== undefined && ast.is.IsSpreadAssignment(property)) {
+          const value = SpreadAssignment_Expression(ast, property);
+          const contribution = selection?.contributions.find((candidate) =>
+            candidate.kind === "spread" && candidate.element === property);
+          if (contribution?.kind === "spread") record(value, contribution.sourceType);
+          visitExpression(value);
+          continue;
+        }
         const value = ObjectLiteralProperty_Value(ast, property);
         if (type?.kind === "dictionary") record(value, type.value);
+        if (property !== undefined && value !== undefined && selection !== undefined) {
+          const contribution = selection.contributions.find((candidate) =>
+            candidate.kind === "field" && candidate.element === property);
+          if (contribution?.kind === "field") record(value, contribution.fieldType);
+        }
         visitExpression(value);
       }
       return;

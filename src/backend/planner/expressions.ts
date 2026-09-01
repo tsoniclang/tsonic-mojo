@@ -39,6 +39,7 @@ import type { OrderedMojoValue } from "./expression-support.js";
 import { registerMojoTypeImports } from "./types/render.js";
 import { mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
+import { planMojoProjectObjectLiteral } from "./object-literals.js";
 
 const binaryOperatorText = new Map<string, string>([
   ["KindPlusToken", "+"], ["KindMinusToken", "-"], ["KindAsteriskToken", "*"],
@@ -284,6 +285,8 @@ function planArrayLiteral(node: Node, context: MojoPlanningContext): MojoValuePl
 }
 
 function planObjectLiteral(node: Node, context: MojoPlanningContext): MojoValuePlan | undefined {
+  const project = planMojoProjectObjectLiteral(node, context, planMojoValue);
+  if (project !== undefined) return project;
   const type = context.program.queries.expressionType(node);
   if (type?.kind !== "dictionary") {
     appendMojoPlanningDiagnostic(context, "MOJO_OBJECT_LITERAL_SHAPE_UNSUPPORTED", "Object literal has no sealed dictionary or project-object representation.", node);
@@ -510,7 +513,7 @@ function planAwait(node: Node, context: MojoPlanningContext): MojoValuePlan | un
     );
     return undefined;
   }
-  registerMojoSymbolImport(context, ["std", "runtime", "_asyncrt"], "create_task");
+  registerMojoSymbolImport(context, ["tsonic_runtime"], "create_task");
   return withMojoValue(plan.before, {
     kind: "await",
     expression: Object.freeze({

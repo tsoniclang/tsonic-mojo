@@ -64,8 +64,21 @@ export interface MojoAnalyzedClassField {
   readonly declaration: Node;
   readonly name: string;
   readonly type: MojoTargetTypeRef;
+  readonly ownerType: MojoTargetTypeRef;
+  readonly ownerTypeParameters: readonly string[];
   readonly initializer: Node;
   readonly visibility: "public" | "private";
+}
+
+export interface MojoAnalyzedInterfaceField {
+  readonly kind: "interface-field";
+  readonly declaration: Node;
+  readonly sourceName: string;
+  readonly name: string;
+  readonly type: MojoTargetTypeRef;
+  readonly ownerType: MojoTargetTypeRef;
+  readonly ownerTypeParameters: readonly string[];
+  readonly optional: boolean;
 }
 
 export interface MojoAnalyzedStaticClassField {
@@ -95,6 +108,17 @@ export interface MojoAnalyzedClass {
   readonly targetType: MojoTargetTypeRef;
 }
 
+export interface MojoAnalyzedInterface {
+  readonly kind: "interface";
+  readonly declaration: Node;
+  readonly sourceFile: SourceFile;
+  readonly name: string;
+  readonly stateName: string;
+  readonly typeParameters: readonly MojoAnalyzedTypeParameter[];
+  readonly fields: readonly MojoAnalyzedInterfaceField[];
+  readonly targetType: MojoTargetTypeRef;
+}
+
 export interface MojoAnalyzedEnumMember {
   readonly kind: "enum-member";
   readonly declaration: Node;
@@ -115,9 +139,14 @@ export interface MojoAnalyzedEnum {
 
 export type MojoAnalyzedProjectProperty =
   | MojoAnalyzedProjectField
+  | MojoAnalyzedInterfaceField
   | MojoAnalyzedEnumMember;
 
-export type MojoAnalyzedDeclaration = MojoAnalyzedFunction | MojoAnalyzedClass | MojoAnalyzedEnum;
+export type MojoAnalyzedDeclaration =
+  | MojoAnalyzedFunction
+  | MojoAnalyzedClass
+  | MojoAnalyzedInterface
+  | MojoAnalyzedEnum;
 
 export interface MojoAnalyzedModuleBinding {
   readonly kind: "module-binding" | "class-static-field";
@@ -312,6 +341,36 @@ export type MojoCallSelection =
       readonly optionalChain: boolean;
     };
 
+export type MojoObjectLiteralContribution =
+  | {
+      readonly kind: "field";
+      readonly element: Node;
+      readonly value: Node;
+      readonly field: MojoAnalyzedInterfaceField;
+      readonly fieldType: MojoTargetTypeRef;
+    }
+  | {
+      readonly kind: "spread";
+      readonly element: Node;
+      readonly value: Node;
+      readonly sourceType: MojoTargetTypeRef;
+      readonly fields: readonly {
+        readonly field: MojoAnalyzedInterfaceField;
+        readonly fieldType: MojoTargetTypeRef;
+      }[];
+    };
+
+export interface MojoObjectLiteralSelection {
+  readonly kind: "interface";
+  readonly interface: MojoAnalyzedInterface;
+  readonly targetType: MojoTargetTypeRef;
+  readonly fields: readonly {
+    readonly field: MojoAnalyzedInterfaceField;
+    readonly fieldType: MojoTargetTypeRef;
+  }[];
+  readonly contributions: readonly MojoObjectLiteralContribution[];
+}
+
 export interface MojoProgramQueries {
   bindingName(referenceOrDeclaration: Node): string | undefined;
   bindingSourceFile(referenceOrDeclaration: Node): SourceFile | undefined;
@@ -326,6 +385,7 @@ export interface MojoProgramQueries {
   valueSelection(expression: Node): MojoValueSelection | undefined;
   elementSelection(access: Node): MojoElementSelection | undefined;
   iterationSelection(statement: Node): MojoIterationSelection | undefined;
+  objectLiteralSelection(expression: Node): MojoObjectLiteralSelection | undefined;
   moduleForSourceFile(sourceFile: SourceFile): MojoAnalyzedModule | undefined;
   moduleBinding(referenceOrDeclaration: Node): MojoAnalyzedModuleBinding | undefined;
 }

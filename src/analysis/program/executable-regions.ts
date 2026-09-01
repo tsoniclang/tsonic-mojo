@@ -1,5 +1,10 @@
 import type { Node, SourceFile, Type } from "@tsonic/tsts";
-import { Node_Expression, Node_Initializer } from "@tsonic/target-api/source";
+import {
+  BinaryExpression_Left,
+  BinaryExpression_Right,
+  Node_Expression,
+  Node_Initializer,
+} from "@tsonic/target-api/source";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
@@ -14,6 +19,7 @@ import {
   analyzeMojoProviderProperty,
 } from "../operations/properties.js";
 import { analyzeMojoProviderValue } from "../operations/values.js";
+import { analyzeMojoObjectLiteral } from "../objects/object-literals.js";
 import type { MojoProjectTypeCatalog } from "../types/project-catalog.js";
 import type { MojoSourceProfileRegistry } from "../types/source-profile.js";
 import { resolveMojoTargetType } from "../types/resolution.js";
@@ -27,6 +33,7 @@ import type {
   MojoCallSelection,
   MojoElementSelection,
   MojoIterationSelection,
+  MojoObjectLiteralSelection,
   MojoPropertySelection,
   MojoValueSelection,
 } from "./model.js";
@@ -37,6 +44,8 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly root: Node;
   readonly sourceFile: SourceFile;
   readonly owner?: MojoAnalyzedClassOwner;
+  readonly rootExpectedType?: MojoTargetTypeRef;
+  readonly returnType?: MojoTargetTypeRef;
   readonly source: TargetSourceProgram;
   readonly providerSemantics: MojoProviderSemantics;
   readonly projectTypes: MojoProjectTypeCatalog;
@@ -53,10 +62,12 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly elementSelections: WeakMap<Node, MojoElementSelection>;
   readonly iterationSelections: WeakMap<Node, MojoIterationSelection>;
   readonly valueSelections: WeakMap<Node, MojoValueSelection>;
+  readonly objectLiteralSelections: WeakMap<Node, MojoObjectLiteralSelection>;
   readonly conversions: MojoConversionIndex;
   readonly functionByDeclaration: WeakMap<Node, MojoAnalyzedFunction>;
   readonly classByDeclaration: WeakMap<Node, MojoAnalyzedClass>;
   readonly classByTypeId: ReadonlyMap<string, MojoAnalyzedClass>;
+  readonly interfaceByTypeId: ReadonlyMap<string, import("./model.js").MojoAnalyzedInterface>;
   readonly fieldByDeclaration: WeakMap<Node, MojoAnalyzedProjectProperty>;
   readonly sourceValueOccurrenceKinds: WeakMap<Node, "runtime" | "non-runtime">;
   readonly indexedSourceUseDeclarations: WeakSet<Node>;
@@ -64,7 +75,7 @@ export interface MojoExecutableRegionAnalysisInput {
 
 export type MojoExecutableRegionAnalysisEnvironment = Omit<
   MojoExecutableRegionAnalysisInput,
-  "root" | "sourceFile" | "owner"
+  "root" | "sourceFile" | "owner" | "rootExpectedType" | "returnType"
 >;
 
 export interface MojoExecutableRegionAnalysis {
@@ -80,6 +91,7 @@ export function analyzeMojoExecutableRegion(
   const semantics = source.semantics.forFile(sourceFile);
   const dependencies = new Set<Node>();
   const iterationNodes: Node[] = [];
+  const objectLiteralNodes: Node[] = [];
   walkSourceTree(root, ast, (node): void => {
     if (ast.is.IsVariableDeclaration(node)) {
       const selected = declaredOrInitializerType(node, semantics, ast);
@@ -94,6 +106,7 @@ export function analyzeMojoExecutableRegion(
       analyzeExpressionCarrier(node, input, semantics);
     }
     if (ast.is.IsForOfStatement(node) || ast.is.IsForInStatement(node)) iterationNodes.push(node);
+    if (ast.is.IsObjectLiteralExpression(node)) objectLiteralNodes.push(node);
   }, (node, regionRoot) => descendWithinExecutableRegion(node, regionRoot, ast));
 
   walkSourceTreePostOrder(root, ast, (node): void => {
@@ -106,6 +119,39 @@ export function analyzeMojoExecutableRegion(
     const inferred = inferMojoExpressionType(node, ast, input.expressionTypes);
     if (inferred !== undefined) input.expressionTypes.set(node, inferred);
   }, (node, regionRoot) => descendWithinExecutableRegion(node, regionRoot, ast));
+
+  const pendingObjects = new Set(objectLiteralNodes);
+  let progressed = true;
+  while (pendingObjects.size !== 0 && progressed) {
+    progressed = false;
+    for (const node of pendingObjects) {
+      const expectedType = expectedObjectType(node, input);
+      const inferredType = input.expressionTypes.get(node);
+      const candidate = expectedType ?? inferredType;
+      if (candidate?.kind !== "target-named" || !input.interfaceByTypeId.has(candidate.id)) {
+        pendingObjects.delete(node);
+        continue;
+      }
+      const selection = analyzeMojoObjectLiteral({
+        source: input.source,
+        sourceFile,
+        expression: node,
+        expressionTypes: input.expressionTypes,
+        ...(expectedType === undefined ? {} : { expectedType }),
+        interfaceByTypeId: input.interfaceByTypeId,
+        fieldByDeclaration: input.fieldByDeclaration,
+        resolveType(type) {
+          return resolveType(type, undefined, input, semantics);
+        },
+        diagnostics: input.diagnostics,
+      });
+      pendingObjects.delete(node);
+      if (selection !== undefined) {
+        input.objectLiteralSelections.set(node, selection);
+        progressed = true;
+      }
+    }
+  }
 
   for (const node of iterationNodes) {
     const selected = semantics.operations.iteration(node);
@@ -136,6 +182,46 @@ export function analyzeMojoExecutableRegion(
     }
   }
   return Object.freeze({ dependencies, raises: regionRaises(root, input) });
+}
+
+function expectedObjectType(
+  node: Node,
+  input: MojoExecutableRegionAnalysisInput,
+): MojoTargetTypeRef | undefined {
+  const { ast } = input.source;
+  if (node === input.root && input.rootExpectedType !== undefined) return input.rootExpectedType;
+  const parent = ast.parent(node);
+  if (parent === undefined) return undefined;
+  if (ast.is.IsVariableDeclaration(parent) && Node_Initializer(ast, parent) === node) {
+    return input.bindingTypes.get(parent);
+  }
+  if (ast.is.IsReturnStatement(parent) && Node_Expression(ast, parent) === node) {
+    return input.returnType;
+  }
+  if (ast.is.IsCallExpression(parent) || ast.is.IsNewExpression(parent)) {
+    return input.callSelections.get(parent)?.arguments.find((argument) => argument.expression === node)?.parameterType;
+  }
+  if (ast.is.IsPropertyAssignment(parent) || ast.is.IsShorthandPropertyAssignment(parent)) {
+    const owner = ast.parent(parent);
+    const selection = owner === undefined ? undefined : input.objectLiteralSelections.get(owner);
+    const contribution = selection?.contributions.find((candidate) =>
+      candidate.kind === "field" && candidate.element === parent);
+    return contribution?.kind === "field" ? contribution.fieldType : undefined;
+  }
+  if (ast.is.IsBinaryExpression(parent) && BinaryExpression_Right(ast, parent) === node) {
+    const left = BinaryExpression_Left(ast, parent);
+    if (left === undefined) return undefined;
+    const property = input.propertySelections.get(left);
+    const element = input.elementSelections.get(left);
+    return property?.kind === "provider"
+      ? property.writeOperation?.parameterTypes[0]
+      : element?.writeType ?? input.expressionTypes.get(left);
+  }
+  if ((ast.is.IsAsExpression(parent) || ast.is.IsTypeAssertion(parent) ||
+      ast.is.IsSatisfiesExpression(parent)) && Node_Expression(ast, parent) === node) {
+    return input.expressionTypes.get(parent);
+  }
+  return undefined;
 }
 
 function analyzeCall(

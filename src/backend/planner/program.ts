@@ -21,12 +21,14 @@ import type {
   MojoAnalyzedClass,
   MojoAnalyzedEnum,
   MojoAnalyzedFunction,
+  MojoAnalyzedInterface,
   MojoTargetProgram,
 } from "../../analysis/program/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
 import { normalizeMojoIdentifier } from "../../analysis/names/identifiers.js";
 import type { MojoSourceModuleDefinition } from "../../analysis/modules/model.js";
 import { planMojoModuleState } from "./module-state.js";
+import { planMojoInterface } from "./interface-declarations.js";
 
 export function planMojoOutput(program: MojoTargetProgram): TargetStageResult<MojoOutputPlan> {
   const diagnostics: TargetDiagnostic[] = [];
@@ -88,6 +90,10 @@ function planSourceModule(
     }
     if (declaration.kind === "enum") {
       declarations.push(planEnum(declaration));
+      continue;
+    }
+    if (declaration.kind === "interface") {
+      declarations.push(...planMojoInterface(declaration, context));
       continue;
     }
     const planned = planFunction(declaration, context);
@@ -237,7 +243,7 @@ function planBinaryEntry(
       ...(function_.asynchronous
         ? [Object.freeze({
             kind: "symbols" as const,
-            modulePath: Object.freeze(["std", "runtime", "_asyncrt"]),
+            modulePath: Object.freeze(["tsonic_runtime"]),
             symbols: Object.freeze([Object.freeze({
               name: function_.raises ? "create_raising_task" : "create_task",
             })]),
@@ -522,7 +528,7 @@ function planEnum(enum_: MojoAnalyzedEnum): MojoStructDeclaration {
 }
 
 function genericParameters(
-  declaration: Pick<MojoAnalyzedFunction | MojoAnalyzedClass, "typeParameters">,
+  declaration: Pick<MojoAnalyzedFunction | MojoAnalyzedClass | MojoAnalyzedInterface, "typeParameters">,
 ) {
   return Object.freeze(declaration.typeParameters.map((parameter) => Object.freeze({
     kind: "type" as const,
