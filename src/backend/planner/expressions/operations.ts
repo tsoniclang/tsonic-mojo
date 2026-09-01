@@ -113,6 +113,75 @@ export function planMojoCall(
     appendMojoPlanningDiagnostic(context, "MOJO_CALL_PLAN_MISSING", "Call expression has no sealed target selection.", node);
     return undefined;
   }
+  if (selection.kind === "typed-location") {
+    registerMojoTypeImports(selection.locationType, context);
+    switch (selection.operation) {
+      case "address-of": {
+        const storage = context.program.queries.locationStorage(selection.storageDeclaration);
+        if (storage === undefined) {
+          appendMojoPlanningDiagnostic(
+            context,
+            "MOJO_POINTER_STORAGE_PLAN_MISSING",
+            "Address-of has no sealed promoted Mojo storage.",
+            node,
+          );
+          return undefined;
+        }
+        return mojoValue(Object.freeze({ kind: "path", path: storage.name }));
+      }
+      case "allocate": {
+        const initial = planValue(selection.initialExpression, context, selection.pointeeType);
+        return initial === undefined
+          ? undefined
+          : withMojoValue(initial.before, Object.freeze({
+              kind: "construct",
+              type: selection.locationType,
+              arguments: Object.freeze([Object.freeze({ value: initial.value })]),
+            }));
+      }
+      case "load": {
+        const pointer = planValue(selection.pointerExpression, context, selection.locationType);
+        return pointer === undefined
+          ? undefined
+          : withMojoValue(pointer.before, Object.freeze({
+              kind: "method-call",
+              receiver: pointer.value,
+              name: "read",
+              arguments: Object.freeze([]),
+            }));
+      }
+      case "store": {
+        const pointer = planValue(selection.pointerExpression, context, selection.locationType);
+        const value = planValue(selection.valueExpression, context, selection.pointeeType);
+        if (pointer === undefined || value === undefined) return undefined;
+        const ordered = orderMojoValues([
+          Object.freeze({ plan: pointer, type: selection.locationType, role: "location_pointer" }),
+          Object.freeze({ plan: value, type: selection.pointeeType, role: "location_value" }),
+        ], context);
+        return withMojoValue(ordered.before, Object.freeze({
+          kind: "method-call",
+          receiver: ordered.values[0]!,
+          name: "write",
+          arguments: Object.freeze([Object.freeze({ value: ordered.values[1]! })]),
+        }));
+      }
+      case "equal-pointer": {
+        const left = planValue(selection.leftExpression, context, selection.locationType);
+        const right = planValue(selection.rightExpression, context, selection.locationType);
+        if (left === undefined || right === undefined) return undefined;
+        const ordered = orderMojoValues([
+          Object.freeze({ plan: left, type: selection.locationType, role: "location_left" }),
+          Object.freeze({ plan: right, type: selection.locationType, role: "location_right" }),
+        ], context);
+        return withMojoValue(ordered.before, Object.freeze({
+          kind: "method-call",
+          receiver: ordered.values[0]!,
+          name: "same_storage",
+          arguments: Object.freeze([Object.freeze({ value: ordered.values[1]! })]),
+        }));
+      }
+    }
+  }
   if (selection.kind === "project") {
     const arguments_ = selection.arguments.map((argument) => planSelectedArgument(argument, context, planValue));
     if (arguments_.some((argument) => argument === undefined)) return undefined;

@@ -372,8 +372,12 @@ function planFunction(
 ): MojoFunctionDeclaration | undefined {
   for (const parameter of function_.parameters) registerMojoTypeImports(parameter.type, context);
   registerMojoTypeImports(function_.resultType, context);
-  const statements = planMojoFunctionStatements(function_, context);
-  if (statements === undefined) return undefined;
+  const bodyStatements = planMojoFunctionStatements(function_, context);
+  if (bodyStatements === undefined) return undefined;
+  const statements = Object.freeze([
+    ...planLocationParameterPrelude(function_, context),
+    ...bodyStatements,
+  ]);
   return Object.freeze({
     kind: "function",
     name: function_.name,
@@ -463,7 +467,10 @@ function planClass(
   if (sourceConstructor !== undefined) {
     const planned = planMojoFunctionStatements(sourceConstructor, context);
     if (planned === undefined) return undefined;
-    constructorStatements = planned;
+    constructorStatements = Object.freeze([
+      ...planLocationParameterPrelude(sourceConstructor, context),
+      ...planned,
+    ]);
   }
   const constructor: MojoFunctionDeclaration = Object.freeze({
     kind: "function",
@@ -508,6 +515,38 @@ function planClass(
     methods: Object.freeze(methods),
   });
   return Object.freeze([state, wrapper]);
+}
+
+function planLocationParameterPrelude(
+  function_: MojoAnalyzedFunction,
+  context: MojoPlanningContext,
+): readonly MojoStatement[] {
+  const statements: MojoStatement[] = [];
+  for (const parameter of function_.parameters) {
+    const storage = context.program.queries.locationStorage(parameter.declaration);
+    if (storage === undefined) continue;
+    const locationType: MojoTargetTypeRef = Object.freeze({
+      kind: "target-named",
+      id: "tsonic.mojo.runtime.Location",
+      modulePath: Object.freeze(["tsonic_runtime"]),
+      name: "Location",
+      genericArguments: Object.freeze([Object.freeze({ kind: "type", type: parameter.type })]),
+    });
+    registerMojoTypeImports(locationType, context);
+    statements.push(Object.freeze({
+      kind: "variable",
+      name: storage.name,
+      type: locationType,
+      initializer: Object.freeze({
+        kind: "construct",
+        type: locationType,
+        arguments: Object.freeze([Object.freeze({
+          value: Object.freeze({ kind: "path", path: parameter.name }),
+        })]),
+      }),
+    }));
+  }
+  return Object.freeze(statements);
 }
 
 function planEnum(enum_: MojoAnalyzedEnum): MojoStructDeclaration {

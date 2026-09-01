@@ -65,9 +65,7 @@ const assignmentOperatorText = new Map<string, string>([
 
 export interface PlannedMojoAssignment {
   readonly before: readonly MojoStatement[];
-  readonly operator: string;
-  readonly left: MojoExpression;
-  readonly right: MojoExpression;
+  readonly statement: MojoStatement;
 }
 
 export function planMojoUpdate(
@@ -87,6 +85,34 @@ export function planMojoUpdate(
     ? ast.as.AsPrefixUnaryExpression(node)?.Operand
     : ast.as.AsPostfixUnaryExpression(node)?.Operand;
   if (operand === undefined) return undefined;
+  const locationStorage = context.program.queries.locationStorage(operand);
+  if (locationStorage !== undefined) {
+    const storage: MojoExpression = Object.freeze({ kind: "path", path: locationStorage.name });
+    return Object.freeze({
+      before: Object.freeze([]),
+      statement: Object.freeze({
+        kind: "expression",
+        expression: Object.freeze({
+          kind: "method-call",
+          receiver: storage,
+          name: "write",
+          arguments: Object.freeze([Object.freeze({
+            value: Object.freeze({
+              kind: "binary",
+              operator: operator.slice(0, -1),
+              left: Object.freeze({
+                kind: "method-call",
+                receiver: storage,
+                name: "read",
+                arguments: Object.freeze([]),
+              }),
+              right: Object.freeze({ kind: "number-literal", text: "1" }),
+            }),
+          })]),
+        }),
+      }),
+    });
+  }
   const property = context.program.queries.propertySelection(operand);
   const element = context.program.queries.elementSelection(operand);
   const left = ast.is.IsPropertyAccessExpression(operand)
@@ -109,9 +135,12 @@ export function planMojoUpdate(
   }
   return Object.freeze({
     before: left.before,
-    operator,
-    left: left.value,
-    right: Object.freeze({ kind: "number-literal", text: "1" }),
+    statement: Object.freeze({
+      kind: "assignment",
+      operator,
+      left: left.value,
+      right: Object.freeze({ kind: "number-literal", text: "1" }),
+    }),
   });
 }
 
@@ -137,6 +166,35 @@ export function planMojoAssignment(
   const targetType = writeType ?? leftType;
   const right = planMojoValue(rightNode, context, targetType);
   if (right === undefined) return undefined;
+  const locationStorage = context.program.queries.locationStorage(leftNode);
+  if (locationStorage !== undefined) {
+    const storage: MojoExpression = Object.freeze({ kind: "path", path: locationStorage.name });
+    const value: MojoExpression = operator === "="
+      ? right.value
+      : Object.freeze({
+          kind: "binary",
+          operator: operator.slice(0, -1),
+          left: Object.freeze({
+            kind: "method-call",
+            receiver: storage,
+            name: "read",
+            arguments: Object.freeze([]),
+          }),
+          right: right.value,
+        });
+    return Object.freeze({
+      before: right.before,
+      statement: Object.freeze({
+        kind: "expression",
+        expression: Object.freeze({
+          kind: "method-call",
+          receiver: storage,
+          name: "write",
+          arguments: Object.freeze([Object.freeze({ value })]),
+        }),
+      }),
+    });
+  }
   const stabilizeLocation = right.before.length !== 0;
   const left = ast.is.IsPropertyAccessExpression(leftNode)
     ? planMojoProperty(leftNode, context, planMojoValue, "write", stabilizeLocation)
@@ -169,9 +227,12 @@ export function planMojoAssignment(
   before.push(...right.before);
   return Object.freeze({
     before: Object.freeze(before),
-    operator: plannedOperator,
-    left: left.value,
-    right: plannedRight,
+    statement: Object.freeze({
+      kind: "assignment",
+      operator: plannedOperator,
+      left: left.value,
+      right: plannedRight,
+    }),
   });
 }
 

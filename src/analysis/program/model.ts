@@ -298,6 +298,48 @@ export interface MojoIterationSelection {
 
 export type MojoCallSelection =
   | {
+      readonly kind: "typed-location";
+      readonly operation: "address-of";
+      readonly pointeeType: MojoTargetTypeRef;
+      readonly locationType: MojoTargetTypeRef;
+      readonly resultType: MojoTargetTypeRef;
+      readonly storageDeclaration: Node;
+    }
+  | {
+      readonly kind: "typed-location";
+      readonly operation: "allocate";
+      readonly pointeeType: MojoTargetTypeRef;
+      readonly locationType: MojoTargetTypeRef;
+      readonly resultType: MojoTargetTypeRef;
+      readonly initialExpression: Node;
+    }
+  | {
+      readonly kind: "typed-location";
+      readonly operation: "load";
+      readonly pointeeType: MojoTargetTypeRef;
+      readonly locationType: MojoTargetTypeRef;
+      readonly resultType: MojoTargetTypeRef;
+      readonly pointerExpression: Node;
+    }
+  | {
+      readonly kind: "typed-location";
+      readonly operation: "store";
+      readonly pointeeType: MojoTargetTypeRef;
+      readonly locationType: MojoTargetTypeRef;
+      readonly resultType: MojoTargetTypeRef;
+      readonly pointerExpression: Node;
+      readonly valueExpression: Node;
+    }
+  | {
+      readonly kind: "typed-location";
+      readonly operation: "equal-pointer";
+      readonly pointeeType: MojoTargetTypeRef;
+      readonly locationType: MojoTargetTypeRef;
+      readonly resultType: MojoTargetTypeRef;
+      readonly leftExpression: Node;
+      readonly rightExpression: Node;
+    }
+  | {
       readonly kind: "project";
       readonly target:
         | {
@@ -434,6 +476,11 @@ export interface MojoProgramQueries {
   bindingPatternSelection(declaration: Node): MojoBindingPatternSelection | undefined;
   moduleForSourceFile(sourceFile: SourceFile): MojoAnalyzedModule | undefined;
   moduleBinding(referenceOrDeclaration: Node): MojoAnalyzedModuleBinding | undefined;
+  locationStorage(referenceOrDeclaration: Node): {
+    readonly declaration: Node;
+    readonly name: string;
+    readonly valueType: MojoTargetTypeRef;
+  } | undefined;
 }
 
 export interface MojoRuntimePackagePlan {

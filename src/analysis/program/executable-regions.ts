@@ -72,6 +72,7 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly functionByDeclaration: WeakMap<Node, MojoAnalyzedFunction>;
   readonly classByDeclaration: WeakMap<Node, MojoAnalyzedClass>;
   readonly classByTypeId: ReadonlyMap<string, MojoAnalyzedClass>;
+  readonly locationStorageNames: WeakMap<Node, string>;
   readonly interfaceByTypeId: ReadonlyMap<string, import("./model.js").MojoAnalyzedInterface>;
   readonly fieldByDeclaration: WeakMap<Node, MojoAnalyzedProjectProperty>;
   readonly sourceValueOccurrenceKinds: WeakMap<Node, "runtime" | "non-runtime">;
@@ -323,6 +324,7 @@ function analyzeCall(
     functionByDeclaration: input.functionByDeclaration,
     classByDeclaration: input.classByDeclaration,
     classByTypeId: input.classByTypeId,
+    locationStorageNames: input.locationStorageNames,
     modulePathForSourceFile(owner) {
       return input.modules.forSourceFile(owner)?.modulePath ?? Object.freeze([]);
     },
@@ -333,7 +335,8 @@ function analyzeCall(
   }
   if (analyzed.dependency !== undefined) dependencies.add(analyzed.dependency);
   input.callSelections.set(node, analyzed.selection);
-  if (analyzed.selection.kind === "project" || analyzed.selection.kind === "callable") {
+  if (analyzed.selection.kind === "project" || analyzed.selection.kind === "callable" ||
+    analyzed.selection.kind === "typed-location") {
     input.expressionTypes.set(node, analyzed.selection.resultType);
   }
 }

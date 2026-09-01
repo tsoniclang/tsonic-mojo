@@ -102,6 +102,7 @@ export interface MojoCallableCaptureInput {
   readonly owner?: MojoAnalyzedClassOwner;
   readonly source: TargetSourceProgram;
   readonly bindingNames: WeakMap<Node, string>;
+  readonly locationStorageNames: WeakMap<Node, string>;
   readonly moduleBindingByDeclaration: WeakMap<Node, unknown>;
   readonly diagnostics: TargetDiagnostic[];
 }
@@ -125,7 +126,7 @@ export function collectMojoCallableCaptures(
     if (declaration === undefined || nodeIsWithin(declaration, input.expression, ast) ||
       input.moduleBindingByDeclaration.has(declaration) || captures.has(declaration)) return;
     if (!captureEligibleDeclaration(declaration, ast)) return;
-    const name = input.bindingNames.get(declaration);
+    const name = input.locationStorageNames.get(declaration) ?? input.bindingNames.get(declaration);
     const symbol = reference?.symbol;
     if (name === undefined || symbol === undefined) {
       input.diagnostics.push(mojoAnalysisDiagnostic(
@@ -139,7 +140,9 @@ export function collectMojoCallableCaptures(
     captures.set(declaration, Object.freeze({
       declaration,
       name,
-      convention: captureConvention(symbol, input.body, input.source),
+      convention: input.locationStorageNames.has(declaration)
+        ? "imm"
+        : captureConvention(symbol, input.body, input.source),
     }));
   }, (node, root) => node === root || !isNestedCallable(node, ast));
   if (!valid) return undefined;
@@ -183,6 +186,7 @@ export function analyzeAndSealMojoCallableExpression(
     jsEnabled: environment.jsEnabled,
     allocateLocalName: input.allocateLocalName,
     bindingNames: environment.bindingNames,
+    locationStorageNames: environment.locationStorageNames,
     bindingTypes: environment.bindingTypes,
     bindingSourceFiles: environment.bindingSourceFiles,
     diagnostics: environment.diagnostics,

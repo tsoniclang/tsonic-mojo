@@ -116,13 +116,13 @@ function planStatement(
     if (assignment !== undefined) {
       return Object.freeze([
         ...assignment.before,
-        { kind: "assignment", operator: assignment.operator, left: assignment.left, right: assignment.right },
+        assignment.statement,
       ]);
     }
     const update = sourceExpression === undefined ? undefined : planMojoUpdate(sourceExpression, context);
     if (update !== undefined) return Object.freeze([
       ...update.before,
-      { kind: "assignment", operator: update.operator, left: update.left, right: update.right },
+      update.statement,
     ]);
     const expression = sourceExpression === undefined ? undefined : planMojoValue(sourceExpression, context);
     return expression === undefined
@@ -522,8 +522,30 @@ function planVariableDeclarationList(
     if (name === undefined || type === undefined || sourceInitializer === undefined) return undefined;
     const initializer = planMojoValue(sourceInitializer, context, type);
     if (initializer === undefined) return undefined;
-    registerMojoTypeImports(type, context);
-    planned.push(...initializer.before, { kind: "variable", name, type, initializer: initializer.value });
+    const locationStorage = context.program.queries.locationStorage(declaration);
+    if (locationStorage === undefined) {
+      registerMojoTypeImports(type, context);
+      planned.push(...initializer.before, { kind: "variable", name, type, initializer: initializer.value });
+    } else {
+      const locationType: MojoTargetTypeRef = Object.freeze({
+        kind: "target-named",
+        id: "tsonic.mojo.runtime.Location",
+        modulePath: Object.freeze(["tsonic_runtime"]),
+        name: "Location",
+        genericArguments: Object.freeze([Object.freeze({ kind: "type", type })]),
+      });
+      registerMojoTypeImports(locationType, context);
+      planned.push(...initializer.before, {
+        kind: "variable",
+        name: locationStorage.name,
+        type: locationType,
+        initializer: Object.freeze({
+          kind: "construct",
+          type: locationType,
+          arguments: Object.freeze([Object.freeze({ value: initializer.value })]),
+        }),
+      });
+    }
   }
   return Object.freeze(planned);
 }
@@ -540,12 +562,12 @@ function planForInitializer(
   const assignment = planMojoAssignment(initializer, context);
   if (assignment !== undefined) return Object.freeze([
     ...assignment.before,
-    { kind: "assignment", operator: assignment.operator, left: assignment.left, right: assignment.right },
+    assignment.statement,
   ]);
   const update = planMojoUpdate(initializer, context);
   if (update !== undefined) return Object.freeze([
     ...update.before,
-    { kind: "assignment", operator: update.operator, left: update.left, right: update.right },
+    update.statement,
   ]);
   const expression = planMojoValue(initializer, context);
   return expression === undefined
@@ -561,12 +583,12 @@ function planForIncrement(
   const assignment = planMojoAssignment(incrementor, context);
   if (assignment !== undefined) return Object.freeze([
     ...assignment.before,
-    { kind: "assignment", operator: assignment.operator, left: assignment.left, right: assignment.right },
+    assignment.statement,
   ]);
   const update = planMojoUpdate(incrementor, context);
   if (update !== undefined) return Object.freeze([
     ...update.before,
-    { kind: "assignment", operator: update.operator, left: update.left, right: update.right },
+    update.statement,
   ]);
   const expression = planMojoValue(incrementor, context);
   return expression === undefined

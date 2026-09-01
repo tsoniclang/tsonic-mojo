@@ -1,4 +1,5 @@
 import {
+  pointerFactKey,
   providerVirtualDeclarationFactKey,
   sourcePrimitiveFactKey,
 } from "@tsonic/tsts";
@@ -61,6 +62,33 @@ function resolveMojoTargetTypeWithState(
     return { kind: "unsupported", reason: "the selected TypeScript type is recursively self-referential" };
   }
   const subjects = typeSubjects(selectedType, authoredTypeNode, context);
+  const pointer = uniqueFact(
+    subjects.map((subject) => context.sourceFacts.getFact(subject, pointerFactKey)),
+  );
+  if (pointer.kind === "conflict") {
+    return { kind: "unsupported", reason: "selected typed-location facts conflict" };
+  }
+  if (pointer.value !== undefined) {
+    const selectedPointee = context.semantics.types.authoredType(pointer.value.pointee);
+    const pointee = resolveMojoTargetTypeWithState(
+      selectedPointee,
+      pointer.value.pointee,
+      context,
+      resolving,
+    );
+    return pointee.kind === "unsupported"
+      ? pointee
+      : {
+          kind: "resolved",
+          type: Object.freeze({
+            kind: "target-named",
+            id: "tsonic.mojo.runtime.Location",
+            modulePath: Object.freeze(["tsonic_runtime"]),
+            name: "Location",
+            genericArguments: Object.freeze([Object.freeze({ kind: "type", type: pointee.type })]),
+          }),
+        };
+  }
   const primitive = uniqueFact(
     subjects.map((subject) => context.sourceFacts.getFact(subject, sourcePrimitiveFactKey)),
   );

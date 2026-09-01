@@ -33,6 +33,7 @@ export interface MojoProgramQueryIndexes {
   readonly bindingPatternSelections: WeakMap<Node, MojoBindingPatternSelection>;
   readonly moduleBySourceFile: WeakMap<SourceFile, MojoAnalyzedModule>;
   readonly moduleBindingByDeclaration: WeakMap<Node, MojoAnalyzedModuleBinding>;
+  readonly locationStorageNames: WeakMap<Node, string>;
 }
 
 export function createMojoProgramQueries(
@@ -88,6 +89,17 @@ export function createMojoProgramQueries(
       return reference === undefined
         ? undefined
         : indexes.moduleBindingByDeclaration.get(reference.declaration);
+    },
+    locationStorage(referenceOrDeclaration: Node) {
+      const reference = indexes.sourceNavigation.sourceReferenceFor(referenceOrDeclaration);
+      const declaration = reference?.project === true
+        ? reference.declaration
+        : referenceOrDeclaration;
+      const name = indexes.locationStorageNames.get(declaration);
+      const valueType = indexes.bindingTypes.get(declaration);
+      return name === undefined || valueType === undefined
+        ? undefined
+        : Object.freeze({ declaration, name, valueType });
     },
   });
 }

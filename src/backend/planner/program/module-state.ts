@@ -249,12 +249,12 @@ function planModuleStatement(
   const assignment = planMojoAssignment(sourceExpression, context);
   if (assignment !== undefined) return Object.freeze([
     ...assignment.before,
-    Object.freeze({ kind: "assignment", operator: assignment.operator, left: assignment.left, right: assignment.right }),
+    assignment.statement,
   ]);
   const update = planMojoUpdate(sourceExpression, context);
   if (update !== undefined) return Object.freeze([
     ...update.before,
-    Object.freeze({ kind: "assignment", operator: update.operator, left: update.left, right: update.right }),
+    update.statement,
   ]);
   const value = planMojoValue(sourceExpression, context);
   return value === undefined

@@ -1,3 +1,4 @@
+import { pointerOperationFactKey } from "@tsonic/tsts";
 import type { Node, SourceFile } from "@tsonic/tsts";
 import {
   rejectedTargetStage,
@@ -59,6 +60,7 @@ import {
 import type { MojoAnalyzedModuleRegionFacts } from "./module-effects.js";
 import { createMojoProgramQueries } from "./queries.js";
 import { collectMojoDeclarationDrafts } from "./declaration-drafts.js";
+import { walkSourceTree } from "./traversal.js";
 
 export function analyzeMojoTargetProgram(
   request: MojoTargetAnalysisRequest,
@@ -115,6 +117,11 @@ export function analyzeMojoTargetProgram(
   const projectDependencies = new Map<Node, Set<Node>>();
   const sourceValueOccurrenceKinds = new WeakMap<Node, "runtime" | "non-runtime">();
   const indexedSourceUseDeclarations = new WeakSet<Node>();
+  const addressedStorageDeclarations = collectMojoAddressedStorageDeclarations(
+    sourceFiles,
+    input.source,
+  );
+  const locationStorageNames = new WeakMap<Node, string>();
   const reservedNames = new Set<string>();
   const createNameAllocator = (): ((name: string) => string) =>
     createMojoNameAllocator([], (name) => reservedNames.add(name));
@@ -326,6 +333,14 @@ export function analyzeMojoTargetProgram(
     }
   }
 
+  const locationNames = createNameAllocator();
+  for (const declaration of addressedStorageDeclarations) {
+    const bindingName = bindingNames.get(declaration);
+    if (bindingName !== undefined) {
+      locationStorageNames.set(declaration, locationNames(`${bindingName}_location`));
+    }
+  }
+
   let executableEnvironment: MojoExecutableRegionAnalysisEnvironment;
   const analyzeCallableExpression = (
     expression: Node,
@@ -367,6 +382,7 @@ export function analyzeMojoTargetProgram(
     functionByDeclaration,
     classByDeclaration,
     classByTypeId,
+    locationStorageNames,
     interfaceByTypeId,
     fieldByDeclaration,
     sourceValueOccurrenceKinds,
@@ -571,6 +587,7 @@ export function analyzeMojoTargetProgram(
     bindingPatternSelections,
     moduleBySourceFile: finalizedModuleBySourceFile,
     moduleBindingByDeclaration,
+    locationStorageNames,
   });
   const topLevelFunctions = finalizedFunctions.filter((function_) => function_.kind === "function");
   const declarations: MojoAnalyzedDeclaration[] = [
@@ -597,4 +614,44 @@ export function analyzeMojoTargetProgram(
     runtimePackages: analyzeMojoRuntimePackages(input.runtimeReferences),
     reservedNames: Object.freeze([...reservedNames].sort((left, right) => left.localeCompare(right, "en"))),
   }));
+}
+
+function collectMojoAddressedStorageDeclarations(
+  sourceFiles: readonly SourceFile[],
+  source: import("@tsonic/target-api/source").TargetSourceProgram,
+): ReadonlySet<Node> {
+  const declarations = new Set<Node>();
+  for (const sourceFile of sourceFiles) {
+    walkSourceTree(sourceFile, source.ast, (node): void => {
+      if (!source.ast.is.IsCallExpression(node)) return;
+      const fact = source.sourceFacts.getFact(node, pointerOperationFactKey);
+      if (fact?.operation !== "address-of" || fact.call !== node ||
+        fact.storageDeclaration === undefined ||
+        !source.ast.is.IsIdentifier(fact.storageExpression)) return;
+      const reference = source.navigation.sourceReferenceFor(fact.storageExpression);
+      if (reference?.project !== true || reference.declaration !== fact.storageDeclaration ||
+        !isFunctionLocalStorageDeclaration(fact.storageDeclaration, source.ast)) return;
+      declarations.add(fact.storageDeclaration);
+    });
+  }
+  return declarations;
+}
+
+function isFunctionLocalStorageDeclaration(
+  declaration: Node,
+  ast: import("@tsonic/tsts").AstReader,
+): boolean {
+  if (!ast.is.IsVariableDeclaration(declaration) && !ast.is.IsParameterDeclaration(declaration)) {
+    return false;
+  }
+  let owner = ast.parent(declaration);
+  while (owner !== undefined) {
+    if (ast.is.IsFunctionDeclaration(owner) || ast.is.IsMethodDeclaration(owner) ||
+      ast.is.IsConstructorDeclaration(owner) || ast.is.IsGetAccessorDeclaration(owner) ||
+      ast.is.IsSetAccessorDeclaration(owner)) return true;
+    if (ast.is.IsArrowFunction(owner) || ast.is.IsFunctionExpression(owner) ||
+      ast.is.IsSourceFile(owner)) return false;
+    owner = ast.parent(owner);
+  }
+  return false;
 }

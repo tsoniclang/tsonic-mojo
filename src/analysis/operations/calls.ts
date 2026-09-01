@@ -11,6 +11,7 @@ import { classifyMojoValueConversion } from "../../policy/conversions/selection.
 import { resolveMojoNonTypeGenericArguments } from "../../policy/types/generic-arguments.js";
 import { selectMojoProviderCall } from "../../policy/operations/provider-selection.js";
 import { instantiateMojoProviderOperation } from "../../policy/operations/provider-instantiation.js";
+import { analyzeMojoTypedLocation } from "../../policy/operations/typed-locations.js";
 import type {
   MojoAnalyzedClass,
   MojoAnalyzedCallArgument,
@@ -33,6 +34,7 @@ export interface MojoCallAnalysisContext {
   readonly functionByDeclaration: WeakMap<Node, MojoAnalyzedFunction>;
   readonly classByDeclaration: WeakMap<Node, MojoAnalyzedClass>;
   readonly classByTypeId: ReadonlyMap<string, MojoAnalyzedClass>;
+  readonly locationStorageNames: WeakMap<Node, string>;
   readonly modulePathForSourceFile: (sourceFile: import("@tsonic/tsts").SourceFile) => readonly string[];
 }
 
@@ -56,6 +58,17 @@ export function analyzeMojoCall(
   };
   const selectedDeclaration = sourceCall.sourceCallee.selectedDeclaration ??
     sourceCall.sourceCalleeAccess?.selectedDeclaration;
+  const typedLocation = analyzeMojoTypedLocation({
+    call: callNode,
+    sourceCall,
+    source: context.source,
+    locationStorageNames: context.locationStorageNames,
+    resolveType: resolve,
+  });
+  if (typedLocation.kind === "unsupported") return typedLocation;
+  if (typedLocation.kind === "resolved") {
+    return { kind: "resolved", selection: typedLocation.selection };
+  }
   const projectFunction = selectedDeclaration === undefined
     ? undefined
     : context.functionByDeclaration.get(selectedDeclaration);
@@ -124,6 +137,12 @@ export function analyzeMojoCall(
     context.expressionTypes,
   );
   if (arguments_.kind === "unsupported") return arguments_;
+  const locationConflict = locationBackedMutableArgument(
+    arguments_.arguments,
+    target.arguments,
+    context,
+  );
+  if (locationConflict !== undefined) return locationConflict;
   const result = closeResultConversion(
     callNode,
     instantiated.operation.resultType,
@@ -212,6 +231,15 @@ function analyzeCallableValueCall(
     context.expressionTypes,
   );
   if (arguments_.kind === "unsupported") return arguments_;
+  const callableTargets = callableType.parameters.map((parameter) => Object.freeze({
+    convention: parameter.convention,
+  }));
+  const locationConflict = locationBackedMutableArgument(
+    arguments_.arguments,
+    callableTargets,
+    context,
+  );
+  if (locationConflict !== undefined) return locationConflict;
   const targetResult: MojoTargetTypeRef = callableType.asynchronous
     ? Object.freeze({ kind: "future", domain: "native", output: callableType.result })
     : callableType.result;
@@ -290,6 +318,12 @@ function analyzeProjectCall(
     context.expressionTypes,
   );
   if (arguments_.kind === "unsupported") return arguments_;
+  const locationConflict = locationBackedMutableArgument(
+    arguments_.arguments,
+    targetArguments,
+    context,
+  );
+  if (locationConflict !== undefined) return locationConflict;
   const targetOutput = substituteMojoTargetType(function_.resultType, substitutions);
   const targetResult = function_.asynchronous
     ? Object.freeze({
@@ -325,6 +359,27 @@ function analyzeProjectCall(
       optionalChain: sourceCall.optionalChain,
     }),
   };
+}
+
+function locationBackedMutableArgument(
+  arguments_: readonly MojoAnalyzedCallArgument[],
+  targets: readonly { readonly convention: string }[],
+  context: MojoCallAnalysisContext,
+): MojoCallAnalysis | undefined {
+  for (const [index, argument] of arguments_.entries()) {
+    const convention = targets[index]?.convention;
+    if (convention === undefined || convention === "imm" || convention === "var" ||
+      convention === "deinit") continue;
+    const reference = context.source.navigation.sourceReferenceFor(argument.expression);
+    if (reference?.project !== true ||
+      context.locationStorageNames.get(reference.declaration) === undefined) continue;
+    return {
+      kind: "unsupported",
+      code: "MOJO_LOCATION_MUTABLE_ARGUMENT_NATIVE_LIMIT",
+      reason: `A promoted typed-location storage cannot be passed through Mojo '${convention}' without an exact borrow projection.`,
+    };
+  }
+  return undefined;
 }
 
 function projectCallTarget(
