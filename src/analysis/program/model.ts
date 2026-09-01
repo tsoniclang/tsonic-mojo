@@ -326,8 +326,10 @@ export interface MojoIterationSelection {
   readonly target:
     | "native-values"
     | "dictionary-keys"
+    | "js-array-values"
     | "js-map-entries"
-    | "js-set-values";
+    | "js-set-values"
+    | "js-string-values";
 }
 
 export type MojoCallSelection =

@@ -21,7 +21,10 @@ import {
   VariableDeclarationList_Declarations,
   VariableStatement_DeclarationList,
 } from "@tsonic/target-api/source";
-import type { MojoAnalyzedFunction } from "../../../analysis/program/model.js";
+import type {
+  MojoAnalyzedFunction,
+  MojoIterationSelection,
+} from "../../../analysis/program/model.js";
 import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 import type { MojoPlanningContext } from "../program/context.js";
@@ -258,11 +261,7 @@ function planStatement(
       : Object.freeze({
           kind: "method-call" as const,
           receiver: sourceIterable.value,
-          name: selection.target === "dictionary-keys"
-            ? "keys"
-            : selection.target === "js-map-entries"
-              ? "iter_entries"
-              : "iter_values",
+          name: mojoIterationMethod(selection.target),
           arguments: Object.freeze([]),
         });
     const statements = planStatementBody(body, scope, context, loopFlowContext(Object.freeze([])));
@@ -310,6 +309,18 @@ function planStatement(
     node,
   );
   return undefined;
+}
+
+function mojoIterationMethod(
+  target: Exclude<MojoIterationSelection["target"], "native-values">,
+): string {
+  switch (target) {
+    case "dictionary-keys": return "keys";
+    case "js-map-entries": return "iter_entries";
+    case "js-array-values":
+    case "js-set-values":
+    case "js-string-values": return "iter_values";
+  }
 }
 
 function planSwitchStatement(

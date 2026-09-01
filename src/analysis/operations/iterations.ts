@@ -107,6 +107,19 @@ function targetIterationContract(
       return { target: "native-values", elementType: iterable.element };
     }
     if (iterable.kind === "target-named" &&
+      iterable.id === "tsonic.mojo.js.JsArray" &&
+      iterable.genericArguments?.length === 1 &&
+      iterable.genericArguments[0]?.kind === "type") {
+      return {
+        target: "js-array-values",
+        elementType: iterable.genericArguments[0].type,
+      };
+    }
+    if (iterable.kind === "target-named" &&
+      iterable.id === "tsonic.mojo.js.JsString") {
+      return { target: "js-string-values", elementType: iterable };
+    }
+    if (iterable.kind === "target-named" &&
       iterable.id === "tsonic.mojo.js.JsMap" &&
       iterable.genericArguments?.length === 2) {
       const key = iterable.genericArguments[0];
