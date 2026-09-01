@@ -358,7 +358,8 @@ export function validateMojoFunctionSyntax(
       if (initializer !== undefined && ast.is.IsVariableDeclarationList(initializer)) {
         validateResourceDeclarations(initializer);
       }
-      if (iterations.get(statement) === undefined) {
+      if (iterations.get(statement) === undefined &&
+        !diagnostics.some((entry) => entry.sourceNode === statement)) {
         diagnostics.push(diagnostic(
           "MOJO_ITERATION_SELECTION_UNRESOLVED",
           "Iteration statement has no sealed Mojo iteration operation.",

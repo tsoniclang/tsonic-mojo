@@ -1,5 +1,12 @@
-import type { Node, SourceFile, Type } from "@tsonic/tsts";
-import { BinaryExpression_Left, BinaryExpression_Right, Node_Expression, Node_Initializer } from "@tsonic/target-api/source";
+import { argumentPassingFactKey, pointerOperationFactKey, rawPointerOperationFactKey } from "@tsonic/tsts";
+import type { AstReader, Node, SourceFile, Type } from "@tsonic/tsts";
+import {
+  BinaryExpression_Left,
+  BinaryExpression_Right,
+  Node_Expression,
+  Node_Initializer,
+  TryStatement_FinallyBlock,
+} from "@tsonic/target-api/source";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
@@ -15,7 +22,6 @@ import { analyzeMojoIteration } from "../operations/iterations.js";
 import { analyzeMojoBindingPattern } from "../bindings/patterns.js";
 import type { MojoStructuralObjectCatalog } from "../bindings/structural-objects.js";
 import { mojoLocationTargetType } from "../operations/typed-locations.js";
-import { pointerOperationFactKey, rawPointerOperationFactKey } from "@tsonic/tsts";
 import { mojoRawPointerTargetType } from "../operations/raw-pointers.js";
 import { analyzeMojoProjectProperty } from "../operations/project-fields.js";
 import { analyzeMojoProviderProperty } from "../operations/properties.js";
@@ -54,6 +60,7 @@ import {
   resolveExecutableRegionType as resolveType,
   targetTypeDiagnostic as typeDiagnostic,
 } from "./executable-region-support.js";
+import { mojoParameterAbi } from "../../policy/callables/parameter-abi.js";
 
 export interface MojoExecutableRegionAnalysisInput {
   readonly root: Node;
@@ -83,6 +90,7 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly typeTestSelections: WeakMap<Node, MojoTypeTestSelection>;
   readonly objectLiteralSelections: WeakMap<Node, MojoObjectLiteralSelection>;
   readonly bindingPatternSelections: WeakMap<Node, MojoBindingPatternSelection>;
+  readonly returnValueTransfers: WeakSet<Node>;
   readonly structuralObjects: MojoStructuralObjectCatalog;
   readonly conversions: MojoConversionIndex;
   readonly functionByDeclaration: WeakMap<Node, MojoAnalyzedFunction>;
@@ -122,6 +130,7 @@ export function analyzeMojoExecutableRegion(
   const objectLiteralNodes: Node[] = [];
   const callableExpressionNodes: Node[] = [];
   const bindingPatternDeclarations: Node[] = [];
+  const returnExpressions: Node[] = [];
   walkSourceTree(root, ast, (node): void => {
     if (ast.is.IsVariableDeclaration(node)) {
       const declarationKind = ast.variableDeclarationKind(node);
@@ -159,6 +168,10 @@ export function analyzeMojoExecutableRegion(
     if (ast.is.IsForOfStatement(node) || ast.is.IsForInStatement(node)) iterationNodes.push(node);
     if (ast.is.IsObjectLiteralExpression(node)) objectLiteralNodes.push(node);
     if (ast.is.IsFunctionExpression(node) || ast.is.IsArrowFunction(node)) callableExpressionNodes.push(node);
+    if (ast.is.IsReturnStatement(node)) {
+      const expression = Node_Expression(ast, node);
+      if (expression !== undefined) returnExpressions.push(expression);
+    }
   }, (node, regionRoot) => descendWithinExecutableRegion(node, regionRoot, ast));
 
   for (const expression of callableExpressionNodes) {
@@ -177,6 +190,10 @@ export function analyzeMojoExecutableRegion(
       declaration,
       initializer,
       sourceType,
+      sourceReuse: ast.is.IsIdentifier(initializer) &&
+        input.source.navigation.sourceReferenceFor(initializer)?.project === true
+        ? "direct"
+        : "stabilized",
       sourceSemanticType: semantics.types.expressionType(initializer),
       semantics,
       resolveType(type) {
@@ -204,6 +221,12 @@ export function analyzeMojoExecutableRegion(
         ? input.expressionTypes.get(initializer)
         : undefined);
     analyzeBindingPatternDeclaration(declaration, sourceType);
+  }
+
+  for (const expression of returnExpressions) {
+    if (selectReturnValueTransfer(expression, input)) {
+      input.returnValueTransfers.add(expression);
+    }
   }
 
   walkSourceTreePostOrder(root, ast, (node): void => {
@@ -365,6 +388,83 @@ export function analyzeMojoExecutableRegion(
     dependencies,
     raises: resourceRaises || executableRegionRaises(root, input),
   });
+}
+
+function selectReturnValueTransfer(
+  expression: Node,
+  input: MojoExecutableRegionAnalysisInput,
+): boolean {
+  const { ast } = input.source;
+  if (!ast.is.IsIdentifier(expression)) return false;
+  const reference = input.source.navigation.sourceReferenceFor(expression);
+  const declaration = reference?.project === true ? reference.declaration : undefined;
+  if (declaration === undefined || input.locationStorageNames.has(declaration) ||
+    input.resourceDeclarations.has(declaration) || returnFinallyUsesDeclaration(expression, declaration, input)) {
+    return false;
+  }
+  if (ast.is.IsParameterDeclaration(declaration)) {
+    const mode = input.source.sourceFacts.getFact(declaration, argumentPassingFactKey)?.mode;
+    return mojoParameterAbi(mode).convention === "var";
+  }
+  if (ast.is.IsBindingElement(declaration)) {
+    return sourceNodeIsWithin(declaration, input.root, ast) &&
+      !isIterationBindingDeclaration(declaration, ast);
+  }
+  return ast.is.IsVariableDeclaration(declaration) &&
+    sourceNodeIsWithin(declaration, input.root, ast) &&
+    !isIterationBindingDeclaration(declaration, ast);
+}
+
+function returnFinallyUsesDeclaration(
+  expression: Node,
+  declaration: Node,
+  input: MojoExecutableRegionAnalysisInput,
+): boolean {
+  const { ast } = input.source;
+  const uses = input.source.navigation.declarationUses(declaration);
+  let current: Node | undefined = expression;
+  while (current !== undefined && current !== input.root) {
+    const parent = ast.parent(current);
+    if (parent === undefined) break;
+    if (ast.is.IsTryStatement(parent)) {
+      const finallyBlock = TryStatement_FinallyBlock(ast, parent);
+      if (finallyBlock !== undefined && !sourceNodeIsWithin(current, finallyBlock, ast) &&
+        uses.some(({ reference }) => sourceNodeIsWithin(reference, finallyBlock, ast))) {
+        return true;
+      }
+    }
+    current = parent;
+  }
+  return false;
+}
+
+function isIterationBindingDeclaration(
+  declaration: Node,
+  ast: AstReader,
+): boolean {
+  let current: Node | undefined = declaration;
+  while (current !== undefined) {
+    const parent = ast.parent(current);
+    if (parent === undefined) return false;
+    if (ast.is.IsForOfStatement(parent) || ast.is.IsForInStatement(parent)) return true;
+    if (!ast.is.IsVariableDeclarationList(parent) && !ast.is.IsBindingElement(parent) &&
+      !ast.is.IsArrayBindingPattern(parent) && !ast.is.IsObjectBindingPattern(parent)) return false;
+    current = parent;
+  }
+  return false;
+}
+
+function sourceNodeIsWithin(
+  node: Node,
+  root: Node,
+  ast: AstReader,
+): boolean {
+  let current: Node | undefined = node;
+  while (current !== undefined) {
+    if (current === root) return true;
+    current = ast.parent(current);
+  }
+  return false;
 }
 
 function publishBindingPatternCarriers(

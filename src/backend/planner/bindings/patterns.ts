@@ -21,18 +21,22 @@ export function planMojoBindingPattern(
   registerMojoTypeImports(selection.sourceType, context);
   const sourceName = allocateMojoSyntheticName(context, "binding_source");
   const sourcePath: MojoExpression = Object.freeze({ kind: "path", path: sourceName });
-  const statements: MojoStatement[] = [
-    ...source.before,
-    Object.freeze({
-      kind: "variable",
-      name: sourceName,
-      type: selection.sourceType,
-      initializer: source.value,
-    }),
-  ];
+  if (selection.sourceReuse === "direct" && source.before.length !== 0) return undefined;
+  const projectionSource = selection.sourceReuse === "direct" ? source.value : sourcePath;
+  const statements: MojoStatement[] = selection.sourceReuse === "direct"
+    ? []
+    : [
+        ...source.before,
+        Object.freeze({
+          kind: "variable",
+          name: sourceName,
+          type: selection.sourceType,
+          initializer: source.value,
+        }),
+      ];
   if (!planElements(
     selection.elements,
-    sourcePath,
+    projectionSource,
     selection.sourceType,
     statements,
     context,

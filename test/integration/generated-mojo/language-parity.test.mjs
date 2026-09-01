@@ -157,7 +157,8 @@ test("generic functions retain exact selected type arguments", () => {
   assert.deepEqual(result.diagnostics, []);
   const source = artifactTexts(result).find(({ text }) => text.includes("def identity"));
   assert.ok(source);
-  assert.match(source.text, /def identity\[T: AnyType\]\(var value: T\) -> T/u);
+  assert.match(source.text, /def identity\[T: Movable & Deinitable\]\(var value: T\) -> T/u);
+  assert.match(source.text, /return value\^/u);
   assert.match(source.text, /identity\[Int32\]\(Int32\(7\)\)/u);
 });
 
@@ -182,8 +183,28 @@ test("project classes retain reference identity and declaration-owned private st
   assert.ok(source);
   assert.match(source.text, /struct CounterState/u);
   assert.match(source.text, /var _value: Int32/u);
-  assert.match(source.text, /struct Counter[\s\S]*ArcPointer\[CounterState\]/u);
+  assert.match(source.text, /struct Counter\(ImplicitlyCopyable, Equatable\)[\s\S]*ArcPointer\[CounterState\]/u);
   assert.doesNotMatch(source.text, /#value/u);
+});
+
+test("project construction selects the exact authored constructor signature", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        "class Counter {",
+        "  value: i32 = 0;",
+        "  constructor(value: i32) { this.value = value; }",
+        "}",
+        "export function main(): void { const counter = new Counter(7); }",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("struct Counter"));
+  assert.ok(source);
+  assert.match(source.text, /def __init__\(out self, var value: Int32\)/u);
+  assert.match(source.text, /Counter\(Int32\(7\)\)/u);
 });
 
 test("class static fields without initializers reject instead of inventing target defaults", () => {
@@ -555,10 +576,10 @@ test("binding patterns retain exact single-evaluation aggregate projections", ()
   assert.deepEqual(result.diagnostics, []);
   const source = artifactTexts(result).find(({ text }) => text.includes("def sum"));
   assert.ok(source);
-  assert.match(source.text, /var __tsonic_binding_source_\d+: Tuple\[Int32, Pair\[Int32\], Int32\] = values/u);
-  assert.match(source.text, /var first: Int32 = __tsonic_binding_source_\d+\[0\]/u);
+  assert.match(source.text, /var first: Int32 = values\[0\]/u);
   assert.match(source.text, /var second: Int32 = __tsonic_binding_nested_\d+\._state\[\]\.right/u);
   assert.match(source.text, /var renamed: Int32 = __tsonic_binding_source_\d+\._state\[\]\.right/u);
+  assert.doesNotMatch(source.text, /Tuple\[Int32, Pair\[Int32\], Int32\] = values/u);
   assert.equal((source.text.match(/= makePair\(\)/gu) ?? []).length, 1);
 });
 
@@ -582,8 +603,8 @@ test("destructuring rest and defaults retain exact source order and closed carri
   const source = artifactTexts(result).find(({ text }) => text.includes("def read"));
   assert.ok(source);
   assert.match(source.text, /if __tsonic_binding_optional_\d+:/u);
-  assert.match(source.text, /List\[Int32\]\(__tsonic_binding_source_\d+\[1:\]\)/u);
-  assert.match(source.text, /var tupleTail: Tuple\[Int32, Int32\] = \(__tsonic_binding_source_\d+\[1\], __tsonic_binding_source_\d+\[2\]\)/u);
+  assert.match(source.text, /List\[Int32\]\(values\[1:\]\)/u);
+  assert.match(source.text, /var tupleTail: Tuple\[Int32, Int32\] = \(tuple\[1\], tuple\[2\]\)/u);
   assert.match(source.text, /StructuralObject\[Tuple\[Int32\]\]/u);
   assert.match(source.text, /remaining\._state\[\]\[0\]/u);
 });

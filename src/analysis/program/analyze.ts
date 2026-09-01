@@ -106,6 +106,7 @@ export function analyzeMojoTargetProgram(
   const objectLiteralSelections = new WeakMap<Node, MojoObjectLiteralSelection>();
   const callableExpressionSelections = new WeakMap<Node, MojoCallableExpressionSelection>();
   const bindingPatternSelections = new WeakMap<Node, MojoBindingPatternSelection>();
+  const returnValueTransfers = new WeakSet<Node>();
   const analyzedCallableExpressions = new WeakSet<Node>();
   const conversions = createMojoConversionIndex();
   const structuralObjects = createMojoStructuralObjectCatalog(ast);
@@ -293,6 +294,7 @@ export function analyzeMojoTargetProgram(
     typeTestSelections,
     objectLiteralSelections,
     bindingPatternSelections,
+    returnValueTransfers,
     structuralObjects,
     analyzeCallableExpression,
     conversions,
@@ -533,6 +535,7 @@ export function analyzeMojoTargetProgram(
     objectLiteralSelections,
     callableExpressionSelections,
     bindingPatternSelections,
+    returnValueTransfers,
     moduleBySourceFile: finalizedModuleBySourceFile,
     moduleBindingByDeclaration,
     locationStorageNames,

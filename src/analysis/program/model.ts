@@ -483,6 +483,7 @@ export interface MojoBindingPatternSelection {
   readonly declaration: Node;
   readonly initializer: Node;
   readonly sourceType: MojoTargetTypeRef;
+  readonly sourceReuse: "direct" | "stabilized";
   readonly elements: readonly MojoBindingPatternElementSelection[];
 }
 
@@ -571,6 +572,7 @@ export interface MojoProgramQueries {
   objectLiteralSelection(expression: Node): MojoObjectLiteralSelection | undefined;
   callableExpressionSelection(expression: Node): MojoCallableExpressionSelection | undefined;
   bindingPatternSelection(declaration: Node): MojoBindingPatternSelection | undefined;
+  returnValueTransfer(expression: Node): boolean;
   moduleForSourceFile(sourceFile: SourceFile): MojoAnalyzedModule | undefined;
   moduleBinding(referenceOrDeclaration: Node): MojoAnalyzedModuleBinding | undefined;
   locationStorage(referenceOrDeclaration: Node): {

@@ -159,6 +159,9 @@ function planStatement(
   flow: MojoFlowPlanningContext,
 ): readonly MojoStatement[] | undefined {
   const { ast } = context.program.source;
+  if (ast.is.IsBlock(node)) {
+    return planBlock(node, scope, context, flow);
+  }
   if (ast.is.IsReturnStatement(node)) {
     if (!scope.returnAllowed || scope.resultType === undefined) {
       appendMojoPlanningDiagnostic(
@@ -174,9 +177,14 @@ function planStatement(
       ? undefined
       : planMojoValue(sourceExpression, context, scope.resultType);
     if (sourceExpression !== undefined && expression === undefined) return undefined;
+    const returnedExpression = expression === undefined
+      ? undefined
+      : context.program.queries.returnValueTransfer(sourceExpression!)
+        ? Object.freeze({ kind: "consume" as const, expression: expression.value })
+        : expression.value;
     return Object.freeze([
       ...(expression?.before ?? []),
-      { kind: "return", ...(expression === undefined ? {} : { expression: expression.value }) },
+      { kind: "return", ...(returnedExpression === undefined ? {} : { expression: returnedExpression }) },
     ]);
   }
   if (ast.is.IsExpressionStatement(node)) {

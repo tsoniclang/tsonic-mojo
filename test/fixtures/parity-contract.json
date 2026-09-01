@@ -139,7 +139,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain closed-world state and dispatch planning",
       "status": "mojo-limit",
-      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/native-language-limits.test.mjs",
       "nativeProof": "test/fixtures/native-limits/class-inheritance.mojo",
       "note": "The pinned Mojo language has nominal structs but no class inheritance or runtime subtype dispatch; the target rejects project class heritage before planning rather than inventing an object model."
     },
@@ -150,7 +150,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact finite specialization across virtual, interface, override, and super dispatch",
       "status": "mojo-limit",
-      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/native-language-limits.test.mjs",
       "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
       "note": "Mojo generic functions are supported, but the pinned language has no runtime trait-object value or virtual method table on which a generic virtual call can dispatch."
     },
@@ -161,7 +161,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain finite caller-specialization propagation through the callable dependency graph before closing dynamic-dispatch slots",
       "status": "mojo-limit",
-      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/native-language-limits.test.mjs",
       "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
       "note": "Open caller specialization cannot close a runtime virtual slot because the pinned Mojo language exposes traits only as compile-time constraints, not runtime values."
     },
@@ -172,7 +172,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain record and polymorphic interface plans",
       "status": "mojo-limit",
-      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/native-language-limits.test.mjs",
       "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
       "note": "Generic declaration-selected interface fields and index signatures use reference-identity carriers. Runtime-polymorphic method slots reject because pinned Mojo traits are not runtime value types."
     },
@@ -183,7 +183,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact project heritage",
       "status": "mojo-limit",
-      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/native-language-limits.test.mjs",
       "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
       "note": "TypeScript interface heritage requires reference-preserving structural subtype views; pinned Mojo has neither struct inheritance nor runtime trait values, so heritage rejects before representation is chosen."
     },
@@ -244,7 +244,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact contextual declarations, this identity, captures, inheritance, recursion, and finite generic specializations",
       "status": "mojo-limit",
-      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/native-language-limits.test.mjs",
       "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
       "note": "Contextual object methods require a runtime receiver-bearing dispatch slot. Pinned Mojo callables and traits do not expose that dynamic object-method contract."
     },
@@ -255,7 +255,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact contextual method identity while preserving dynamic this for function expressions and lexical receiver semantics for arrows",
       "status": "mojo-limit",
-      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/native-language-limits.test.mjs",
       "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
       "note": "Ordinary callable-valued fields are supported, but JavaScript-style dynamic this rebinding on a function-valued object member has no native Mojo callable contract."
     },
@@ -266,7 +266,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact bound-callable reads and independently replaceable method-property storage",
       "status": "mojo-limit",
-      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/native-language-limits.test.mjs",
       "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
       "note": "Reading a bound method value and independently replacing its dispatch slot requires a runtime method-object ABI absent from pinned Mojo."
     },
@@ -277,7 +277,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact callable-property projection alongside data fields in source evaluation order",
       "status": "mojo-limit",
-      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/native-language-limits.test.mjs",
       "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
       "note": "Data-field spread is supported; spreading runtime-polymorphic method slots is rejected because pinned Mojo has no dynamic method-object representation."
     },
@@ -288,7 +288,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain one authored implementation carrier and one exact adapter for each selected overload ABI",
       "status": "mojo-limit",
-      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/native-language-limits.test.mjs",
       "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
       "note": "An object-literal implementation shared by several overload ABIs requires a runtime method slot and adapters; pinned Mojo traits are compile-time-only."
     },
@@ -299,7 +299,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact getter and setter evidence, mutable storage, receiver identity, and project-interface dispatch",
       "status": "mojo-limit",
-      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/native-language-limits.test.mjs",
       "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
       "note": "JavaScript object-literal accessors require runtime getter and setter slots with receiver identity, which pinned Mojo does not expose as a dynamic object contract."
     },
@@ -350,7 +350,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain selected iterator protocol evidence",
       "status": "mojo-limit",
-      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/native-language-limits.test.mjs",
       "nativeProof": "test/fixtures/native-limits/async-iteration.mojo",
       "note": "Checker-selected native list, fixed-array, dictionary, and JS-surface iteration lower from sealed element carriers. The pinned Mojo grammar has no asynchronous iteration statement."
     },
@@ -361,7 +361,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain yield next return throw and delegation protocol",
       "status": "mojo-limit",
-      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/native-language-limits.test.mjs",
       "nativeProof": "test/fixtures/native-limits/generator.mojo",
       "note": "The pinned Mojo compiler has no authored generator suspension protocol carrying independent yield, return, next, throw, and delegation types."
     },
@@ -372,7 +372,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain asynchronous generator protocol",
       "status": "mojo-limit",
-      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/native-language-limits.test.mjs",
       "nativeProof": "test/fixtures/native-limits/generator.mojo",
       "note": "The pinned Mojo compiler has no asynchronous generator declaration or suspension protocol."
     },
@@ -383,7 +383,7 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain lexical disposal and suppressed-error composition across synchronous and asynchronous generator suspension",
       "status": "mojo-limit",
-      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "proof": "test/integration/generated-mojo/native-language-limits.test.mjs",
       "nativeProof": "test/fixtures/native-limits/generator.mojo",
       "note": "Without a native generator suspension protocol, Mojo cannot preserve a resource scope across yield and resume boundaries without a target-owned state machine."
     },

@@ -24,6 +24,20 @@ test("using seals lexical cleanup and reverse acquisition order", () => {
   assert.equal(source.text.indexOf("second.dispose()") < source.text.indexOf("first.dispose()"), true);
 });
 
+test("standalone lexical blocks preserve their resource boundary", () => {
+  const result = compileMojo({ files: { "index.ts": [
+    resourceClass,
+    "function run(): void {",
+    "  { using resource = new Resource(); }",
+    "}",
+    "export function main(): void {}",
+  ].join("\n") } });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("def run"));
+  assert.ok(source);
+  assert.match(source.text, /var resource: Resource = Resource\(\)[\s\S]*try:[\s\S]*finally:[\s\S]*resource\.dispose\(\)/u);
+});
+
 test("using preserves abrupt completion and composes disposal failures", () => {
   const result = compileMojo({ files: { "index.ts": [
     "class FailingResource {",

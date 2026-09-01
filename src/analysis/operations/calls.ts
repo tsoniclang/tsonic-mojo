@@ -78,6 +78,9 @@ export function analyzeMojoCall(
   };
   const selectedDeclaration = sourceCall.sourceCallee.selectedDeclaration ??
     sourceCall.sourceCalleeAccess?.selectedDeclaration;
+  const selectedSignatureDeclaration = semantics.declarations.signatureDeclaration(
+    sourceCall.selectedSignature,
+  );
   const explicitSafety = analyzeMojoExplicitSafety(
     callNode,
     sourceCall,
@@ -122,9 +125,9 @@ export function analyzeMojoCall(
   if (typedLocation.kind === "resolved") {
     return { kind: "resolved", selection: typedLocation.selection };
   }
-  const projectFunction = selectedDeclaration === undefined
+  const projectFunction = selectedSignatureDeclaration === undefined
     ? undefined
-    : context.functionByDeclaration.get(selectedDeclaration);
+    : context.functionByDeclaration.get(selectedSignatureDeclaration);
   if (projectFunction !== undefined) {
     return analyzeProjectCall(sourceCall, projectFunction, resolve, context);
   }

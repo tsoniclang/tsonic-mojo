@@ -154,7 +154,20 @@ export function analyzeMojoTypeParameters(
       return undefined;
     }
     const constraintNode = ast.as.AsTypeParameterDeclaration(parameter)?.Constraint;
-    const constraints: MojoTargetTypeRef[] = [];
+    const constraints: MojoTargetTypeRef[] = [
+      Object.freeze({
+        kind: "target-named",
+        id: "mojo.builtin.Movable",
+        modulePath: Object.freeze([]),
+        name: "Movable",
+      }),
+      Object.freeze({
+        kind: "target-named",
+        id: "mojo.builtin.Deinitable",
+        modulePath: Object.freeze([]),
+        name: "Deinitable",
+      }),
+    ];
     if (constraintNode !== undefined) {
       const selected = input.source.semantics.forFile(input.sourceFile).types.authoredType(constraintNode);
       const constraint = resolve(input, selected, constraintNode);

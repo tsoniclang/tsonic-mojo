@@ -28,6 +28,7 @@ export interface MojoBindingPatternAnalysisInput {
   readonly declaration: Node;
   readonly initializer: Node;
   readonly sourceType: MojoTargetTypeRef;
+  readonly sourceReuse: MojoBindingPatternSelection["sourceReuse"];
   readonly sourceSemanticType?: Type;
   readonly semantics: SourceSemantics;
   readonly resolveType: (type: Type) => MojoTargetTypeRef | undefined;
@@ -56,6 +57,7 @@ export function analyzeMojoBindingPattern(
         declaration: input.declaration,
         initializer: input.initializer,
         sourceType: input.sourceType,
+        sourceReuse: input.sourceReuse,
         elements,
       });
 }

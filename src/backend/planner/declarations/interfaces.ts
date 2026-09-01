@@ -124,9 +124,9 @@ export function planMojoInterface(
     genericParameters,
     conformances: Object.freeze([Object.freeze({
       kind: "target-named",
-      id: "mojo.builtin.Copyable",
+      id: "mojo.builtin.ImplicitlyCopyable",
       modulePath: Object.freeze([]),
-      name: "Copyable",
+      name: "ImplicitlyCopyable",
     }), Object.freeze({
       kind: "target-named",
       id: "mojo.builtin.Equatable",
