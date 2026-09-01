@@ -31,6 +31,7 @@ import {
 import { mojoModuleBindingSlot, mojoModuleStatePointerExpression } from "../bindings/module-bindings.js";
 import { registerMojoTypeImports } from "../types/render.js";
 import { planMojoStatementRegion } from "../statements/structured.js";
+import { planMojoResourceScope } from "../statements/resources.js";
 
 export function planMojoModuleState(
   program: MojoTargetProgram,
@@ -192,15 +193,9 @@ function planModuleInitializer(
         : call,
     }));
   }
-  for (const step of module.initializationSteps) {
-    const planned = step.kind === "binding"
-      ? planModuleBindingInitialization(step.binding, context)
-      : step.kind === "statement"
-        ? planModuleStatement(step.statement, context)
-        : planMojoStatementRegion(step.statements, context);
-    if (planned === undefined) return undefined;
-    initialization.push(...planned);
-  }
+  const sourceInitialization = planModuleInitializationSteps(module, context, 0);
+  if (sourceInitialization === undefined) return undefined;
+  initialization.push(...sourceInitialization);
   initialization.push(Object.freeze({
     kind: "assignment",
     operator: "=",
@@ -248,6 +243,29 @@ function planModuleInitializer(
       }),
     ]),
   });
+}
+
+function planModuleInitializationSteps(
+  module: MojoAnalyzedModule,
+  context: MojoPlanningContext,
+  index: number,
+): readonly MojoStatement[] | undefined {
+  const step = module.initializationSteps[index];
+  if (step === undefined) return Object.freeze([]);
+  const current = step.kind === "binding"
+    ? planModuleBindingInitialization(step.binding, context)
+    : step.kind === "statement"
+      ? planModuleStatement(step.statement, context)
+      : planMojoStatementRegion(step.statements, context);
+  if (current === undefined) return undefined;
+  const remainder = planModuleInitializationSteps(module, context, index + 1);
+  if (remainder === undefined) return undefined;
+  if (step.kind !== "binding" ||
+    (step.binding.declarationKind !== "using" && step.binding.declarationKind !== "await using")) {
+    return Object.freeze([...current, ...remainder]);
+  }
+  const scoped = planMojoResourceScope(step.binding.declaration, remainder, context);
+  return scoped === undefined ? undefined : Object.freeze([...current, ...scoped]);
 }
 
 function planModuleStatement(

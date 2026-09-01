@@ -562,26 +562,30 @@ test("binding patterns retain exact single-evaluation aggregate projections", ()
   assert.equal((source.text.match(/= makePair\(\)/gu) ?? []).length, 1);
 });
 
-test("unclosed destructuring rest and defaults reject during sealed analysis", () => {
-  for (const [declaration, expected] of [
-    ["const [head, ...tail]: i32[] = values;", "MOJO_BINDING_REST_NOT_CLOSED"],
-    ["const [head = 0]: i32[] = values;", "MOJO_BINDING_DEFAULT_NOT_CLOSED"],
-  ]) {
-    const result = compileMojo({
-      files: {
-        "index.ts": [
-          'import type { i32 } from "@tsonic/mojo/types.js";',
-          "function read(values: i32[]): i32 {",
-          `  ${declaration}`,
-          "  return head;",
-          "}",
-          "export function main(): void {}",
-        ].join("\n"),
-      },
-    });
-    assert.equal(result.artifacts.length, 0);
-    assert.ok(result.diagnostics.some(({ code }) => code === expected));
-  }
+test("destructuring rest and defaults retain exact source order and closed carriers", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        "interface Pair { left: i32; right: i32; }",
+        "function read(values: i32[], tuple: [i32, i32, i32], pair: Pair): i32 {",
+        "  const [head = 7, ...tail]: i32[] = values;",
+        "  const [first, ...tupleTail] = tuple;",
+        "  const { left, ...remaining } = pair;",
+        "  return head + tail[0] + first + tupleTail[0] + left + remaining.right;",
+        "}",
+        "export function main(): void {}",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("def read"));
+  assert.ok(source);
+  assert.match(source.text, /if __tsonic_binding_optional_\d+:/u);
+  assert.match(source.text, /List\[Int32\]\(__tsonic_binding_source_\d+\[1:\]\)/u);
+  assert.match(source.text, /var tupleTail: Tuple\[Int32, Int32\] = \(__tsonic_binding_source_\d+\[1\], __tsonic_binding_source_\d+\[2\]\)/u);
+  assert.match(source.text, /StructuralObject\[Tuple\[Int32\]\]/u);
+  assert.match(source.text, /remaining\._state\[\]\[0\]/u);
 });
 
 test("synchronous list and dictionary iteration retain selected element carriers", () => {

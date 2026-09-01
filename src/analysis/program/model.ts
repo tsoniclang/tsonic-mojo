@@ -178,7 +178,7 @@ export interface MojoAnalyzedModuleBinding {
   readonly sourceFile: SourceFile;
   readonly sourceName: string;
   readonly name: string;
-  readonly declarationKind: "const" | "let" | "var";
+  readonly declarationKind: "const" | "let" | "var" | "using" | "await using";
   readonly storage: "comptime" | "cell";
   readonly type: MojoTargetTypeRef;
   readonly initializer: Node;
@@ -232,6 +232,15 @@ export type MojoPropertySelection =
       readonly storageName: string;
       readonly key: string;
       readonly keyType: MojoTargetTypeRef;
+      readonly fieldType: MojoTargetTypeRef;
+      readonly accessMode: "read" | "write" | "read-write";
+      readonly optionalChain: boolean;
+    }
+  | {
+      readonly kind: "structural-field";
+      readonly receiver: Node;
+      readonly receiverType: MojoTargetTypeRef;
+      readonly storageIndex: number;
       readonly fieldType: MojoTargetTypeRef;
       readonly accessMode: "read" | "write" | "read-write";
       readonly optionalChain: boolean;
@@ -379,6 +388,36 @@ export interface MojoIterationSelection {
     | "js-string-values";
 }
 
+export type MojoResourceDisposalSelection =
+  | {
+      readonly kind: "project";
+      readonly name: string;
+      readonly asynchronous: boolean;
+      readonly raises: boolean;
+      readonly dependency: Node;
+    }
+  | {
+      readonly kind: "provider";
+      readonly identity: string;
+      readonly operation: MojoSelectedProviderOperation;
+      readonly asynchronous: boolean;
+    };
+
+export interface MojoResourceDisposalAlternative {
+  readonly resourceType: MojoTargetTypeRef;
+  readonly disposal: MojoResourceDisposalSelection;
+}
+
+export interface MojoResourceManagementSelection {
+  readonly declaration: Node;
+  readonly declarationKind: "using" | "await using";
+  readonly bindingName: string;
+  readonly storageType: MojoTargetTypeRef;
+  readonly resourceType: MojoTargetTypeRef;
+  readonly storageMode: "direct" | "optional" | "nullish-union";
+  readonly alternatives: readonly MojoResourceDisposalAlternative[];
+}
+
 export interface MojoCallableCapture {
   readonly declaration: Node;
   readonly name: string;
@@ -396,15 +435,35 @@ export interface MojoCallableExpressionSelection {
   readonly callableType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
 }
 
-export type MojoBindingProjection =
+export type MojoBindingValueProjection =
   | { readonly kind: "element"; readonly index: number }
+  | { readonly kind: "list-element"; readonly index: number; readonly checked: boolean }
   | { readonly kind: "project-field"; readonly name: string }
+  | { readonly kind: "structural-field"; readonly storageIndex: number }
   | { readonly kind: "dictionary-key"; readonly key: string };
+
+export type MojoBindingProjection =
+  | MojoBindingValueProjection
+  | { readonly kind: "tuple-rest"; readonly start: number }
+  | { readonly kind: "fixed-array-rest"; readonly start: number }
+  | { readonly kind: "list-rest"; readonly start: number }
+  | {
+      readonly kind: "object-rest";
+      readonly fields: readonly {
+        readonly source: MojoBindingValueProjection;
+        readonly sourceType: MojoTargetTypeRef;
+        readonly targetStorageIndex: number;
+      }[];
+    };
+
+export type MojoBindingNormalization = "identity" | "default-on-none";
 
 export interface MojoBindingPatternElementSelection {
   readonly element: Node;
   readonly projection: MojoBindingProjection;
   readonly projectedType: MojoTargetTypeRef;
+  readonly normalization: MojoBindingNormalization;
+  readonly initializer?: Node;
   readonly target:
     | {
         readonly kind: "binding";
@@ -415,6 +474,7 @@ export interface MojoBindingPatternElementSelection {
     | {
         readonly kind: "pattern";
         readonly pattern: Node;
+        readonly type: MojoTargetTypeRef;
         readonly elements: readonly MojoBindingPatternElementSelection[];
       };
 }
@@ -507,6 +567,7 @@ export interface MojoProgramQueries {
   typeTestSelection(expression: Node): MojoTypeTestSelection | undefined;
   elementSelection(access: Node): MojoElementSelection | undefined;
   iterationSelection(statement: Node): MojoIterationSelection | undefined;
+  resourceManagementSelection(declaration: Node): MojoResourceManagementSelection | undefined;
   objectLiteralSelection(expression: Node): MojoObjectLiteralSelection | undefined;
   callableExpressionSelection(expression: Node): MojoCallableExpressionSelection | undefined;
   bindingPatternSelection(declaration: Node): MojoBindingPatternSelection | undefined;

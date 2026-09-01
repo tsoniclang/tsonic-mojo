@@ -18,6 +18,12 @@ const allowedStatuses = new Set([
   "mojo-limit",
 ]);
 
+const terminalStatuses = new Set([
+  "matched",
+  "matched-rejection",
+  "mojo-limit",
+]);
+
 test("Mojo parity inventory preserves every mature-target language lane", () => {
   assert.equal(contract.contractVersion, 1);
   assert.equal(contract.language.length, 61);
@@ -87,9 +93,19 @@ function assertInventory(rows, requiredAreas) {
     if (row.status === "mojo-limit") {
       assert.equal(typeof row.note, "string", `${row.id}: Mojo limits require a reason`);
       assert.notEqual(row.note.length, 0);
+      assert.equal(typeof row.proof, "string", `${row.id}: Mojo limits require a target-boundary proof`);
+      assert.equal(existsSync(join(repositoryRoot, row.proof)), true, `${row.id}: missing proof '${row.proof}'`);
+      assert.equal(typeof row.nativeProof, "string", `${row.id}: Mojo limits require a native compiler proof`);
+      assert.equal(existsSync(join(repositoryRoot, row.nativeProof)), true, `${row.id}: missing native proof '${row.nativeProof}'`);
     }
   }
   for (const area of requiredAreas) {
     assert.equal(areas.has(area), true, `missing parity area '${area}'`);
   }
 }
+
+test("Mojo parity inventory is terminal before certification", () => {
+  for (const row of [...contract.language, ...contract.javascriptNode]) {
+    assert.equal(terminalStatuses.has(row.status), true, `${row.id}: non-terminal status '${row.status}'`);
+  }
+});

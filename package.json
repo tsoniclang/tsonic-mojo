@@ -14,6 +14,7 @@
   "scripts": {
     "build": "bash scripts/build.sh",
     "test": "npm run build && node --test \"test/**/*.test.mjs\"",
+    "test:native-limits": "node scripts/verify-native-limits.mjs",
     "prepack": "npm run build"
   },
   "peerDependencies": {

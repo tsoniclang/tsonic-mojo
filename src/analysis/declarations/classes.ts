@@ -129,13 +129,15 @@ export function analyzeMojoClass(
     if (ast.is.IsMethodDeclaration(member)) {
       const body = ast.body(member);
       const nameNode = ast.name(member);
-      if (body === undefined || !ast.is.IsBlock(body) || nameNode === undefined ||
-        (!ast.is.IsIdentifier(nameNode) && !ast.is.IsPrivateIdentifier(nameNode))) {
+      const selectedName = nameNode === undefined
+        ? undefined
+        : projectMethodName(nameNode, semantics, ast);
+      if (body === undefined || !ast.is.IsBlock(body) || selectedName === undefined) {
         append(input, "MOJO_CLASS_METHOD_SHAPE_UNSUPPORTED", "Class methods require one exact named implementation body.", member);
         continue;
       }
       const localNames = input.createNameAllocator();
-      const name = classNames(ast.text(nameNode));
+      const name = classNames(selectedName);
       const method = analyzeMojoFunctionSignature({
         ...signatureInput(input, member, body, name, localNames),
         kind: "method",
@@ -198,6 +200,18 @@ export function analyzeMojoClass(
     callables: Object.freeze([...constructors, ...methods]),
     fields: class_.fields,
   });
+}
+
+function projectMethodName(
+  name: Node,
+  semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
+  ast: TargetSourceProgram["ast"],
+): string | undefined {
+  if (ast.is.IsIdentifier(name) || ast.is.IsPrivateIdentifier(name)) return ast.text(name);
+  const wellKnown = semantics.operations.wellKnownSymbol(name);
+  if (wellKnown?.kind === "dispose") return "dispose";
+  if (wellKnown?.kind === "async-dispose") return "disposeAsync";
+  return undefined;
 }
 
 function signatureInput(

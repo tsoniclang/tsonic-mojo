@@ -64,6 +64,7 @@ export function providerValueReferenceRole(
   if (ast.is.IsPropertyAccessExpression(parent)) {
     const property = properties.get(parent);
     if ((property?.kind === "provider" || property?.kind === "project-field" ||
+      property?.kind === "structural-field" ||
       property?.kind === "project-index-property") &&
       property.receiver === node) return true;
     const callNode = ast.parent(parent);

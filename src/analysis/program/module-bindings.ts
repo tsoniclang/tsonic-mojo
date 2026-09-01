@@ -71,7 +71,8 @@ export function analyzeMojoModuleBindings(
       }
       if (ast.is.IsVariableStatement(statement)) {
         const declarationKind = ast.variableDeclarationKind(statement);
-        if (declarationKind !== "const" && declarationKind !== "let" && declarationKind !== "var") {
+        if (declarationKind !== "const" && declarationKind !== "let" && declarationKind !== "var" &&
+          declarationKind !== "using" && declarationKind !== "await using") {
           input.diagnostics.push(diagnostic(
             "MOJO_MODULE_RESOURCE_BINDING_REQUIRES_RESOURCE_PLAN",
             `Top-level '${declarationKind ?? "unknown"}' declarations require the sealed Mojo resource-lifetime plan.`,

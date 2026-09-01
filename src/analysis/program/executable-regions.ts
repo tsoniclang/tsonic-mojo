@@ -13,12 +13,15 @@ import { mojoCallResultType } from "../operations/call-results.js";
 import { analyzeMojoElementAccess } from "../operations/elements.js";
 import { analyzeMojoIteration } from "../operations/iterations.js";
 import { analyzeMojoBindingPattern } from "../bindings/patterns.js";
+import type { MojoStructuralObjectCatalog } from "../bindings/structural-objects.js";
 import { mojoLocationTargetType } from "../operations/typed-locations.js";
 import { pointerOperationFactKey, rawPointerOperationFactKey } from "@tsonic/tsts";
 import { mojoRawPointerTargetType } from "../operations/raw-pointers.js";
 import { analyzeMojoProjectProperty } from "../operations/project-fields.js";
 import { analyzeMojoProviderProperty } from "../operations/properties.js";
+import { analyzeMojoStructuralProperty } from "../operations/structural-fields.js";
 import { analyzeMojoObjectLiteral } from "../objects/object-literals.js";
+import { analyzeMojoResourceManagement } from "../resources/management.js";
 import { analyzeMojoProviderRecordLiteral } from "../objects/provider-records.js";
 import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
 import type { MojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
@@ -34,6 +37,7 @@ import type {
   MojoIterationSelection,
   MojoObjectLiteralSelection,
   MojoPropertySelection,
+  MojoResourceManagementSelection,
   MojoTypeTestSelection,
   MojoValueRefinementSelection,
   MojoValueSelection,
@@ -72,11 +76,14 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly propertySelections: WeakMap<Node, MojoPropertySelection>;
   readonly elementSelections: WeakMap<Node, MojoElementSelection>;
   readonly iterationSelections: WeakMap<Node, MojoIterationSelection>;
+  readonly resourceManagementSelections: WeakMap<Node, MojoResourceManagementSelection>;
+  readonly resourceDeclarations: Set<Node>;
   readonly valueSelections: WeakMap<Node, MojoValueSelection>;
   readonly valueRefinements: WeakMap<Node, MojoValueRefinementSelection>;
   readonly typeTestSelections: WeakMap<Node, MojoTypeTestSelection>;
   readonly objectLiteralSelections: WeakMap<Node, MojoObjectLiteralSelection>;
   readonly bindingPatternSelections: WeakMap<Node, MojoBindingPatternSelection>;
+  readonly structuralObjects: MojoStructuralObjectCatalog;
   readonly conversions: MojoConversionIndex;
   readonly functionByDeclaration: WeakMap<Node, MojoAnalyzedFunction>;
   readonly classByDeclaration: WeakMap<Node, MojoAnalyzedClass>;
@@ -111,14 +118,25 @@ export function analyzeMojoExecutableRegion(
   const semantics = source.semantics.forFile(sourceFile);
   const dependencies = new Set<Node>();
   const iterationNodes: Node[] = [];
+  const resourceDeclarations: Node[] = [];
   const objectLiteralNodes: Node[] = [];
   const callableExpressionNodes: Node[] = [];
   const bindingPatternDeclarations: Node[] = [];
   walkSourceTree(root, ast, (node): void => {
     if (ast.is.IsVariableDeclaration(node)) {
+      const declarationKind = ast.variableDeclarationKind(node);
+      if (declarationKind === "using" || declarationKind === "await using") {
+        resourceDeclarations.push(node);
+        input.resourceDeclarations.add(node);
+      }
+      const name = ast.name(node);
+      const bindingPattern = name !== undefined &&
+        (ast.is.IsArrayBindingPattern(name) || ast.is.IsObjectBindingPattern(name));
       const authoredType = ast.typeNode(node);
       const initializer = Node_Initializer(ast, node);
-      const resolved = authoredType === undefined && initializer !== undefined
+      const resolved = bindingPattern && authoredType === undefined
+        ? undefined
+        : authoredType === undefined && initializer !== undefined
         ? resolveInferredBindingCarrier(initializer, input, semantics)
         : resolveType(
             declaredOrInitializerType(node, semantics, ast),
@@ -126,14 +144,12 @@ export function analyzeMojoExecutableRegion(
             input,
             semantics,
           );
-      if (resolved === undefined) {
+      if (resolved === undefined && !bindingPattern) {
         input.diagnostics.push(typeDiagnostic(node, "the selected declaration has no closed Mojo carrier"));
       } else {
-        input.bindingTypes.set(node, resolved);
+        if (resolved !== undefined) input.bindingTypes.set(node, resolved);
       }
-      const name = ast.name(node);
-      if (name !== undefined &&
-        (ast.is.IsArrayBindingPattern(name) || ast.is.IsObjectBindingPattern(name))) {
+      if (bindingPattern) {
         bindingPatternDeclarations.push(node);
       }
     }
@@ -147,6 +163,47 @@ export function analyzeMojoExecutableRegion(
 
   for (const expression of callableExpressionNodes) {
     input.analyzeCallableExpression(expression, sourceFile, input.owner);
+  }
+
+  const pendingBindingPatterns = new Set(bindingPatternDeclarations);
+  const analyzeBindingPatternDeclaration = (
+    declaration: Node,
+    sourceType: MojoTargetTypeRef | undefined,
+  ): void => {
+    const initializer = Node_Initializer(ast, declaration);
+    if (initializer === undefined || sourceType === undefined) return;
+    const selection = analyzeMojoBindingPattern({
+      ast,
+      declaration,
+      initializer,
+      sourceType,
+      sourceSemanticType: semantics.types.expressionType(initializer),
+      semantics,
+      resolveType(type) {
+        return resolveType(type, undefined, input, semantics);
+      },
+      expressionTypes: input.expressionTypes,
+      conversions: input.conversions,
+      bindingNames: input.bindingNames,
+      bindingTypes: input.bindingTypes,
+      classByTypeId: input.classByTypeId,
+      interfaceByTypeId: input.interfaceByTypeId,
+      structuralObjects: input.structuralObjects,
+      diagnostics: input.diagnostics,
+    });
+    if (selection === undefined) return;
+    input.bindingTypes.set(declaration, sourceType);
+    input.bindingPatternSelections.set(declaration, selection);
+    publishBindingPatternCarriers(selection.elements, input);
+    pendingBindingPatterns.delete(declaration);
+  };
+  for (const declaration of pendingBindingPatterns) {
+    const initializer = Node_Initializer(ast, declaration);
+    const sourceType = input.bindingTypes.get(declaration) ??
+      (initializer !== undefined && ast.is.IsIdentifier(initializer)
+        ? input.expressionTypes.get(initializer)
+        : undefined);
+    analyzeBindingPatternDeclaration(declaration, sourceType);
   }
 
   walkSourceTreePostOrder(root, ast, (node): void => {
@@ -220,7 +277,7 @@ export function analyzeMojoExecutableRegion(
     }
   }
 
-  for (const declaration of bindingPatternDeclarations) {
+  for (const declaration of pendingBindingPatterns) {
     const initializer = Node_Initializer(ast, declaration);
     const authoredType = ast.typeNode(declaration);
     const sourceType = initializer === undefined
@@ -236,21 +293,7 @@ export function analyzeMojoExecutableRegion(
       ));
       continue;
     }
-    const selection = analyzeMojoBindingPattern({
-      ast,
-      declaration,
-      initializer,
-      sourceType,
-      bindingNames: input.bindingNames,
-      bindingTypes: input.bindingTypes,
-      classByTypeId: input.classByTypeId,
-      interfaceByTypeId: input.interfaceByTypeId,
-      diagnostics: input.diagnostics,
-    });
-    if (selection !== undefined) {
-      input.bindingTypes.set(declaration, sourceType);
-      input.bindingPatternSelections.set(declaration, selection);
-    }
+    analyzeBindingPatternDeclaration(declaration, sourceType);
   }
 
   for (const node of iterationNodes) {
@@ -281,8 +324,64 @@ export function analyzeMojoExecutableRegion(
       input.iterationSelections.set(node, iteration.selection);
     }
   }
+  let resourceRaises = false;
+  for (const declaration of resourceDeclarations) {
+    const sourceInfo = semantics.operations.resourceManagement(declaration);
+    if (sourceInfo === undefined) {
+      input.diagnostics.push(diagnostic(
+        "MOJO_RESOURCE_MANAGEMENT_EVIDENCE_MISSING",
+        "Resource lowering requires one exact checker-selected disposal operation.",
+        declaration,
+      ));
+      continue;
+    }
+    const resource = analyzeMojoResourceManagement({
+      declaration,
+      source: input.source,
+      sourceInfo,
+      providerSemantics: input.providerSemantics,
+      functionByDeclaration: input.functionByDeclaration,
+      bindingNames: input.bindingNames,
+      bindingTypes: input.bindingTypes,
+      resolveType(type) {
+        return resolveType(type, undefined, input, semantics);
+      },
+    });
+    if (resource.kind === "unsupported") {
+      input.diagnostics.push(diagnostic(resource.code, resource.reason, declaration));
+      continue;
+    }
+    input.resourceManagementSelections.set(declaration, resource.selection);
+    for (const alternative of resource.selection.alternatives) {
+      if (alternative.disposal.kind === "project") {
+        dependencies.add(alternative.disposal.dependency);
+      } else {
+        resourceRaises = resourceRaises || alternative.disposal.operation.raises;
+      }
+    }
+  }
   analyzeExecutableRegionProviderValues(root, input);
-  return Object.freeze({ dependencies, raises: executableRegionRaises(root, input) });
+  return Object.freeze({
+    dependencies,
+    raises: resourceRaises || executableRegionRaises(root, input),
+  });
+}
+
+function publishBindingPatternCarriers(
+  elements: readonly MojoBindingPatternSelection["elements"][number][],
+  input: MojoExecutableRegionAnalysisInput,
+): void {
+  for (const element of elements) {
+    if (element.target.kind === "pattern") {
+      publishBindingPatternCarriers(element.target.elements, input);
+      continue;
+    }
+    for (const use of input.source.navigation.declarationUses(element.target.declaration)) {
+      if (use.kind !== "type-only" && use.kind !== "source-linkage") {
+        input.expressionTypes.set(use.reference, element.target.type);
+      }
+    }
+  }
 }
 
 function analyzeCall(
@@ -536,16 +635,26 @@ function analyzeProperty(
     return;
   }
   const resolve = (type: Type): MojoTargetTypeRef | undefined => resolveType(type, undefined, input, semantics);
-  const project = analyzeMojoProjectProperty(
+  const selectedReceiverType = resolve(selected.receiver.type);
+  const structuralReceiverType = input.expressionTypes.get(selected.receiver.expression) ??
+    selectedReceiverType;
+  const structural = analyzeMojoStructuralProperty({
+    source: selected,
+    receiverType: structuralReceiverType,
+    structuralObjects: input.structuralObjects,
+    semantics,
+  });
+  const project = structural.kind === "not-structural-field"
+    ? analyzeMojoProjectProperty(
     selected,
     input.fieldByDeclaration,
-    resolve(selected.receiver.type),
+    selectedReceiverType,
     Object.freeze([
       ...semantics.facts.selectedSubjects(selected.selectedSymbol, selected.selectedDeclaration),
       ...semantics.facts.selectedSubjects(selected.sourceSymbol, selected.sourceDeclaration),
     ]),
     input.source.ast,
-  );
+  ) : structural;
   const property = project.kind === "not-project-field"
     ? analyzeMojoProviderProperty(selected, {
         source: input.source,

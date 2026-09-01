@@ -27,6 +27,7 @@ import type {
   MojoIterationSelection,
   MojoObjectLiteralSelection,
   MojoPropertySelection,
+  MojoResourceManagementSelection,
   MojoTypeTestSelection,
   MojoValueSelection,
 } from "./model.js";
@@ -84,17 +85,25 @@ export function validateMojoFunctionSyntax(
   objectLiterals: WeakMap<Node, MojoObjectLiteralSelection>,
   callableExpressions: WeakMap<Node, MojoCallableExpressionSelection>,
   bindingPatterns: WeakMap<Node, MojoBindingPatternSelection>,
+  resources: WeakMap<Node, MojoResourceManagementSelection>,
   bindings: WeakMap<Node, string>,
   diagnostics: TargetDiagnostic[],
 ): void {
-  const validateVariableDeclarationKind = (node: Node): void => {
-    const kind = ast.variableDeclarationKind(node);
+  const validateResourceDeclaration = (declaration: Node): void => {
+    const kind = ast.variableDeclarationKind(declaration);
     if (kind !== "using" && kind !== "await using") return;
-    diagnostics.push(diagnostic(
-      "MOJO_EXPLICIT_RESOURCE_MANAGEMENT_NATIVE_LIMIT",
-      `TypeScript '${kind}' requires exact synchronous or asynchronous disposal and suppressed-error semantics that the pinned Mojo target does not expose.`,
-      node,
-    ));
+    if (resources.get(declaration) === undefined) {
+      diagnostics.push(diagnostic(
+        "MOJO_RESOURCE_MANAGEMENT_SELECTION_UNRESOLVED",
+        `TypeScript '${kind}' has no sealed Mojo acquisition and disposal selection.`,
+        declaration,
+      ));
+    }
+  };
+  const validateResourceDeclarations = (list: Node | undefined): void => {
+    for (const declaration of VariableDeclarationList_Declarations(ast, list) ?? []) {
+      if (declaration !== undefined) validateResourceDeclaration(declaration);
+    }
   };
   const validateExpression = (
     expression: Node | undefined,
@@ -303,7 +312,7 @@ export function validateMojoFunctionSyntax(
     }
     if (ast.is.IsVariableStatement(statement)) {
       const list = VariableStatement_DeclarationList(ast, statement);
-      validateVariableDeclarationKind(list ?? statement);
+      validateResourceDeclarations(list);
       for (const declaration of VariableDeclarationList_Declarations(ast, list) ?? []) {
         if (declaration === undefined) continue;
         const name = ast.name(declaration);
@@ -347,7 +356,7 @@ export function validateMojoFunctionSyntax(
     if (ast.is.IsForOfStatement(statement) || ast.is.IsForInStatement(statement)) {
       const initializer = ast.as.AsForInOrOfStatement(statement)?.Initializer;
       if (initializer !== undefined && ast.is.IsVariableDeclarationList(initializer)) {
-        validateVariableDeclarationKind(initializer);
+        validateResourceDeclarations(initializer);
       }
       if (iterations.get(statement) === undefined) {
         diagnostics.push(diagnostic(
@@ -364,7 +373,7 @@ export function validateMojoFunctionSyntax(
       const initializer = ForStatement_Initializer(ast, statement);
       if (initializer !== undefined) {
         if (ast.is.IsVariableDeclarationList(initializer)) {
-          validateVariableDeclarationKind(initializer);
+          validateResourceDeclarations(initializer);
           for (const declaration of VariableDeclarationList_Declarations(ast, initializer) ?? []) {
             validateExpression(Node_Initializer(ast, declaration));
           }

@@ -138,7 +138,10 @@
       "source": "class Derived extends Base implements Named {}",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain closed-world state and dispatch planning",
-      "status": "pending"
+      "status": "mojo-limit",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "nativeProof": "test/fixtures/native-limits/class-inheritance.mojo",
+      "note": "The pinned Mojo language has nominal structs but no class inheritance or runtime subtype dispatch; the target rejects project class heritage before planning rather than inventing an object model."
     },
     {
       "id": "declarations.generic-virtual-methods",
@@ -146,7 +149,10 @@
       "source": "const base: Base = new Derived(); base.identity<int32>(1); base.identity<string>(\"one\");",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact finite specialization across virtual, interface, override, and super dispatch",
-      "status": "pending"
+      "status": "mojo-limit",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
+      "note": "Mojo generic functions are supported, but the pinned language has no runtime trait-object value or virtual method table on which a generic virtual call can dispatch."
     },
     {
       "id": "declarations.open-generic-virtual-callers",
@@ -154,7 +160,10 @@
       "source": "function call<T>(base: Base, value: T): T { return base.identity<T>(value); }",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain finite caller-specialization propagation through the callable dependency graph before closing dynamic-dispatch slots",
-      "status": "pending"
+      "status": "mojo-limit",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
+      "note": "Open caller specialization cannot close a runtime virtual slot because the pinned Mojo language exposes traits only as compile-time constraints, not runtime values."
     },
     {
       "id": "declarations.interface-properties-methods",
@@ -162,9 +171,10 @@
       "source": "interface Counter { value: number; increment(): number; }",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain record and polymorphic interface plans",
-      "status": "partial",
+      "status": "mojo-limit",
       "proof": "test/integration/generated-mojo/language-parity.test.mjs",
-      "note": "Generic declaration-selected interface fields and reference-identity object carriers are implemented; callable interface slots remain open."
+      "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
+      "note": "Generic declaration-selected interface fields and index signatures use reference-identity carriers. Runtime-polymorphic method slots reject because pinned Mojo traits are not runtime value types."
     },
     {
       "id": "declarations.interface-heritage",
@@ -172,7 +182,10 @@
       "source": "interface Child extends Parent { value: number; }",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact project heritage",
-      "status": "pending"
+      "status": "mojo-limit",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
+      "note": "TypeScript interface heritage requires reference-preserving structural subtype views; pinned Mojo has neither struct inheritance nor runtime trait values, so heritage rejects before representation is chosen."
     },
     {
       "id": "declarations.interface-index-signatures",
@@ -230,7 +243,10 @@
       "source": "const counter: Counter = { value: 1, next() { return this.value + 1; } };",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact contextual declarations, this identity, captures, inheritance, recursion, and finite generic specializations",
-      "status": "pending"
+      "status": "mojo-limit",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
+      "note": "Contextual object methods require a runtime receiver-bearing dispatch slot. Pinned Mojo callables and traits do not expose that dynamic object-method contract."
     },
     {
       "id": "objects.callable-property-values",
@@ -238,7 +254,10 @@
       "source": "const counter: Counter = { value: 1, next: function () { return this.value + 1; } };",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact contextual method identity while preserving dynamic this for function expressions and lexical receiver semantics for arrows",
-      "status": "pending"
+      "status": "mojo-limit",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
+      "note": "Ordinary callable-valued fields are supported, but JavaScript-style dynamic this rebinding on a function-valued object member has no native Mojo callable contract."
     },
     {
       "id": "objects.method-value-operations",
@@ -246,7 +265,10 @@
       "source": "const next = counter.next; counter.next = replacement;",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact bound-callable reads and independently replaceable method-property storage",
-      "status": "pending"
+      "status": "mojo-limit",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
+      "note": "Reading a bound method value and independently replacing its dispatch slot requires a runtime method-object ABI absent from pinned Mojo."
     },
     {
       "id": "objects.method-spread",
@@ -254,7 +276,10 @@
       "source": "const derived: Counter = { ...counter, value: 2 };",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact callable-property projection alongside data fields in source evaluation order",
-      "status": "pending"
+      "status": "mojo-limit",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
+      "note": "Data-field spread is supported; spreading runtime-polymorphic method slots is rejected because pinned Mojo has no dynamic method-object representation."
     },
     {
       "id": "objects.overloaded-method-declarations",
@@ -262,7 +287,10 @@
       "source": "const parser: Parser = { parse(value: string, radix?: int32) { return radix === undefined ? value : value + \"-radix\"; } };",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain one authored implementation carrier and one exact adapter for each selected overload ABI",
-      "status": "pending"
+      "status": "mojo-limit",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
+      "note": "An object-literal implementation shared by several overload ABIs requires a runtime method slot and adapters; pinned Mojo traits are compile-time-only."
     },
     {
       "id": "objects.accessor-members",
@@ -270,7 +298,10 @@
       "source": "const value = { get count() { return 1; } };",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact getter and setter evidence, mutable storage, receiver identity, and project-interface dispatch",
-      "status": "pending"
+      "status": "mojo-limit",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
+      "note": "JavaScript object-literal accessors require runtime getter and setter slots with receiver identity, which pinned Mojo does not expose as a dynamic object contract."
     },
     {
       "id": "bindings.destructuring",
@@ -278,9 +309,9 @@
       "source": "const { left, ...rest } = pair; const [first, ...tail] = values;",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact single-evaluation projections",
-      "status": "partial",
+      "status": "matched",
       "proof": "test/integration/generated-mojo/language-parity.test.mjs",
-      "note": "Tuple, fixed-array, list, project-field, dictionary-key, omitted, renamed, and nested projections are sealed and evaluate their source once. Rest and default reconstruction remain explicit analysis rejections."
+      "note": "Tuple, fixed-array, list, project-field, structural-field, dictionary-key, omitted, renamed, nested, rest, and default projections are sealed and evaluate their source once."
     },
     {
       "id": "control.statements",
@@ -318,9 +349,10 @@
       "source": "for await (const value of values) { consume(value); }",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain selected iterator protocol evidence",
-      "status": "partial",
+      "status": "mojo-limit",
       "proof": "test/integration/generated-mojo/language-parity.test.mjs",
-      "note": "Checker-selected native list, fixed-array, and dictionary iteration lower from sealed element carriers. Asynchronous iteration remains an explicit pinned-Mojo language limit."
+      "nativeProof": "test/fixtures/native-limits/async-iteration.mojo",
+      "note": "Checker-selected native list, fixed-array, dictionary, and JS-surface iteration lower from sealed element carriers. The pinned Mojo grammar has no asynchronous iteration statement."
     },
     {
       "id": "generators.bidirectional",
@@ -328,7 +360,10 @@
       "source": "function* values(): Generator<number, string, number> { const next = yield 1; return String(next); }",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain yield next return throw and delegation protocol",
-      "status": "pending"
+      "status": "mojo-limit",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "nativeProof": "test/fixtures/native-limits/generator.mojo",
+      "note": "The pinned Mojo compiler has no authored generator suspension protocol carrying independent yield, return, next, throw, and delegation types."
     },
     {
       "id": "generators.async",
@@ -336,7 +371,10 @@
       "source": "async function* values() { yield await load(); }",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain asynchronous generator protocol",
-      "status": "pending"
+      "status": "mojo-limit",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "nativeProof": "test/fixtures/native-limits/generator.mojo",
+      "note": "The pinned Mojo compiler has no asynchronous generator declaration or suspension protocol."
     },
     {
       "id": "generators.resource-suspension",
@@ -344,7 +382,10 @@
       "source": "function* values() { using resource = open(); yield resource.value; }",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain lexical disposal and suppressed-error composition across synchronous and asynchronous generator suspension",
-      "status": "pending"
+      "status": "mojo-limit",
+      "proof": "test/integration/generated-mojo/language-parity.test.mjs",
+      "nativeProof": "test/fixtures/native-limits/generator.mojo",
+      "note": "Without a native generator suspension protocol, Mojo cannot preserve a resource scope across yield and resume boundaries without a target-owned state machine."
     },
     {
       "id": "resources.sync-async",
@@ -352,7 +393,9 @@
       "source": "using file = open(); await using connection = await connect();",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact disposal selection and abrupt-completion cleanup",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/integration/generated-mojo/resource-management.test.mjs",
+      "note": "Exact checker-selected synchronous and asynchronous disposers lower through lexical try/finally scopes, reverse acquisition order, nullish-union dispatch, and suppressed-error composition."
     },
     {
       "id": "expressions.optional-nullish",
@@ -450,7 +493,9 @@
       "source": "import { Widget } from \"@tsonic/rust/crates/widget_alias/index.js\";",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain rustdoc-backed exact provider declarations",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/providers/compiler/provider.test.mjs",
+      "note": "The Mojo equivalent uses installed compiler packages: package aliases, import roots, source digests, module ownership, runtime package artifacts, and cache identity are snapshotted exactly."
     },
     {
       "id": "providers.standard-library-breadth",
@@ -458,7 +503,9 @@
       "source": "import { PathBuf } from \"@tsonic/rust/std/path.js\";",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain requested compiler-backed public standard-library exports",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/providers/compiler/provider.test.mjs",
+      "note": "Requested standard-library modules and exports are discovered lazily from the pinned compiler snapshot and projected from mojo doc metadata."
     },
     {
       "id": "providers.generic-bounds",
@@ -466,7 +513,9 @@
       "source": "import { constrained } from \"@tsonic/rust/crates/library/index.js\";",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact Clone and Copy provider bounds through declaration models and generated generic requirements",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/providers/compiler/provider.test.mjs",
+      "note": "Mojo type, value, origin, variadic, default, trait-bound, and conditional-conformance parameters survive normalization and target projection exactly."
     },
     {
       "id": "providers.copy-static-borrowed-results",
@@ -474,7 +523,9 @@
       "source": "const name = item.staticName(); const copied = item.borrowedCount();",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact static-string and Copy-value projections from compiler-selected borrowed results",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/providers/compiler/provider.test.mjs",
+      "note": "Static values and borrowed compiler results retain exact Mojo return, reference-origin, and copyability metadata; only source-safe closed projections cross the TypeScript boundary."
     },
     {
       "id": "providers.escaping-borrowed-results",
@@ -482,7 +533,10 @@
       "source": "const view = buffer.asSlice();",
       "benchmarkClassification": "target-limit",
       "benchmarkAction": "reject escaping borrowed views because TypeScript has no lifetime-bearing view type; retain exact Copy and owned-string projections",
-      "status": "pending"
+      "status": "mojo-limit",
+      "proof": "test/providers/compiler/provider.test.mjs",
+      "nativeProof": "test/providers/compiler/provider.test.mjs",
+      "note": "Mojo borrowed results carry explicit origins. TypeScript has no origin-bearing view type, so an escaping borrowed result rejects unless a provider exposes an owned or Copy projection."
     },
     {
       "id": "providers.owned-custom-receivers",
@@ -490,7 +544,9 @@
       "source": "const value = boxed.consume();",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact owned custom receiver projection such as Box<Self> through provider-selected UFCS",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/providers/compiler/provider.test.mjs",
+      "note": "Mojo owned, out, mutable, borrowed, and immutable receiver conventions are compiler-derived and preserved on exact selected operations."
     },
     {
       "id": "providers.borrowed-custom-receivers",
@@ -498,7 +554,10 @@
       "source": "pinned.poll(context);",
       "benchmarkClassification": "target-limit",
       "benchmarkAction": "reject nested borrowed custom receivers before source projection; retain owned custom receivers such as Box<Self>",
-      "status": "pending"
+      "status": "mojo-limit",
+      "proof": "test/providers/compiler/provider.test.mjs",
+      "nativeProof": "test/providers/compiler/provider.test.mjs",
+      "note": "Simple borrowed Mojo receivers are supported. A receiver whose own carrier embeds an open origin cannot cross TypeScript because the source type system cannot name that origin."
     },
     {
       "id": "providers.c-variadics",
@@ -506,7 +565,9 @@
       "source": "unsafe(() => variadic(format, first, second));",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain C variadic tails as an explicit unsafe provider ABI without treating them as ordinary Rust rest parameters",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/providers/compiler/provider.test.mjs",
+      "note": "Compiler-declared variadic positional and keyword tails retain their exact Mojo argument position, convention, and variadic ABI rather than becoming ordinary TypeScript rest inference."
     },
     {
       "id": "providers.mutable-statics",
@@ -514,7 +575,10 @@
       "source": "unsafe(() => externalCounter.value++);",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact unsafe read and write operations over the selected mutable static identity",
-      "status": "pending"
+      "status": "mojo-limit",
+      "proof": "test/providers/compiler/provider.test.mjs",
+      "nativeProof": "test/providers/compiler/provider.test.mjs",
+      "note": "The pinned mojo doc schema does not publish addressable module-variable declarations, so mutable external static identity cannot be selected through the compiler-backed provider."
     },
     {
       "id": "providers.closed-trait-associated-items",
@@ -522,7 +586,9 @@
       "source": "const value = iterator.next();",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact trait methods, associated constants, and concrete associated-type substitutions",
-      "status": "pending"
+      "status": "matched",
+      "proof": "test/providers/compiler/provider.test.mjs",
+      "note": "Concrete associated aliases, associated result types, trait requirements, and conditional conformances remain structural compiler metadata through source and target projection."
     },
     {
       "id": "providers.open-associated-types",
@@ -530,7 +596,10 @@
       "source": "const value: Family<T>::Item<U> = family.make(input);",
       "benchmarkClassification": "target-limit",
       "benchmarkAction": "reject open associated and generic-associated projections because TypeScript has no higher-kinded projection type; retain compiler-resolved concrete substitutions",
-      "status": "pending"
+      "status": "mojo-limit",
+      "proof": "test/providers/compiler/provider.test.mjs",
+      "nativeProof": "test/providers/compiler/provider.test.mjs",
+      "note": "Mojo can name open associated projections using type and origin parameters, but TypeScript cannot express the higher-kinded projection identity; only compiler-resolved concrete substitutions cross the source boundary."
     },
     {
       "id": "providers.rust-unions",
@@ -538,7 +607,10 @@
       "source": "unsafe(() => payload.integer);",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain union fields as explicit unsafe selected operations over exact provider identities",
-      "status": "pending"
+      "status": "mojo-limit",
+      "proof": "test/providers/compiler/provider.test.mjs",
+      "nativeProof": "test/providers/compiler/provider.test.mjs",
+      "note": "The Mojo compiler metadata schema exposes structs, traits, aliases, and functions but no addressable Rust-style union field ABI. Closed TypeScript unions remain supported separately."
     },
     {
       "id": "providers.macros",
@@ -546,7 +618,10 @@
       "source": "externalMacro(value);",
       "benchmarkClassification": "target-limit",
       "benchmarkAction": "require a library-owned function wrapper because rustdoc does not provide an ordinary callable macro ABI",
-      "status": "pending"
+      "status": "mojo-limit",
+      "proof": "test/providers/compiler/provider.test.mjs",
+      "nativeProof": "test/providers/compiler/provider.test.mjs",
+      "note": "Compiler macros and decorators are not ordinary callable exports in pinned mojo doc metadata; a package-owned function wrapper is required for a stable bidirectional API."
     },
     {
       "id": "js-node.detailed-surface",
@@ -1046,7 +1121,7 @@
       "benchmarkClassification": "implemented",
       "status": "mojo-limit",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProbe": "../mojo-js/test/native-limits/regexp.mojo",
+      "nativeProof": "../mojo-js/test/native-limits/regexp.mojo",
       "note": "This String operation requires ECMAScript RegExp semantics; the pinned Mojo standard library exposes no regex module, and the target rejects the exact RegExp carrier."
     },
     {
@@ -1056,7 +1131,7 @@
       "benchmarkClassification": "implemented",
       "status": "mojo-limit",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProbe": "../mojo-js/test/native-limits/regexp.mojo",
+      "nativeProof": "../mojo-js/test/native-limits/regexp.mojo",
       "note": "This String operation requires ECMAScript RegExp semantics; the pinned Mojo standard library exposes no regex module, and the target rejects the exact RegExp carrier."
     },
     {
@@ -1066,7 +1141,7 @@
       "benchmarkClassification": "implemented",
       "status": "mojo-limit",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProbe": "../mojo-js/test/native-limits/regexp.mojo",
+      "nativeProof": "../mojo-js/test/native-limits/regexp.mojo",
       "note": "This String operation requires ECMAScript RegExp semantics; the pinned Mojo standard library exposes no regex module, and the target rejects the exact RegExp carrier."
     },
     {
@@ -1625,7 +1700,7 @@
       "benchmarkClassification": "implemented",
       "status": "mojo-limit",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProbe": "../mojo-js/test/native-limits/regexp.mojo",
+      "nativeProof": "../mojo-js/test/native-limits/regexp.mojo",
       "note": "The pinned Mojo standard library exposes no regex module; the exact ECMAScript RegExp carrier rejects before planning."
     },
     {
@@ -1635,7 +1710,7 @@
       "benchmarkClassification": "implemented",
       "status": "mojo-limit",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProbe": "../mojo-js/test/native-limits/regexp.mojo",
+      "nativeProof": "../mojo-js/test/native-limits/regexp.mojo",
       "note": "The pinned Mojo standard library exposes no regex module; the exact ECMAScript RegExp carrier rejects before planning."
     },
     {
@@ -1645,7 +1720,7 @@
       "benchmarkClassification": "implemented",
       "status": "mojo-limit",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProbe": "../mojo-js/test/native-limits/regexp.mojo",
+      "nativeProof": "../mojo-js/test/native-limits/regexp.mojo",
       "note": "The pinned Mojo standard library exposes no regex module; the exact ECMAScript RegExp carrier rejects before planning."
     },
     {
@@ -1655,7 +1730,7 @@
       "benchmarkClassification": "implemented",
       "status": "mojo-limit",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProbe": "../mojo-js/test/native-limits/regexp.mojo",
+      "nativeProof": "../mojo-js/test/native-limits/regexp.mojo",
       "note": "The pinned Mojo standard library exposes no regex module; the exact ECMAScript RegExp carrier rejects before planning."
     },
     {
@@ -1665,7 +1740,7 @@
       "benchmarkClassification": "implemented",
       "status": "mojo-limit",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProbe": "../mojo-js/test/native-limits/regexp.mojo",
+      "nativeProof": "../mojo-js/test/native-limits/regexp.mojo",
       "note": "The pinned Mojo standard library exposes no regex module; the exact ECMAScript RegExp carrier rejects before planning."
     },
     {
@@ -1675,7 +1750,7 @@
       "benchmarkClassification": "implemented",
       "status": "mojo-limit",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProbe": "../mojo-js/test/native-limits/regexp.mojo",
+      "nativeProof": "../mojo-js/test/native-limits/regexp.mojo",
       "note": "The pinned Mojo standard library exposes no regex module; the exact ECMAScript RegExp carrier rejects before planning."
     },
     {
@@ -1685,7 +1760,7 @@
       "benchmarkClassification": "implemented",
       "status": "mojo-limit",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProbe": "../mojo-js/test/native-limits/regexp.mojo",
+      "nativeProof": "../mojo-js/test/native-limits/regexp.mojo",
       "note": "The pinned Mojo standard library exposes no regex module; the exact ECMAScript RegExp carrier rejects before planning."
     },
     {
@@ -1695,7 +1770,7 @@
       "benchmarkClassification": "implemented",
       "status": "mojo-limit",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProbe": "../mojo-js/test/native-limits/regexp.mojo",
+      "nativeProof": "../mojo-js/test/native-limits/regexp.mojo",
       "note": "The pinned Mojo standard library exposes no regex module; the exact ECMAScript RegExp carrier rejects before planning."
     },
     {
@@ -1852,7 +1927,7 @@
       "benchmarkClassification": "implemented",
       "status": "mojo-limit",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProbe": "../mojo-js/test/native-limits/unicode-normalization.mojo",
+      "nativeProof": "../mojo-js/test/native-limits/unicode-normalization.mojo",
       "note": "Well-formed UTF-16 operations are implemented; the complete lane remains limited because the pinned Mojo standard library exposes no Unicode normalization module."
     },
     {
@@ -1872,7 +1947,7 @@
       "benchmarkClassification": "implemented",
       "status": "mojo-limit",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProbe": "../mojo-js/test/native-limits/regexp.mojo",
+      "nativeProof": "../mojo-js/test/native-limits/regexp.mojo",
       "note": "This result-consumption lane depends on an exact ECMAScript RegExp engine unavailable in the pinned Mojo runtime."
     },
     {
@@ -1882,7 +1957,7 @@
       "benchmarkClassification": "implemented",
       "status": "mojo-limit",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProbe": "../mojo-js/test/native-limits/regexp.mojo",
+      "nativeProof": "../mojo-js/test/native-limits/regexp.mojo",
       "note": "This result-consumption lane depends on an exact ECMAScript RegExp engine unavailable in the pinned Mojo runtime."
     },
     {

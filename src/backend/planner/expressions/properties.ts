@@ -151,7 +151,8 @@ export function planMojoProperty(
     }
     return withMojoValue(ordered.before, expression);
   }
-  const sourceReceiverType = selection.kind === "project-field" || selection.kind === "project-index-property"
+  const sourceReceiverType = selection.kind === "project-field" ||
+    selection.kind === "project-index-property" || selection.kind === "structural-field"
     ? selection.receiverType
     : selection.sourceReceiverType;
   const receiver = prepareMojoReceiver(
@@ -174,6 +175,24 @@ export function planMojoProperty(
       },
       name: selection.fieldName,
     });
+    return finishOptionalMojoOperation(node, receiver, operation, context);
+  }
+  if (selection.kind === "structural-field") {
+    const ordered = orderMojoValues([
+      Object.freeze({ plan: receiver.plan, type: selection.receiverType, role: "property_receiver" }),
+    ], context, stabilizeReceiver);
+    const operation = withMojoValue(ordered.before, Object.freeze({
+      kind: "element",
+      receiver: Object.freeze({
+        kind: "postfix-deref",
+        expression: Object.freeze({
+          kind: "member",
+          receiver: ordered.values[0]!,
+          name: "_state",
+        }),
+      }),
+      index: Object.freeze({ kind: "number-literal", text: String(selection.storageIndex) }),
+    }));
     return finishOptionalMojoOperation(node, receiver, operation, context);
   }
   if (selection.kind === "project-index-property") {

@@ -37,6 +37,7 @@ import type {
   MojoIterationSelection,
   MojoObjectLiteralSelection,
   MojoPropertySelection,
+  MojoResourceManagementSelection,
   MojoTargetAnalysisRequest,
   MojoTargetProgram,
   MojoTypeTestSelection,
@@ -59,6 +60,7 @@ import { createMojoProgramQueries } from "./queries.js";
 import { collectMojoDeclarationDrafts } from "./declaration-drafts.js";
 import { collectMojoAddressedStorageDeclarations } from "./addressed-storage.js";
 import { analyzeMojoProjectDeclarations } from "./declarations.js";
+import { createMojoStructuralObjectCatalog } from "../bindings/structural-objects.js";
 
 export function analyzeMojoTargetProgram(
   request: MojoTargetAnalysisRequest,
@@ -96,6 +98,8 @@ export function analyzeMojoTargetProgram(
   const propertySelections = new WeakMap<Node, MojoPropertySelection>();
   const elementSelections = new WeakMap<Node, MojoElementSelection>();
   const iterationSelections = new WeakMap<Node, MojoIterationSelection>();
+  const resourceManagementSelections = new WeakMap<Node, MojoResourceManagementSelection>();
+  const resourceDeclarations = new Set<Node>();
   const valueSelections = new WeakMap<Node, MojoValueSelection>();
   const valueRefinements = new WeakMap<Node, MojoValueRefinementSelection>();
   const typeTestSelections = new WeakMap<Node, MojoTypeTestSelection>();
@@ -104,6 +108,7 @@ export function analyzeMojoTargetProgram(
   const bindingPatternSelections = new WeakMap<Node, MojoBindingPatternSelection>();
   const analyzedCallableExpressions = new WeakSet<Node>();
   const conversions = createMojoConversionIndex();
+  const structuralObjects = createMojoStructuralObjectCatalog(ast);
   const fieldByDeclaration = new WeakMap<Node, MojoAnalyzedProjectProperty>();
   const moduleBindingByDeclaration = new WeakMap<
     Node,
@@ -281,11 +286,14 @@ export function analyzeMojoTargetProgram(
     propertySelections,
     elementSelections,
     iterationSelections,
+    resourceManagementSelections,
+    resourceDeclarations,
     valueSelections,
     valueRefinements,
     typeTestSelections,
     objectLiteralSelections,
     bindingPatternSelections,
+    structuralObjects,
     analyzeCallableExpression,
     conversions,
     functionByDeclaration,
@@ -354,13 +362,18 @@ export function analyzeMojoTargetProgram(
           bindingSourceFiles,
         );
       }
-      const root = step.kind === "binding" ? step.binding.initializer
+      const resourceBinding = step.kind === "binding" &&
+        (step.binding.declarationKind === "using" || step.binding.declarationKind === "await using");
+      const root = step.kind === "binding"
+        ? resourceBinding ? step.binding.declaration : step.binding.initializer
         : step.kind === "statement" ? step.statement
         : step.body;
       const region = analyzeMojoExecutableRegion({
         root,
         sourceFile: module.sourceFile,
-        ...(step.kind === "binding" ? { rootExpectedType: step.binding.type } : {}),
+        ...(step.kind === "binding" && !resourceBinding
+          ? { rootExpectedType: step.binding.type }
+          : {}),
         ...executableEnvironment,
       });
       recordMojoExecutableRegionConversionUses(
@@ -430,6 +443,24 @@ export function analyzeMojoTargetProgram(
     directRaises,
     projectDependencies,
   );
+  for (const declaration of resourceDeclarations) {
+    const selection = resourceManagementSelections.get(declaration);
+    if (selection === undefined || !selection.alternatives.some(({ disposal }) =>
+      disposal.kind === "project")) continue;
+    resourceManagementSelections.set(declaration, Object.freeze({
+      ...selection,
+      alternatives: Object.freeze(selection.alternatives.map((alternative) =>
+        alternative.disposal.kind !== "project"
+          ? alternative
+          : Object.freeze({
+              ...alternative,
+              disposal: Object.freeze({
+                ...alternative.disposal,
+                raises: raisesByDeclaration.get(alternative.disposal.dependency) === true,
+              }),
+            }))),
+    }));
+  }
   const finalizedFunctions = functions.map((function_) => Object.freeze({
     ...function_,
     raises: raisesByDeclaration.get(function_.declaration) === true,
@@ -475,6 +506,7 @@ export function analyzeMojoTargetProgram(
       objectLiteralSelections,
       callableExpressionSelections,
       bindingPatternSelections,
+      resourceManagementSelections,
       bindingNames,
       diagnostics,
     );
@@ -497,6 +529,7 @@ export function analyzeMojoTargetProgram(
     typeTestSelections,
     elementSelections,
     iterationSelections,
+    resourceManagementSelections,
     objectLiteralSelections,
     callableExpressionSelections,
     bindingPatternSelections,

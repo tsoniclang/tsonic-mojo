@@ -34,6 +34,7 @@ import { registerMojoTypeImports } from "../types/render.js";
 import { planMojoBindingPattern } from "../bindings/patterns.js";
 import { planDiscardedMojoExpression } from "./discarded-expression.js";
 import { planForIncrement } from "./for-increment.js";
+import { planMojoResourceScope } from "./resources.js";
 
 export function planMojoFunctionStatements(
   function_: MojoAnalyzedFunction,
@@ -76,14 +77,79 @@ function planBlock(
   context: MojoPlanningContext,
   flow: MojoFlowPlanningContext,
 ): readonly MojoStatement[] | undefined {
+  return planStatementSequence(
+    context.program.source.ast.statements(block),
+    scope,
+    context,
+    flow,
+  );
+}
+
+function planStatementSequence(
+  sourceStatements: readonly (Node | undefined)[],
+  scope: MojoStatementPlanningScope,
+  context: MojoPlanningContext,
+  flow: MojoFlowPlanningContext,
+): readonly MojoStatement[] | undefined {
   const statements: MojoStatement[] = [];
-  for (const sourceStatement of context.program.source.ast.statements(block)) {
+  for (const [index, sourceStatement] of sourceStatements.entries()) {
     if (sourceStatement === undefined) continue;
+    const resourceList = resourceDeclarationList(sourceStatement, context);
+    if (resourceList !== undefined) {
+      const declarations = VariableDeclarationList_Declarations(
+        context.program.source.ast,
+        resourceList,
+      ) ?? [];
+      const remainder = planStatementSequence(
+        sourceStatements.slice(index + 1),
+        scope,
+        context,
+        flow,
+      );
+      if (remainder === undefined || declarations.some((declaration) => declaration === undefined)) {
+        return undefined;
+      }
+      const scoped = planResourceDeclarations(
+        declarations as readonly Node[],
+        remainder,
+        context,
+      );
+      if (scoped === undefined) return undefined;
+      statements.push(...scoped);
+      return Object.freeze(statements);
+    }
     const planned = planStatement(sourceStatement, scope, context, flow);
     if (planned === undefined) return undefined;
     statements.push(...planned);
   }
   return Object.freeze(statements);
+}
+
+function resourceDeclarationList(
+  statement: Node,
+  context: MojoPlanningContext,
+): Node | undefined {
+  const { ast } = context.program.source;
+  if (!ast.is.IsVariableStatement(statement)) return undefined;
+  const list = VariableStatement_DeclarationList(ast, statement);
+  const kind = ast.variableDeclarationKind(list);
+  return kind === "using" || kind === "await using" ? list : undefined;
+}
+
+function planResourceDeclarations(
+  declarations: readonly Node[],
+  continuation: readonly MojoStatement[],
+  context: MojoPlanningContext,
+): readonly MojoStatement[] | undefined {
+  let protectedStatements = continuation;
+  for (let index = declarations.length - 1; index >= 0; index -= 1) {
+    const declaration = declarations[index]!;
+    const acquisition = planVariableDeclaration(declaration, context);
+    const scope = planMojoResourceScope(declaration, protectedStatements, context);
+    if (acquisition === undefined || scope === undefined) return undefined;
+    protectedStatements = Object.freeze([...acquisition, ...scope]);
+  }
+  return protectedStatements;
 }
 
 function planStatement(
@@ -212,7 +278,11 @@ function planStatement(
         }]);
   }
   if (ast.is.IsForStatement(node)) {
-    const initializer = planForInitializer(ForStatement_Initializer(ast, node), context);
+    const initializerNode = ForStatement_Initializer(ast, node);
+    const resourceInitializer = initializerResourceDeclarationList(initializerNode, context);
+    const initializer = resourceInitializer === undefined
+      ? planForInitializer(initializerNode, context)
+      : Object.freeze([]);
     const conditionNode = ForStatement_Condition(ast, node);
     const condition = conditionNode === undefined
       ? Object.freeze({
@@ -237,19 +307,20 @@ function planStatement(
       condition: Object.freeze({ kind: "unary", operator: "not", operand: condition.value }),
       thenStatements: Object.freeze([Object.freeze({ kind: "break" as const })]),
     });
-    return Object.freeze([
-      ...initializer,
-      Object.freeze({
-        kind: "while",
-        condition: Object.freeze({ kind: "bool-literal", value: true }),
-        statements: Object.freeze([
-          ...condition.before,
-          conditionExit,
-          ...statements,
-          ...increment,
-        ]),
-      }),
-    ]);
+    const loop: MojoStatement = Object.freeze({
+      kind: "while",
+      condition: Object.freeze({ kind: "bool-literal", value: true }),
+      statements: Object.freeze([
+        ...condition.before,
+        conditionExit,
+        ...statements,
+        ...increment,
+      ]),
+    });
+    if (resourceInitializer === undefined) return Object.freeze([...initializer, loop]);
+    const declarations = VariableDeclarationList_Declarations(ast, resourceInitializer) ?? [];
+    if (declarations.some((declaration) => declaration === undefined)) return undefined;
+    return planResourceDeclarations(declarations as readonly Node[], Object.freeze([loop]), context);
   }
   if (ast.is.IsForOfStatement(node) || ast.is.IsForInStatement(node)) {
     const selection = context.program.queries.iterationSelection(node);
@@ -265,7 +336,13 @@ function planStatement(
           name: mojoIterationMethod(selection.target),
           arguments: Object.freeze([]),
         });
-    const statements = planStatementBody(body, scope, context, loopFlowContext(Object.freeze([])));
+    let statements = planStatementBody(body, scope, context, loopFlowContext(Object.freeze([])));
+    if (statements !== undefined) {
+      const bindingKind = ast.variableDeclarationKind(selection.bindingDeclaration);
+      if (bindingKind === "using" || bindingKind === "await using") {
+        statements = planMojoResourceScope(selection.bindingDeclaration, statements, context);
+      }
+    }
     return statements === undefined
       ? undefined
       : Object.freeze([...sourceIterable.before, { kind: "for", binding: selection.bindingName, iterable, statements }]);
@@ -479,14 +556,17 @@ function planStatementNodes(
   context: MojoPlanningContext,
   flow: MojoFlowPlanningContext,
 ): readonly MojoStatement[] | undefined {
-  const statements: MojoStatement[] = [];
-  for (const node of nodes) {
-    if (node === undefined) return undefined;
-    const planned = planStatement(node, scope, context, flow);
-    if (planned === undefined) return undefined;
-    statements.push(...planned);
-  }
-  return Object.freeze(statements);
+  return planStatementSequence(nodes, scope, context, flow);
+}
+
+function initializerResourceDeclarationList(
+  initializer: Node | undefined,
+  context: MojoPlanningContext,
+): Node | undefined {
+  if (initializer === undefined ||
+    !context.program.source.ast.is.IsVariableDeclarationList(initializer)) return undefined;
+  const kind = context.program.source.ast.variableDeclarationKind(initializer);
+  return kind === "using" || kind === "await using" ? initializer : undefined;
 }
 
 function selectedEquals(selected: MojoExpression, value: number): MojoExpression {
@@ -525,12 +605,23 @@ function planVariableDeclarationList(
   const planned: MojoStatement[] = [];
   for (const declaration of declarations) {
     if (declaration === undefined) return undefined;
+    const selected = planVariableDeclaration(declaration, context);
+    if (selected === undefined) return undefined;
+    planned.push(...selected);
+  }
+  return Object.freeze(planned);
+}
+
+function planVariableDeclaration(
+  declaration: Node,
+  context: MojoPlanningContext,
+): readonly MojoStatement[] | undefined {
+    const { ast } = context.program.source;
     const pattern = context.program.queries.bindingPatternSelection(declaration);
     if (pattern !== undefined) {
       const statements = planMojoBindingPattern(pattern, context, planMojoValue);
       if (statements === undefined) return undefined;
-      planned.push(...statements);
-      continue;
+      return statements;
     }
     const name = context.program.queries.bindingName(declaration);
     const type = context.program.queries.bindingType(declaration);
@@ -541,7 +632,7 @@ function planVariableDeclarationList(
     const locationStorage = context.program.queries.locationStorage(declaration);
     if (locationStorage === undefined) {
       registerMojoTypeImports(type, context);
-      planned.push(...initializer.before, { kind: "variable", name, type, initializer: initializer.value });
+      return Object.freeze([...initializer.before, { kind: "variable", name, type, initializer: initializer.value }]);
     } else {
       const locationType: MojoTargetTypeRef = Object.freeze({
         kind: "target-named",
@@ -551,7 +642,7 @@ function planVariableDeclarationList(
         genericArguments: Object.freeze([Object.freeze({ kind: "type", type })]),
       });
       registerMojoTypeImports(locationType, context);
-      planned.push(...initializer.before, {
+      return Object.freeze([...initializer.before, {
         kind: "variable",
         name: locationStorage.name,
         type: locationType,
@@ -560,10 +651,8 @@ function planVariableDeclarationList(
           type: locationType,
           arguments: Object.freeze([Object.freeze({ value: initializer.value })]),
         }),
-      });
+      }]);
     }
-  }
-  return Object.freeze(planned);
 }
 
 function planForInitializer(
