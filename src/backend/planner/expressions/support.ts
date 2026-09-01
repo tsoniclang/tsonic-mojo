@@ -297,6 +297,15 @@ export function applyMojoConversion(
     case "native-to-js-string":
       registerMojoModuleImport(context, ["tsonic_js"]);
       return { kind: "construct", type: conversion.targetType, arguments: Object.freeze([{ value: expression }]) };
+    case "js-box":
+      registerMojoModuleImport(context, ["tsonic_js"]);
+      return {
+        kind: "call",
+        callee: { kind: "path", path: `js_value_from_${conversion.source}` },
+        arguments: conversion.source === "null" || conversion.source === "undefined"
+          ? Object.freeze([])
+          : Object.freeze([{ value: expression }]),
+      };
     case "primitive-cast":
     case "reference-copy":
       registerMojoTypeImports(conversion.targetType, context);

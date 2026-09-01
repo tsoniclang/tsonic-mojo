@@ -260,6 +260,12 @@ function validateOperation(
     (operation.memberId === undefined || operation.receiverType === undefined)) {
     throw new Error(`Provider instance call '${operation.exportId}' requires an exact source member and receiver carrier.`);
   }
+  if (operation.target.kind === "function-call" &&
+    (operation.target.receiver === undefined) !== (operation.receiverType === undefined)) {
+    throw new Error(
+      `Provider function call '${operation.exportId}' must declare both or neither of its helper receiver ABI and receiver carrier.`,
+    );
+  }
   if (operation.target.kind === "function-call" || operation.target.kind === "constant") {
     if (operation.target.modulePath.length === 0) {
       throw new Error(`Provider operation '${operation.exportId}' has an empty Mojo module path.`);

@@ -289,13 +289,16 @@ function analyzeSourceProfileCall(
         kind: "function-call" as const,
         modulePath: selected.row.target.modulePath,
         name: selected.row.target.name,
+        ...(selected.row.target.receiver === undefined
+          ? {}
+          : { receiver: selected.row.target.receiver }),
         genericParameters: Object.freeze([]),
         arguments: Object.freeze(targetArguments),
       });
   let receiver: Node | undefined;
   let sourceReceiverType: MojoTargetTypeRef | undefined;
   let receiverConversion;
-  if (selected.row.target.kind === "instance") {
+  if (selected.row.target.kind === "instance" || selected.row.target.receiver !== undefined) {
     const sourceReceiver = sourceCall.sourceReceiver;
     sourceReceiverType = sourceReceiver === undefined ? undefined : resolve(sourceReceiver.type);
     if (sourceReceiver === undefined || sourceReceiverType === undefined) {

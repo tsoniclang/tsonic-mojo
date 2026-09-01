@@ -99,13 +99,52 @@ export function planMojoInterface(
       id: "mojo.builtin.Copyable",
       modulePath: Object.freeze([]),
       name: "Copyable",
+    }), Object.freeze({
+      kind: "target-named",
+      id: "mojo.builtin.Equatable",
+      modulePath: Object.freeze([]),
+      name: "Equatable",
     })]),
     fields: Object.freeze([Object.freeze({
       name: "_state",
       type: arcType,
       compileTime: false,
     })]),
-    methods: Object.freeze([constructor]),
+    methods: Object.freeze([constructor, identityEqualityMethod(interface_.targetType)]),
   });
   return Object.freeze([state, wrapper]);
+}
+
+function identityEqualityMethod(owner: MojoTargetTypeRef): MojoFunctionDeclaration {
+  return Object.freeze({
+    kind: "function",
+    name: "__eq__",
+    genericParameters: Object.freeze([]),
+    parameters: Object.freeze([Object.freeze({
+      name: "other",
+      type: owner,
+      convention: "imm" as const,
+    })]),
+    resultType: Object.freeze({ kind: "source-primitive", name: "bool" }),
+    asynchronous: false,
+    raises: false,
+    self: "self",
+    statements: Object.freeze([Object.freeze({
+      kind: "return" as const,
+      expression: Object.freeze({
+        kind: "binary" as const,
+        operator: "is",
+        left: Object.freeze({
+          kind: "member" as const,
+          receiver: Object.freeze({ kind: "path" as const, path: "self" }),
+          name: "_state",
+        }),
+        right: Object.freeze({
+          kind: "member" as const,
+          receiver: Object.freeze({ kind: "path" as const, path: "other" }),
+          name: "_state",
+        }),
+      }),
+    })]),
+  });
 }

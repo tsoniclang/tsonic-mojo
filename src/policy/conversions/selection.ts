@@ -71,6 +71,15 @@ export function classifyMojoValueConversion(
       conversion: Object.freeze({ kind: "native-to-js-string", targetType: expected }),
     };
   }
+  if (isJsValue(expected)) {
+    const source = jsValueSourceKind(actual);
+    if (source !== undefined) {
+      return {
+        kind: "resolved",
+        conversion: Object.freeze({ kind: "js-box", targetType: expected, source }),
+      };
+    }
+  }
   if (actual.kind === "source-primitive" && expected.kind === "source-primitive") {
     return {
       kind: "resolved",
@@ -123,6 +132,23 @@ export function mojoTargetTypeKey(type: MojoTargetTypeRef): string {
 
 function isJsString(type: MojoTargetTypeRef): boolean {
   return type.kind === "target-named" && type.id === "tsonic.mojo.js.JsString";
+}
+
+function isJsValue(type: MojoTargetTypeRef): boolean {
+  return type.kind === "dynamic" && type.domain === "js";
+}
+
+function jsValueSourceKind(
+  type: MojoTargetTypeRef,
+): Extract<MojoValueConversion, { kind: "js-box" }>["source"] | undefined {
+  if (type.kind === "source-primitive") {
+    if (type.name === "bool") return "bool";
+    if (type.name === "float64") return "number";
+  }
+  if (isJsString(type)) return "string";
+  if (type.kind === "null") return "null";
+  if (type.kind === "undefined") return "undefined";
+  return undefined;
 }
 
 function sameConversion(left: MojoValueConversion, right: MojoValueConversion): boolean {

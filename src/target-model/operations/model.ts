@@ -10,6 +10,7 @@ export type MojoProviderOperationForm =
       readonly modulePath: readonly string[];
       readonly ownerPath?: readonly string[];
       readonly name: string;
+      readonly receiver?: MojoCallArgumentConvention;
       readonly genericParameters?: readonly MojoProviderTargetGenericParameter[];
       readonly arguments: readonly MojoProviderTargetArgument[];
     }

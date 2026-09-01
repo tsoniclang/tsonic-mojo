@@ -21,6 +21,7 @@ export interface MojoSourceProfileCallRow {
         readonly kind: "function";
         readonly modulePath: readonly string[];
         readonly name: string;
+        readonly receiver?: "imm" | "mut" | "var" | "ref" | "deinit";
       };
   readonly raises?: boolean;
 }
@@ -174,10 +175,22 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
   ...jsInstanceRows("String", "imm", [
     "at", "charAt", "charCodeAt", "codePointAt", "concat", "endsWith", "includes",
     "indexOf", "lastIndexOf", "match", "matchAll", "normalize", "padEnd", "padStart",
-    "repeat", "replace", "replaceAll", "search", "slice", "split", "startsWith",
+    "repeat", "replace", "replaceAll", "search", "slice", "startsWith",
     "substr", "substring", "toLowerCase", "toString", "toUpperCase", "toWellFormed",
     "trim", "trimEnd", "trimLeft", "trimRight", "trimStart", "valueOf", "isWellFormed",
   ]),
+  Object.freeze({
+    profile: "js",
+    kind: "call",
+    owner: "String",
+    member: "split",
+    target: Object.freeze({
+      kind: "function",
+      modulePath: Object.freeze(["tsonic_js"]),
+      name: "string_split",
+      receiver: "imm",
+    }),
+  }),
   ...jsInstanceRows("Array", "mut", [
     "copyWithin", "fill", "pop", "push", "reverse", "shift", "sort", "splice", "unshift",
   ]),
@@ -201,12 +214,26 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
   ]),
   ...jsInstanceRows("ReadonlySet", "imm", ["entries", "forEach", "has", "keys", "values"]),
   ...jsInstanceRows("Date", "imm", [
-    "getTime", "toISOString", "toJSON", "toString", "toUTCString", "valueOf",
+    "getTime", "getUTCDate", "getUTCDay", "getUTCFullYear", "getUTCHours",
+    "getUTCMilliseconds", "getUTCMinutes", "getUTCMonth", "getUTCSeconds",
+    "toJSON", "toString", "toUTCString", "valueOf",
   ]),
+  ...jsInstanceRows("Date", "mut", [
+    "setTime", "setUTCDate", "setUTCFullYear", "setUTCHours",
+    "setUTCMilliseconds", "setUTCMinutes", "setUTCMonth", "setUTCSeconds",
+  ]),
+  Object.freeze({
+    profile: "js",
+    kind: "call",
+    owner: "Date",
+    member: "toISOString",
+    target: Object.freeze({ kind: "instance", name: "to_iso_string", receiver: "imm" }),
+    raises: true,
+  }),
   ...jsInstanceRows("RegExp", "mut", ["exec", "test"]),
   ...jsStaticRows("ArrayConstructor", ["from", "isArray"]),
   ...jsStaticRows("StringConstructor", ["fromCharCode", "fromCodePoint"]),
-  ...jsStaticRows("DateConstructor", ["now", "parse", "UTC"]),
+  ...jsStaticRows("DateConstructor", ["now", "parse", ["UTC", "date_utc"]]),
   ...jsStaticRows("JSON", ["parse", "stringify"]),
   ...jsStaticRows("ObjectConstructor", ["entries", "hasOwn", "is", "keys", "values"]),
   ...jsStaticRows("NumberConstructor", [
@@ -218,7 +245,13 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     "log10", "log1p", "log2", "max", "min", "pow", "random", "round", "sign", "sin",
     "sinh", "sqrt", "tan", "tanh", "trunc",
   ]),
-  ...jsInstanceRows("Console", "imm", ["debug", "error", "info", "log", "warn"]),
+  ...jsStaticRows("Console", [
+    ["debug", "console_debug"],
+    ["error", "console_error"],
+    ["info", "console_info"],
+    ["log", "console_log"],
+    ["warn", "console_warn"],
+  ]),
 ]);
 
 function snakeCase(value: string): string {

@@ -300,7 +300,42 @@ export function planMojoCall(
   if (target.kind === "function-call") {
     if (selection.optionalChain) return unsupportedOptionalCall(node, context);
     registerMojoModuleImport(context, target.modulePath);
-    const ordered = orderCallArguments(plannedArguments, context);
+    let receiver: ReturnType<typeof prepareMojoReceiver>;
+    let convertedReceiver: MojoValuePlan | undefined;
+    if (target.receiver !== undefined) {
+      if (selection.receiver === undefined || selection.sourceReceiverType === undefined ||
+        selection.operation.receiverType === undefined || selection.receiverConversion === undefined) {
+        appendMojoPlanningDiagnostic(
+          context,
+          "MOJO_PROVIDER_HELPER_RECEIVER_MISSING",
+          "A receiver-backed Mojo helper call has no sealed receiver contract.",
+          node,
+        );
+        return undefined;
+      }
+      receiver = prepareMojoReceiver(
+        selection.receiver,
+        selection.sourceReceiverType,
+        false,
+        context,
+        planValue,
+      );
+      convertedReceiver = receiver === undefined
+        ? undefined
+        : convertMojoValue(receiver.plan, selection.receiverConversion, context);
+      if (receiver === undefined || convertedReceiver === undefined) return undefined;
+    }
+    const ordered = orderCallArguments(
+      plannedArguments,
+      context,
+      convertedReceiver === undefined || selection.operation.receiverType === undefined
+        ? undefined
+        : Object.freeze({
+            plan: convertedReceiver,
+            type: selection.operation.receiverType,
+            role: "call_receiver",
+          }),
+    );
     before = ordered.before;
     call = {
       kind: "call",
@@ -308,7 +343,16 @@ export function planMojoCall(
       ...(selection.operation.genericArguments.length === 0
         ? {}
         : { genericArguments: selection.operation.genericArguments }),
-      arguments: ordered.arguments,
+      arguments: target.receiver === undefined
+        ? ordered.arguments
+        : Object.freeze([
+            Object.freeze({
+              value: target.receiver === "var" || target.receiver === "deinit"
+                ? Object.freeze({ kind: "consume" as const, expression: ordered.receiver! })
+                : ordered.receiver!,
+            }),
+            ...ordered.arguments,
+          ]),
     };
   } else {
     if (selection.receiver === undefined || selection.sourceReceiverType === undefined) return undefined;
