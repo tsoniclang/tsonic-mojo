@@ -77,6 +77,26 @@ export function classifyMojoValueConversion(
       conversion: Object.freeze({ kind: "primitive-cast", targetType: expected }),
     };
   }
+  if (expected.kind === "optional") {
+    if (actual.kind === "undefined") {
+      return {
+        kind: "resolved",
+        conversion: Object.freeze({ kind: "optional-none", targetType: expected }),
+      };
+    }
+    if (mojoTargetTypeEquals(actual, expected.value)) {
+      return {
+        kind: "resolved",
+        conversion: Object.freeze({ kind: "optional-some", targetType: expected }),
+      };
+    }
+  }
+  if (expected.kind === "union" && expected.members.some((member) => mojoTargetTypeEquals(member, actual))) {
+    return {
+      kind: "resolved",
+      conversion: Object.freeze({ kind: "union-inject", targetType: expected }),
+    };
+  }
   return {
     kind: "unsupported",
     reason: `no exact Mojo conversion exists from '${mojoTargetTypeKey(actual)}' to '${mojoTargetTypeKey(expected)}'`,

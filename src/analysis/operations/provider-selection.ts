@@ -30,7 +30,7 @@ export function selectMojoProviderCall(
     providerOwnerMatches(row, identity) &&
     row.exportId === identity.exportId &&
     row.memberId === identity.memberId &&
-    row.operationKind === "call");
+    row.operationKind === (source.ast.is.IsNewExpression(call.call) ? "constructor" : "call"));
   if (identity.signatureId === undefined) {
     return { kind: "missing", reason: "the selected provider call has no exact signature identity" };
   }

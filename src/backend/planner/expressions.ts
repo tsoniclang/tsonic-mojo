@@ -578,6 +578,13 @@ function applyMojoConversion(
     case "primitive-cast":
       registerMojoTypeImports(conversion.targetType, context);
       return { kind: "construct", type: conversion.targetType, arguments: Object.freeze([{ value: expression }]) };
+    case "optional-none":
+      registerMojoTypeImports(conversion.targetType, context);
+      return { kind: "construct", type: conversion.targetType, arguments: Object.freeze([]) };
+    case "optional-some":
+    case "union-inject":
+      registerMojoTypeImports(conversion.targetType, context);
+      return { kind: "construct", type: conversion.targetType, arguments: Object.freeze([{ value: expression }]) };
   }
 }
 
