@@ -101,6 +101,7 @@ export function analyzeMojoCall(
     instantiated.operation.parameterTypes,
     target.arguments,
     resolve,
+    context.expressionTypes,
   );
   if (arguments_.kind === "unsupported") return arguments_;
   const result = closeResultConversion(
@@ -184,7 +185,13 @@ function analyzeProjectCall(
     variadic: parameter.rest,
     passing: parameter.passing,
   }));
-  const arguments_ = analyzeArguments(sourceCall, parameterTypes, targetArguments, resolve);
+  const arguments_ = analyzeArguments(
+    sourceCall,
+    parameterTypes,
+    targetArguments,
+    resolve,
+    context.expressionTypes,
+  );
   if (arguments_.kind === "unsupported") return arguments_;
   const targetResult = substituteMojoTargetType(function_.resultType, substitutions);
   const callResult = function_.kind === "constructor"
@@ -331,6 +338,7 @@ function analyzeArguments(
     readonly passing?: "plain" | "consume";
   }[],
   resolve: (type: Type) => MojoTargetTypeRef | undefined,
+  expressionTypes: WeakMap<Node, MojoTargetTypeRef>,
 ): { readonly kind: "resolved"; readonly arguments: readonly MojoAnalyzedCallArgument[] } |
   { readonly kind: "unsupported"; readonly code: string; readonly reason: string } {
   if (parameterTypes.length !== targetArguments.length) {
@@ -361,7 +369,8 @@ function analyzeArguments(
     }
     const parameterType = parameterTypes[parameterIndex];
     const target = targetArguments[parameterIndex];
-    const sourceType = resolve(bindings[0]!.selectedArgumentType);
+    const sourceType = expressionTypes.get(sourceArgument.expression) ??
+      resolve(bindings[0]!.selectedArgumentType);
     if (parameterType === undefined || target === undefined || sourceType === undefined) {
       return {
         kind: "unsupported",

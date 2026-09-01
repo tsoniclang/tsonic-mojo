@@ -50,6 +50,12 @@ export function analyzeMojoModuleBindings(
       continue;
     }
     const semantics = input.source.semantics.forFile(sourceFile);
+    const stateName = input.allocateModuleName(sourceFile, "TsonicModuleState");
+    const createStateName = input.allocateModuleName(sourceFile, "createTsonicModuleState");
+    const cellName = input.allocateModuleName(sourceFile, "tsonicModuleState");
+    const initializeName = input.allocateModuleName(sourceFile, "initializeTsonicModule");
+    const lifecycleLockName = input.allocateModuleName(sourceFile, "lifecycleLock");
+    const lifecycleInitializedName = input.allocateModuleName(sourceFile, "lifecycleInitialized");
     const bindings: MojoAnalyzedModuleBinding[] = [];
     const initializationSteps: MojoModuleInitializationStep[] = [];
     for (const statement of ast.statements(sourceFile)) {
@@ -323,10 +329,12 @@ export function analyzeMojoModuleBindings(
     }
     analyzed.push(Object.freeze({
       sourceFile,
-      stateName: input.allocateModuleName(sourceFile, "TsonicModuleState"),
-      createStateName: input.allocateModuleName(sourceFile, "createTsonicModuleState"),
-      cellName: input.allocateModuleName(sourceFile, "tsonicModuleState"),
-      initializeName: input.allocateModuleName(sourceFile, "initializeTsonicModule"),
+      stateName,
+      createStateName,
+      cellName,
+      initializeName,
+      lifecycleLockName,
+      lifecycleInitializedName,
       bindings: Object.freeze(bindings),
       initializationSteps: Object.freeze(initializationSteps),
       asynchronous: definition.topLevelAwait,

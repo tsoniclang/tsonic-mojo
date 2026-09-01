@@ -87,39 +87,18 @@ export function analyzeMojoExecutableRegion(
       }
     }
     if (isMojoExpressionNode(node, ast)) analyzeExpressionCarrier(node, input, semantics);
+    if (ast.is.IsForOfStatement(node) || ast.is.IsForInStatement(node)) iterationNodes.push(node);
+  }, (node, regionRoot) => descendWithinExecutableRegion(node, regionRoot, ast));
+
+  walkSourceTreePostOrder(root, ast, (node): void => {
     if (ast.is.IsPropertyAccessExpression(node)) analyzeProperty(node, input, semantics);
     if (ast.is.IsElementAccessExpression(node)) analyzeElement(node, input, semantics);
-    if (ast.is.IsForOfStatement(node) || ast.is.IsForInStatement(node)) iterationNodes.push(node);
-    if (!ast.is.IsCallExpression(node) && !ast.is.IsNewExpression(node)) return;
-    const selectedCall = semantics.operations.call(node);
-    if (selectedCall === undefined || selectedCall.sourceSelectedSignatureKind !== "resolved") {
-      input.diagnostics.push(diagnostic(
-        "MOJO_CALL_EVIDENCE_MISSING",
-        "Call lowering requires one exact checker-selected signature.",
-        node,
-      ));
-      return;
+    if (ast.is.IsCallExpression(node) || ast.is.IsNewExpression(node)) {
+      analyzeCall(node, input, semantics, dependencies);
     }
-    const analyzed = analyzeMojoCall(node, selectedCall, {
-      source,
-      providerSemantics: input.providerSemantics,
-      projectTypes: input.projectTypes,
-      jsEnabled: input.jsEnabled,
-      expressionTypes: input.expressionTypes,
-      conversions: input.conversions,
-      functionByDeclaration: input.functionByDeclaration,
-      classByDeclaration: input.classByDeclaration,
-      classByTypeId: input.classByTypeId,
-      modulePathForSourceFile(owner) {
-        return input.modules.forSourceFile(owner)?.modulePath ?? Object.freeze([]);
-      },
-    });
-    if (analyzed.kind === "unsupported") {
-      input.diagnostics.push(diagnostic(analyzed.code, analyzed.reason, node));
-      return;
-    }
-    if (analyzed.dependency !== undefined) dependencies.add(analyzed.dependency);
-    input.callSelections.set(node, analyzed.selection);
+    if (!isMojoExpressionNode(node, ast)) return;
+    const inferred = inferMojoExpressionType(node, ast, input.expressionTypes);
+    if (inferred !== undefined) input.expressionTypes.set(node, inferred);
   }, (node, regionRoot) => descendWithinExecutableRegion(node, regionRoot, ast));
 
   for (const node of iterationNodes) {
@@ -150,12 +129,44 @@ export function analyzeMojoExecutableRegion(
       input.iterationSelections.set(node, iteration.selection);
     }
   }
-  walkSourceTreePostOrder(root, ast, (node): void => {
-    if (!isMojoExpressionNode(node, ast)) return;
-    const inferred = inferMojoExpressionType(node, ast, input.expressionTypes);
-    if (inferred !== undefined) input.expressionTypes.set(node, inferred);
-  }, (node, regionRoot) => descendWithinExecutableRegion(node, regionRoot, ast));
   return Object.freeze({ dependencies, raises: regionRaises(root, input) });
+}
+
+function analyzeCall(
+  node: Node,
+  input: MojoExecutableRegionAnalysisInput,
+  semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
+  dependencies: Set<Node>,
+): void {
+  const selectedCall = semantics.operations.call(node);
+  if (selectedCall === undefined || selectedCall.sourceSelectedSignatureKind !== "resolved") {
+    input.diagnostics.push(diagnostic(
+      "MOJO_CALL_EVIDENCE_MISSING",
+      "Call lowering requires one exact checker-selected signature.",
+      node,
+    ));
+    return;
+  }
+  const analyzed = analyzeMojoCall(node, selectedCall, {
+    source: input.source,
+    providerSemantics: input.providerSemantics,
+    projectTypes: input.projectTypes,
+    jsEnabled: input.jsEnabled,
+    expressionTypes: input.expressionTypes,
+    conversions: input.conversions,
+    functionByDeclaration: input.functionByDeclaration,
+    classByDeclaration: input.classByDeclaration,
+    classByTypeId: input.classByTypeId,
+    modulePathForSourceFile(owner) {
+      return input.modules.forSourceFile(owner)?.modulePath ?? Object.freeze([]);
+    },
+  });
+  if (analyzed.kind === "unsupported") {
+    input.diagnostics.push(diagnostic(analyzed.code, analyzed.reason, node));
+    return;
+  }
+  if (analyzed.dependency !== undefined) dependencies.add(analyzed.dependency);
+  input.callSelections.set(node, analyzed.selection);
 }
 
 function analyzeExpressionCarrier(

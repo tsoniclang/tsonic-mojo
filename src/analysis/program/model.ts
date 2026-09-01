@@ -152,6 +152,8 @@ export interface MojoAnalyzedModule {
   readonly createStateName: string;
   readonly cellName: string;
   readonly initializeName: string;
+  readonly lifecycleLockName: string;
+  readonly lifecycleInitializedName: string;
   readonly bindings: readonly MojoAnalyzedModuleBinding[];
   readonly initializationSteps: readonly MojoModuleInitializationStep[];
   readonly asynchronous: boolean;

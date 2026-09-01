@@ -18,6 +18,7 @@ import type {
 } from "../target-ast/nodes.js";
 import type { MojoPlanningContext } from "./context.js";
 import {
+  allocateMojoSyntheticName,
   appendMojoPlanningDiagnostic,
   mojoQualifiedModuleMember,
   registerMojoModuleImport,
@@ -79,9 +80,9 @@ function moduleStateStruct(
     genericParameters: Object.freeze([]),
     conformances: Object.freeze([]),
     fields: Object.freeze([
-      Object.freeze({ name: "lock", type: lockType, compileTime: false }),
+      Object.freeze({ name: module.lifecycleLockName, type: lockType, compileTime: false }),
       Object.freeze({
-        name: "initialized",
+        name: module.lifecycleInitializedName,
         type: Object.freeze({ kind: "source-primitive" as const, name: "bool" as const }),
         compileTime: false,
       }),
@@ -163,7 +164,7 @@ function planModuleInitializer(
     );
     return undefined;
   }
-  const stateName = "state";
+  const stateName = allocateMojoSyntheticName(context, "module_state");
   const statePointer = mojoModuleStatePointerExpression(module, context);
   if (statePointer === undefined) return undefined;
   const state = Object.freeze({
@@ -198,10 +199,18 @@ function planModuleInitializer(
   initialization.push(Object.freeze({
     kind: "assignment",
     operator: "=",
-    left: Object.freeze({ kind: "member", receiver: state, name: "initialized" }),
+    left: Object.freeze({
+      kind: "member",
+      receiver: state,
+      name: module.lifecycleInitializedName,
+    }),
     right: Object.freeze({ kind: "bool-literal", value: true }),
   }));
-  const lock = Object.freeze({ kind: "member" as const, receiver: state, name: "lock" });
+  const lock = Object.freeze({
+    kind: "member" as const,
+    receiver: state,
+    name: module.lifecycleLockName,
+  });
   return Object.freeze({
     kind: "function",
     name: module.initializeName,
@@ -222,7 +231,11 @@ function planModuleInitializer(
         statements: Object.freeze([
           Object.freeze({
             kind: "if",
-            condition: Object.freeze({ kind: "member", receiver: state, name: "initialized" }),
+            condition: Object.freeze({
+              kind: "member",
+              receiver: state,
+              name: module.lifecycleInitializedName,
+            }),
             thenStatements: Object.freeze([Object.freeze({ kind: "return" })]),
           }),
           ...initialization,

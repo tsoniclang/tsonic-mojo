@@ -15,7 +15,7 @@ import { analyzeMojoFunctionSignature } from "../callables/signatures.js";
 import { analyzeMojoClass } from "../declarations/classes.js";
 import { analyzeMojoEnum } from "../declarations/enums.js";
 import { createMojoConversionIndex } from "../conversions/classification.js";
-import { recordMojoFunctionConversionUses } from "../conversions/uses.js";
+import { recordMojoExecutableRegionConversionUses } from "../conversions/uses.js";
 import { analyzeMojoRuntimePackages } from "../runtime/references.js";
 import { createMojoProjectTypeCatalog } from "../types/project-catalog.js";
 import {
@@ -387,6 +387,17 @@ export function analyzeMojoTargetProgram(
         owner: Object.freeze({ name: class_.name, stateName: class_.stateName, type: class_.targetType }),
         ...executableEnvironment,
       });
+      recordMojoExecutableRegionConversionUses(
+        field.initializer,
+        undefined,
+        ast,
+        bindingTypes,
+        expressionTypes,
+        propertySelections,
+        elementSelections,
+        conversions,
+        diagnostics,
+      );
       const actual = expressionTypes.get(field.initializer);
       if (actual === undefined) {
         diagnostics.push(diagnostic(
@@ -429,6 +440,17 @@ export function analyzeMojoTargetProgram(
         sourceFile: module.sourceFile,
         ...executableEnvironment,
       });
+      recordMojoExecutableRegionConversionUses(
+        root,
+        undefined,
+        ast,
+        bindingTypes,
+        expressionTypes,
+        propertySelections,
+        elementSelections,
+        conversions,
+        diagnostics,
+      );
       for (const dependency of region.dependencies) dependencies.add(dependency);
       directModuleRaises = directModuleRaises || region.raises;
       if (step.kind !== "binding") continue;
@@ -461,8 +483,9 @@ export function analyzeMojoTargetProgram(
       ...executableEnvironment,
     });
     projectDependencies.set(function_.declaration, new Set(region.dependencies));
-    recordMojoFunctionConversionUses(
-      function_,
+    recordMojoExecutableRegionConversionUses(
+      function_.body,
+      function_.resultType,
       ast,
       bindingTypes,
       expressionTypes,

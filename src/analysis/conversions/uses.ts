@@ -20,14 +20,14 @@ import {
 import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
 import type {
-  MojoAnalyzedFunction,
   MojoElementSelection,
   MojoPropertySelection,
 } from "../program/model.js";
 import type { MojoConversionIndex } from "./classification.js";
 
-export function recordMojoFunctionConversionUses(
-  function_: MojoAnalyzedFunction,
+export function recordMojoExecutableRegionConversionUses(
+  root: Node,
+  returnType: MojoTargetTypeRef | undefined,
   ast: AstReader,
   bindingTypes: WeakMap<Node, MojoTargetTypeRef>,
   expressionTypes: WeakMap<Node, MojoTargetTypeRef>,
@@ -58,6 +58,7 @@ export function recordMojoFunctionConversionUses(
   };
   const visitExpression = (expression: Node | undefined): void => {
     if (expression === undefined) return;
+    if (isCallableBoundary(expression, ast)) return;
     if (ast.is.IsParenthesizedExpression(expression)) {
       const inner = Node_Expression(ast, expression);
       const expected = expressionTypes.get(expression);
@@ -173,7 +174,7 @@ export function recordMojoFunctionConversionUses(
     }
     if (ast.is.IsReturnStatement(statement)) {
       const expression = Node_Expression(ast, statement);
-      record(expression, function_.resultType);
+      if (returnType !== undefined) record(expression, returnType);
       visitExpression(expression);
       return;
     }
@@ -211,7 +212,8 @@ export function recordMojoFunctionConversionUses(
       else visitExpression(child);
     }
   };
-  visitStatement(function_.body);
+  if (isStatement(root, ast)) visitStatement(root);
+  else visitExpression(root);
 }
 
 function isComparison(operator: string | undefined): boolean {
@@ -224,4 +226,14 @@ function isComparison(operator: string | undefined): boolean {
 function isStatement(node: Node, ast: AstReader): boolean {
   const kind = ast.kindName(node);
   return kind.endsWith("Statement") || kind === "KindBlock";
+}
+
+function isCallableBoundary(node: Node, ast: AstReader): boolean {
+  return ast.is.IsFunctionDeclaration(node) ||
+    ast.is.IsFunctionExpression(node) ||
+    ast.is.IsArrowFunction(node) ||
+    ast.is.IsMethodDeclaration(node) ||
+    ast.is.IsGetAccessorDeclaration(node) ||
+    ast.is.IsSetAccessorDeclaration(node) ||
+    ast.is.IsConstructorDeclaration(node);
 }
