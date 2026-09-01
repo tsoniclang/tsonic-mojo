@@ -7,7 +7,6 @@ import type {
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
-import { createMojoNameAllocator } from "../names/identifiers.js";
 import type { MojoProjectTypeCatalog } from "../types/project-catalog.js";
 import { resolveMojoTargetType } from "../types/resolution.js";
 import {
@@ -37,6 +36,7 @@ export interface MojoClassAnalysisInput {
     body: Node,
     allocate: (name: string) => string,
   ) => void;
+  readonly createNameAllocator: () => (name: string) => string;
 }
 
 export interface MojoClassAnalysisResult {
@@ -73,7 +73,7 @@ export function analyzeMojoClass(
     return undefined;
   }
   const owner = Object.freeze({ name: input.name, stateName: input.stateName, type: targetType });
-  const classNames = createMojoNameAllocator();
+  const classNames = input.createNameAllocator();
   const fields: MojoAnalyzedClassField[] = [];
   const methods: MojoAnalyzedFunction[] = [];
   const constructors: MojoAnalyzedFunction[] = [];
@@ -127,7 +127,7 @@ export function analyzeMojoClass(
         append(input, "MOJO_CLASS_METHOD_SHAPE_UNSUPPORTED", "Class methods require one exact named implementation body.", member);
         continue;
       }
-      const localNames = createMojoNameAllocator();
+      const localNames = input.createNameAllocator();
       const name = classNames(ast.text(nameNode));
       const method = analyzeMojoFunctionSignature({
         ...signatureInput(input, member, body, name, localNames),
@@ -149,7 +149,7 @@ export function analyzeMojoClass(
       }
       const callable = constructorCallable(input, member);
       if (callable === undefined) continue;
-      const localNames = createMojoNameAllocator();
+      const localNames = input.createNameAllocator();
       const constructor = analyzeMojoFunctionSignature({
         ...signatureInput(input, member, body, "__init__", localNames),
         kind: "constructor",
@@ -171,7 +171,7 @@ export function analyzeMojoClass(
     return undefined;
   }
   const classTypeParameters = analyzeMojoTypeParameters({
-    ...signatureInput(input, declaration, declaration, input.name, createMojoNameAllocator()),
+    ...signatureInput(input, declaration, declaration, input.name, input.createNameAllocator()),
   });
   if (classTypeParameters === undefined) return undefined;
   const class_ = Object.freeze({

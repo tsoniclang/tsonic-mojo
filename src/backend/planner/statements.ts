@@ -15,7 +15,7 @@ import type { MojoAnalyzedFunction } from "../../analysis/program/model.js";
 import type { MojoStatement } from "../target-ast/nodes.js";
 import type { MojoPlanningContext } from "./context.js";
 import { appendMojoPlanningDiagnostic } from "./context.js";
-import { planMojoAssignment, planMojoExpression, planMojoUpdate } from "./expressions.js";
+import { planMojoAssignment, planMojoValue, planMojoUpdate } from "./expressions.js";
 import { registerMojoTypeImports } from "./types/render.js";
 
 export function planMojoFunctionStatements(
@@ -58,9 +58,12 @@ function planStatement(
     const sourceExpression = Node_Expression(ast, node);
     const expression = sourceExpression === undefined
       ? undefined
-      : planMojoExpression(sourceExpression, context, function_.resultType);
+      : planMojoValue(sourceExpression, context, function_.resultType);
     if (sourceExpression !== undefined && expression === undefined) return undefined;
-    return Object.freeze([{ kind: "return", ...(expression === undefined ? {} : { expression }) }]);
+    return Object.freeze([
+      ...(expression?.before ?? []),
+      { kind: "return", ...(expression === undefined ? {} : { expression: expression.value }) },
+    ]);
   }
   if (ast.is.IsExpressionStatement(node)) {
     const sourceExpression = Node_Expression(ast, node);
@@ -68,12 +71,20 @@ function planStatement(
       ? undefined
       : planMojoAssignment(sourceExpression, context);
     if (assignment !== undefined) {
-      return Object.freeze([{ kind: "assignment", ...assignment }]);
+      return Object.freeze([
+        ...assignment.before,
+        { kind: "assignment", operator: assignment.operator, left: assignment.left, right: assignment.right },
+      ]);
     }
     const update = sourceExpression === undefined ? undefined : planMojoUpdate(sourceExpression, context);
-    if (update !== undefined) return Object.freeze([{ kind: "assignment", ...update }]);
-    const expression = sourceExpression === undefined ? undefined : planMojoExpression(sourceExpression, context);
-    return expression === undefined ? undefined : Object.freeze([{ kind: "expression", expression }]);
+    if (update !== undefined) return Object.freeze([
+      ...update.before,
+      { kind: "assignment", operator: update.operator, left: update.left, right: update.right },
+    ]);
+    const expression = sourceExpression === undefined ? undefined : planMojoValue(sourceExpression, context);
+    return expression === undefined
+      ? undefined
+      : Object.freeze([...expression.before, { kind: "expression", expression: expression.value }]);
   }
   if (ast.is.IsVariableStatement(node)) {
     return planVariableDeclarationList(VariableStatement_DeclarationList(ast, node), context);
@@ -84,14 +95,14 @@ function planStatement(
     const elseNode = ast.as.AsIfStatement(node)?.ElseStatement;
     const condition = conditionNode === undefined
       ? undefined
-      : planMojoExpression(conditionNode, context, { kind: "source-primitive", name: "bool" });
+      : planMojoValue(conditionNode, context, { kind: "source-primitive", name: "bool" });
     const thenStatements = thenNode === undefined ? undefined : planStatementBody(thenNode, function_, context, flow);
     const elseStatements = elseNode === undefined ? undefined : planStatementBody(elseNode, function_, context, flow);
     if (condition === undefined || thenStatements === undefined ||
       (elseNode !== undefined && elseStatements === undefined)) return undefined;
-    return Object.freeze([{
+    return Object.freeze([...condition.before, {
       kind: "if",
-      condition,
+      condition: condition.value,
       thenStatements,
       ...(elseStatements === undefined ? {} : { elseStatements }),
     }]);
@@ -101,46 +112,60 @@ function planStatement(
     const body = ast.as.AsWhileStatement(node)?.Statement;
     const condition = conditionNode === undefined
       ? undefined
-      : planMojoExpression(conditionNode, context, { kind: "source-primitive", name: "bool" });
+      : planMojoValue(conditionNode, context, { kind: "source-primitive", name: "bool" });
     const statements = body === undefined
       ? undefined
       : planStatementBody(body, function_, context, emptyFlowContext);
-    return condition === undefined || statements === undefined
-      ? undefined
-      : Object.freeze([{ kind: "while", condition, statements }]);
+    if (condition === undefined || statements === undefined) return undefined;
+    if (condition.before.length === 0) {
+      return Object.freeze([{ kind: "while", condition: condition.value, statements }]);
+    }
+    const conditionExit: MojoStatement = Object.freeze({
+      kind: "if",
+      condition: Object.freeze({ kind: "unary", operator: "not", operand: condition.value }),
+      thenStatements: Object.freeze([Object.freeze({ kind: "break" as const })]),
+    });
+    return Object.freeze([{
+      kind: "while",
+      condition: Object.freeze({ kind: "bool-literal", value: true }),
+      statements: Object.freeze([...condition.before, conditionExit, ...statements]),
+    }]);
   }
   if (ast.is.IsDoStatement(node)) {
     const conditionNode = Node_Expression(ast, node);
     const body = DoStatement_Statement(ast, node);
     const condition = conditionNode === undefined
       ? undefined
-      : planMojoExpression(conditionNode, context, { kind: "source-primitive", name: "bool" });
+      : planMojoValue(conditionNode, context, { kind: "source-primitive", name: "bool" });
     if (condition === undefined || body === undefined) return undefined;
     const conditionExit: MojoStatement = Object.freeze({
       kind: "if",
-      condition: Object.freeze({ kind: "unary", operator: "not", operand: condition }),
+      condition: Object.freeze({ kind: "unary", operator: "not", operand: condition.value }),
       thenStatements: Object.freeze([Object.freeze({ kind: "break" as const })]),
     });
     const statements = planStatementBody(
       body,
       function_,
       context,
-      Object.freeze({ continuePrefix: Object.freeze([conditionExit]) }),
+      Object.freeze({ continuePrefix: Object.freeze([...condition.before, conditionExit]) }),
     );
     return statements === undefined
       ? undefined
       : Object.freeze([{
           kind: "while",
           condition: Object.freeze({ kind: "bool-literal", value: true }),
-          statements: Object.freeze([...statements, conditionExit]),
+          statements: Object.freeze([...statements, ...condition.before, conditionExit]),
         }]);
   }
   if (ast.is.IsForStatement(node)) {
     const initializer = planForInitializer(ForStatement_Initializer(ast, node), context);
     const conditionNode = ForStatement_Condition(ast, node);
     const condition = conditionNode === undefined
-      ? Object.freeze({ kind: "bool-literal" as const, value: true })
-      : planMojoExpression(conditionNode, context, { kind: "source-primitive", name: "bool" });
+      ? Object.freeze({
+          before: Object.freeze([]),
+          value: Object.freeze({ kind: "bool-literal" as const, value: true }),
+        })
+      : planMojoValue(conditionNode, context, { kind: "source-primitive", name: "bool" });
     const increment = planForIncrement(ForStatement_Incrementor(ast, node), context);
     const body = IterationStatement_Statement(ast, node);
     if (initializer === undefined || condition === undefined || increment === undefined || body === undefined) {
@@ -153,29 +178,43 @@ function planStatement(
       Object.freeze({ continuePrefix: increment }),
     );
     if (statements === undefined) return undefined;
+    const conditionExit: MojoStatement = Object.freeze({
+      kind: "if",
+      condition: Object.freeze({ kind: "unary", operator: "not", operand: condition.value }),
+      thenStatements: Object.freeze([Object.freeze({ kind: "break" as const })]),
+    });
     return Object.freeze([
       ...initializer,
-      Object.freeze({ kind: "while", condition, statements: Object.freeze([...statements, ...increment]) }),
+      Object.freeze({
+        kind: "while",
+        condition: Object.freeze({ kind: "bool-literal", value: true }),
+        statements: Object.freeze([
+          ...condition.before,
+          conditionExit,
+          ...statements,
+          ...increment,
+        ]),
+      }),
     ]);
   }
   if (ast.is.IsForOfStatement(node) || ast.is.IsForInStatement(node)) {
     const selection = context.program.queries.iterationSelection(node);
     const body = ForInOrOfStatement_Statement(ast, node);
     if (selection === undefined || body === undefined) return undefined;
-    const sourceIterable = planMojoExpression(selection.iterable, context, selection.iterableType);
+    const sourceIterable = planMojoValue(selection.iterable, context, selection.iterableType);
     if (sourceIterable === undefined) return undefined;
     const iterable = selection.target === "dictionary-keys"
       ? Object.freeze({
           kind: "method-call" as const,
-          receiver: sourceIterable,
+          receiver: sourceIterable.value,
           name: "keys",
           arguments: Object.freeze([]),
         })
-      : sourceIterable;
+      : sourceIterable.value;
     const statements = planStatementBody(body, function_, context, emptyFlowContext);
     return statements === undefined
       ? undefined
-      : Object.freeze([{ kind: "for", binding: selection.bindingName, iterable, statements }]);
+      : Object.freeze([...sourceIterable.before, { kind: "for", binding: selection.bindingName, iterable, statements }]);
   }
   if (ast.is.IsBreakStatement(node)) return Object.freeze([{ kind: "break" }]);
   if (ast.is.IsContinueStatement(node)) {
@@ -215,10 +254,10 @@ function planVariableDeclarationList(
     const type = context.program.queries.bindingType(declaration);
     const sourceInitializer = Node_Initializer(ast, declaration);
     if (name === undefined || type === undefined || sourceInitializer === undefined) return undefined;
-    const initializer = planMojoExpression(sourceInitializer, context, type);
+    const initializer = planMojoValue(sourceInitializer, context, type);
     if (initializer === undefined) return undefined;
     registerMojoTypeImports(type, context);
-    planned.push({ kind: "variable", name, type, initializer });
+    planned.push(...initializer.before, { kind: "variable", name, type, initializer: initializer.value });
   }
   return Object.freeze(planned);
 }
@@ -233,11 +272,19 @@ function planForInitializer(
     return planVariableDeclarationList(initializer, context);
   }
   const assignment = planMojoAssignment(initializer, context);
-  if (assignment !== undefined) return Object.freeze([{ kind: "assignment", ...assignment }]);
+  if (assignment !== undefined) return Object.freeze([
+    ...assignment.before,
+    { kind: "assignment", operator: assignment.operator, left: assignment.left, right: assignment.right },
+  ]);
   const update = planMojoUpdate(initializer, context);
-  if (update !== undefined) return Object.freeze([{ kind: "assignment", ...update }]);
-  const expression = planMojoExpression(initializer, context);
-  return expression === undefined ? undefined : Object.freeze([{ kind: "expression", expression }]);
+  if (update !== undefined) return Object.freeze([
+    ...update.before,
+    { kind: "assignment", operator: update.operator, left: update.left, right: update.right },
+  ]);
+  const expression = planMojoValue(initializer, context);
+  return expression === undefined
+    ? undefined
+    : Object.freeze([...expression.before, { kind: "expression", expression: expression.value }]);
 }
 
 function planForIncrement(
@@ -246,9 +293,17 @@ function planForIncrement(
 ): readonly MojoStatement[] | undefined {
   if (incrementor === undefined) return Object.freeze([]);
   const assignment = planMojoAssignment(incrementor, context);
-  if (assignment !== undefined) return Object.freeze([{ kind: "assignment", ...assignment }]);
+  if (assignment !== undefined) return Object.freeze([
+    ...assignment.before,
+    { kind: "assignment", operator: assignment.operator, left: assignment.left, right: assignment.right },
+  ]);
   const update = planMojoUpdate(incrementor, context);
-  if (update !== undefined) return Object.freeze([{ kind: "assignment", ...update }]);
-  const expression = planMojoExpression(incrementor, context);
-  return expression === undefined ? undefined : Object.freeze([{ kind: "expression", expression }]);
+  if (update !== undefined) return Object.freeze([
+    ...update.before,
+    { kind: "assignment", operator: update.operator, left: update.left, right: update.right },
+  ]);
+  const expression = planMojoValue(incrementor, context);
+  return expression === undefined
+    ? undefined
+    : Object.freeze([...expression.before, { kind: "expression", expression: expression.value }]);
 }

@@ -7,10 +7,31 @@ export interface MojoPlanningContext {
   readonly program: MojoTargetProgram;
   readonly diagnostics: TargetDiagnostic[];
   readonly imports: Map<string, MojoImportDeclaration>;
+  readonly usedNames: Set<string>;
+  syntheticNameCounter: number;
 }
 
 export function createMojoPlanningContext(program: MojoTargetProgram): MojoPlanningContext {
-  return { program, diagnostics: [], imports: new Map<string, MojoImportDeclaration>() };
+  return {
+    program,
+    diagnostics: [],
+    imports: new Map<string, MojoImportDeclaration>(),
+    usedNames: new Set(program.reservedNames),
+    syntheticNameCounter: 0,
+  };
+}
+
+export function allocateMojoSyntheticName(
+  context: MojoPlanningContext,
+  role: string,
+): string {
+  while (true) {
+    context.syntheticNameCounter += 1;
+    const candidate = `__tsonic_${role}_${context.syntheticNameCounter}`;
+    if (context.usedNames.has(candidate)) continue;
+    context.usedNames.add(candidate);
+    return candidate;
+  }
 }
 
 export function registerMojoModuleImport(

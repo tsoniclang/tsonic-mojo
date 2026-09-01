@@ -7,8 +7,11 @@ const mojoKeywords = new Set([
 
 const identifierPattern = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 
-export function createMojoNameAllocator(): (sourceName: string) => string {
-  const used = new Set<string>();
+export function createMojoNameAllocator(
+  initiallyUsed: Iterable<string> = [],
+  onAllocate?: (name: string) => void,
+): (sourceName: string) => string {
+  const used = new Set(initiallyUsed);
   return (sourceName: string): string => {
     const normalized = normalizeMojoIdentifier(sourceName);
     let candidate = normalized;
@@ -18,6 +21,7 @@ export function createMojoNameAllocator(): (sourceName: string) => string {
       suffix += 1;
     }
     used.add(candidate);
+    onAllocate?.(candidate);
     return candidate;
   };
 }

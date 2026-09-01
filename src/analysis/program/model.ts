@@ -229,4 +229,5 @@ export interface MojoTargetProgram {
   readonly declarations: readonly MojoAnalyzedDeclaration[];
   readonly queries: MojoProgramQueries;
   readonly runtimePackages: readonly MojoRuntimePackagePlan[];
+  readonly reservedNames: readonly string[];
 }

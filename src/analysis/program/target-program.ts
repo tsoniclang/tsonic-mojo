@@ -82,7 +82,10 @@ export function analyzeMojoTargetProgram(
   const fieldByDeclaration = new WeakMap<Node, MojoAnalyzedClassField>();
   const directRaises = new Map<Node, boolean>();
   const projectDependencies = new Map<Node, Set<Node>>();
-  const globalNames = createMojoNameAllocator();
+  const reservedNames = new Set<string>();
+  const createNameAllocator = (): ((name: string) => string) =>
+    createMojoNameAllocator([], (name) => reservedNames.add(name));
+  const globalNames = createNameAllocator();
   const globalNameByDeclaration = new WeakMap<Node, string>();
   const functionDrafts: {
     readonly declaration: Node;
@@ -168,7 +171,7 @@ export function analyzeMojoTargetProgram(
         sourceFile,
         name,
         body,
-        localNames: createMojoNameAllocator(),
+        localNames: createNameAllocator(),
       }));
     }
   }
@@ -215,6 +218,7 @@ export function analyzeMojoTargetProgram(
       bindingNames,
       bindingTypes,
       diagnostics,
+      createNameAllocator,
       allocateLocalBindings(body, allocate) {
         allocateLocalBindings(body, allocate, bindingNames, ast, diagnostics);
       },
@@ -590,6 +594,7 @@ export function analyzeMojoTargetProgram(
     declarations: Object.freeze(declarations),
     queries,
     runtimePackages: analyzeMojoRuntimePackages(input.runtimeReferences),
+    reservedNames: Object.freeze([...reservedNames].sort((left, right) => left.localeCompare(right, "en"))),
   }));
 }
 
