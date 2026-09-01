@@ -93,6 +93,15 @@ export function substituteMojoTargetType(
         origin: type.origin,
         value: substituteMojoTargetType(type.value, substitutions),
       });
+    case "callable":
+      return Object.freeze({
+        ...type,
+        parameters: Object.freeze(type.parameters.map((parameter) => Object.freeze({
+          ...parameter,
+          type: substituteMojoTargetType(parameter.type, substitutions),
+        }))),
+        result: substituteMojoTargetType(type.result, substitutions),
+      });
     case "function": {
       const nestedTypes = new Map(substitutions.types);
       const nestedValues = new Map(substitutions.values);

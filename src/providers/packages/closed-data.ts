@@ -17,7 +17,8 @@ function cloneClosedMetadata<T>(value: T, freeze: boolean): T {
     if (depth > maximumDepth) {
       throw new Error(`metadata exceeds the maximum depth of ${maximumDepth}`);
     }
-    if (candidate === null || typeof candidate !== "object") {
+    if (candidate === null) return null;
+    if (typeof candidate !== "object") {
       if (
         candidate === undefined ||
         typeof candidate === "string" ||

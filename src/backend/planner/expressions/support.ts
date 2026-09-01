@@ -24,6 +24,7 @@ import type { MojoPlanningContext } from "../program/context.js";
 import { mojoTypeName, registerMojoTypeImports } from "../types/render.js";
 import { mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
+import { planMojoCallableExpression } from "./callables.js";
 
 export type MojoValuePlanner = (
   node: Node,
@@ -85,9 +86,16 @@ export function planSelectedArgument(
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
 ): PlannedMojoCallArgument | undefined {
-  const expression = planValue(argument.expression, context);
+  const directCallableWidening = argument.conversion.kind === "callable-raise-widen" &&
+    (context.program.source.ast.is.IsArrowFunction(argument.expression) ||
+      context.program.source.ast.is.IsFunctionExpression(argument.expression));
+  const expression = directCallableWidening
+    ? planMojoCallableExpression(argument.expression, context, planValue, true)
+    : planValue(argument.expression, context);
   if (expression === undefined) return undefined;
-  const converted = applyMojoConversion(expression.value, argument.conversion, context);
+  const converted = directCallableWidening
+    ? expression.value
+    : applyMojoConversion(expression.value, argument.conversion, context);
   if (converted === undefined) return undefined;
   const value: MojoExpression = argument.passing === "consume"
     ? { kind: "consume", expression: converted }
@@ -301,12 +309,26 @@ export function applyMojoConversion(
   if (conversion === undefined) return undefined;
   switch (conversion.kind) {
     case "identity": return expression;
+    case "callable-raise-widen":
+      registerMojoModuleImport(context, ["tsonic_runtime"]);
+      registerMojoTypeImports(conversion.targetType, context);
+      return {
+        kind: "call",
+        callee: { kind: "path", path: "tsonic_runtime.widen_callable" },
+        arguments: Object.freeze([{ value: expression }]),
+      };
     case "js-to-native-string":
       registerMojoModuleImport(context, ["tsonic_js"]);
       return { kind: "method-call", receiver: expression, name: "to_native_strict", arguments: Object.freeze([]) };
     case "native-to-js-string":
       registerMojoModuleImport(context, ["tsonic_js"]);
       return { kind: "construct", type: conversion.targetType, arguments: Object.freeze([{ value: expression }]) };
+    case "list-to-js-array":
+      registerMojoModuleImport(context, ["tsonic_js"]);
+      return { kind: "construct", type: conversion.targetType, arguments: Object.freeze([{ value: expression }]) };
+    case "js-array-to-list":
+      registerMojoTypeImports(conversion.targetType, context);
+      return { kind: "method-call", receiver: expression, name: "iter_values", arguments: Object.freeze([]) };
     case "js-box":
       registerMojoModuleImport(context, ["tsonic_js"]);
       return {

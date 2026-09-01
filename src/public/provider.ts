@@ -10,12 +10,14 @@ export type {
 } from "../providers/packages/model.js";
 export type {
   MojoCallArgumentConvention,
+  MojoTargetCallableParameter,
   MojoTargetTypeRef,
 } from "../target-model/types/model.js";
 export type {
   MojoProviderOperationForm,
 } from "../target-model/operations/model.js";
 export {
+  mojoCallableTargetType,
   mojoListTargetType,
   mojoNamedTargetType,
   mojoOptionalTargetType,

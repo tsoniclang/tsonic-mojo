@@ -106,6 +106,7 @@ function emptySession(): MojoCompilerProviderSession {
     exports: Object.freeze([]),
     operations: Object.freeze([]),
     types: Object.freeze([]),
+    binaryEpilogues: Object.freeze([]),
   });
   let closed = false;
   return Object.freeze({

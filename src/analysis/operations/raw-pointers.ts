@@ -6,7 +6,7 @@ import type {
   Type,
 } from "@tsonic/tsts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
-import type { MojoCallSelection } from "../../analysis/program/model.js";
+import type { MojoCallSelection } from "../program/model.js";
 import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 

@@ -61,6 +61,33 @@ test("provider packages close and freeze source, ABI, and runtime metadata", () 
   }, TypeError);
 });
 
+test("provider packages retain exact null literal type metadata", () => {
+  const nullableFunction = {
+    ...sourceFunction,
+    signatures: [{
+      ...sourceFunction.signatures[0],
+      returnType: {
+        kind: "union",
+        types: [
+          { kind: "string" },
+          { kind: "literal", value: null },
+        ],
+      },
+    }],
+  };
+  const capability = createMojoProviderPackage(definition({
+    modules: [{
+      moduleSpecifier: "@fixture/math",
+      providerModuleId: "fixture.mojo.math",
+      exports: [nullableFunction],
+    }],
+  }));
+  const returnType = capability.createTargetContributions({})[0]
+    .definition.modules[0].exports[0].signatures[0].returnType;
+  assert.equal(returnType.types[1].value, null);
+  assert.ok(Object.isFrozen(returnType.types));
+});
+
 test("provider packages reject operations without an exact source declaration", () => {
   assert.throws(
     () => createMojoProviderPackage(definition({

@@ -1,4 +1,4 @@
-import type { Node, SourceFile, Symbol } from "@tsonic/tsts";
+import type { Node, SourceFile } from "@tsonic/tsts";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
@@ -56,14 +56,6 @@ export function analyzeMojoCallableExpressionSignature(
     ));
     return undefined;
   }
-  if (ast.is.IsBlock(body)) {
-    input.diagnostics.push(mojoAnalysisDiagnostic(
-      "MOJO_CALLABLE_BLOCK_BODY_NATIVE_LIMIT",
-      "The pinned Mojo compiler exposes expression lambdas but no block-bodied runtime lambda form.",
-      body,
-    ));
-    return undefined;
-  }
   const callable = analyzeMojoFunctionSignature({
     source: input.source,
     providerSemantics: input.providerSemantics,
@@ -99,10 +91,13 @@ export function analyzeMojoCallableExpressionSignature(
 export interface MojoCallableCaptureInput {
   readonly expression: Node;
   readonly body: Node;
+  readonly sourceFile: SourceFile;
   readonly owner?: MojoAnalyzedClassOwner;
   readonly source: TargetSourceProgram;
   readonly bindingNames: WeakMap<Node, string>;
+  readonly bindingTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly locationStorageNames: WeakMap<Node, string>;
+  readonly ensureLocationStorage: (declaration: Node, bindingName: string) => string;
   readonly moduleBindingByDeclaration: WeakMap<Node, unknown>;
   readonly diagnostics: TargetDiagnostic[];
 }
@@ -126,23 +121,29 @@ export function collectMojoCallableCaptures(
     if (declaration === undefined || nodeIsWithin(declaration, input.expression, ast) ||
       input.moduleBindingByDeclaration.has(declaration) || captures.has(declaration)) return;
     if (!captureEligibleDeclaration(declaration, ast)) return;
-    const name = input.locationStorageNames.get(declaration) ?? input.bindingNames.get(declaration);
+    const bindingName = input.bindingNames.get(declaration);
     const symbol = reference?.symbol;
-    if (name === undefined || symbol === undefined) {
+    const type = input.bindingTypes.get(declaration);
+    if (bindingName === undefined || symbol === undefined || type === undefined) {
       input.diagnostics.push(mojoAnalysisDiagnostic(
         "MOJO_CALLABLE_CAPTURE_IDENTITY_MISSING",
-        "A captured source binding requires one exact declaration, symbol, and target name.",
+        "A captured source binding requires one exact declaration, symbol, target name, and carrier.",
         node,
       ));
       valid = false;
       return;
     }
+    const mutated = input.source.navigation.bindingWritesWithin(symbol, input.sourceFile).length > 0;
+    const existingLocation = input.locationStorageNames.get(declaration);
+    const storage = existingLocation !== undefined || mutated ? "location" : "value";
+    const name = storage === "location"
+      ? existingLocation ?? input.ensureLocationStorage(declaration, bindingName)
+      : bindingName;
     captures.set(declaration, Object.freeze({
       declaration,
       name,
-      convention: input.locationStorageNames.has(declaration)
-        ? "imm"
-        : captureConvention(symbol, input.body, input.source),
+      type,
+      storage,
     }));
   }, (node, root) => node === root || !isNestedCallable(node, ast));
   if (!valid) return undefined;
@@ -152,7 +153,8 @@ export function collectMojoCallableCaptures(
     ordered.unshift(Object.freeze({
       declaration: input.expression,
       name: "self",
-      convention: "imm",
+      type: input.owner!.type,
+      storage: "value",
     }));
   }
   return Object.freeze(ordered);
@@ -164,6 +166,7 @@ export interface MojoCallableExpressionAnalysisInput {
   readonly owner?: MojoAnalyzedClassOwner;
   readonly allocateLocalName: (sourceName: string) => string;
   readonly moduleBindingByDeclaration: WeakMap<Node, unknown>;
+  readonly ensureLocationStorage: (declaration: Node, bindingName: string) => string;
   readonly selections: WeakMap<Node, MojoCallableExpressionSelection>;
   readonly analyzed: WeakSet<Node>;
   readonly environment: MojoExecutableRegionAnalysisEnvironment;
@@ -199,52 +202,70 @@ export function analyzeAndSealMojoCallableExpression(
     ...(input.owner === undefined ? {} : { owner: input.owner }),
     ...environment,
   });
-  recordMojoExecutableRegionConversionUses(
-    callable.body,
-    callable.resultType,
-    environment.source.ast,
-    environment.bindingTypes,
-    environment.expressionTypes,
-    environment.propertySelections,
-    environment.elementSelections,
-    environment.objectLiteralSelections,
-    environment.conversions,
-    environment.diagnostics,
-  );
-  const actualBodyType = environment.expressionTypes.get(callable.body);
-  if (actualBodyType === undefined) {
-    environment.diagnostics.push(mojoAnalysisDiagnostic(
-      "MOJO_CALLABLE_RESULT_CARRIER_NOT_CLOSED",
-      "A callable expression body has no exact sealed result carrier.",
+  if (environment.source.ast.is.IsBlock(callable.body)) {
+    recordMojoExecutableRegionConversionUses(
       callable.body,
-    ));
-    return;
-  }
-  const resultConversion = environment.conversions.record(
-    callable.body,
-    actualBodyType,
-    callable.resultType,
-  );
-  if (resultConversion.kind === "unsupported") {
-    environment.diagnostics.push(mojoAnalysisDiagnostic(
-      "MOJO_VALUE_CONVERSION_UNPROVEN",
-      resultConversion.reason,
+      callable.resultType,
+      environment.source.ast,
+      environment.bindingTypes,
+      environment.expressionTypes,
+      environment.propertySelections,
+      environment.elementSelections,
+      environment.objectLiteralSelections,
+      environment.conversions,
+      environment.diagnostics,
+    );
+  } else {
+    recordMojoExecutableRegionConversionUses(
       callable.body,
-    ));
-    return;
+      callable.resultType,
+      environment.source.ast,
+      environment.bindingTypes,
+      environment.expressionTypes,
+      environment.propertySelections,
+      environment.elementSelections,
+      environment.objectLiteralSelections,
+      environment.conversions,
+      environment.diagnostics,
+    );
+    const actualBodyType = environment.expressionTypes.get(callable.body);
+    if (actualBodyType === undefined) {
+      environment.diagnostics.push(mojoAnalysisDiagnostic(
+        "MOJO_CALLABLE_RESULT_CARRIER_NOT_CLOSED",
+        "A callable expression body has no exact sealed result carrier.",
+        callable.body,
+      ));
+      return;
+    }
+    const resultConversion = environment.conversions.record(
+      callable.body,
+      actualBodyType,
+      callable.resultType,
+    );
+    if (resultConversion.kind === "unsupported") {
+      environment.diagnostics.push(mojoAnalysisDiagnostic(
+        "MOJO_VALUE_CONVERSION_UNPROVEN",
+        resultConversion.reason,
+        callable.body,
+      ));
+      return;
+    }
   }
   const captures = collectMojoCallableCaptures({
     expression: input.expression,
     body: callable.body,
+    sourceFile: input.sourceFile,
     ...(input.owner === undefined ? {} : { owner: input.owner }),
     source: environment.source,
     bindingNames: environment.bindingNames,
+    bindingTypes: environment.bindingTypes,
     locationStorageNames: environment.locationStorageNames,
+    ensureLocationStorage: input.ensureLocationStorage,
     moduleBindingByDeclaration: input.moduleBindingByDeclaration,
     diagnostics: environment.diagnostics,
   });
   const selectedType = environment.expressionTypes.get(input.expression);
-  if (captures === undefined || selectedType?.kind !== "function" ||
+  if (captures === undefined || selectedType?.kind !== "callable" ||
     selectedType.parameters.length !== callable.parameters.length) {
     if (captures !== undefined) {
       environment.diagnostics.push(mojoAnalysisDiagnostic(
@@ -259,8 +280,6 @@ export function analyzeAndSealMojoCallableExpression(
     ...selectedType,
     result: callable.resultType,
     raises: region.raises,
-    thin: false,
-    capture: "*",
   });
   environment.expressionTypes.set(input.expression, callableType);
   input.selections.set(input.expression, Object.freeze({
@@ -272,14 +291,6 @@ export function analyzeAndSealMojoCallableExpression(
     raises: region.raises,
     callableType,
   }));
-}
-
-function captureConvention(
-  symbol: Symbol,
-  body: Node,
-  source: TargetSourceProgram,
-): "imm" | "mut" {
-  return source.navigation.bindingWritesWithin(symbol, body).length === 0 ? "imm" : "mut";
 }
 
 function captureEligibleDeclaration(

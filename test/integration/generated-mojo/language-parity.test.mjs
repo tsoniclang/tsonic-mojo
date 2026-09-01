@@ -277,7 +277,7 @@ test("native async functions retain Promise output evidence and schedule exact a
   assert.ok(entry);
   assert.match(source.text, /async def value\(\) -> Int32/u);
   assert.match(source.text, /await create_task\(value\(\)\)/u);
-  assert.match(entry.text, /create_task\(__tsonic_entry\(\)\)\.wait\(\)/u);
+  assert.match(entry.text, /create_task\(__tsonic_async_entry\(\)\)\.wait\(\)/u);
 });
 
 test("project interface objects retain selected generic fields and source-ordered spread overrides", () => {
@@ -324,7 +324,7 @@ test("authored scalar array tuple and FixedArray carriers survive collapsed Type
   const source = artifactTexts(result).find(({ text }) => text.includes("def sum"));
   assert.ok(source);
   assert.match(source.text, /var values: List\[Int32\] = \[1, 2\]/u);
-  assert.match(source.text, /var tuple: \(Int32, String\) = \(3, "three"\)/u);
+  assert.match(source.text, /var tuple: Tuple\[Int32, String\] = \(3, "three"\)/u);
   assert.match(source.text, /var bytes: Array\[UInt8, 2\] = Array\[UInt8, 2\]\(4, 5\)/u);
   assert.match(source.text, /values\[Int\(0\)\].*tuple\[Int\(0\)\].*Int32\(bytes\[Int\(1\)\]\)/u);
 });
@@ -403,7 +403,7 @@ test("open dynamic element access rejects before planning without reflective rec
   assert.ok(result.diagnostics.some(({ code }) => code === "MOJO_ELEMENT_TARGET_UNSUPPORTED"));
 });
 
-test("expression callables retain exact parameter result and direct-call contracts", () => {
+test("expression callables retain exact erased parameter result and direct-call contracts", () => {
   const result = compileMojo({
     files: {
       "index.ts": [
@@ -421,9 +421,11 @@ test("expression callables retain exact parameter result and direct-call contrac
   assert.deepEqual(result.diagnostics, []);
   const source = artifactTexts(result).find(({ text }) => text.includes("def apply"));
   assert.ok(source);
-  assert.match(source.text, /transform: def\(var value: Int32\) capturing -> Int32/u);
-  assert.match(source.text, /transform\(value\)/u);
-  assert.match(source.text, /lambda \(var value: Int32\) -> Int32: \(value \+ value\)/u);
+  assert.match(source.text, /transform: tsonic_runtime\.Callable\[Tuple\[Int32\], Int32\]/u);
+  assert.match(source.text, /transform\.call\(\(value,\)\)/u);
+  assert.match(source.text, /struct __tsonic_callable_environment_\d+:/u);
+  assert.match(source.text, /def invoke\([^)]*Tuple\[Int32\]\) -> Int32:/u);
+  assert.match(source.text, /return \(value \+ value\)/u);
 });
 
 test("expression callables retain exact immutable captures", () => {
@@ -443,10 +445,12 @@ test("expression callables retain exact immutable captures", () => {
   assert.deepEqual(result.diagnostics, []);
   const source = artifactTexts(result).find(({ text }) => text.includes("def select"));
   assert.ok(source);
-  assert.match(source.text, /lambda \(var value: Int32\) \{imm offset\} -> Int32: \(value \+ offset\)/u);
+  assert.match(source.text, /allocate_callable_environment\([^\n]*offset\.copy\(\)/u);
+  assert.match(source.text, /struct __tsonic_callable_environment_\d+:[\s\S]*var offset: Int32/u);
+  assert.match(source.text, /pointer\[\]\.offset\.copy\(\)/u);
 });
 
-test("block-bodied callable expressions reject at the exact Mojo native boundary", () => {
+test("block-bodied callable expressions lower through one generated environment", () => {
   const result = compileMojo({
     files: {
       "index.ts": [
@@ -458,8 +462,36 @@ test("block-bodied callable expressions reject at the exact Mojo native boundary
       ].join("\n"),
     },
   });
-  assert.equal(result.artifacts.length, 0);
-  assert.ok(result.diagnostics.some(({ code }) => code === "MOJO_CALLABLE_BLOCK_BODY_NATIVE_LIMIT"));
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("struct __tsonic_callable_environment_"));
+  assert.ok(source);
+  assert.match(source.text, /Callable\[Tuple\[\], Int32\]/u);
+  assert.match(source.text, /def invoke\([^)]*Tuple\[\]\) -> Int32:[\s\S]*return 1/u);
+  assert.match(source.text, /value\.call\(\(\)\)/u);
+});
+
+test("mutable captures share one explicit Location across retained callable invocations", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        "function count(): i32 {",
+        "  let total: i32 = 1;",
+        "  const bump = (): i32 => { total += 1; return total; };",
+        "  bump();",
+        "  return bump();",
+        "}",
+        "export function main(): void {}",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("def count"));
+  assert.ok(source);
+  assert.match(source.text, /total_location: tsonic_runtime\.Location\[Int32\]/u);
+  assert.match(source.text, /total_location\.copy\(\)/u);
+  assert.match(source.text, /total_location\.write\(/u);
+  assert.match(source.text, /total_location\.read\(\)/u);
 });
 
 test("binding patterns retain exact single-evaluation aggregate projections", () => {
@@ -482,7 +514,7 @@ test("binding patterns retain exact single-evaluation aggregate projections", ()
   assert.deepEqual(result.diagnostics, []);
   const source = artifactTexts(result).find(({ text }) => text.includes("def sum"));
   assert.ok(source);
-  assert.match(source.text, /var __tsonic_binding_source_\d+: \(Int32, Pair\[Int32\], Int32\) = values/u);
+  assert.match(source.text, /var __tsonic_binding_source_\d+: Tuple\[Int32, Pair\[Int32\], Int32\] = values/u);
   assert.match(source.text, /var first: Int32 = __tsonic_binding_source_\d+\[0\]/u);
   assert.match(source.text, /var second: Int32 = __tsonic_binding_nested_\d+\._state\[\]\.right/u);
   assert.match(source.text, /var renamed: Int32 = __tsonic_binding_source_\d+\._state\[\]\.right/u);

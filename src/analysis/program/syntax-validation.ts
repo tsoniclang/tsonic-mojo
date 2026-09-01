@@ -134,7 +134,10 @@ export function validateMojoFunctionSyntax(
     if (ast.is.IsObjectLiteralExpression(expression)) {
       const selected = objectLiterals.get(expression);
       if (selected !== undefined) {
-        for (const contribution of selected.contributions) validateExpression(contribution.value);
+        const values = selected.kind === "interface"
+          ? selected.contributions.map((contribution) => contribution.value)
+          : selected.fields.map((field) => field.value);
+        for (const value of values) validateExpression(value);
         return;
       }
       for (const property of ast.properties(expression)) {
@@ -201,7 +204,8 @@ export function validateMojoFunctionSyntax(
         return;
       }
       for (const parameter of selection.parameters) validateExpression(parameter.initializer);
-      validateExpression(selection.body);
+      if (ast.is.IsBlock(selection.body)) validateStatement(selection.body);
+      else validateExpression(selection.body);
       return;
     }
     if (ast.is.IsBinaryExpression(expression)) {

@@ -311,10 +311,25 @@ export function planMojoCall(
       context,
       Object.freeze({ plan: callee, type: selection.callableType, role: "callable_value" }),
     );
+    if (ordered.arguments.some((argument) => argument.name !== undefined || argument.spread === true)) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_ERASED_CALLABLE_ARGUMENT_ABI_UNSUPPORTED",
+        "A retained Mojo callable invocation requires exact positional non-spread arguments.",
+        node,
+      );
+      return undefined;
+    }
     const call: MojoExpression = Object.freeze({
-      kind: "call",
-      callee: ordered.receiver!,
-      arguments: ordered.arguments,
+      kind: "method-call",
+      receiver: ordered.receiver!,
+      name: "call",
+      arguments: Object.freeze([Object.freeze({
+        value: Object.freeze({
+          kind: "tuple",
+          elements: Object.freeze(ordered.arguments.map((argument) => argument.value)),
+        }),
+      })]),
     });
     const converted = applyMojoConversion(call, selection.resultConversion, context);
     return converted === undefined ? undefined : withMojoValue(ordered.before, converted);
@@ -455,6 +470,24 @@ export function planMojoProperty(
     }
     const constant = planProviderConstant(selection.operation, selection.readResultConversion, context);
     return constant === undefined ? undefined : mojoValue(constant);
+  }
+  if (selection.kind === "provider-static") {
+    if (mode !== "read" || selection.readOperation?.target.kind !== "function-read" ||
+      selection.readResultConversion === undefined) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROVIDER_STATIC_PROPERTY_LOCATION_REQUIRED",
+        "A static provider write must be planned as its sealed target function operation.",
+        node,
+      );
+      return undefined;
+    }
+    const value = planProviderConstant(
+      selection.readOperation,
+      selection.readResultConversion,
+      context,
+    );
+    return value === undefined ? undefined : mojoValue(value);
   }
   if (selection.kind === "project-enum-member") {
     if (mode !== "read") {

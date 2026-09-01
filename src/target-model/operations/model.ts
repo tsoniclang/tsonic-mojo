@@ -58,4 +58,10 @@ export type MojoProviderOperationForm =
       readonly kind: "function-read";
       readonly modulePath: readonly string[];
       readonly name: string;
+    }
+  | {
+      readonly kind: "function-write";
+      readonly modulePath: readonly string[];
+      readonly name: string;
+      readonly value: MojoProviderTargetArgument;
     };

@@ -34,6 +34,13 @@ export interface MojoProviderRuntimePackage {
   readonly packagePath: string;
 }
 
+export interface MojoProviderBinaryEpilogue {
+  readonly id: string;
+  readonly modulePath: readonly string[];
+  readonly name: string;
+  readonly raises?: boolean;
+}
+
 export interface MojoProviderTypeDefinition {
   readonly exportId: string;
   readonly sourceGenericParameters: readonly {
@@ -55,7 +62,9 @@ export interface MojoProviderTypeDefinition {
     readonly valueType?: MojoTargetTypeRef;
     readonly valueExpression?: string;
   }[];
-  readonly objectLiteralConstruction?: "fieldwise";
+  readonly objectLiteralConstruction?: {
+    readonly kind: "struct-default";
+  };
 }
 
 export type MojoProviderOperationKind =
@@ -87,6 +96,7 @@ export interface MojoProviderPackageDefinition {
   readonly modules: readonly MojoProviderModuleDefinition[];
   readonly types?: readonly MojoProviderTypeDefinition[];
   readonly operations: readonly MojoProviderOperationDefinition[];
+  readonly binaryEpilogues?: readonly MojoProviderBinaryEpilogue[];
   readonly runtimePackages: readonly MojoProviderRuntimePackage[];
 }
 
@@ -120,6 +130,7 @@ export interface MojoProviderSemantics {
   readonly exports: readonly MojoProviderExportRow[];
   readonly operations: readonly MojoProviderOperationRow[];
   readonly types: readonly MojoProviderTypeRow[];
+  readonly binaryEpilogues: readonly MojoProviderBinaryEpilogue[];
 }
 
 export const mojoProviderPolicyContributionKind = "mojo-provider-policy";

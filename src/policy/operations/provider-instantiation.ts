@@ -304,6 +304,7 @@ export function bindTargetTypePattern(
     }
     case "associated":
     case "reference":
+    case "callable":
     case "function":
       return mojoTargetTypeEquals(pattern, actual) ? undefined : "advanced receiver carriers differ";
   }

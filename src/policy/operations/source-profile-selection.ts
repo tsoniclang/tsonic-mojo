@@ -50,8 +50,7 @@ export function selectMojoSourceProfileCallRow(
   const signatureDeclaration = semantics.declarations.signatureDeclaration(call.selectedSignature);
   const identity = profiles.declarationIdentity(
     signatureDeclaration,
-    semantics,
-    source.sourceFacts,
+    source,
   );
   if (identity === undefined) return { kind: "not-source-profile" };
   const expectedKind = source.ast.is.IsNewExpression(call.call) ? "construct" : "call";
@@ -73,8 +72,7 @@ export function selectMojoSourceProfileCallRow(
   ].flatMap((declaration) => {
     const selected = profiles.declarationIdentity(
       declaration,
-      semantics,
-      source.sourceFacts,
+      source,
     );
     return selected === undefined ? [] : [selected];
   });
@@ -112,8 +110,7 @@ export function selectedMojoSourceProfileDeclarationIdentity(
     if (declaration === undefined) continue;
     const identity = profiles.declarationIdentity(
       declaration,
-      source.semantics.forNode(declaration),
-      source.sourceFacts,
+      source,
     );
     if (identity === undefined) continue;
     if (selected !== undefined && !sameSourceProfileIdentity(selected, identity)) return undefined;
@@ -191,7 +188,7 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     owner: "String",
     member: "replace",
     target: Object.freeze({ kind: "instance", name: "replace", receiver: "imm" }),
-    parameterContract: Object.freeze(["js-string", "js-string"]),
+    parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["js-string", "js-string"]),
   }),
   Object.freeze({
     profile: "js",
@@ -199,7 +196,7 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     owner: "String",
     member: "replaceAll",
     target: Object.freeze({ kind: "instance", name: "replace_all", receiver: "imm" }),
-    parameterContract: Object.freeze(["js-string", "js-string"]),
+    parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["js-string", "js-string"]),
     raises: true,
   }),
   Object.freeze({
@@ -213,7 +210,7 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
       name: "string_split",
       receiver: "imm",
     }),
-    parameterContract: Object.freeze(["js-string", "float64"]),
+    parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["js-string", "float64"]),
   }),
   ...jsInstanceRows("Array", "mut", [
     "copyWithin", "fill", "pop", "push", "reverse", "shift", "sort", "splice", "unshift",
@@ -290,7 +287,7 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     owner: "ObjectConstructor",
     member: "is",
     argumentCount: 2,
-    parameterContract: Object.freeze(["js-value", "js-value"]),
+    parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["js-value", "js-value"]),
     target: Object.freeze({
       kind: "function",
       modulePath: Object.freeze(["tsonic_js"]),

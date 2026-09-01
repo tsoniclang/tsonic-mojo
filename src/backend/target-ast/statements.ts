@@ -15,6 +15,11 @@ export type MojoStatement =
       readonly initializer?: MojoExpression;
     }
   | {
+      readonly kind: "tuple-variable";
+      readonly names: readonly string[];
+      readonly initializer: MojoExpression;
+    }
+  | {
       readonly kind: "assignment";
       readonly operator: string;
       readonly left: MojoExpression;

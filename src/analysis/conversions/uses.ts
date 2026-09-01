@@ -98,8 +98,10 @@ export function recordMojoExecutableRegionConversionUses(
       for (const property of ast.properties(expression)) {
         if (property !== undefined && ast.is.IsSpreadAssignment(property)) {
           const value = SpreadAssignment_Expression(ast, property);
-          const contribution = selection?.contributions.find((candidate) =>
-            candidate.kind === "spread" && candidate.element === property);
+          const contribution = selection?.kind === "interface"
+            ? selection.contributions.find((candidate) =>
+                candidate.kind === "spread" && candidate.element === property)
+            : undefined;
           if (contribution?.kind === "spread") record(value, contribution.sourceType);
           visitExpression(value);
           continue;
@@ -107,9 +109,14 @@ export function recordMojoExecutableRegionConversionUses(
         const value = ObjectLiteralProperty_Value(ast, property);
         if (type?.kind === "dictionary") record(value, type.value);
         if (property !== undefined && value !== undefined && selection !== undefined) {
-          const contribution = selection.contributions.find((candidate) =>
-            candidate.kind === "field" && candidate.element === property);
-          if (contribution?.kind === "field") record(value, contribution.fieldType);
+          if (selection.kind === "interface") {
+            const contribution = selection.contributions.find((candidate) =>
+              candidate.kind === "field" && candidate.element === property);
+            if (contribution?.kind === "field") record(value, contribution.fieldType);
+          } else {
+            const field = selection.fields.find((candidate) => candidate.element === property);
+            if (field !== undefined) record(value, field.storageType);
+          }
         }
         visitExpression(value);
       }

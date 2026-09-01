@@ -61,6 +61,13 @@ export function mojoTargetTypeEquals(
     case "reference":
       return right.kind === "reference" && left.origin === right.origin &&
         mojoTargetTypeEquals(left.value, right.value);
+    case "callable":
+      return right.kind === "callable" && left.raises === right.raises &&
+        arrayEquals(left.parameters, right.parameters, (parameter, other) =>
+          parameter.convention === other.convention &&
+          parameter.passing === other.passing &&
+          mojoTargetTypeEquals(parameter.type, other.type)) &&
+        mojoTargetTypeEquals(left.result, right.result);
     case "function":
       return right.kind === "function" && left.thin === right.thin &&
         left.asynchronous === right.asynchronous && left.raises === right.raises &&

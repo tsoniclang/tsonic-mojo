@@ -169,6 +169,22 @@ export function validateMojoProviderPackageDefinition(
         requireText(alias.valueExpression, `associated alias value on '${type.exportId}'`);
       }
     }
+    if (type.objectLiteralConstruction !== undefined &&
+      (type.objectLiteralConstruction.kind !== "struct-default" ||
+        Object.keys(type.objectLiteralConstruction).length !== 1 ||
+        type.targetType.kind !== "target-named")) {
+      throw new Error(`Provider type '${type.exportId}' has an invalid object-literal construction contract.`);
+    }
+  }
+  const epilogueIds = new Set<string>();
+  for (const epilogue of definition.binaryEpilogues ?? []) {
+    requireText(epilogue.id, "binary epilogue identity");
+    if (epilogueIds.has(epilogue.id) || epilogue.modulePath.length === 0 ||
+      !identifierPattern.test(epilogue.name) ||
+      epilogue.modulePath.some((segment) => !identifierPattern.test(segment))) {
+      throw new Error(`Mojo binary epilogue '${epilogue.id}' has an invalid or duplicate target identity.`);
+    }
+    epilogueIds.add(epilogue.id);
   }
   const runtimeNames = new Set<string>();
   for (const runtime of definition.runtimePackages) {
@@ -223,6 +239,11 @@ function validateOperation(
     const memberProperty = operation.memberId !== undefined &&
       operation.target.kind === "property-read" &&
       operation.receiverType !== undefined;
+    const staticMemberProperty = operation.memberId !== undefined &&
+      operation.target.kind === "function-read" &&
+      operation.receiverType === undefined &&
+      (operation.parameterTypes ?? []).length === 0 &&
+      declarations.members.get(operation.memberId)?.declaration.static === true;
     const exported = declarations.exports.get(operation.exportId)!;
     const moduleConstant = operation.memberId === undefined &&
       operation.signatureId === undefined &&
@@ -230,12 +251,19 @@ function validateOperation(
       operation.receiverType === undefined &&
       (operation.parameterTypes ?? []).length === 0 &&
       exported.kind === "value";
-    if (!memberProperty && !moduleConstant) {
+    if (!memberProperty && !staticMemberProperty && !moduleConstant) {
       throw new Error(`Provider property '${operation.exportId}' requires an exact member, receiver, and property-read target.`);
     }
   } else if (operation.operationKind === "property-set") {
-    if (operation.memberId === undefined || operation.target.kind !== "property-write" ||
-      operation.receiverType === undefined || (operation.parameterTypes ?? []).length !== 1) {
+    const member = operation.memberId === undefined
+      ? undefined
+      : declarations.members.get(operation.memberId)?.declaration;
+    const instanceWrite = operation.target.kind === "property-write" &&
+      operation.receiverType !== undefined;
+    const staticWrite = operation.target.kind === "function-write" &&
+      operation.receiverType === undefined && member?.static === true;
+    if (operation.memberId === undefined || (!instanceWrite && !staticWrite) ||
+      member?.readonly === true || (operation.parameterTypes ?? []).length !== 1) {
       throw new Error(`Provider property write '${operation.exportId}' requires an exact member, receiver, value, and property-write target.`);
     }
   } else if (operation.operationKind === "indexer") {
@@ -267,7 +295,7 @@ function validateOperation(
     );
   }
   if (operation.target.kind === "function-call" || operation.target.kind === "constant" ||
-    operation.target.kind === "function-read") {
+    operation.target.kind === "function-read" || operation.target.kind === "function-write") {
     if (operation.target.modulePath.length === 0) {
       throw new Error(`Provider operation '${operation.exportId}' has an empty Mojo module path.`);
     }
@@ -315,6 +343,9 @@ function validateOperation(
     if (operation.target.value.position === "keyword" && operation.target.value.nativeName === undefined) {
       throw new Error(`Provider property write '${operation.exportId}' has a keyword value without its exact Mojo name.`);
     }
+  }
+  if (operation.target.kind === "function-write") {
+    validateOperationArgument(operation.target.value, operation.exportId, "value");
   }
   if (operation.target.kind === "index-read" || operation.target.kind === "index-write") {
     validateOperationArgument(operation.target.index, operation.exportId, "index");
@@ -416,6 +447,15 @@ function validateType(type: MojoTargetTypeRef): void {
     case "reference":
       requireText(type.origin, "reference origin");
       validateType(type.value);
+      return;
+    case "callable":
+      for (const parameter of type.parameters) {
+        if (parameter.name !== undefined && !identifierPattern.test(parameter.name)) {
+          throw new Error(`Invalid Mojo callable parameter '${parameter.name}'.`);
+        }
+        validateType(parameter.type);
+      }
+      validateType(type.result);
       return;
     case "function":
       for (const parameter of type.genericParameters) {

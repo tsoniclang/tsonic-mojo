@@ -62,6 +62,12 @@ export function classifyMojoValueConversion(
   if (mojoTargetTypeEquals(actual, expected)) {
     return { kind: "resolved", conversion: Object.freeze({ kind: "identity" }) };
   }
+  if (isNonRaisingFunctionWidening(actual, expected)) {
+    return {
+      kind: "resolved",
+      conversion: Object.freeze({ kind: "callable-raise-widen", targetType: expected }),
+    };
+  }
   if (isJsString(actual) && expected.kind === "native-string") {
     return { kind: "resolved", conversion: Object.freeze({ kind: "js-to-native-string" }) };
   }
@@ -70,6 +76,24 @@ export function classifyMojoValueConversion(
       kind: "resolved",
       conversion: Object.freeze({ kind: "native-to-js-string", targetType: expected }),
     };
+  }
+  if (actual.kind === "list" && isJsArray(expected)) {
+    const element = jsArrayElement(expected);
+    if (element !== undefined && mojoTargetTypeEquals(actual.element, element)) {
+      return {
+        kind: "resolved",
+        conversion: Object.freeze({ kind: "list-to-js-array", targetType: expected }),
+      };
+    }
+  }
+  if (isJsArray(actual) && expected.kind === "list") {
+    const element = jsArrayElement(actual);
+    if (element !== undefined && mojoTargetTypeEquals(element, expected.element)) {
+      return {
+        kind: "resolved",
+        conversion: Object.freeze({ kind: "js-array-to-list", targetType: expected }),
+      };
+    }
   }
   if (isJsValue(expected)) {
     const source = jsValueSourceKind(actual);
@@ -119,6 +143,20 @@ export function classifyMojoValueConversion(
   };
 }
 
+function isNonRaisingFunctionWidening(
+  actual: MojoTargetTypeRef,
+  expected: MojoTargetTypeRef,
+): boolean {
+  if (actual.kind !== "callable" || expected.kind !== "callable" ||
+    actual.raises || !expected.raises) {
+    return false;
+  }
+  return mojoTargetTypeEquals(
+    Object.freeze({ ...actual, raises: true }),
+    expected,
+  );
+}
+
 function isTriviallyCopyableMojoType(type: MojoTargetTypeRef): boolean {
   if (type.kind === "source-primitive") return true;
   if (type.kind === "unit" || type.kind === "never" || type.kind === "null" ||
@@ -136,6 +174,16 @@ function isJsString(type: MojoTargetTypeRef): boolean {
 
 function isJsValue(type: MojoTargetTypeRef): boolean {
   return type.kind === "dynamic" && type.domain === "js";
+}
+
+function isJsArray(type: MojoTargetTypeRef): boolean {
+  return type.kind === "target-named" && type.id === "tsonic.mojo.js.JsArray";
+}
+
+function jsArrayElement(type: MojoTargetTypeRef): MojoTargetTypeRef | undefined {
+  if (!isJsArray(type) || type.kind !== "target-named") return undefined;
+  const argument = type.genericArguments?.[0];
+  return argument?.kind === "type" ? argument.type : undefined;
 }
 
 function jsValueSourceKind(

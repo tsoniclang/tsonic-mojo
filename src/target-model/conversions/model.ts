@@ -2,6 +2,7 @@ import type { MojoTargetTypeRef } from "../types/model.js";
 
 export type MojoValueConversion =
   | { readonly kind: "identity" }
+  | { readonly kind: "callable-raise-widen"; readonly targetType: MojoTargetTypeRef }
   | { readonly kind: "primitive-cast"; readonly targetType: MojoTargetTypeRef }
   | { readonly kind: "reference-copy"; readonly targetType: MojoTargetTypeRef }
   | {
@@ -11,6 +12,8 @@ export type MojoValueConversion =
     }
   | { readonly kind: "native-to-js-string"; readonly targetType: MojoTargetTypeRef }
   | { readonly kind: "js-to-native-string" }
+  | { readonly kind: "list-to-js-array"; readonly targetType: MojoTargetTypeRef }
+  | { readonly kind: "js-array-to-list"; readonly targetType: MojoTargetTypeRef }
   | { readonly kind: "optional-none"; readonly targetType: MojoTargetTypeRef }
   | { readonly kind: "optional-some"; readonly targetType: MojoTargetTypeRef }
   | { readonly kind: "union-inject"; readonly targetType: MojoTargetTypeRef };

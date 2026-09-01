@@ -2,6 +2,7 @@ import type { Node } from "@tsonic/tsts";
 import type { MojoExpression } from "../../target-ast/index.js";
 import {
   appendMojoPlanningDiagnostic,
+  mojoBindingPlanOverride,
   mojoQualifiedModuleMember,
   registerMojoModuleImport,
 } from "../program/context.js";
@@ -18,8 +19,18 @@ export function planMojoLeafExpression(
   const { ast } = context.program.source;
   let planned: MojoExpression | undefined;
   if (ast.is.IsIdentifier(node) || ast.kindName(node) === "KindThisKeyword") {
+    const override = mojoBindingPlanOverride(node, context);
     const selectedValue = context.program.queries.valueSelection(node);
-    if (selectedValue !== undefined) {
+    if (override !== undefined) {
+      planned = override.storage === "location"
+        ? {
+            kind: "method-call",
+            receiver: override.expression,
+            name: "read",
+            arguments: Object.freeze([]),
+          }
+        : override.expression;
+    } else if (selectedValue !== undefined) {
       planned = planProviderConstant(selectedValue.operation, selectedValue.resultConversion, context);
       if (planned === undefined) return undefined;
     } else {

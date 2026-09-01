@@ -8,7 +8,10 @@ import type {
 import { providerVirtualDeclarationFactKey } from "@tsonic/tsts";
 import { jsSourceSemanticsIdentity } from "@tsonic/js-source-profile";
 import { isTsonicSourceProfileDeclarationPath } from "@tsonic/target-api/provider";
-import type { SourceFileSemantics } from "@tsonic/target-api/source";
+import type {
+  SourceFileSemantics,
+  TargetSourceProgram,
+} from "@tsonic/target-api/source";
 import {
   mojoJsSourceProfileOwnerId,
   mojoSourceProfileOwnerId,
@@ -38,8 +41,7 @@ export interface MojoSourceProfileRegistry {
   ): MojoSourceProfileTypeIdentity | undefined;
   declarationIdentity(
     declaration: Node | undefined,
-    semantics: SourceFileSemantics,
-    sourceFacts: ReadonlySourceFactResolver,
+    source: TargetSourceProgram,
   ): MojoSourceProfileDeclarationIdentity | undefined;
 }
 
@@ -100,19 +102,30 @@ export function createMojoSourceProfileRegistry(
     },
     declarationIdentity(
       declaration: Node | undefined,
-      semantics: SourceFileSemantics,
-      sourceFacts: ReadonlySourceFactResolver,
+      source: TargetSourceProgram,
     ) {
       if (declaration === undefined) return undefined;
-      const provider = jsProviderDeclarationIdentity(declaration, ast, sourceFacts);
+      const provider = jsProviderDeclarationIdentity(
+        declaration,
+        ast,
+        source.sourceFacts,
+      );
       if (provider !== undefined) return provider;
       const sourceFile = ast.getSourceFile(declaration);
+      if (sourceFile === undefined || !source.semantics.includes(sourceFile)) {
+        return undefined;
+      }
       const fileName = sourceFile === undefined
         ? undefined
         : normalizeFileName(ast.getFileName(sourceFile));
       const profile = fileName === undefined ? undefined : profileForFileName(fileName, jsEnabled);
       if (profile === undefined || owners.get(profile) !== fileName) return undefined;
-      return sourceProfileDeclarationIdentity(profile, declaration, ast, semantics);
+      return sourceProfileDeclarationIdentity(
+        profile,
+        declaration,
+        ast,
+        source.semantics.forFile(sourceFile),
+      );
     },
   });
 }
@@ -238,18 +251,7 @@ function wellKnownMemberKey(
     case "async-dispose": return "@@asyncDispose";
     case "async-iterator": return "@@asyncIterator";
     case "dispose": return "@@dispose";
-    case "has-instance": return "@@hasInstance";
-    case "is-concat-spreadable": return "@@isConcatSpreadable";
     case "iterator": return "@@iterator";
-    case "match": return "@@match";
-    case "match-all": return "@@matchAll";
-    case "replace": return "@@replace";
-    case "search": return "@@search";
-    case "species": return "@@species";
-    case "split": return "@@split";
-    case "to-primitive": return "@@toPrimitive";
-    case "to-string-tag": return "@@toStringTag";
-    case "unscopables": return "@@unscopables";
   }
 }
 

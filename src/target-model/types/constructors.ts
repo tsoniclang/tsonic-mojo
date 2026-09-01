@@ -1,8 +1,11 @@
 import type {
   SourcePrimitiveKind,
 } from "@tsonic/tsts";
-import type { MojoTargetTypeRef } from "./model.js";
-import type { MojoTargetGenericArgument } from "./model.js";
+import type {
+  MojoTargetCallableParameter,
+  MojoTargetGenericArgument,
+  MojoTargetTypeRef,
+} from "./model.js";
 
 export function mojoPrimitiveTargetType(name: SourcePrimitiveKind): MojoTargetTypeRef {
   return Object.freeze({ kind: "source-primitive", name });
@@ -88,6 +91,21 @@ export function mojoFutureTargetType(
 
 export function mojoOptionalTargetType(value: MojoTargetTypeRef): MojoTargetTypeRef {
   return Object.freeze({ kind: "optional", value });
+}
+
+export function mojoCallableTargetType(
+  parameters: readonly MojoTargetCallableParameter[],
+  result: MojoTargetTypeRef,
+  raises = false,
+): MojoTargetTypeRef {
+  return Object.freeze({
+    kind: "callable",
+    parameters: Object.freeze(parameters.map((parameter) => Object.freeze({
+      ...parameter,
+    }))),
+    result,
+    raises,
+  });
 }
 
 export function mojoUnionTargetType(members: readonly MojoTargetTypeRef[]): MojoTargetTypeRef {

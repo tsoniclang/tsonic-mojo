@@ -1,77 +1,314 @@
 import type { Node } from "@tsonic/tsts";
-import type { MojoParameter } from "../../target-ast/index.js";
-import { appendMojoPlanningDiagnostic } from "../program/context.js";
-import type { MojoPlanningContext } from "../program/context.js";
+import type {
+  MojoExpression,
+  MojoFieldDeclaration,
+  MojoFunctionDeclaration,
+  MojoStatement,
+  MojoStructDeclaration,
+} from "../../target-ast/index.js";
+import type { MojoCallableExpressionSelection } from "../../../analysis/program/model.js";
+import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
+import {
+  allocateMojoSyntheticName,
+  appendMojoPlanningDiagnostic,
+  registerMojoModuleImport,
+  withMojoBindingOverrides,
+} from "../program/context.js";
+import type {
+  MojoBindingPlanOverride,
+  MojoPlanningContext,
+} from "../program/context.js";
 import type { MojoValuePlanner } from "./support.js";
 import { registerMojoTypeImports } from "../types/render.js";
-import { mojoValue } from "./value-plan.js";
+import { planMojoFunctionStatements } from "../statements/structured.js";
+import { withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
+
+const runtimeModule = Object.freeze(["tsonic_runtime"]);
+const unitType: MojoTargetTypeRef = Object.freeze({ kind: "unit" });
 
 export function planMojoCallableExpression(
   node: Node,
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
+  widenRaises = false,
 ): MojoValuePlan | undefined {
   const selection = context.program.queries.callableExpressionSelection(node);
   if (selection === undefined) {
     appendMojoPlanningDiagnostic(
       context,
       "MOJO_CALLABLE_EXPRESSION_PLAN_MISSING",
-      "Callable expression has no sealed Mojo lambda selection.",
+      "Callable expression has no sealed Mojo callable selection.",
       node,
     );
     return undefined;
   }
-  const parameters: MojoParameter[] = [];
-  for (const parameter of selection.parameters) {
-    registerMojoTypeImports(parameter.type, context);
-    const initializerNode = parameter.initializer;
-    const initializer = initializerNode === undefined
-      ? undefined
-      : planValue(initializerNode, context, parameter.type);
-    if (initializerNode !== undefined && initializer === undefined) return undefined;
-    if (initializer !== undefined && initializer.before.length !== 0) {
-      appendMojoPlanningDiagnostic(
-        context,
-        "MOJO_CALLABLE_DEFAULT_EVALUATION_REGION_UNSUPPORTED",
-        "A Mojo lambda default value cannot contain target evaluation-region statements.",
-        initializerNode!,
-      );
-      return undefined;
-    }
-    parameters.push(Object.freeze({
-      name: parameter.name,
-      type: parameter.type,
-      convention: parameter.convention,
-      variadic: parameter.rest,
-      ...(initializer !== undefined
-        ? { defaultValue: initializer.value }
-        : parameter.optional
-          ? { defaultValue: Object.freeze({ kind: "none-literal" as const }) }
-          : {}),
-    }));
-  }
-  registerMojoTypeImports(selection.resultType, context);
-  const body = planValue(selection.body, context, selection.resultType);
-  if (body === undefined) return undefined;
-  if (body.before.length !== 0) {
+  if (selection.parameters.some((parameter) =>
+    parameter.optional || parameter.rest || parameter.initializer !== undefined ||
+    (parameter.convention !== "imm" && parameter.convention !== "var"))) {
     appendMojoPlanningDiagnostic(
       context,
-      "MOJO_CALLABLE_BODY_EVALUATION_REGION_UNSUPPORTED",
-      "The pinned Mojo lambda form requires one expression body without target evaluation-region statements.",
-      selection.body,
+      "MOJO_ERASED_CALLABLE_PARAMETER_ABI_UNSUPPORTED",
+      "A retained Mojo callable currently requires required, non-rest value parameters.",
+      node,
     );
     return undefined;
   }
-  return mojoValue(Object.freeze({
-    kind: "lambda",
-    parameters: Object.freeze(parameters),
-    captures: Object.freeze(selection.captures.map((capture) => Object.freeze({
-      name: capture.name,
-      convention: capture.convention,
-    }))),
-    resultType: selection.resultType,
-    raises: selection.raises,
-    expression: body.value,
+
+  registerMojoModuleImport(context, runtimeModule);
+  const callableType = widenRaises
+    ? Object.freeze({ ...selection.callableType, raises: true })
+    : selection.callableType;
+  registerMojoTypeImports(callableType, context);
+  const environmentName = context.callableArtifactNames.get(node) ??
+    allocateMojoSyntheticName(context, "callable_environment");
+  if (!context.callableArtifactNames.has(node)) {
+    context.callableArtifactNames.set(node, environmentName);
+    const declaration = planCallableEnvironment(
+      selection,
+      environmentName,
+      context,
+      planValue,
+      widenRaises,
+    );
+    if (declaration === undefined) return undefined;
+    context.syntheticDeclarations.push(declaration);
+  }
+
+  const environmentType = localNamedType(context, environmentName);
+  const captures: MojoExpression[] = selection.captures.map((capture) => Object.freeze({
+    kind: "method-call" as const,
+    receiver: Object.freeze({ kind: "path" as const, path: capture.name }),
+    name: "copy",
+    arguments: Object.freeze([]),
   }));
+  const ownerName = allocateMojoSyntheticName(context, "callable_owner");
+  const allocation: MojoExpression = Object.freeze({
+    kind: "call",
+    callee: Object.freeze({
+      kind: "path",
+      path: "tsonic_runtime.allocate_callable_environment",
+    }),
+    arguments: Object.freeze([
+      Object.freeze({
+        value: Object.freeze({
+          kind: "construct",
+          type: environmentType,
+          arguments: Object.freeze(captures.map((value) => Object.freeze({ value }))),
+        }),
+      }),
+      Object.freeze({
+        value: Object.freeze({ kind: "path", path: `${environmentName}.destroy` }),
+      }),
+    ]),
+  });
+  return withMojoValue(Object.freeze([Object.freeze({
+    kind: "variable",
+    name: ownerName,
+    initializer: allocation,
+  })]), Object.freeze({
+    kind: "construct",
+    type: callableType,
+    arguments: Object.freeze([
+      Object.freeze({ value: Object.freeze({ kind: "path", path: ownerName }) }),
+      Object.freeze({ value: Object.freeze({ kind: "path", path: `${environmentName}.invoke` }) }),
+    ]),
+  }));
+}
+
+function planCallableEnvironment(
+  selection: MojoCallableExpressionSelection,
+  environmentName: string,
+  context: MojoPlanningContext,
+  planValue: MojoValuePlanner,
+  widenRaises: boolean,
+): MojoStructDeclaration | undefined {
+  const environmentType = localNamedType(context, environmentName);
+  const contextType = runtimeNamedType(
+    "tsonic.mojo.runtime.ErasedCallableContext",
+    "ErasedCallableContext",
+  );
+  const argumentType: MojoTargetTypeRef = Object.freeze({
+    kind: "tuple",
+    elements: Object.freeze(selection.parameters.map((parameter) => parameter.type)),
+  });
+  registerMojoTypeImports(contextType, context);
+  registerMojoTypeImports(argumentType, context);
+  registerMojoTypeImports(selection.resultType, context);
+
+  const fields: MojoFieldDeclaration[] = selection.captures.map((capture) => {
+    const type = capture.storage === "location" ? locationType(capture.type) : capture.type;
+    registerMojoTypeImports(type, context);
+    return Object.freeze({
+      name: capture.name,
+      type,
+      compileTime: false,
+    });
+  });
+  const contextName = `${environmentName}_context`;
+  const argumentsName = `${environmentName}_arguments`;
+  const pointerName = `${environmentName}_pointer`;
+  const environmentValue: MojoExpression = Object.freeze({
+    kind: "postfix-deref",
+    expression: Object.freeze({ kind: "path", path: pointerName }),
+  });
+  const overrides = new Map<Node, MojoBindingPlanOverride>();
+  for (const capture of selection.captures) {
+    const field: MojoExpression = Object.freeze({
+      kind: "member",
+      receiver: environmentValue,
+      name: capture.name,
+    });
+    overrides.set(capture.declaration, Object.freeze({
+      expression: capture.storage === "value"
+        ? Object.freeze({
+            kind: "method-call",
+            receiver: field,
+            name: "copy",
+            arguments: Object.freeze([]),
+          })
+        : field,
+      storage: capture.storage,
+    }));
+  }
+  const callableContext = withMojoBindingOverrides(context, overrides);
+  const parameterPrelude: MojoStatement[] = selection.parameters.length === 0
+    ? []
+    : [Object.freeze({
+        kind: "tuple-variable" as const,
+        names: Object.freeze(selection.parameters.map((parameter) => parameter.name)),
+        initializer: Object.freeze({
+          kind: "consume" as const,
+          expression: Object.freeze({ kind: "path" as const, path: argumentsName }),
+        }),
+      })];
+  const body = planCallableBody(selection, callableContext, planValue);
+  if (body === undefined) return undefined;
+  const invoke: MojoFunctionDeclaration = Object.freeze({
+    kind: "function",
+    name: "invoke",
+    genericParameters: Object.freeze([]),
+    parameters: Object.freeze([
+      Object.freeze({ name: contextName, type: contextType }),
+      Object.freeze({ name: argumentsName, type: argumentType, convention: "var" }),
+    ]),
+    resultType: selection.resultType,
+    asynchronous: false,
+    raises: selection.raises || widenRaises,
+    decorators: Object.freeze(["staticmethod"]),
+    statements: Object.freeze([
+      Object.freeze({
+        kind: "variable",
+        name: pointerName,
+        initializer: Object.freeze({
+          kind: "method-call",
+          receiver: Object.freeze({ kind: "path", path: contextName }),
+          name: "unsafe_bitcast",
+          genericArguments: Object.freeze([Object.freeze({
+            kind: "type",
+            type: environmentType,
+          })]),
+          arguments: Object.freeze([]),
+        }),
+      }),
+      ...parameterPrelude,
+      ...body,
+    ]),
+  });
+  const destroy: MojoFunctionDeclaration = Object.freeze({
+    kind: "function",
+    name: "destroy",
+    genericParameters: Object.freeze([]),
+    parameters: Object.freeze([Object.freeze({ name: contextName, type: contextType })]),
+    resultType: unitType,
+    asynchronous: false,
+    raises: false,
+    decorators: Object.freeze(["staticmethod"]),
+    statements: Object.freeze([Object.freeze({
+      kind: "expression",
+      expression: Object.freeze({
+        kind: "call",
+        callee: Object.freeze({
+          kind: "path",
+          path: "tsonic_runtime.destroy_callable_environment",
+        }),
+        genericArguments: Object.freeze([Object.freeze({
+          kind: "type",
+          type: environmentType,
+        })]),
+        arguments: Object.freeze([Object.freeze({
+          value: Object.freeze({ kind: "path", path: contextName }),
+        })]),
+      }),
+    })]),
+  });
+  return Object.freeze({
+    kind: "struct",
+    name: environmentName,
+    genericParameters: Object.freeze([]),
+    conformances: Object.freeze([]),
+    fields: Object.freeze(fields),
+    methods: Object.freeze([invoke, destroy]),
+    decorators: Object.freeze(["fieldwise_init"]),
+  });
+}
+
+function planCallableBody(
+  selection: MojoCallableExpressionSelection,
+  context: MojoPlanningContext,
+  planValue: MojoValuePlanner,
+): readonly MojoStatement[] | undefined {
+  if (context.program.source.ast.is.IsBlock(selection.body)) {
+    return planMojoFunctionStatements(Object.freeze({
+      kind: "function",
+      declaration: selection.expression,
+      sourceFile: context.module.sourceFile,
+      name: "invoke",
+      typeParameters: Object.freeze([]),
+      parameters: selection.parameters,
+      resultType: selection.resultType,
+      body: selection.body,
+      asynchronous: false,
+      raises: selection.raises,
+    }), context);
+  }
+  const body = planValue(selection.body, context, selection.resultType);
+  if (body === undefined) return undefined;
+  return Object.freeze([
+    ...body.before,
+    selection.resultType.kind === "unit"
+      ? Object.freeze({ kind: "expression" as const, expression: body.value })
+      : Object.freeze({ kind: "return" as const, expression: body.value }),
+  ]);
+}
+
+function localNamedType(
+  context: MojoPlanningContext,
+  name: string,
+): MojoTargetTypeRef {
+  return Object.freeze({
+    kind: "target-named",
+    id: `tsonic.mojo.generated.${context.module.modulePath.join(".")}.${name}`,
+    modulePath: context.module.modulePath,
+    name,
+  });
+}
+
+function runtimeNamedType(id: string, name: string): MojoTargetTypeRef {
+  return Object.freeze({
+    kind: "target-named",
+    id,
+    modulePath: runtimeModule,
+    name,
+  });
+}
+
+function locationType(value: MojoTargetTypeRef): MojoTargetTypeRef {
+  return Object.freeze({
+    kind: "target-named",
+    id: "tsonic.mojo.runtime.Location",
+    modulePath: runtimeModule,
+    name: "Location",
+    genericArguments: Object.freeze([Object.freeze({ kind: "type", type: value })]),
+  });
 }

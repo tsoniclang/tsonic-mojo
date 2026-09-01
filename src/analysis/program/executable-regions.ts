@@ -4,7 +4,6 @@ import {
   BinaryExpression_Right,
   Node_Expression,
   Node_Initializer,
-  PrefixUnaryExpression_Operand,
 } from "@tsonic/target-api/source";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
@@ -23,12 +22,11 @@ import {
 } from "../operations/properties.js";
 import { analyzeMojoProviderValue } from "../operations/values.js";
 import { analyzeMojoObjectLiteral } from "../objects/object-literals.js";
+import { analyzeMojoProviderRecordLiteral } from "../objects/provider-records.js";
 import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
 import type { MojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
-import { resolveMojoTargetType } from "../../policy/types/resolution.js";
 import { providerCallRequiresRaisingConversion } from "./effects.js";
 import { inferMojoExpressionType, isMojoExpressionNode } from "./expression-types.js";
-import { isMojoAssignmentOperator } from "./syntax-validation.js";
 import type {
   MojoAnalyzedClass,
   MojoAnalyzedClassOwner,
@@ -46,6 +44,15 @@ import type {
 } from "./model.js";
 import { walkSourceTree, walkSourceTreePostOrder } from "./traversal.js";
 import type { MojoSourceModuleCatalog } from "../source-modules/model.js";
+import { expectedExpressionType } from "./expected-types.js";
+import {
+  declaredOrInitializerType,
+  descendWithinExecutableRegion,
+  isRuntimeValueOccurrence,
+  providerValueReferenceRole,
+  resolveExecutableRegionType as resolveType,
+  targetTypeDiagnostic as typeDiagnostic,
+} from "./executable-region-support.js";
 
 export interface MojoExecutableRegionAnalysisInput {
   readonly root: Node;
@@ -164,23 +171,37 @@ export function analyzeMojoExecutableRegion(
       const expectedType = expectedExpressionType(node, input);
       const inferredType = input.expressionTypes.get(node);
       const candidate = expectedType ?? inferredType;
-      if (candidate?.kind !== "target-named" || !input.interfaceByTypeId.has(candidate.id)) {
+      if (candidate?.kind !== "target-named") {
         pendingObjects.delete(node);
         continue;
       }
-      const selection = analyzeMojoObjectLiteral({
-        source: input.source,
-        sourceFile,
-        expression: node,
-        expressionTypes: input.expressionTypes,
-        ...(expectedType === undefined ? {} : { expectedType }),
-        interfaceByTypeId: input.interfaceByTypeId,
-        fieldByDeclaration: input.fieldByDeclaration,
-        resolveType(type) {
-          return resolveType(type, undefined, input, semantics);
-        },
-        diagnostics: input.diagnostics,
-      });
+      const selection = input.interfaceByTypeId.has(candidate.id)
+        ? analyzeMojoObjectLiteral({
+            source: input.source,
+            sourceFile,
+            expression: node,
+            expressionTypes: input.expressionTypes,
+            ...(expectedType === undefined ? {} : { expectedType }),
+            interfaceByTypeId: input.interfaceByTypeId,
+            fieldByDeclaration: input.fieldByDeclaration,
+            resolveType(type) {
+              return resolveType(type, undefined, input, semantics);
+            },
+            diagnostics: input.diagnostics,
+          })
+        : analyzeMojoProviderRecordLiteral({
+            source: input.source,
+            sourceFile,
+            expression: node,
+            expressionTypes: input.expressionTypes,
+            ...(expectedType === undefined ? {} : { expectedType }),
+            providerSemantics: input.providerSemantics,
+            conversions: input.conversions,
+            resolveType(type) {
+              return resolveType(type, undefined, input, semantics);
+            },
+            diagnostics: input.diagnostics,
+          });
       pendingObjects.delete(node);
       if (selection !== undefined) {
         input.objectLiteralSelections.set(node, selection);
@@ -251,100 +272,6 @@ export function analyzeMojoExecutableRegion(
     }
   }
   return Object.freeze({ dependencies, raises: regionRaises(root, input) });
-}
-
-function expectedExpressionType(
-  node: Node,
-  input: MojoExecutableRegionAnalysisInput,
-): MojoTargetTypeRef | undefined {
-  const { ast } = input.source;
-  if (node === input.root && input.rootExpectedType !== undefined) return input.rootExpectedType;
-  const parent = ast.parent(node);
-  if (parent === undefined) return undefined;
-  if (ast.is.IsVariableDeclaration(parent) && Node_Initializer(ast, parent) === node) {
-    return input.bindingTypes.get(parent);
-  }
-  if (ast.is.IsReturnStatement(parent) && Node_Expression(ast, parent) === node) {
-    return input.returnType;
-  }
-  if (ast.is.IsCallExpression(parent) || ast.is.IsNewExpression(parent)) {
-    return callArgumentExpectedType(input.callSelections.get(parent), node);
-  }
-  if (ast.is.IsArrayLiteralExpression(parent)) {
-    const index = ast.elements(parent).findIndex((element) => element === node);
-    const aggregate = input.expressionTypes.get(parent);
-    if (index < 0 || aggregate === undefined) return undefined;
-    if (aggregate.kind === "list" || aggregate.kind === "fixed-array") return aggregate.element;
-    if (aggregate.kind === "tuple") return aggregate.elements[index];
-    if (aggregate.kind === "target-named" && aggregate.id === "tsonic.mojo.js.JsArray") {
-      const argument = aggregate.genericArguments?.[0];
-      return argument?.kind === "type" ? argument.type : undefined;
-    }
-  }
-  if (ast.is.IsPrefixUnaryExpression(parent) && PrefixUnaryExpression_Operand(ast, parent) === node) {
-    return ast.operatorKindName(parent) === "KindExclamationToken"
-      ? Object.freeze({ kind: "source-primitive", name: "bool" })
-      : input.expressionTypes.get(parent);
-  }
-  if (ast.is.IsPropertyAssignment(parent) || ast.is.IsShorthandPropertyAssignment(parent)) {
-    const owner = ast.parent(parent);
-    const selection = owner === undefined ? undefined : input.objectLiteralSelections.get(owner);
-    const contribution = selection?.contributions.find((candidate) =>
-      candidate.kind === "field" && candidate.element === parent);
-    return contribution?.kind === "field" ? contribution.fieldType : undefined;
-  }
-  const parentOperator = ast.operatorKindName(parent);
-  if (ast.is.IsBinaryExpression(parent) && BinaryExpression_Right(ast, parent) === node &&
-    parentOperator !== undefined && isMojoAssignmentOperator(parentOperator)) {
-    const left = BinaryExpression_Left(ast, parent);
-    if (left === undefined) return undefined;
-    const property = input.propertySelections.get(left);
-    const element = input.elementSelections.get(left);
-    return property?.kind === "provider"
-      ? property.writeOperation?.parameterTypes[0]
-      : element?.writeType ?? input.expressionTypes.get(left);
-  }
-  if ((ast.is.IsAsExpression(parent) || ast.is.IsTypeAssertion(parent) ||
-      ast.is.IsSatisfiesExpression(parent)) && Node_Expression(ast, parent) === node) {
-    return input.expressionTypes.get(parent);
-  }
-  return undefined;
-}
-
-function callArgumentExpectedType(
-  selection: MojoCallSelection | undefined,
-  expression: Node,
-): MojoTargetTypeRef | undefined {
-  if (selection === undefined) return undefined;
-  if (selection.kind === "project" || selection.kind === "provider" || selection.kind === "callable") {
-    return selection.arguments.find((argument) => argument.expression === expression)?.parameterType;
-  }
-  if (selection.kind === "raw-pointer") {
-    switch (selection.operation) {
-      case "bind":
-        return selection.identityExpression === expression ? selection.identityType : undefined;
-      case "equal":
-        if (selection.leftExpression === expression) return selection.leftType;
-        return selection.rightExpression === expression ? selection.rightType : undefined;
-      case "hash":
-        return selection.pointerExpression === expression ? selection.pointerType : undefined;
-    }
-  }
-  switch (selection.operation) {
-    case "address-of":
-      return undefined;
-    case "allocate":
-      return selection.initialExpression === expression ? selection.pointeeType : undefined;
-    case "load":
-      return selection.pointerExpression === expression ? selection.locationType : undefined;
-    case "store":
-      if (selection.pointerExpression === expression) return selection.locationType;
-      return selection.valueExpression === expression ? selection.pointeeType : undefined;
-    case "equal-pointer":
-      return selection.leftExpression === expression || selection.rightExpression === expression
-        ? selection.locationType
-        : undefined;
-  }
 }
 
 function analyzeCall(
@@ -626,90 +553,4 @@ function regionRaises(root: Node, input: MojoExecutableRegionAnalysisInput): boo
     }
   }, (node, regionRoot) => descendWithinExecutableRegion(node, regionRoot, input.source.ast));
   return raises;
-}
-
-function descendWithinExecutableRegion(
-  node: Node,
-  root: Node,
-  ast: TargetSourceProgram["ast"],
-): boolean {
-  if (node === root) return true;
-  return !isCallableBoundary(node, ast);
-}
-
-function isCallableBoundary(node: Node, ast: TargetSourceProgram["ast"]): boolean {
-  return ast.is.IsFunctionDeclaration(node) ||
-    ast.is.IsFunctionExpression(node) ||
-    ast.is.IsArrowFunction(node) ||
-    ast.is.IsMethodDeclaration(node) ||
-    ast.is.IsGetAccessorDeclaration(node) ||
-    ast.is.IsSetAccessorDeclaration(node) ||
-    ast.is.IsConstructorDeclaration(node);
-}
-
-function resolveType(
-  type: Type | undefined,
-  authoredTypeNode: Node | undefined,
-  input: MojoExecutableRegionAnalysisInput,
-  semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
-): MojoTargetTypeRef | undefined {
-  const resolved = resolveMojoTargetType(type, authoredTypeNode, {
-    ast: input.source.ast,
-    semantics,
-    sourceFacts: input.source.sourceFacts,
-    providerSemantics: input.providerSemantics,
-    projectTypes: input.projectTypes,
-    sourceProfiles: input.sourceProfiles,
-    jsEnabled: input.jsEnabled,
-  });
-  return resolved.kind === "resolved" ? resolved.type : undefined;
-}
-
-function declaredOrInitializerType(
-  declaration: Node,
-  semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
-  ast: TargetSourceProgram["ast"],
-): Type | undefined {
-  const authored = ast.typeNode(declaration);
-  const initializer = Node_Initializer(ast, declaration);
-  return semantics.declarations.declaredValueType(declaration) ??
-    semantics.declarations.declaredType(declaration) ??
-    (authored === undefined ? undefined : semantics.types.authoredType(authored)) ??
-    (initializer === undefined ? undefined : semantics.types.expressionType(initializer));
-}
-
-function providerValueReferenceRole(node: Node, ast: TargetSourceProgram["ast"]): boolean {
-  const parent = ast.parent(node);
-  if (parent === undefined) return true;
-  if ((ast.is.IsCallExpression(parent) || ast.is.IsNewExpression(parent)) &&
-    Node_Expression(ast, parent) === node) return false;
-  if (ast.is.IsPropertyAccessExpression(parent)) return false;
-  return true;
-}
-
-function isRuntimeValueOccurrence(
-  node: Node,
-  input: MojoExecutableRegionAnalysisInput,
-): boolean {
-  if (!input.source.ast.is.IsIdentifier(node)) return true;
-  const reference = input.source.navigation.sourceReferenceFor(node);
-  if (reference === undefined) return true;
-  if (!input.indexedSourceUseDeclarations.has(reference.declaration)) {
-    input.indexedSourceUseDeclarations.add(reference.declaration);
-    for (const use of input.source.navigation.declarationUses(reference.declaration)) {
-      input.sourceValueOccurrenceKinds.set(
-        use.reference,
-        use.kind === "type-only" || use.kind === "source-linkage" ? "non-runtime" : "runtime",
-      );
-    }
-  }
-  return input.sourceValueOccurrenceKinds.get(node) === "runtime";
-}
-
-function typeDiagnostic(node: Node, reason: string): TargetDiagnostic {
-  return diagnostic(
-    "MOJO_TARGET_TYPE_UNSUPPORTED",
-    `Selected source type cannot be represented exactly in Mojo: ${reason}.`,
-    node,
-  );
 }

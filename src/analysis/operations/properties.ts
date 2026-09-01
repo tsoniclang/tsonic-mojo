@@ -16,6 +16,7 @@ import { substituteMojoTargetType } from "../../target-model/types/substitution.
 import { selectedProviderDeclarationIdentity } from "../../policy/operations/provider-selection.js";
 import type { MojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
 import { selectedMojoSourceProfileDeclarationIdentity } from "../../policy/operations/source-profile-selection.js";
+import { analyzeStaticProviderProperty } from "./static-provider-properties.js";
 
 export type MojoPropertyAnalysis =
   | { readonly kind: "resolved"; readonly selection: MojoPropertySelection; readonly expressionType: MojoTargetTypeRef }
@@ -208,6 +209,10 @@ export function analyzeMojoProviderProperty(
           }),
         };
   }
+  const staticProperty = selectedIdentity?.memberId === undefined
+    ? undefined
+    : analyzeStaticProviderProperty(source, selectedIdentity, context);
+  if (staticProperty !== undefined) return staticProperty;
   const receiverType = context.resolveType(source.receiver.type);
   if (receiverType === undefined) {
     return {

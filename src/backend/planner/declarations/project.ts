@@ -1,0 +1,292 @@
+import type {
+  MojoAnalyzedClass,
+  MojoAnalyzedEnum,
+  MojoAnalyzedFunction,
+  MojoAnalyzedInterface,
+} from "../../../analysis/program/model.js";
+import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
+import type {
+  MojoFunctionDeclaration,
+  MojoStatement,
+  MojoStructDeclaration,
+} from "../../target-ast/index.js";
+import { planMojoExpression } from "../expressions/value.js";
+import type { MojoPlanningContext } from "../program/context.js";
+import { planMojoFunctionStatements } from "../statements/structured.js";
+import { registerMojoTypeImports } from "../types/render.js";
+
+export function planMojoProjectFunction(
+  function_: MojoAnalyzedFunction,
+  context: MojoPlanningContext,
+  self?: MojoFunctionDeclaration["self"],
+): MojoFunctionDeclaration | undefined {
+  for (const parameter of function_.parameters) registerMojoTypeImports(parameter.type, context);
+  registerMojoTypeImports(function_.resultType, context);
+  const bodyStatements = planMojoFunctionStatements(function_, context);
+  if (bodyStatements === undefined) return undefined;
+  const statements = Object.freeze([
+    ...planLocationParameterPrelude(function_, context),
+    ...bodyStatements,
+  ]);
+  return Object.freeze({
+    kind: "function",
+    name: function_.name,
+    genericParameters: genericParameters(function_),
+    parameters: Object.freeze(function_.parameters.map((parameter) => Object.freeze({
+      name: parameter.name,
+      type: parameter.type,
+      convention: parameter.convention,
+      variadic: parameter.rest,
+      ...(parameter.optional && parameter.initializer === undefined
+        ? { defaultValue: Object.freeze({ kind: "none-literal" as const }) }
+        : {}),
+    }))),
+    resultType: function_.resultType,
+    asynchronous: function_.asynchronous,
+    raises: function_.raises,
+    statements,
+    ...(self === undefined ? {} : { self }),
+  });
+}
+
+export function planMojoProjectClass(
+  class_: MojoAnalyzedClass,
+  context: MojoPlanningContext,
+): readonly MojoStructDeclaration[] | undefined {
+  const genericParameters_ = genericParameters(class_);
+  const genericArguments = class_.typeParameters.map((parameter) => Object.freeze({
+    kind: "type" as const,
+    type: Object.freeze({ kind: "type-parameter" as const, name: parameter.name }),
+  }));
+  const stateType: MojoTargetTypeRef = Object.freeze({
+    kind: "target-named",
+    id: `${class_.targetType.kind === "target-named" ? class_.targetType.id : class_.name}:state`,
+    modulePath: Object.freeze([]),
+    name: class_.stateName,
+    ...(genericArguments.length === 0 ? {} : { genericArguments: Object.freeze(genericArguments) }),
+  });
+  const arcType: MojoTargetTypeRef = Object.freeze({
+    kind: "target-named",
+    id: "mojo.std.memory.ArcPointer",
+    modulePath: Object.freeze(["std", "memory"]),
+    name: "ArcPointer",
+    genericArguments: Object.freeze([{ kind: "type" as const, type: stateType }]),
+  });
+  registerMojoTypeImports(arcType, context);
+  for (const field of class_.fields) registerMojoTypeImports(field.type, context);
+  const state: MojoStructDeclaration = Object.freeze({
+    kind: "struct",
+    name: class_.stateName,
+    genericParameters: genericParameters_,
+    conformances: Object.freeze([]),
+    fields: Object.freeze(class_.fields.map((field) => Object.freeze({
+      name: field.name,
+      type: field.type,
+      compileTime: false,
+    }))),
+    methods: Object.freeze([]),
+    decorators: Object.freeze(["fieldwise_init"]),
+  });
+  const sourceConstructor = class_.constructors[0];
+  const fieldArguments = class_.fields.map((field) => {
+    const value = planMojoExpression(field.initializer, context, field.type);
+    return value === undefined ? undefined : Object.freeze({ value });
+  });
+  if (fieldArguments.some((argument) => argument === undefined)) return undefined;
+  const stateConstruction = Object.freeze({
+    kind: "construct" as const,
+    type: stateType,
+    arguments: Object.freeze(fieldArguments as NonNullable<typeof fieldArguments[number]>[]),
+  });
+  const arcConstruction = Object.freeze({
+    kind: "construct" as const,
+    type: arcType,
+    arguments: Object.freeze([{ value: stateConstruction }]),
+  });
+  const initializeState: MojoStatement = Object.freeze({
+    kind: "assignment",
+    operator: "=",
+    left: Object.freeze({
+      kind: "member",
+      receiver: Object.freeze({ kind: "path", path: "self" }),
+      name: "_state",
+    }),
+    right: arcConstruction,
+  });
+  let constructorStatements: readonly MojoStatement[] = Object.freeze([]);
+  if (sourceConstructor !== undefined) {
+    const planned = planMojoFunctionStatements(sourceConstructor, context);
+    if (planned === undefined) return undefined;
+    constructorStatements = Object.freeze([
+      ...planLocationParameterPrelude(sourceConstructor, context),
+      ...planned,
+    ]);
+  }
+  const constructor: MojoFunctionDeclaration = Object.freeze({
+    kind: "function",
+    name: "__init__",
+    genericParameters: Object.freeze([]),
+    parameters: Object.freeze((sourceConstructor?.parameters ?? []).map((parameter) => Object.freeze({
+      name: parameter.name,
+      type: parameter.type,
+      convention: parameter.convention,
+      variadic: parameter.rest,
+      ...(parameter.optional && parameter.initializer === undefined
+        ? { defaultValue: Object.freeze({ kind: "none-literal" as const }) }
+        : {}),
+    }))),
+    resultType: Object.freeze({ kind: "unit" }),
+    asynchronous: false,
+    raises: sourceConstructor?.raises === true,
+    self: "out self",
+    statements: Object.freeze([initializeState, ...constructorStatements]),
+  });
+  const methods: MojoFunctionDeclaration[] = [constructor, identityEqualityMethod(class_.targetType)];
+  for (const method of class_.methods) {
+    const planned = planMojoProjectFunction(method, context, method.static === true ? undefined : "self");
+    if (planned === undefined) return undefined;
+    methods.push(planned);
+  }
+  const wrapper: MojoStructDeclaration = Object.freeze({
+    kind: "struct",
+    name: class_.name,
+    genericParameters: genericParameters_,
+    conformances: Object.freeze([Object.freeze({
+      kind: "target-named",
+      id: "mojo.builtin.Copyable",
+      modulePath: Object.freeze([]),
+      name: "Copyable",
+    }), Object.freeze({
+      kind: "target-named",
+      id: "mojo.builtin.Equatable",
+      modulePath: Object.freeze([]),
+      name: "Equatable",
+    })]),
+    fields: Object.freeze([Object.freeze({
+      name: "_state",
+      type: arcType,
+      compileTime: false,
+    })]),
+    methods: Object.freeze(methods),
+  });
+  return Object.freeze([state, wrapper]);
+}
+
+export function planMojoProjectEnum(enum_: MojoAnalyzedEnum): MojoStructDeclaration {
+  const enumType = enum_.targetType;
+  const int64Type: MojoTargetTypeRef = Object.freeze({ kind: "source-primitive", name: "int64" });
+  return Object.freeze({
+    kind: "struct",
+    name: enum_.name,
+    genericParameters: Object.freeze([]),
+    conformances: Object.freeze([
+      Object.freeze({
+        kind: "target-named",
+        id: "mojo.builtin.Equatable",
+        modulePath: Object.freeze([]),
+        name: "Equatable",
+      }),
+      Object.freeze({
+        kind: "target-named",
+        id: "mojo.builtin.TrivialRegisterPassable",
+        modulePath: Object.freeze([]),
+        name: "TrivialRegisterPassable",
+      }),
+    ]),
+    fields: Object.freeze([
+      Object.freeze({ name: "value", type: int64Type, compileTime: false }),
+      ...enum_.members.map((member) => Object.freeze({
+        name: member.name,
+        type: enumType,
+        compileTime: true,
+        initializer: Object.freeze({
+          kind: "construct" as const,
+          type: enumType,
+          arguments: Object.freeze([Object.freeze({
+            value: Object.freeze({ kind: "number-literal" as const, text: String(member.value) }),
+          })]),
+        }),
+      })),
+    ]),
+    methods: Object.freeze([]),
+    decorators: Object.freeze(["fieldwise_init"]),
+  });
+}
+
+function identityEqualityMethod(owner: MojoTargetTypeRef): MojoFunctionDeclaration {
+  return Object.freeze({
+    kind: "function",
+    name: "__eq__",
+    genericParameters: Object.freeze([]),
+    parameters: Object.freeze([Object.freeze({
+      name: "other",
+      type: owner,
+      convention: "imm" as const,
+    })]),
+    resultType: Object.freeze({ kind: "source-primitive", name: "bool" }),
+    asynchronous: false,
+    raises: false,
+    self: "self",
+    statements: Object.freeze([Object.freeze({
+      kind: "return" as const,
+      expression: Object.freeze({
+        kind: "binary" as const,
+        operator: "is",
+        left: Object.freeze({
+          kind: "member" as const,
+          receiver: Object.freeze({ kind: "path" as const, path: "self" }),
+          name: "_state",
+        }),
+        right: Object.freeze({
+          kind: "member" as const,
+          receiver: Object.freeze({ kind: "path" as const, path: "other" }),
+          name: "_state",
+        }),
+      }),
+    })]),
+  });
+}
+
+function planLocationParameterPrelude(
+  function_: MojoAnalyzedFunction,
+  context: MojoPlanningContext,
+): readonly MojoStatement[] {
+  const statements: MojoStatement[] = [];
+  for (const parameter of function_.parameters) {
+    const storage = context.program.queries.locationStorage(parameter.declaration);
+    if (storage === undefined) continue;
+    const locationType: MojoTargetTypeRef = Object.freeze({
+      kind: "target-named",
+      id: "tsonic.mojo.runtime.Location",
+      modulePath: Object.freeze(["tsonic_runtime"]),
+      name: "Location",
+      genericArguments: Object.freeze([Object.freeze({ kind: "type", type: parameter.type })]),
+    });
+    registerMojoTypeImports(locationType, context);
+    statements.push(Object.freeze({
+      kind: "variable",
+      name: storage.name,
+      type: locationType,
+      initializer: Object.freeze({
+        kind: "construct",
+        type: locationType,
+        arguments: Object.freeze([Object.freeze({
+          value: Object.freeze({ kind: "path", path: parameter.name }),
+        })]),
+      }),
+    }));
+  }
+  return Object.freeze(statements);
+}
+
+function genericParameters(
+  declaration: Pick<MojoAnalyzedFunction | MojoAnalyzedClass | MojoAnalyzedInterface, "typeParameters">,
+) {
+  return Object.freeze(declaration.typeParameters.map((parameter) => Object.freeze({
+    kind: "type" as const,
+    name: parameter.name,
+    position: "positional-or-keyword" as const,
+    variadic: false,
+    constraints: parameter.constraints,
+  })));
+}

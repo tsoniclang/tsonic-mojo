@@ -4,7 +4,10 @@ import type {
   TargetPlanningSourceNavigation,
   TargetSourceSyntaxProgram,
 } from "@tsonic/target-api/analysis";
-import type { MojoProviderSemantics } from "../../providers/packages/model.js";
+import type {
+  MojoProviderBinaryEpilogue,
+  MojoProviderSemantics,
+} from "../../providers/packages/model.js";
 import type { MojoTargetConfiguration } from "../../target-model/configuration/model.js";
 import type {
   MojoCallArgumentPosition,
@@ -248,6 +251,12 @@ export type MojoPropertySelection =
       readonly kind: "provider-constant";
       readonly operation: MojoSelectedProviderOperation;
       readonly readResultConversion: MojoValueConversion;
+    }
+  | {
+      readonly kind: "provider-static";
+      readonly readOperation?: MojoSelectedProviderOperation;
+      readonly writeOperation?: MojoSelectedProviderOperation;
+      readonly readResultConversion?: MojoValueConversion;
     };
 
 export interface MojoValueSelection {
@@ -433,7 +442,7 @@ export type MojoCallSelection =
   | {
       readonly kind: "callable";
       readonly callee: Node;
-      readonly callableType: Extract<MojoTargetTypeRef, { readonly kind: "function" }>;
+      readonly callableType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
       readonly arguments: readonly MojoAnalyzedCallArgument[];
       readonly resultType: MojoTargetTypeRef;
       readonly resultConversion: MojoValueConversion;
@@ -443,7 +452,8 @@ export type MojoCallSelection =
 export interface MojoCallableCapture {
   readonly declaration: Node;
   readonly name: string;
-  readonly convention: "imm" | "mut";
+  readonly type: MojoTargetTypeRef;
+  readonly storage: "value" | "location";
 }
 
 export interface MojoCallableExpressionSelection {
@@ -453,7 +463,7 @@ export interface MojoCallableExpressionSelection {
   readonly resultType: MojoTargetTypeRef;
   readonly body: Node;
   readonly raises: boolean;
-  readonly callableType: Extract<MojoTargetTypeRef, { readonly kind: "function" }>;
+  readonly callableType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
 }
 
 export type MojoBindingProjection =
@@ -505,16 +515,28 @@ export type MojoObjectLiteralContribution =
       }[];
     };
 
-export interface MojoObjectLiteralSelection {
-  readonly kind: "interface";
-  readonly interface: MojoAnalyzedInterface;
-  readonly targetType: MojoTargetTypeRef;
-  readonly fields: readonly {
-    readonly field: MojoAnalyzedInterfaceField;
-    readonly fieldType: MojoTargetTypeRef;
-  }[];
-  readonly contributions: readonly MojoObjectLiteralContribution[];
-}
+export type MojoObjectLiteralSelection =
+  | {
+      readonly kind: "interface";
+      readonly interface: MojoAnalyzedInterface;
+      readonly targetType: MojoTargetTypeRef;
+      readonly fields: readonly {
+        readonly field: MojoAnalyzedInterfaceField;
+        readonly fieldType: MojoTargetTypeRef;
+      }[];
+      readonly contributions: readonly MojoObjectLiteralContribution[];
+    }
+  | {
+      readonly kind: "provider-record";
+      readonly targetType: MojoTargetTypeRef;
+      readonly fields: readonly {
+        readonly element: Node;
+        readonly value: Node;
+        readonly providerMemberId: string;
+        readonly targetName: string;
+        readonly storageType: MojoTargetTypeRef;
+      }[];
+    };
 
 export interface MojoProgramQueries {
   bindingName(referenceOrDeclaration: Node): string | undefined;
@@ -572,5 +594,6 @@ export interface MojoTargetProgram {
   readonly declarations: readonly MojoAnalyzedDeclaration[];
   readonly queries: MojoProgramQueries;
   readonly runtimePackages: readonly MojoRuntimePackagePlan[];
+  readonly binaryEpilogues: readonly MojoProviderBinaryEpilogue[];
   readonly reservedNames: readonly string[];
 }

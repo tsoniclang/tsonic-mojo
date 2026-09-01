@@ -6,7 +6,7 @@ import type {
 } from "@tsonic/tsts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
-import type { MojoCallSelection } from "../../analysis/program/model.js";
+import type { MojoCallSelection } from "../program/model.js";
 
 export type MojoTypedLocationAnalysis =
   | { readonly kind: "not-typed-location" }

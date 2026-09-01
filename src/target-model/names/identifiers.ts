@@ -15,3 +15,10 @@ export function normalizeMojoIdentifier(sourceName: string): string {
   const nonempty = prefixed.length === 0 ? "value" : prefixed;
   return mojoKeywords.has(nonempty) ? `${nonempty}_` : nonempty;
 }
+
+export function normalizeMojoPackageDeclarationIdentifier(
+  sourceName: string,
+): string {
+  const normalized = normalizeMojoIdentifier(sourceName);
+  return normalized === "main" ? "tsonic_main" : normalized;
+}

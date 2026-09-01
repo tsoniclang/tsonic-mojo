@@ -6,6 +6,7 @@ import {
   appendMojoPlanningDiagnostic,
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
+import { orderMojoValues } from "../expressions/support.js";
 import type { MojoValuePlanner } from "../expressions/support.js";
 import { registerMojoTypeImports } from "../types/render.js";
 import { withMojoValue } from "../expressions/value-plan.js";
@@ -17,7 +18,7 @@ export function planMojoProjectObjectLiteral(
   planValue: MojoValuePlanner,
 ): MojoValuePlan | undefined {
   const selection = context.program.queries.objectLiteralSelection(node);
-  if (selection === undefined) return undefined;
+  if (selection?.kind !== "interface") return undefined;
   registerMojoTypeImports(selection.targetType, context);
   const before: MojoStatement[] = [];
   const values = new Map<Node, MojoExpression>();
@@ -77,6 +78,37 @@ export function planMojoProjectObjectLiteral(
     kind: "construct",
     type: selection.targetType,
     arguments: Object.freeze(arguments_ as { readonly value: MojoExpression }[]),
+  }));
+}
+
+export function planMojoProviderRecordLiteral(
+  node: Node,
+  context: MojoPlanningContext,
+  planValue: MojoValuePlanner,
+): MojoValuePlan | undefined {
+  const selection = context.program.queries.objectLiteralSelection(node);
+  if (selection?.kind !== "provider-record") return undefined;
+  registerMojoTypeImports(selection.targetType, context);
+  const plans = selection.fields.map((field) => ({
+    plan: planValue(field.value, context, field.storageType),
+    field,
+  }));
+  if (plans.some(({ plan }) => plan === undefined)) return undefined;
+  const ordered = orderMojoValues(
+    plans.map(({ plan, field }) => Object.freeze({
+      plan: plan!,
+      type: field.storageType,
+      role: "provider_record_field",
+    })),
+    context,
+  );
+  return withMojoValue(ordered.before, Object.freeze({
+    kind: "construct",
+    type: selection.targetType,
+    arguments: Object.freeze(selection.fields.map((field, index) => Object.freeze({
+      name: field.targetName,
+      value: ordered.values[index]!,
+    }))),
   }));
 }
 

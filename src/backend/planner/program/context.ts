@@ -3,6 +3,7 @@ import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { MojoTargetProgram } from "../../../analysis/program/model.js";
 import type { MojoSourceModuleDefinition } from "../../../analysis/source-modules/model.js";
 import type { MojoImportDeclaration } from "../../target-ast/index.js";
+import type { MojoDeclaration, MojoExpression } from "../../target-ast/index.js";
 
 export interface MojoOutputPlanningContext {
   readonly program: MojoTargetProgram;
@@ -14,7 +15,15 @@ export interface MojoPlanningContext {
   readonly diagnostics: TargetDiagnostic[];
   readonly imports: Map<string, MojoImportDeclaration>;
   readonly usedNames: Set<string>;
-  syntheticNameCounter: number;
+  readonly syntheticNameState: { value: number };
+  readonly syntheticDeclarations: MojoDeclaration[];
+  readonly callableArtifactNames: WeakMap<Node, string>;
+  readonly bindingOverrides: ReadonlyMap<Node, MojoBindingPlanOverride>;
+}
+
+export interface MojoBindingPlanOverride {
+  readonly expression: MojoExpression;
+  readonly storage: "value" | "location";
 }
 
 export function createMojoOutputPlanningContext(
@@ -33,8 +42,26 @@ export function createMojoPlanningContext(
     diagnostics: [],
     imports: new Map<string, MojoImportDeclaration>(),
     usedNames: new Set(program.reservedNames),
-    syntheticNameCounter: 0,
+    syntheticNameState: { value: 0 },
+    syntheticDeclarations: [],
+    callableArtifactNames: new WeakMap<Node, string>(),
+    bindingOverrides: new Map<Node, MojoBindingPlanOverride>(),
   };
+}
+
+export function withMojoBindingOverrides(
+  context: MojoPlanningContext,
+  bindingOverrides: ReadonlyMap<Node, MojoBindingPlanOverride>,
+): MojoPlanningContext {
+  return Object.freeze({ ...context, bindingOverrides });
+}
+
+export function mojoBindingPlanOverride(
+  node: Node,
+  context: MojoPlanningContext,
+): MojoBindingPlanOverride | undefined {
+  const reference = context.program.sourceNavigation.sourceReferenceFor(node);
+  return context.bindingOverrides.get(reference?.declaration ?? node);
 }
 
 export function allocateMojoSyntheticName(
@@ -42,8 +69,8 @@ export function allocateMojoSyntheticName(
   role: string,
 ): string {
   while (true) {
-    context.syntheticNameCounter += 1;
-    const candidate = `__tsonic_${role}_${context.syntheticNameCounter}`;
+    context.syntheticNameState.value += 1;
+    const candidate = `__tsonic_${role}_${context.syntheticNameState.value}`;
     if (context.usedNames.has(candidate)) continue;
     context.usedNames.add(candidate);
     return candidate;

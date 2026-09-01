@@ -1,4 +1,3 @@
-import { pointerOperationFactKey } from "@tsonic/tsts";
 import type { Node, SourceFile } from "@tsonic/tsts";
 import {
   rejectedTargetStage,
@@ -13,13 +12,12 @@ import {
   targetSourceSyntaxProgram,
 } from "@tsonic/target-api/analysis";
 import { createMojoNameAllocator } from "../names/allocator.js";
-import { analyzeMojoFunctionSignature } from "../callables/signatures.js";
+import {
+  normalizeMojoPackageDeclarationIdentifier,
+} from "../../target-model/names/identifiers.js";
 import {
   analyzeAndSealMojoCallableExpression,
 } from "../callables/expressions.js";
-import { analyzeMojoClass } from "../declarations/classes.js";
-import { analyzeMojoEnum } from "../declarations/enums.js";
-import { analyzeMojoInterface } from "../declarations/interfaces.js";
 import { createMojoConversionIndex } from "../../policy/conversions/selection.js";
 import { recordMojoExecutableRegionConversionUses } from "../conversions/uses.js";
 import { analyzeMojoRuntimePackages } from "../runtime/references.js";
@@ -29,11 +27,8 @@ import {
   propagateRaisingEffects,
 } from "./effects.js";
 import type {
-  MojoAnalyzedClass,
   MojoAnalyzedDeclaration,
-  MojoAnalyzedEnum,
   MojoAnalyzedFunction,
-  MojoAnalyzedInterface,
   MojoAnalyzedProjectProperty,
   MojoBindingPatternSelection,
   MojoCallSelection,
@@ -62,7 +57,8 @@ import {
 import type { MojoAnalyzedModuleRegionFacts } from "./module-effects.js";
 import { createMojoProgramQueries } from "./queries.js";
 import { collectMojoDeclarationDrafts } from "./declaration-drafts.js";
-import { walkSourceTree } from "./traversal.js";
+import { collectMojoAddressedStorageDeclarations } from "./addressed-storage.js";
+import { analyzeMojoProjectDeclarations } from "./declarations.js";
 
 export function analyzeMojoTargetProgram(
   request: MojoTargetAnalysisRequest,
@@ -108,10 +104,6 @@ export function analyzeMojoTargetProgram(
   const bindingPatternSelections = new WeakMap<Node, MojoBindingPatternSelection>();
   const analyzedCallableExpressions = new WeakSet<Node>();
   const conversions = createMojoConversionIndex();
-  const functionByDeclaration = new WeakMap<Node, MojoAnalyzedFunction>();
-  const classByDeclaration = new WeakMap<Node, MojoAnalyzedClass>();
-  const classByTypeId = new Map<string, MojoAnalyzedClass>();
-  const interfaceByTypeId = new Map<string, MojoAnalyzedInterface>();
   const fieldByDeclaration = new WeakMap<Node, MojoAnalyzedProjectProperty>();
   const moduleBindingByDeclaration = new WeakMap<
     Node,
@@ -130,11 +122,17 @@ export function analyzeMojoTargetProgram(
   const createNameAllocator = (): ((name: string) => string) =>
     createMojoNameAllocator([], (name) => reservedNames.add(name));
   const globalNamesBySourceFile = new WeakMap<SourceFile, (name: string) => string>();
-  const unownedGlobalNames = createNameAllocator();
+  const createGlobalNameAllocator = (): ((name: string) => string) =>
+    createMojoNameAllocator(
+      [],
+      (name) => reservedNames.add(name),
+      normalizeMojoPackageDeclarationIdentifier,
+    );
+  const unownedGlobalNames = createGlobalNameAllocator();
   const globalNames = (sourceFile: SourceFile): ((name: string) => string) => {
     const existing = globalNamesBySourceFile.get(sourceFile);
     if (existing !== undefined) return existing;
-    const created = createNameAllocator();
+    const created = createGlobalNameAllocator();
     globalNamesBySourceFile.set(sourceFile, created);
     return created;
   };
@@ -211,131 +209,29 @@ export function analyzeMojoTargetProgram(
     diagnostics,
   });
 
-  const functions: MojoAnalyzedFunction[] = [];
-  const classes: MojoAnalyzedClass[] = [];
-  const interfaces: MojoAnalyzedInterface[] = [];
-  const enums: MojoAnalyzedEnum[] = [];
-  for (const draft of drafts.functions) {
-    const function_ = analyzeMojoFunctionSignature({
-      source: input.source,
-      providerSemantics,
-      projectTypes,
-      sourceProfiles,
-      jsEnabled,
-      declaration: draft.declaration,
-      sourceFile: draft.sourceFile,
-      name: draft.name,
-      body: draft.body,
-      allocateLocalName: draft.localNames,
-      bindingNames,
-      bindingTypes,
-      diagnostics,
-    });
-    if (function_ === undefined) continue;
-    functions.push(function_);
-    functionByDeclaration.set(draft.declaration, function_);
-    for (const parameter of function_.parameters) {
-      bindingSourceFiles.set(parameter.declaration, draft.sourceFile);
-    }
-    allocateMojoLocalBindings(
-      draft.body,
-      draft.localNames,
-      bindingNames,
-      ast,
-      diagnostics,
-      bindingSourceFiles,
-    );
-  }
-
-  for (const draft of drafts.interfaces) {
-    const analyzed = analyzeMojoInterface({
-      source: input.source,
-      providerSemantics,
-      projectTypes,
-      sourceProfiles,
-      jsEnabled,
-      declaration: draft.declaration,
-      sourceFile: draft.sourceFile,
-      name: draft.name,
-      stateName: draft.stateName,
-      bindingNames,
-      bindingTypes,
-      diagnostics,
-      createNameAllocator,
-    });
-    if (analyzed === undefined) continue;
-    interfaces.push(analyzed);
-    bindingTypes.set(draft.declaration, analyzed.targetType);
-    if (analyzed.targetType.kind === "target-named") {
-      interfaceByTypeId.set(analyzed.targetType.id, analyzed);
-    }
-    for (const field of analyzed.fields) {
-      bindingSourceFiles.set(field.declaration, draft.sourceFile);
-      fieldByDeclaration.set(field.declaration, field);
-    }
-  }
-
-  for (const draft of drafts.classes) {
-    const analyzed = analyzeMojoClass({
-      source: input.source,
-      providerSemantics,
-      projectTypes,
-      sourceProfiles,
-      jsEnabled,
-      declaration: draft.declaration,
-      sourceFile: draft.sourceFile,
-      name: draft.name,
-      stateName: draft.stateName,
-      bindingNames,
-      bindingTypes,
-      diagnostics,
-      createNameAllocator,
-      allocateLocalBindings(body, allocate) {
-        allocateMojoLocalBindings(body, allocate, bindingNames, ast, diagnostics, bindingSourceFiles);
-      },
-    });
-    if (analyzed === undefined) continue;
-    for (const field of analyzed.fields) bindingSourceFiles.set(field.declaration, draft.sourceFile);
-    for (const callable of analyzed.callables) {
-      bindingSourceFiles.set(callable.declaration, draft.sourceFile);
-      for (const parameter of callable.parameters) {
-        bindingSourceFiles.set(parameter.declaration, draft.sourceFile);
-      }
-    }
-    classes.push(analyzed.class_);
-    classByDeclaration.set(draft.declaration, analyzed.class_);
-    if (analyzed.class_.targetType.kind === "target-named") {
-      classByTypeId.set(analyzed.class_.targetType.id, analyzed.class_);
-    }
-    for (const field of analyzed.fields) fieldByDeclaration.set(field.declaration, field);
-    for (const callable of analyzed.callables) {
-      functions.push(callable);
-      functionByDeclaration.set(callable.declaration, callable);
-    }
-  }
-
-  for (const draft of drafts.enums) {
-    const analyzed = analyzeMojoEnum({
-      source: input.source,
-      projectTypes,
-      declaration: draft.declaration,
-      sourceFile: draft.sourceFile,
-      name: draft.name,
-      allocateMemberName: createNameAllocator(),
-      bindName(declaration, name) {
-        bindingNames.set(declaration, name);
-        bindingSourceFiles.set(declaration, draft.sourceFile);
-      },
-      diagnostics,
-    });
-    if (analyzed === undefined) continue;
-    enums.push(analyzed);
-    bindingTypes.set(draft.declaration, analyzed.targetType);
-    for (const member of analyzed.members) {
-      fieldByDeclaration.set(member.declaration, member);
-      bindingTypes.set(member.declaration, analyzed.targetType);
-    }
-  }
+  const {
+    functions,
+    classes,
+    interfaces,
+    enums,
+    functionByDeclaration,
+    classByDeclaration,
+    classByTypeId,
+    interfaceByTypeId,
+  } = analyzeMojoProjectDeclarations({
+    source: input.source,
+    providerSemantics,
+    projectTypes,
+    sourceProfiles,
+    jsEnabled,
+    drafts,
+    bindingNames,
+    bindingSourceFiles,
+    bindingTypes,
+    fieldByDeclaration,
+    createNameAllocator,
+    diagnostics,
+  });
 
   const locationNames = createNameAllocator();
   for (const declaration of addressedStorageDeclarations) {
@@ -356,6 +252,13 @@ export function analyzeMojoTargetProgram(
       sourceFile,
       ...(owner === undefined ? {} : { owner }),
       allocateLocalName: createNameAllocator(),
+      ensureLocationStorage(declaration, bindingName) {
+        const existing = locationStorageNames.get(declaration);
+        if (existing !== undefined) return existing;
+        const name = locationNames(`${bindingName}_location`);
+        locationStorageNames.set(declaration, name);
+        return name;
+      },
       moduleBindingByDeclaration,
       selections: callableExpressionSelections,
       analyzed: analyzedCallableExpressions,
@@ -621,46 +524,7 @@ export function analyzeMojoTargetProgram(
     declarations: Object.freeze(declarations),
     queries,
     runtimePackages: analyzeMojoRuntimePackages(input.runtimeReferences),
+    binaryEpilogues: providerSemantics.binaryEpilogues,
     reservedNames: Object.freeze([...reservedNames].sort((left, right) => left.localeCompare(right, "en"))),
   }));
-}
-
-function collectMojoAddressedStorageDeclarations(
-  sourceFiles: readonly SourceFile[],
-  source: import("@tsonic/target-api/source").TargetSourceProgram,
-): ReadonlySet<Node> {
-  const declarations = new Set<Node>();
-  for (const sourceFile of sourceFiles) {
-    walkSourceTree(sourceFile, source.ast, (node): void => {
-      if (!source.ast.is.IsCallExpression(node)) return;
-      const fact = source.sourceFacts.getFact(node, pointerOperationFactKey);
-      if (fact?.operation !== "address-of" || fact.call !== node ||
-        fact.storageDeclaration === undefined ||
-        !source.ast.is.IsIdentifier(fact.storageExpression)) return;
-      const reference = source.navigation.sourceReferenceFor(fact.storageExpression);
-      if (reference?.project !== true || reference.declaration !== fact.storageDeclaration ||
-        !isFunctionLocalStorageDeclaration(fact.storageDeclaration, source.ast)) return;
-      declarations.add(fact.storageDeclaration);
-    });
-  }
-  return declarations;
-}
-
-function isFunctionLocalStorageDeclaration(
-  declaration: Node,
-  ast: import("@tsonic/tsts").AstReader,
-): boolean {
-  if (!ast.is.IsVariableDeclaration(declaration) && !ast.is.IsParameterDeclaration(declaration)) {
-    return false;
-  }
-  let owner = ast.parent(declaration);
-  while (owner !== undefined) {
-    if (ast.is.IsFunctionDeclaration(owner) || ast.is.IsMethodDeclaration(owner) ||
-      ast.is.IsConstructorDeclaration(owner) || ast.is.IsGetAccessorDeclaration(owner) ||
-      ast.is.IsSetAccessorDeclaration(owner)) return true;
-    if (ast.is.IsArrowFunction(owner) || ast.is.IsFunctionExpression(owner) ||
-      ast.is.IsSourceFile(owner)) return false;
-    owner = ast.parent(owner);
-  }
-  return false;
 }

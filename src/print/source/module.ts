@@ -131,6 +131,10 @@ function printStatement(
       const initializer = statement.initializer === undefined ? "" : ` = ${printExpression(statement.initializer, modulePath)}`;
       return [`${indent}var ${statement.name}${type}${initializer}`];
     }
+    case "tuple-variable": {
+      const names = `${statement.names.join(", ")}${statement.names.length === 1 ? "," : ""}`;
+      return [`${indent}var (${names}) = ${printExpression(statement.initializer, modulePath)}`];
+    }
     case "assignment": return [`${indent}${printExpression(statement.left, modulePath)} ${statement.operator} ${printExpression(statement.right, modulePath)}`];
     case "expression": return [`${indent}${printExpression(statement.expression, modulePath)}`];
     case "if": {

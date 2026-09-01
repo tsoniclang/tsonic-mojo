@@ -46,14 +46,15 @@ export type MojoTargetTypeRef =
   | { readonly kind: "compiler-expression"; readonly expression: string }
   | { readonly kind: "reference"; readonly origin: string; readonly value: MojoTargetTypeRef }
   | {
+      readonly kind: "callable";
+      readonly parameters: readonly MojoTargetCallableParameter[];
+      readonly result: MojoTargetTypeRef;
+      readonly raises: boolean;
+    }
+  | {
       readonly kind: "function";
       readonly genericParameters: readonly MojoProviderTargetGenericParameter[];
-      readonly parameters: readonly {
-        readonly name?: string;
-        readonly convention: MojoCallArgumentConvention;
-        readonly passing: "plain" | "consume";
-        readonly type: MojoTargetTypeRef;
-      }[];
+      readonly parameters: readonly MojoTargetCallableParameter[];
       readonly result: MojoTargetTypeRef;
       readonly asynchronous: boolean;
       readonly thin: boolean;
@@ -84,6 +85,13 @@ export type MojoCallArgumentConvention =
   | "ref"
   | "out"
   | "deinit";
+
+export interface MojoTargetCallableParameter {
+  readonly name?: string;
+  readonly convention: MojoCallArgumentConvention;
+  readonly passing: "plain" | "consume";
+  readonly type: MojoTargetTypeRef;
+}
 
 export type MojoCallArgumentPosition =
   | "positional"

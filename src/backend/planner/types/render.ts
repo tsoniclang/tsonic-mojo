@@ -64,6 +64,11 @@ export function registerMojoTypeImports(type: MojoTargetTypeRef, context: MojoPl
     case "reference":
       registerMojoTypeImports(type.value, context);
       return;
+    case "callable":
+      registerMojoModuleImport(context, ["tsonic_runtime"]);
+      for (const parameter of type.parameters) registerMojoTypeImports(parameter.type, context);
+      registerMojoTypeImports(type.result, context);
+      return;
     case "function":
       for (const parameter of type.genericParameters) {
         for (const constraint of parameter.constraints) registerMojoTypeImports(constraint, context);
@@ -130,7 +135,7 @@ export function mojoTypeName(
       : `Coroutine[${requiredTypeName(type.output, currentModulePath)}, ...]`;
     case "optional": return `Optional[${requiredTypeName(type.value, currentModulePath)}]`;
     case "union": return `Variant[${type.members.map((member) => requiredTypeName(member, currentModulePath)).join(", ")}]`;
-    case "tuple": return `(${type.elements.map((element) => requiredTypeName(element, currentModulePath)).join(", ")})`;
+    case "tuple": return `Tuple[${type.elements.map((element) => requiredTypeName(element, currentModulePath)).join(", ")}]`;
     case "associated": {
       const base = `${requiredTypeName(type.owner, currentModulePath)}.${type.memberPath.join(".")}`;
       return type.genericArguments.length === 0
@@ -139,6 +144,13 @@ export function mojoTypeName(
     }
     case "compiler-expression": return type.expression;
     case "reference": return `ref[${type.origin}] ${requiredTypeName(type.value, currentModulePath)}`;
+    case "callable": {
+      const argumentsType = `Tuple[${type.parameters.map((parameter) =>
+        requiredTypeName(parameter.type, currentModulePath)).join(", ")}]`;
+      const resultType = mojoTypeName(type.result, currentModulePath) ?? "NoneType";
+      const name = type.raises ? "RaisingCallable" : "Callable";
+      return `tsonic_runtime.${name}[${argumentsType}, ${resultType}]`;
+    }
     case "function": {
       const generics = mojoGenericParametersText(type.genericParameters, currentModulePath);
       const parameters = type.parameters.map((parameter) =>
