@@ -27,6 +27,7 @@ import type {
   MojoIterationSelection,
   MojoObjectLiteralSelection,
   MojoPropertySelection,
+  MojoTypeTestSelection,
   MojoValueSelection,
 } from "./model.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
@@ -79,6 +80,7 @@ export function validateMojoFunctionSyntax(
   elements: WeakMap<Node, MojoElementSelection>,
   iterations: WeakMap<Node, MojoIterationSelection>,
   values: WeakMap<Node, MojoValueSelection>,
+  typeTests: WeakMap<Node, MojoTypeTestSelection>,
   objectLiterals: WeakMap<Node, MojoObjectLiteralSelection>,
   callableExpressions: WeakMap<Node, MojoCallableExpressionSelection>,
   bindingPatterns: WeakMap<Node, MojoBindingPatternSelection>,
@@ -205,6 +207,17 @@ export function validateMojoFunctionSyntax(
     if (ast.is.IsBinaryExpression(expression)) {
       const binary = ast.as.AsBinaryExpression(expression);
       const operator = ast.kindName(binary?.OperatorToken);
+      if (operator === "KindInstanceOfKeyword") {
+        if (typeTests.get(expression) === undefined) {
+          diagnostics.push(diagnostic(
+            "MOJO_INSTANCEOF_SELECTION_UNRESOLVED",
+            "Checked instanceof requires one exact sealed Mojo project type-test selection.",
+            expression,
+          ));
+        }
+        validateExpression(binary?.Left);
+        return;
+      }
       if (!supportedBinaryOperators.has(operator)) {
         diagnostics.push(diagnostic(
           "MOJO_BINARY_OPERATOR_UNSUPPORTED",

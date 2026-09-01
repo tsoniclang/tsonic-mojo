@@ -42,6 +42,11 @@ export type MojoExpression =
   | { readonly kind: "member"; readonly receiver: MojoExpression; readonly name: string }
   | { readonly kind: "element"; readonly receiver: MojoExpression; readonly index: MojoExpression }
   | {
+      readonly kind: "type-element";
+      readonly receiver: MojoExpression;
+      readonly type: MojoTargetTypeRef;
+    }
+  | {
       readonly kind: "slice";
       readonly receiver: MojoExpression;
       readonly start?: MojoExpression;

@@ -44,6 +44,8 @@ import type {
   MojoPropertySelection,
   MojoTargetAnalysisRequest,
   MojoTargetProgram,
+  MojoTypeTestSelection,
+  MojoValueRefinementSelection,
   MojoValueSelection,
 } from "./model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
@@ -99,6 +101,8 @@ export function analyzeMojoTargetProgram(
   const elementSelections = new WeakMap<Node, MojoElementSelection>();
   const iterationSelections = new WeakMap<Node, MojoIterationSelection>();
   const valueSelections = new WeakMap<Node, MojoValueSelection>();
+  const valueRefinements = new WeakMap<Node, MojoValueRefinementSelection>();
+  const typeTestSelections = new WeakMap<Node, MojoTypeTestSelection>();
   const objectLiteralSelections = new WeakMap<Node, MojoObjectLiteralSelection>();
   const callableExpressionSelections = new WeakMap<Node, MojoCallableExpressionSelection>();
   const bindingPatternSelections = new WeakMap<Node, MojoBindingPatternSelection>();
@@ -375,6 +379,8 @@ export function analyzeMojoTargetProgram(
     elementSelections,
     iterationSelections,
     valueSelections,
+    valueRefinements,
+    typeTestSelections,
     objectLiteralSelections,
     bindingPatternSelections,
     analyzeCallableExpression,
@@ -559,6 +565,7 @@ export function analyzeMojoTargetProgram(
       elementSelections,
       iterationSelections,
       valueSelections,
+      typeTestSelections,
       objectLiteralSelections,
       callableExpressionSelections,
       bindingPatternSelections,
@@ -580,6 +587,8 @@ export function analyzeMojoTargetProgram(
     callSelections,
     propertySelections,
     valueSelections,
+    valueRefinements,
+    typeTestSelections,
     elementSelections,
     iterationSelections,
     objectLiteralSelections,

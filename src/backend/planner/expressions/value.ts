@@ -28,7 +28,7 @@ import {
   planMojoElement,
   planMojoProperty,
 } from "./operations.js";
-import { planMojoLeafExpression } from "./leaves.js";
+import { applyValueRefinement, planMojoLeafExpression } from "./leaves.js";
 import {
   applyMojoConversion,
   isJsArray,
@@ -391,6 +391,8 @@ function planParenthesized(node: Node, context: MojoPlanningContext): MojoValueP
 
 function planBinary(node: Node, context: MojoPlanningContext): MojoValuePlan | undefined {
   const { ast } = context.program.source;
+  const typeTest = context.program.queries.typeTestSelection(node);
+  if (typeTest !== undefined) return planMojoTypeTest(typeTest, context);
   const leftNode = BinaryExpression_Left(ast, node);
   const rightNode = BinaryExpression_Right(ast, node);
   const operatorKind = ast.kindName(ast.as.AsBinaryExpression(node)?.OperatorToken);
@@ -594,9 +596,52 @@ function planAwait(node: Node, context: MojoPlanningContext): MojoValuePlan | un
 
 function planErasedExpression(node: Node, context: MojoPlanningContext): MojoValuePlan | undefined {
   const inner = Node_Expression(context.program.source.ast, node);
-  return inner === undefined
+  if (inner === undefined) return undefined;
+  const refinement = context.program.queries.valueRefinement(node);
+  const plan = planMojoValue(
+    inner,
+    context,
+    refinement === undefined ? context.program.queries.expressionType(node) : undefined,
+  );
+  return plan === undefined
     ? undefined
-    : planMojoValue(inner, context, actualExpressionType(node, context));
+    : withMojoValue(
+        plan.before,
+        applyValueRefinement(plan.value, refinement, context),
+      );
+}
+
+function planMojoTypeTest(
+  selection: import("../../../analysis/program/model.js").MojoTypeTestSelection,
+  context: MojoPlanningContext,
+): MojoValuePlan | undefined {
+  const operand = planMojoValue(selection.operand, context);
+  if (operand === undefined) return undefined;
+  if (selection.kind === "constant") {
+    return withMojoValue(
+      Object.freeze([
+        ...operand.before,
+        Object.freeze({ kind: "expression" as const, expression: operand.value }),
+      ]),
+      Object.freeze({ kind: "bool-literal", value: selection.value }),
+    );
+  }
+  registerMojoTypeImports(selection.sourceType, context);
+  if (selection.kind === "optional-presence") {
+    return withMojoValue(operand.before, Object.freeze({
+      kind: "construct",
+      type: Object.freeze({ kind: "source-primitive", name: "bool" }),
+      arguments: Object.freeze([{ value: operand.value }]),
+    }));
+  }
+  registerMojoTypeImports(selection.testedType, context);
+  return withMojoValue(operand.before, Object.freeze({
+    kind: "method-call",
+    receiver: operand.value,
+    name: "isa",
+    genericArguments: Object.freeze([Object.freeze({ kind: "type", type: selection.testedType })]),
+    arguments: Object.freeze([]),
+  }));
 }
 
 function planDictionaryKey(
@@ -621,10 +666,6 @@ function prefixOperator(kind: string | undefined): string | undefined {
     case "KindTildeToken": return "~";
     default: return undefined;
   }
-}
-
-function actualExpressionType(node: Node, context: MojoPlanningContext): MojoTargetTypeRef | undefined {
-  return context.program.queries.expressionType(node);
 }
 
 function binaryOperandTypes(

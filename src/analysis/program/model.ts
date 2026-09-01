@@ -256,6 +256,36 @@ export interface MojoValueSelection {
   readonly resultConversion: MojoValueConversion;
 }
 
+export type MojoValueRefinementSelection =
+  | {
+      readonly kind: "optional-present";
+      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "optional" }>;
+      readonly resultType: MojoTargetTypeRef;
+    }
+  | {
+      readonly kind: "union-member";
+      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
+      readonly resultType: MojoTargetTypeRef;
+    };
+
+export type MojoTypeTestSelection =
+  | {
+      readonly kind: "constant";
+      readonly value: boolean;
+      readonly operand: Node;
+    }
+  | {
+      readonly kind: "optional-presence";
+      readonly operand: Node;
+      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "optional" }>;
+    }
+  | {
+      readonly kind: "union-member";
+      readonly operand: Node;
+      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
+      readonly testedType: MojoTargetTypeRef;
+    };
+
 export type MojoElementSelection = {
   readonly kind: "native";
   readonly receiver: Node;
@@ -496,6 +526,8 @@ export interface MojoProgramQueries {
   callSelection(call: Node): MojoCallSelection | undefined;
   propertySelection(access: Node): MojoPropertySelection | undefined;
   valueSelection(expression: Node): MojoValueSelection | undefined;
+  valueRefinement(expression: Node): MojoValueRefinementSelection | undefined;
+  typeTestSelection(expression: Node): MojoTypeTestSelection | undefined;
   elementSelection(access: Node): MojoElementSelection | undefined;
   iterationSelection(statement: Node): MojoIterationSelection | undefined;
   objectLiteralSelection(expression: Node): MojoObjectLiteralSelection | undefined;

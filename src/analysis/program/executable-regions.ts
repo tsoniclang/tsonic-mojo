@@ -10,6 +10,7 @@ import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import { analyzeMojoCall } from "../operations/calls.js";
@@ -39,6 +40,8 @@ import type {
   MojoIterationSelection,
   MojoObjectLiteralSelection,
   MojoPropertySelection,
+  MojoTypeTestSelection,
+  MojoValueRefinementSelection,
   MojoValueSelection,
 } from "./model.js";
 import { walkSourceTree, walkSourceTreePostOrder } from "./traversal.js";
@@ -66,6 +69,8 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly elementSelections: WeakMap<Node, MojoElementSelection>;
   readonly iterationSelections: WeakMap<Node, MojoIterationSelection>;
   readonly valueSelections: WeakMap<Node, MojoValueSelection>;
+  readonly valueRefinements: WeakMap<Node, MojoValueRefinementSelection>;
+  readonly typeTestSelections: WeakMap<Node, MojoTypeTestSelection>;
   readonly objectLiteralSelections: WeakMap<Node, MojoObjectLiteralSelection>;
   readonly bindingPatternSelections: WeakMap<Node, MojoBindingPatternSelection>;
   readonly conversions: MojoConversionIndex;
@@ -137,6 +142,14 @@ export function analyzeMojoExecutableRegion(
     if (ast.is.IsElementAccessExpression(node)) analyzeElement(node, input, semantics);
     if (ast.is.IsCallExpression(node) || ast.is.IsNewExpression(node)) {
       analyzeCall(node, input, semantics, dependencies);
+    }
+    if (ast.is.IsBinaryExpression(node) &&
+      ast.operatorKindName(node) === "KindInstanceOfKeyword") {
+      analyzeTypeTest(node, input);
+    }
+    if (ast.is.IsAsExpression(node) || ast.is.IsTypeAssertion(node) ||
+      ast.is.IsNonNullExpression(node)) {
+      analyzeErasedValueRefinement(node, input, semantics);
     }
     if (!isMojoExpressionNode(node, ast) || !isRuntimeValueOccurrence(node, input)) return;
     const inferred = inferMojoExpressionType(node, ast, input.expressionTypes);
@@ -391,7 +404,10 @@ function analyzeExpressionCarrier(
   if (reference !== undefined) input.bindingSourceFiles.set(node, reference.sourceFile);
   const referencedType = reference === undefined ? undefined : input.bindingTypes.get(reference.declaration);
   const contextualExpected = expectedExpressionType(node, input);
-  const resolved = referencedType ?? contextualExpected ??
+  const selectedOccurrenceType = referencedType === undefined
+    ? undefined
+    : analyzeReferencedValueRefinement(node, referencedType, input, semantics);
+  const resolved = selectedOccurrenceType ?? referencedType ?? contextualExpected ??
     resolveType(semantics.types.expressionType(node), undefined, input, semantics);
   if (resolved !== undefined) input.expressionTypes.set(node, resolved);
   if (ast.is.IsIdentifier(node) && referencedName === undefined && resolved !== undefined &&
@@ -413,6 +429,103 @@ function analyzeExpressionCarrier(
     input.bindingNames.set(node, "self");
     input.expressionTypes.set(node, input.owner.type);
   }
+}
+
+function analyzeReferencedValueRefinement(
+  node: Node,
+  declaredTargetType: MojoTargetTypeRef,
+  input: MojoExecutableRegionAnalysisInput,
+  semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
+): MojoTargetTypeRef | undefined {
+  const selected = input.source.semantics.selectValueTypeRefinement(node);
+  if (selected.kind !== "resolved" || selected.refinement.kind !== "members" ||
+    selected.refinement.types.length !== 1) return undefined;
+  const selectedTargetType = resolveType(
+    selected.refinement.types[0],
+    undefined,
+    input,
+    semantics,
+  );
+  if (selectedTargetType === undefined) return undefined;
+  const refinement = classifyValueRefinement(declaredTargetType, selectedTargetType);
+  if (refinement === undefined) return undefined;
+  input.valueRefinements.set(node, refinement);
+  return refinement.resultType;
+}
+
+function analyzeErasedValueRefinement(
+  node: Node,
+  input: MojoExecutableRegionAnalysisInput,
+  semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
+): void {
+  const inner = Node_Expression(input.source.ast, node);
+  if (inner === undefined) return;
+  const sourceType = semantics.types.expressionType(inner);
+  const selectedType = semantics.types.expressionType(node);
+  const sourceTargetType = input.expressionTypes.get(inner);
+  const selectedTargetType = input.expressionTypes.get(node);
+  if (sourceType === undefined || selectedType === undefined || sourceTargetType === undefined ||
+    selectedTargetType === undefined) return;
+  const sourceRefinement = semantics.types.refinement(sourceType, selectedType);
+  if (sourceRefinement.kind !== "members" || sourceRefinement.types.length !== 1) return;
+  const refinement = classifyValueRefinement(sourceTargetType, selectedTargetType);
+  if (refinement !== undefined) input.valueRefinements.set(node, refinement);
+}
+
+function classifyValueRefinement(
+  sourceType: MojoTargetTypeRef,
+  resultType: MojoTargetTypeRef,
+): MojoValueRefinementSelection | undefined {
+  if (sourceType.kind === "optional" &&
+    mojoTargetTypeEquals(sourceType.value, resultType)) {
+    return Object.freeze({ kind: "optional-present", sourceType, resultType });
+  }
+  if (sourceType.kind === "union" &&
+    sourceType.members.some((member) => mojoTargetTypeEquals(member, resultType))) {
+    return Object.freeze({ kind: "union-member", sourceType, resultType });
+  }
+  return undefined;
+}
+
+function analyzeTypeTest(
+  node: Node,
+  input: MojoExecutableRegionAnalysisInput,
+): void {
+  const left = BinaryExpression_Left(input.source.ast, node);
+  const right = BinaryExpression_Right(input.source.ast, node);
+  if (left === undefined || right === undefined || !input.source.ast.is.IsIdentifier(right)) return;
+  const reference = input.source.navigation.sourceReferenceFor(right);
+  const definition = input.projectTypes.definitionForDeclaration(reference?.declaration);
+  const sourceType = input.expressionTypes.get(left);
+  if (definition?.kind !== "class" || sourceType === undefined) return;
+  const testedType = selectedProjectTypeTestMember(sourceType, definition.id);
+  if (testedType === undefined) return;
+  let selection: MojoTypeTestSelection;
+  if (mojoTargetTypeEquals(sourceType, testedType)) {
+    selection = Object.freeze({ kind: "constant", value: true, operand: left });
+  } else if (sourceType.kind === "optional" && mojoTargetTypeEquals(sourceType.value, testedType)) {
+    selection = Object.freeze({ kind: "optional-presence", operand: left, sourceType });
+  } else if (sourceType.kind === "union") {
+    selection = Object.freeze({ kind: "union-member", operand: left, sourceType, testedType });
+  } else {
+    return;
+  }
+  input.typeTestSelections.set(node, selection);
+  input.expressionTypes.set(node, Object.freeze({ kind: "source-primitive", name: "bool" }));
+}
+
+function selectedProjectTypeTestMember(
+  sourceType: MojoTargetTypeRef,
+  projectTypeId: string,
+): MojoTargetTypeRef | undefined {
+  const candidates = sourceType.kind === "optional"
+    ? [sourceType.value]
+    : sourceType.kind === "union"
+      ? sourceType.members
+      : [sourceType];
+  const matching = candidates.filter((candidate) =>
+    candidate.kind === "target-named" && candidate.id === projectTypeId);
+  return matching.length === 1 ? matching[0] : undefined;
 }
 
 function analyzeProperty(

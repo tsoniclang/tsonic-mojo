@@ -9,6 +9,7 @@ import type { MojoPlanningContext } from "../program/context.js";
 import { isJsString, planProviderConstant } from "./support.js";
 import { mojoModuleBindingRead } from "../bindings/module-bindings.js";
 import { registerMojoTypeImports } from "../types/render.js";
+import type { MojoValueRefinementSelection } from "../../../analysis/program/model.js";
 
 export function planMojoLeafExpression(
   node: Node,
@@ -104,5 +105,23 @@ export function planMojoLeafExpression(
     registerMojoModuleImport(context, ["tsonic_js"]);
     planned = { kind: "construct", type: actualType, arguments: Object.freeze([{ value: planned }]) };
   }
-  return planned;
+  return applyValueRefinement(planned, context.program.queries.valueRefinement(node), context);
+}
+
+export function applyValueRefinement(
+  expression: MojoExpression,
+  refinement: MojoValueRefinementSelection | undefined,
+  context: MojoPlanningContext,
+): MojoExpression {
+  if (refinement === undefined) return expression;
+  registerMojoTypeImports(refinement.sourceType, context);
+  registerMojoTypeImports(refinement.resultType, context);
+  return refinement.kind === "optional-present"
+    ? Object.freeze({
+        kind: "method-call",
+        receiver: expression,
+        name: "value",
+        arguments: Object.freeze([]),
+      })
+    : Object.freeze({ kind: "type-element", receiver: expression, type: refinement.resultType });
 }
