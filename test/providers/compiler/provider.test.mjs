@@ -162,7 +162,8 @@ test("compiler metadata extraction normalizes exact conventions, keywords, const
       expression: "Int(4)",
     });
     const classifyExport = projection.declarationModel.exports.find(({ name }) => name === "classify");
-    assert.deepEqual(classifyExport.signatures[0].typeParameters[2].defaultType, {
+    const sizeParameter = classifyExport.signatures[0].typeParameters.find(({ name }) => name === "size");
+    assert.deepEqual(sizeParameter.defaultType, {
       kind: "literal",
       value: "Int(4)",
     });
