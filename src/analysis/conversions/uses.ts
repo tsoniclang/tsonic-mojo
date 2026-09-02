@@ -206,10 +206,12 @@ export function recordMojoExecutableRegionConversionUses(
       } else if (operator !== undefined && isMojoAssignmentOperator(operator)) {
         const property = left === undefined ? undefined : propertySelections.get(left);
         const element = left === undefined ? undefined : elementSelections.get(left);
-        const leftType = property?.kind === "provider"
-          ? property.writeOperation?.parameterTypes[0]
-          : element?.writeType ??
-            (left === undefined ? undefined : expressionTypes.get(left));
+        const leftType = property?.kind === "provider" || property?.kind === "provider-static"
+          ? property.sourceWriteType
+          : element?.kind === "provider"
+            ? element.sourceWriteType
+            : element?.writeType ??
+              (left === undefined ? undefined : expressionTypes.get(left));
         if (leftType !== undefined) record(right, leftType);
       } else if (resultType !== undefined && !isComparison(operator)) {
         record(left, resultType);

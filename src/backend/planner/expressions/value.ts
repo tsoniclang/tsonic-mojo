@@ -31,6 +31,7 @@ import {
   isJsArray,
   jsArrayElement,
   orderMojoValues,
+  planProviderConstant,
   requiredConversion,
 } from "./support.js";
 import type { OrderedMojoValue } from "./support.js";
@@ -457,8 +458,17 @@ export function planMojoValue(
   } else if (ast.is.IsElementAccessExpression(node)) {
     plan = planMojoElement(node, context, planMojoValue, "read");
   } else {
-    const expression = planMojoLeafExpression(node, context);
-    plan = expression === undefined ? undefined : mojoValue(expression);
+    const selectedValue = context.program.queries.valueSelection(node);
+    if (selectedValue !== undefined) {
+      plan = planProviderConstant(
+        selectedValue.operation,
+        selectedValue.resultConversion,
+        context,
+      );
+    } else {
+      const expression = planMojoLeafExpression(node, context);
+      plan = expression === undefined ? undefined : mojoValue(expression);
+    }
   }
   if (plan === undefined) return undefined;
   const converted = expectedType === undefined || actualType === undefined || inlineCallableWidening

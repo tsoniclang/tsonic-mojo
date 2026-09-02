@@ -41,8 +41,7 @@ export function planMojoProperty(
       );
       return undefined;
     }
-    const constant = planProviderConstant(selection.operation, selection.readResultConversion, context);
-    return constant === undefined ? undefined : mojoValue(constant);
+    return planProviderConstant(selection.operation, selection.readResultConversion, context);
   }
   if (selection.kind === "provider-static") {
     if (mode !== "read" || selection.readOperation?.target.kind !== "function-read" ||
@@ -55,12 +54,11 @@ export function planMojoProperty(
       );
       return undefined;
     }
-    const value = planProviderConstant(
+    return planProviderConstant(
       selection.readOperation,
       selection.readResultConversion,
       context,
     );
-    return value === undefined ? undefined : mojoValue(value);
   }
   if (selection.kind === "project-enum-member") {
     if (mode !== "read") {

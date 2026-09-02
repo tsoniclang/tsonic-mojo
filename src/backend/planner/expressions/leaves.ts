@@ -7,7 +7,7 @@ import {
   registerMojoModuleImport,
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
-import { isJsString, planProviderConstant } from "./support.js";
+import { isJsString } from "./support.js";
 import { mojoModuleBindingRead } from "../bindings/module-bindings.js";
 import { registerMojoTypeImports } from "../types/render.js";
 import type { MojoValueRefinementSelection } from "../../../analysis/program/model.js";
@@ -24,7 +24,6 @@ export function planMojoLeafExpression(
     planned = { kind: "construct", type: actualType, arguments: Object.freeze([]) };
   } else if (ast.is.IsIdentifier(node) || ast.kindName(node) === "KindThisKeyword") {
     const override = mojoBindingPlanOverride(node, context);
-    const selectedValue = context.program.queries.valueSelection(node);
     if (override !== undefined) {
       planned = override.storage === "location"
         ? {
@@ -34,9 +33,6 @@ export function planMojoLeafExpression(
             arguments: Object.freeze([]),
           }
         : override.expression;
-    } else if (selectedValue !== undefined) {
-      planned = planProviderConstant(selectedValue.operation, selectedValue.resultConversion, context);
-      if (planned === undefined) return undefined;
     } else {
       const locationStorage = context.program.queries.locationStorage(node);
       if (locationStorage !== undefined) {

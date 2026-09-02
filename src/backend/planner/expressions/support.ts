@@ -60,7 +60,7 @@ export function planProviderConstant(
   operation: MojoSelectedProviderOperation,
   resultConversion: MojoValueConversion,
   context: MojoPlanningContext,
-): MojoExpression | undefined {
+): MojoValuePlan | undefined {
   if (operation.target.kind !== "constant" && operation.target.kind !== "function-read") return undefined;
   registerMojoModuleImport(context, operation.target.modulePath);
   const selected: MojoExpression = operation.target.kind === "constant"
@@ -76,11 +76,7 @@ export function planProviderConstant(
         }),
         arguments: Object.freeze([]),
       };
-  return applyMojoConversion(
-    selected,
-    resultConversion,
-    context,
-  );
+  return convertMojoValue(mojoValue(selected), resultConversion, context);
 }
 
 export function planSelectedArgument(

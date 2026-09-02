@@ -65,9 +65,11 @@ export function expectedExpressionType(
     if (left === undefined) return undefined;
     const property = input.propertySelections.get(left);
     const element = input.elementSelections.get(left);
-    return property?.kind === "provider"
-      ? property.writeOperation?.parameterTypes[0]
-      : element?.writeType ?? input.expressionTypes.get(left);
+    return property?.kind === "provider" || property?.kind === "provider-static"
+      ? property.sourceWriteType
+      : element?.kind === "provider"
+        ? element.sourceWriteType
+        : element?.writeType ?? input.expressionTypes.get(left);
   }
   if ((ast.is.IsAsExpression(parent) || ast.is.IsTypeAssertion(parent) ||
       ast.is.IsSatisfiesExpression(parent)) && Node_Expression(ast, parent) === node) {
