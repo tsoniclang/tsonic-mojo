@@ -265,7 +265,8 @@ function planBinaryEntry(
       : []),
   ];
   const asynchronousBootstrap = function_.asynchronous || analyzedEntry.asynchronous;
-  const binaryRaises = function_.raises || analyzedEntry.raises ||
+  const sourceEntryRaises = function_.raises || analyzedEntry.raises;
+  const binaryRaises = sourceEntryRaises ||
     program.binaryEpilogues.some((epilogue) => epilogue.raises === true);
   const bootstrapName = "__tsonic_async_entry";
   const call = (path: string) => Object.freeze({
@@ -287,12 +288,24 @@ function planBinaryEntry(
       })
     : call(path);
   const taskFactories = [...new Set([
-    ...(asynchronousBootstrap ? [taskFactory(function_.raises || analyzedEntry.raises)] : []),
+    ...(asynchronousBootstrap ? [taskFactory(sourceEntryRaises)] : []),
     ...(analyzedEntry.runtimeInitializationRequired && analyzedEntry.asynchronous
       ? [taskFactory(analyzedEntry.raises)]
       : []),
     ...(function_.asynchronous ? [taskFactory(function_.raises)] : []),
   ])];
+  const sourceBootstrapStatements: readonly MojoStatement[] = Object.freeze([
+    ...(analyzedEntry.runtimeInitializationRequired
+      ? [Object.freeze({
+          kind: "expression" as const,
+          expression: maybeAwait(initializerName, analyzedEntry.asynchronous, analyzedEntry.raises),
+        })]
+      : []),
+    Object.freeze({
+      kind: "expression" as const,
+      expression: maybeAwait(importedName, function_.asynchronous, function_.raises),
+    }),
+  ]);
   const bootstrap: MojoFunctionDeclaration | undefined = asynchronousBootstrap
     ? Object.freeze({
         kind: "function",
@@ -301,19 +314,8 @@ function planBinaryEntry(
         parameters: Object.freeze([]),
         resultType: Object.freeze({ kind: "unit" }),
         asynchronous: true,
-        raises: function_.raises || analyzedEntry.raises,
-        statements: Object.freeze([
-          ...(analyzedEntry.runtimeInitializationRequired
-            ? [Object.freeze({
-                kind: "expression" as const,
-                expression: maybeAwait(initializerName, analyzedEntry.asynchronous, analyzedEntry.raises),
-              })]
-            : []),
-          Object.freeze({
-            kind: "expression" as const,
-            expression: maybeAwait(importedName, function_.asynchronous, function_.raises),
-          }),
-        ]),
+        raises: sourceEntryRaises,
+        statements: binarySourceBoundaryStatements(sourceBootstrapStatements, sourceEntryRaises),
       })
     : undefined;
   const module: MojoSourceModule = Object.freeze({
@@ -357,7 +359,7 @@ function planBinaryEntry(
                     kind: "call" as const,
                     callee: Object.freeze({
                       kind: "path" as const,
-                      path: taskFactory(function_.raises || analyzedEntry.raises),
+                      path: taskFactory(sourceEntryRaises),
                     }),
                     arguments: Object.freeze([Object.freeze({ value: call(bootstrapName) })]),
                   }),
@@ -368,22 +370,43 @@ function planBinaryEntry(
               ...binaryEpilogueStatements(program),
             ]
           : [
-              ...(analyzedEntry.runtimeInitializationRequired
-                ? [Object.freeze({
-                    kind: "expression" as const,
-                    expression: call(initializerName),
-                  })]
-                : []),
-              Object.freeze({
-                kind: "expression" as const,
-                expression: call(importedName),
-              }),
+              ...binarySourceBoundaryStatements(sourceBootstrapStatements, sourceEntryRaises),
               ...binaryEpilogueStatements(program),
             ]),
       }),
     ]),
   });
   return Object.freeze({ path: "src/main.mojo", module });
+}
+
+function binarySourceBoundaryStatements(
+  statements: readonly MojoStatement[],
+  raises: boolean,
+): readonly MojoStatement[] {
+  if (!raises) return statements;
+  const errorName = "__tsonic_entry_error";
+  const error = Object.freeze({ kind: "path" as const, path: errorName });
+  return Object.freeze([Object.freeze({
+    kind: "try" as const,
+    statements,
+    catches: Object.freeze([Object.freeze({
+      name: errorName,
+      statements: Object.freeze([Object.freeze({
+        kind: "raise" as const,
+        expression: Object.freeze({
+          kind: "call" as const,
+          callee: Object.freeze({ kind: "path" as const, path: "Error" }),
+          arguments: Object.freeze([Object.freeze({
+            value: Object.freeze({
+              kind: "call" as const,
+              callee: Object.freeze({ kind: "path" as const, path: "String" }),
+              arguments: Object.freeze([Object.freeze({ value: error })]),
+            }),
+          })]),
+        }),
+      })]),
+    })]),
+  })]);
 }
 
 function binaryEpilogueStatements(program: MojoTargetProgram): readonly MojoStatement[] {
