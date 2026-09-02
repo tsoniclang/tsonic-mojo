@@ -401,6 +401,8 @@ export type MojoElementSelection = {
   readonly indexConversion: MojoValueConversion;
   readonly readResultConversion?: MojoValueConversion;
   readonly selectedElementIndex?: number;
+  readonly evaluateSelectedIndex?: boolean;
+  readonly sourceIndexType?: MojoTargetTypeRef;
   readonly optionalChain: boolean;
 } | {
   readonly kind: "project-index";

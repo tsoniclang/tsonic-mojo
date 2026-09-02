@@ -77,7 +77,7 @@ export function analyzeMojoElementAccess(
   ]);
   if (identity !== undefined) {
     if (tsonicFixedArrayProviderMember(identity) === "index") {
-      return analyzeNativeElement(source, accessMode, receiver, index, context.conversions);
+      return analyzeNativeElement(source, accessMode, receiver, index, context);
     }
     return analyzeProviderElement(source, accessMode, receiver, index, identity, context);
   }
@@ -89,7 +89,7 @@ export function analyzeMojoElementAccess(
     context,
   );
   if (sourceProfile !== undefined) return sourceProfile;
-  return analyzeNativeElement(source, accessMode, receiver, index, context.conversions);
+  return analyzeNativeElement(source, accessMode, receiver, index, context);
 }
 
 function analyzeProjectIndex(
@@ -178,7 +178,7 @@ function analyzeSourceProfileElement(
     );
   }
   if (identity.profile === "native") {
-    return analyzeNativeElement(source, accessMode, receiver, index, context.conversions);
+    return analyzeNativeElement(source, accessMode, receiver, index, context);
   }
   const owner = identity.declaringName;
   if (owner !== "Array" && owner !== "ReadonlyArray" && owner !== "String") {
@@ -487,7 +487,7 @@ function analyzeNativeElement(
   accessMode: "read" | "write" | "read-write",
   receiver: MojoTargetTypeRef,
   index: MojoTargetTypeRef,
-  conversions: MojoConversionIndex,
+  context: MojoElementAnalysisContext,
 ): MojoElementAnalysis {
   const target = nativeElementContract(receiver, source.selectedElementIndex);
   if (target === undefined) {
@@ -496,7 +496,7 @@ function analyzeNativeElement(
       "Selected element receiver has no exact native Mojo element contract.",
     );
   }
-  const indexConversion = conversions.record(source.argument.expression, index, target.indexType);
+  const indexConversion = context.conversions.record(source.argument.expression, index, target.indexType);
   if (indexConversion.kind === "unsupported") {
     return unsupported("MOJO_ELEMENT_INDEX_CONVERSION_UNPROVEN", indexConversion.reason);
   }
@@ -526,10 +526,27 @@ function analyzeNativeElement(
       ...(source.sourceWriteType === undefined ? {} : { writeType: target.valueType }),
       indexConversion: indexConversion.conversion,
       ...(readResultConversion === undefined ? {} : { readResultConversion }),
-      ...(source.selectedElementIndex === undefined ? {} : { selectedElementIndex: source.selectedElementIndex }),
+      ...(source.selectedElementIndex === undefined
+        ? {}
+        : {
+            selectedElementIndex: source.selectedElementIndex,
+            sourceIndexType: index,
+            evaluateSelectedIndex: expressionHasEffects(
+              context.source.navigation.expressionEffects(source.argument.expression),
+            ),
+          }),
       optionalChain: source.optionalChain,
     }),
   };
+}
+
+function expressionHasEffects(effects: {
+  readonly invokes: boolean;
+  readonly mutates: boolean;
+  readonly suspends: boolean;
+  readonly mayThrow: boolean;
+}): boolean {
+  return effects.invokes || effects.mutates || effects.suspends || effects.mayThrow;
 }
 
 function nativeElementContract(

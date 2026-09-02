@@ -22,6 +22,7 @@ import type {
 import { normalizeMojoIdentifier } from "../../../target-model/names/identifiers.js";
 import type { MojoSourceModuleDefinition } from "../../../analysis/source-modules/model.js";
 import { planMojoModuleState } from "./module-state.js";
+import { planMojoPublicModuleExports } from "./public-exports.js";
 import { planMojoInterface } from "../declarations/interfaces.js";
 import {
   planMojoProjectClass,
@@ -84,6 +85,8 @@ function planSourceModule(
     const state = planMojoModuleState(program, module, analyzedModule, context);
     if (state !== undefined) {
       declarations.push(...state);
+      const publicExports = planMojoPublicModuleExports(program, module, analyzedModule, context);
+      if (publicExports !== undefined) declarations.push(...publicExports);
     } else if (context.diagnostics.length === stateDiagnosticCount) {
       context.diagnostics.push(planningDiagnostic(
         "MOJO_MODULE_STATE_NOT_PLANNED",

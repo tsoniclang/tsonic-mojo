@@ -78,7 +78,7 @@ export function adaptMojoValueErrorDomain(
       })]),
       catches: Object.freeze([caught]),
     }),
-  ]), result);
+  ]), Object.freeze({ kind: "consume", expression: result }));
 }
 
 function errorDomainContains(

@@ -47,11 +47,26 @@ export function planMojoElement(
     : selection.kind === "provider"
       ? convertMojoValue(preparedReceiver.plan, selection.receiverConversion, context)
       : preparedReceiver.plan;
-  const rawIndex = planValue(selection.index, context);
-  const index = rawIndex === undefined
+  if (preparedReceiver === undefined || receiver === undefined) return undefined;
+  const selectedTupleSelection = selection.kind === "native" &&
+    selection.selectedElementIndex !== undefined
+    ? selection
+    : undefined;
+  const selectedTupleIndex = selectedTupleSelection?.selectedElementIndex;
+  const rawIndex = selectedTupleIndex !== undefined &&
+      selectedTupleSelection?.evaluateSelectedIndex !== true
     ? undefined
-    : convertMojoValue(rawIndex, selection.indexConversion, context);
-  if (preparedReceiver === undefined || receiver === undefined || index === undefined) return undefined;
+    : planValue(
+        selection.index,
+        context,
+        selectedTupleSelection?.sourceIndexType,
+      );
+  const index = selectedTupleIndex !== undefined
+    ? rawIndex
+    : rawIndex === undefined
+      ? undefined
+      : convertMojoValue(rawIndex, selection.indexConversion, context);
+  if (selectedTupleIndex === undefined && index === undefined) return undefined;
   const operation = selection.kind === "provider"
     ? mode === "read" ? selection.readOperation : selection.writeOperation
     : undefined;
@@ -72,8 +87,23 @@ export function planMojoElement(
   if (receiverType === undefined || indexType === undefined) return undefined;
   const ordered = orderMojoValues([
     Object.freeze({ plan: receiver, type: receiverType, role: "element_receiver" }),
-    Object.freeze({ plan: index, type: indexType, role: "element_index" }),
+    ...(index === undefined
+      ? []
+      : [Object.freeze({
+          plan: index,
+          type: selectedTupleSelection?.sourceIndexType ?? indexType,
+          role: "element_index",
+        })]),
   ], context, stabilizeComponents);
+  const before = selectedTupleIndex !== undefined && ordered.values[1] !== undefined
+    ? Object.freeze([
+        ...ordered.before,
+        Object.freeze({ kind: "discard" as const, expression: ordered.values[1] }),
+      ])
+    : ordered.before;
+  const indexExpression: MojoExpression = selectedTupleIndex === undefined
+    ? ordered.values[1]!
+    : Object.freeze({ kind: "number-literal", text: String(selectedTupleIndex) });
   const indexedReceiver: MojoExpression = selection.kind !== "project-index"
     ? ordered.values[0]!
     : {
@@ -90,17 +120,17 @@ export function planMojoElement(
         kind: "method-call",
         receiver: indexedReceiver,
         name: operation.target.access.name,
-        arguments: Object.freeze([Object.freeze({ value: ordered.values[1]! })]),
+        arguments: Object.freeze([Object.freeze({ value: indexExpression })]),
       }
     : {
         kind: "element",
         receiver: indexedReceiver,
-        index: ordered.values[1]!,
+        index: indexExpression,
       };
   const operationPlan = mode !== "read" || selection.readResultConversion === undefined
-    ? withMojoValue(ordered.before, access)
+    ? withMojoValue(before, access)
     : convertMojoValue(
-        withMojoValue(ordered.before, access),
+        withMojoValue(before, access),
         selection.readResultConversion,
         context,
       );

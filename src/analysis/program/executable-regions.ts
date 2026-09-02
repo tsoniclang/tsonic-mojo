@@ -147,10 +147,18 @@ export function sealMojoCatchBindingCarrier(
   for (const use of input.source.navigation.declarationUses(declaration)) {
     if (use.kind === "type-only" || use.kind === "source-linkage") continue;
     input.valueRefinements.delete(use.reference);
-    const refined = analyzeReferencedValueRefinement(
+    const environment = { ...input, root: catchBlock, sourceFile };
+    const selectedReceiverType = selectedOperationReceiverType(use.reference, input);
+    const exactRefinement = selectedReceiverType === undefined
+      ? undefined
+      : classifyMojoValueRefinement(errorType, selectedReceiverType);
+    if (exactRefinement !== undefined) {
+      input.valueRefinements.set(use.reference, exactRefinement);
+    }
+    const refined = exactRefinement?.resultType ?? analyzeReferencedValueRefinement(
       use.reference,
       errorType,
-      { ...input, root: catchBlock, sourceFile },
+      environment,
       semantics,
     );
     input.expressionTypes.set(use.reference, refined ?? errorType);
@@ -161,6 +169,95 @@ export function sealMojoCatchBindingCarrier(
       analyzeTypeTest(node, { ...input, root: catchBlock, sourceFile });
     }
   }, (node, regionRoot) => descendWithinExecutableRegion(node, regionRoot, input.source.ast));
+}
+
+function selectedOperationReceiverType(
+  reference: Node,
+  input: MojoExecutableRegionAnalysisEnvironment,
+): MojoTargetTypeRef | undefined {
+  const { ast } = input.source;
+  let current = reference;
+  for (;;) {
+    const parent = ast.parent(current);
+    if (parent === undefined) return undefined;
+    if (ast.is.IsPropertyAccessExpression(parent)) {
+      const selection = input.propertySelections.get(parent);
+      const selected = selection !== undefined && propertyReceiver(selection) === current
+        ? propertyReceiverType(selection)
+        : undefined;
+      if (selected !== undefined) return selected;
+      const call = ast.parent(parent);
+      if (call !== undefined && (ast.is.IsCallExpression(call) || ast.is.IsNewExpression(call))) {
+        const callSelection = input.callSelections.get(call);
+        const receiver = callSelection === undefined ? undefined : callReceiver(callSelection);
+        if (receiver?.node === current) return receiver.type;
+      }
+      return undefined;
+    }
+    if (ast.is.IsElementAccessExpression(parent)) {
+      const selection = input.elementSelections.get(parent);
+      if (selection?.receiver === current) {
+        return selection.kind === "provider"
+          ? selection.sourceReceiverType
+          : selection.receiverType;
+      }
+      return undefined;
+    }
+    if (!isTransparentReceiverWrapper(parent, ast)) return undefined;
+    current = parent;
+  }
+}
+
+function propertyReceiver(selection: MojoPropertySelection): Node | undefined {
+  switch (selection.kind) {
+    case "project-field":
+    case "project-index-property":
+    case "structural-field":
+    case "project-union-field":
+    case "provider":
+      return selection.receiver;
+    case "project-static-field":
+    case "project-enum-member":
+    case "provider-constant":
+    case "provider-static":
+      return undefined;
+  }
+}
+
+function propertyReceiverType(selection: MojoPropertySelection): MojoTargetTypeRef | undefined {
+  switch (selection.kind) {
+    case "project-field":
+    case "project-index-property":
+    case "structural-field":
+    case "project-union-field":
+      return selection.receiverType;
+    case "provider":
+      return selection.sourceReceiverType;
+    case "project-static-field":
+    case "project-enum-member":
+    case "provider-constant":
+    case "provider-static":
+      return undefined;
+  }
+}
+
+function callReceiver(selection: MojoCallSelection): {
+  readonly node: Node;
+  readonly type: MojoTargetTypeRef;
+} | undefined {
+  if (selection.kind === "project" && selection.target.kind === "method") {
+    return Object.freeze({ node: selection.target.receiver, type: selection.target.receiverType });
+  }
+  if (selection.kind === "provider" && selection.receiver !== undefined &&
+    selection.sourceReceiverType !== undefined) {
+    return Object.freeze({ node: selection.receiver, type: selection.sourceReceiverType });
+  }
+  return undefined;
+}
+
+function isTransparentReceiverWrapper(node: Node, ast: AstReader): boolean {
+  return ast.is.IsParenthesizedExpression(node) || ast.is.IsAsExpression(node) ||
+    ast.is.IsTypeAssertion(node) || ast.is.IsNonNullExpression(node);
 }
 
 export function analyzeMojoExecutableRegion(

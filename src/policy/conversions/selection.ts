@@ -3,6 +3,7 @@ import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
 import type { MojoTruthinessConversion } from "../../target-model/conversions/model.js";
+import { mojoTargetTypeKey } from "../../target-model/types/key.js";
 
 export type MojoConversionClassification =
   | { readonly kind: "resolved"; readonly conversion: MojoValueConversion }
@@ -379,10 +380,6 @@ function isTriviallyCopyableMojoType(type: MojoTargetTypeRef): boolean {
   if (type.kind === "unit" || type.kind === "never" || type.kind === "null" ||
     type.kind === "undefined") return true;
   return type.kind === "tuple" && type.elements.every(isTriviallyCopyableMojoType);
-}
-
-export function mojoTargetTypeKey(type: MojoTargetTypeRef): string {
-  return JSON.stringify(type);
 }
 
 function isJsString(type: MojoTargetTypeRef): boolean {
