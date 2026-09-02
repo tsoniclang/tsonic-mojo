@@ -47,7 +47,6 @@ import type {
   MojoObjectLiteralSelection,
   MojoPropertySelection,
   MojoResourceManagementSelection,
-  MojoTemplateExpressionSelection,
   MojoTypeTestSelection,
   MojoValueRefinementSelection,
   MojoValueSelection,
@@ -65,7 +64,6 @@ import {
   targetTypeDiagnostic as typeDiagnostic,
 } from "./executable-region-support.js";
 import { mojoParameterAbi } from "../../policy/callables/parameter-abi.js";
-import { analyzeMojoTemplateExpression } from "../operations/template-expressions.js";
 import { classifyMojoValueRefinement } from "../refinements/value.js";
 import { analyzeMojoNullishCoalescing } from "../operations/nullish-coalescing.js";
 import { mergeMojoErrorTypes, mojoOperationErrorTypes } from "./effects.js";
@@ -100,7 +98,7 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly typeTestSelections: WeakMap<Node, MojoTypeTestSelection>;
   readonly nullishCoalescingSelections: WeakMap<Node, MojoNullishCoalescingSelection>;
   readonly objectLiteralSelections: WeakMap<Node, MojoObjectLiteralSelection>;
-  readonly templateExpressionSelections: WeakMap<Node, MojoTemplateExpressionSelection>;
+  readonly templateExpressionNodes: Set<Node>;
   readonly bindingPatternSelections: WeakMap<Node, MojoBindingPatternSelection>;
   readonly returnValueTransfers: WeakSet<Node>;
   readonly structuralObjects: MojoStructuralObjectCatalog;
@@ -391,16 +389,7 @@ export function analyzeMojoExecutableRegion(
       analyzeErasedValueRefinement(node, input, semantics);
     }
     if (ast.kindName(node) === "KindTemplateExpression") {
-      const template = analyzeMojoTemplateExpression(node, source, input.expressionTypes);
-      if (template.kind === "unsupported") {
-        input.diagnostics.push(diagnostic(
-          "MOJO_TEMPLATE_STRING_CONVERSION_UNSUPPORTED",
-          template.reason,
-          template.node,
-        ));
-      } else {
-        input.templateExpressionSelections.set(node, template.selection);
-      }
+      input.templateExpressionNodes.add(node);
     }
     if (!isMojoExpressionNode(node, ast) || !isRuntimeValueOccurrence(node, input)) return;
     const inferred = inferMojoExpressionType(node, ast, input.expressionTypes);

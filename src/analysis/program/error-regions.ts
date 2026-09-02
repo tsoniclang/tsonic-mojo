@@ -149,7 +149,7 @@ export function collectMojoEscapingErrorTypes(
         ? Object.freeze([])
         : visit(tryBlock, tryBlock);
       if (catchClause !== undefined && catchBlock !== undefined) {
-        const catchType = closedErrorType(tryErrors);
+        const catchType = closedErrorType(tryErrors) ?? mojoNativeErrorType();
         onCatchDomain(catchClause, catchBlock, catchType);
         return mergeMojoErrorTypes(
           visit(catchBlock, catchBlock),
@@ -225,7 +225,8 @@ export function directMojoNodeErrorTypes(
       }
       addNativeConversionError(
         (selection.receiverConversion !== undefined && mojoConversionRaises(selection.receiverConversion)) ||
-        (selection.readResultConversion !== undefined && mojoConversionRaises(selection.readResultConversion)),
+        (selection.readResultConversion !== undefined && mojoConversionRaises(selection.readResultConversion)) ||
+        (selection.writeValueConversion !== undefined && mojoConversionRaises(selection.writeValueConversion)),
       );
     } else if (selection?.kind === "provider-constant") {
       errors.push(...mojoOperationErrorTypes(selection.operation));
@@ -239,6 +240,9 @@ export function directMojoNodeErrorTypes(
       }
       if (selection.readResultConversion !== undefined) {
         addNativeConversionError(mojoConversionRaises(selection.readResultConversion));
+      }
+      if (selection.writeValueConversion !== undefined) {
+        addNativeConversionError(mojoConversionRaises(selection.writeValueConversion));
       }
     }
   }
@@ -255,7 +259,9 @@ export function directMojoNodeErrorTypes(
       addNativeConversionError(
         mojoConversionRaises(selection.indexConversion) ||
         (selection.readResultConversion !== undefined &&
-          mojoConversionRaises(selection.readResultConversion)),
+          mojoConversionRaises(selection.readResultConversion)) ||
+        (selection.kind === "provider" && selection.writeValueConversion !== undefined &&
+          mojoConversionRaises(selection.writeValueConversion)),
       );
       if (selection.kind === "provider") {
         if (selection.readOperation !== undefined) {

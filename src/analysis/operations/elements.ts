@@ -262,6 +262,12 @@ function analyzeSourceProfileElement(
   if (indexConversion.kind === "unsupported") {
     return unsupported("MOJO_SOURCE_PROFILE_ELEMENT_INDEX_CONFLICT", indexConversion.reason);
   }
+  const writeValueConversion = sourceWrite === undefined
+    ? undefined
+    : classifyMojoValueConversion(sourceWrite, sourceWrite);
+  if (writeValueConversion?.kind === "unsupported") {
+    return unsupported("MOJO_SOURCE_PROFILE_ELEMENT_WRITE_CONVERSION_UNPROVEN", writeValueConversion.reason);
+  }
   return {
     kind: "resolved",
     expressionType: sourceRead ?? sourceWrite!,
@@ -275,6 +281,10 @@ function analyzeSourceProfileElement(
       accessMode,
       ...(readOperation === undefined ? {} : { readOperation, readType: sourceRead }),
       ...(writeOperation === undefined ? {} : { writeOperation, writeType: sourceWrite }),
+      ...(sourceWrite === undefined ? {} : { sourceWriteType: sourceWrite }),
+      ...(writeValueConversion?.kind !== "resolved"
+        ? {}
+        : { writeValueConversion: writeValueConversion.conversion }),
       receiverConversion: receiverConversion.conversion,
       sourceReceiverType: receiver,
       indexConversion: indexConversion.conversion,
@@ -443,6 +453,21 @@ function analyzeProviderElement(
   if (indexConversion.kind === "unsupported") {
     return unsupported("MOJO_PROVIDER_ELEMENT_INDEX_CONVERSION_UNPROVEN", indexConversion.reason);
   }
+  const sourceWrite = writeOperation === undefined || source.sourceWriteType === undefined
+    ? undefined
+    : context.resolveType(source.sourceWriteType);
+  if (writeOperation !== undefined && (sourceWrite === undefined || writeType === undefined)) {
+    return unsupported(
+      "MOJO_PROVIDER_ELEMENT_WRITE_CARRIER_NOT_CLOSED",
+      "Selected provider element write has no exact source and target carriers.",
+    );
+  }
+  const writeValueConversion = sourceWrite === undefined || writeType === undefined
+    ? undefined
+    : classifyMojoValueConversion(sourceWrite, writeType);
+  if (writeValueConversion?.kind === "unsupported") {
+    return unsupported("MOJO_PROVIDER_ELEMENT_WRITE_CONVERSION_UNPROVEN", writeValueConversion.reason);
+  }
   let expressionType: MojoTargetTypeRef;
   let readResultConversion;
   if (readOperation !== undefined) {
@@ -456,13 +481,7 @@ function analyzeProviderElement(
     }
     expressionType = sourceRead;
     readResultConversion = conversion.conversion;
-  } else {
-    const sourceWrite = source.sourceWriteType === undefined ? undefined : context.resolveType(source.sourceWriteType);
-    if (sourceWrite === undefined || writeType === undefined) {
-      return unsupported("MOJO_PROVIDER_ELEMENT_WRITE_CARRIER_NOT_CLOSED", "Selected provider element write has no exact source and target carriers.");
-    }
-    expressionType = sourceWrite;
-  }
+  } else expressionType = sourceWrite!;
   return {
     kind: "resolved",
     expressionType,
@@ -473,6 +492,10 @@ function analyzeProviderElement(
       accessMode,
       ...(readOperation === undefined ? {} : { readOperation, readType: readOperation.resultType }),
       ...(writeOperation === undefined ? {} : { writeOperation, writeType }),
+      ...(sourceWrite === undefined ? {} : { sourceWriteType: sourceWrite }),
+      ...(writeValueConversion?.kind !== "resolved"
+        ? {}
+        : { writeValueConversion: writeValueConversion.conversion }),
       receiverConversion: receiverConversion.conversion,
       sourceReceiverType: receiver,
       indexConversion: indexConversion.conversion,

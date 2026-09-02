@@ -251,7 +251,18 @@ function wellKnownMemberKey(
     case "async-dispose": return "@@asyncDispose";
     case "async-iterator": return "@@asyncIterator";
     case "dispose": return "@@dispose";
+    case "has-instance": return "@@hasInstance";
+    case "is-concat-spreadable": return "@@isConcatSpreadable";
     case "iterator": return "@@iterator";
+    case "match": return "@@match";
+    case "match-all": return "@@matchAll";
+    case "replace": return "@@replace";
+    case "search": return "@@search";
+    case "species": return "@@species";
+    case "split": return "@@split";
+    case "to-primitive": return "@@toPrimitive";
+    case "to-string-tag": return "@@toStringTag";
+    case "unscopables": return "@@unscopables";
   }
 }
 

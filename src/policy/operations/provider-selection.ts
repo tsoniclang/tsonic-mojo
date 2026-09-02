@@ -17,6 +17,11 @@ export type MojoProviderCallSelection =
   | { readonly kind: "missing"; readonly reason: string }
   | { readonly kind: "ambiguous"; readonly count: number };
 
+export type MojoProviderDeclarationResolution =
+  | { readonly kind: "missing" }
+  | { readonly kind: "selected"; readonly identity: ProviderDeclarationIdentity }
+  | { readonly kind: "conflict" };
+
 export function selectMojoProviderCall(
   source: TargetSourceProgram,
   call: ResolvedSourceCallInfo,
@@ -76,15 +81,25 @@ export function selectedProviderDeclarationIdentity(
   source: TargetSourceProgram,
   subjects: readonly (ExtensionFactSubject | Node | undefined)[],
 ): ProviderDeclarationIdentity | undefined {
+  const resolution = resolveProviderDeclarationIdentity(source, subjects);
+  return resolution.kind === "selected" ? resolution.identity : undefined;
+}
+
+export function resolveProviderDeclarationIdentity(
+  source: TargetSourceProgram,
+  subjects: readonly (ExtensionFactSubject | Node | undefined)[],
+): MojoProviderDeclarationResolution {
   let merged: ProviderDeclarationIdentity | undefined;
   for (const subject of subjects) {
     if (subject === undefined) continue;
     const identity = source.sourceFacts.getFact(subject, providerVirtualDeclarationFactKey);
     if (identity === undefined) continue;
     merged = merged === undefined ? identity : mergeIdentity(merged, identity);
-    if (merged === undefined) return undefined;
+    if (merged === undefined) return { kind: "conflict" };
   }
-  return merged;
+  return merged === undefined
+    ? { kind: "missing" }
+    : { kind: "selected", identity: merged };
 }
 
 function appendSubject(

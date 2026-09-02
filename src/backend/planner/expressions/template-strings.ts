@@ -117,6 +117,21 @@ function planStringification(
       return isJsString(resultType)
         ? wrapNativeString(nativeString(expression), resultType, context)
         : nativeString(expression);
+    case "native-error":
+      return isJsString(resultType)
+        ? wrapNativeString(nativeString(expression), resultType, context)
+        : nativeString(expression);
+    case "js-dynamic": {
+      const converted = jsStringCall("js_value_to_string", expression, context);
+      return isJsString(resultType)
+        ? converted
+        : Object.freeze({
+            kind: "method-call",
+            receiver: converted,
+            name: "to_native_strict",
+            arguments: Object.freeze([]),
+          });
+    }
     case "null": return stringLiteral("null", resultType, context);
     case "undefined": return stringLiteral("undefined", resultType, context);
     case "optional": {

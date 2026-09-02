@@ -87,6 +87,7 @@ import type {
   MojoAnalyzedCallArgument,
   MojoCallableArgumentSlot,
 } from "./call-model.js";
+import { analyzeMojoTemplateExpression } from "../operations/template-expressions.js";
 
 export function analyzeMojoTargetProgram(
   request: MojoTargetAnalysisRequest,
@@ -139,6 +140,7 @@ export function analyzeMojoTargetProgram(
   const callableExpressionByDeclaration = new WeakMap<Node, Node>();
   const callableDeclarationByExpression = new WeakMap<Node, Node>();
   const templateExpressionSelections = new WeakMap<Node, MojoTemplateExpressionSelection>();
+  const templateExpressionNodes = new Set<Node>();
   const bindingPatternSelections = new WeakMap<Node, MojoBindingPatternSelection>();
   const returnValueTransfers = new WeakSet<Node>();
   const analyzedCallableExpressions = new WeakSet<Node>();
@@ -336,7 +338,7 @@ export function analyzeMojoTargetProgram(
     typeTestSelections,
     nullishCoalescingSelections,
     objectLiteralSelections,
-    templateExpressionSelections,
+    templateExpressionNodes,
     bindingPatternSelections,
     returnValueTransfers,
     structuralObjects,
@@ -875,6 +877,28 @@ export function analyzeMojoTargetProgram(
   const finalizedModuleById = new Map(
     finalizedModules.map((module) => [module.id, module] as const),
   );
+
+  const typedErrorTypeIds = new Set(finalizedClasses.flatMap((class_) =>
+    class_.errorRole === "typed" && class_.targetType.kind === "target-named"
+      ? [class_.targetType.id]
+      : []));
+  for (const expression of templateExpressionNodes) {
+    const template = analyzeMojoTemplateExpression(
+      expression,
+      input.source,
+      expressionTypes,
+      (type) => type.kind === "target-named" && typedErrorTypeIds.has(type.id),
+    );
+    if (template.kind === "unsupported") {
+      diagnostics.push(diagnostic(
+        "MOJO_TEMPLATE_STRING_CONVERSION_UNSUPPORTED",
+        template.reason,
+        template.node,
+      ));
+    } else {
+      templateExpressionSelections.set(expression, template.selection);
+    }
+  }
 
   for (const function_ of finalizedFunctions) {
     validateMojoFunctionSyntax(

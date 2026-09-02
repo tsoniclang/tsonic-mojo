@@ -33,6 +33,8 @@ export function mojoConversionRaises(conversion: MojoValueConversion): boolean {
     case "optional-to-union":
     case "union-inject":
       return mojoConversionRaises(conversion.valueConversion);
+    case "union-to-optional":
+      return conversion.presentMembers.some((member) => mojoConversionRaises(member.conversion));
     case "union-map":
       return conversion.members.some((member) => mojoConversionRaises(member.conversion));
     default: return false;

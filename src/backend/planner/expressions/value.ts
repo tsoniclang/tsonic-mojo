@@ -130,9 +130,33 @@ export function planMojoUpdate(
     : ast.is.IsElementAccessExpression(operand)
       ? planMojoElement(operand, context, planMojoValue, "write", false)
       : planMojoValue(operand, context);
-  const type = property?.kind === "provider"
-    ? property.writeOperation?.parameterTypes[0]
-    : element?.writeType ?? context.program.queries.expressionType(operand);
+  const providerProperty = property?.kind === "provider" || property?.kind === "provider-static"
+    ? property
+    : undefined;
+  const providerElement = element?.kind === "provider" ? element : undefined;
+  const sourceWriteType = providerProperty?.sourceWriteType ?? providerElement?.sourceWriteType;
+  const writeValueConversion = providerProperty?.writeValueConversion ?? providerElement?.writeValueConversion;
+  const providerWriteOperation = providerProperty?.writeOperation ?? providerElement?.writeOperation;
+  if (providerWriteOperation !== undefined &&
+    (sourceWriteType === undefined || writeValueConversion === undefined)) {
+    appendMojoPlanningDiagnostic(
+      context,
+      "MOJO_UPDATE_WRITE_CONVERSION_MISSING",
+      "Increment and decrement require a sealed source-write carrier and target-write conversion.",
+      node,
+    );
+    return undefined;
+  }
+  const type = sourceWriteType ?? element?.writeType ?? context.program.queries.expressionType(operand);
+  if (writeValueConversion !== undefined && writeValueConversion.kind !== "identity") {
+    appendMojoPlanningDiagnostic(
+      context,
+      "MOJO_UPDATE_WRITE_CONVERSION_UNSUPPORTED",
+      "Increment and decrement require an identity conversion from the exact source write carrier to the target location carrier.",
+      node,
+    );
+    return undefined;
+  }
   if (left === undefined || type === undefined || type.kind !== "source-primitive" ||
     type.name === "bool" || type.name === "char") {
     appendMojoPlanningDiagnostic(
@@ -170,12 +194,44 @@ export function planMojoAssignment(
   const leftType = context.program.queries.expressionType(leftNode);
   const property = context.program.queries.propertySelection(leftNode);
   const element = context.program.queries.elementSelection(leftNode);
-  const writeType = property?.kind === "provider" || property?.kind === "provider-static"
+  const targetWriteType = property?.kind === "provider" || property?.kind === "provider-static"
     ? property.writeOperation?.parameterTypes[0]
     : element?.writeType;
-  const targetType = writeType ?? leftType;
-  const right = planMojoValue(rightNode, context, targetType);
+  const providerProperty = property?.kind === "provider" || property?.kind === "provider-static"
+    ? property
+    : undefined;
+  const providerElement = element?.kind === "provider" ? element : undefined;
+  const sourceWriteType = providerProperty?.sourceWriteType ?? providerElement?.sourceWriteType;
+  const writeValueConversion = providerProperty?.writeValueConversion ?? providerElement?.writeValueConversion;
+  const providerWriteOperation = providerProperty?.writeOperation ?? providerElement?.writeOperation;
+  if (providerWriteOperation !== undefined &&
+    (sourceWriteType === undefined || writeValueConversion === undefined)) {
+    appendMojoPlanningDiagnostic(
+      context,
+      "MOJO_PROVIDER_PROPERTY_WRITE_CONVERSION_MISSING",
+      "Provider assignment has no sealed source-write carrier and target-write conversion.",
+      leftNode,
+    );
+    return undefined;
+  }
+  if (operator !== "=" && writeValueConversion !== undefined && writeValueConversion.kind !== "identity") {
+    appendMojoPlanningDiagnostic(
+      context,
+      "MOJO_PROVIDER_COMPOUND_WRITE_CONVERSION_UNSUPPORTED",
+      "Provider compound assignment requires an identity source-to-target write conversion.",
+      leftNode,
+    );
+    return undefined;
+  }
+  const rightSourceType = sourceWriteType ?? targetWriteType ?? leftType;
+  const sourceRight = planMojoValue(rightNode, context, rightSourceType);
+  const right = sourceRight === undefined
+    ? undefined
+    : writeValueConversion === undefined
+      ? sourceRight
+      : convertMojoValue(sourceRight, writeValueConversion, context);
   if (right === undefined) return undefined;
+  const targetType = targetWriteType ?? leftType;
   if (property?.kind === "provider" &&
     property.writeOperation?.target.kind === "property-write" &&
     property.writeOperation.target.access.kind === "method") {

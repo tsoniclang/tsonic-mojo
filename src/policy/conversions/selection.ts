@@ -154,7 +154,32 @@ export function classifyMojoValueConversion(
       }
       return value;
     }
-    if (actual.kind === "undefined") {
+    if (actual.kind === "union") {
+      const absentMembers = actual.members.filter((member) =>
+        member.kind === "null" || member.kind === "undefined");
+      const presentMembers = actual.members.filter((member) =>
+        member.kind !== "null" && member.kind !== "undefined").map((sourceType) => {
+        const conversion = classifyMojoValueConversion(sourceType, expected.value);
+        return conversion.kind === "resolved"
+          ? Object.freeze({ sourceType, conversion: conversion.conversion })
+          : undefined;
+      });
+      if (absentMembers.length !== 0 && presentMembers.every((member) => member !== undefined)) {
+        return {
+          kind: "resolved",
+          conversion: Object.freeze({
+            kind: "union-to-optional",
+            sourceType: actual,
+            targetType: expected,
+            presentMembers: Object.freeze(presentMembers as readonly {
+              readonly sourceType: MojoTargetTypeRef;
+              readonly conversion: MojoValueConversion;
+            }[]),
+          }),
+        };
+      }
+    }
+    if (actual.kind === "undefined" || actual.kind === "null") {
       return {
         kind: "resolved",
         conversion: Object.freeze({ kind: "optional-none", targetType: expected }),

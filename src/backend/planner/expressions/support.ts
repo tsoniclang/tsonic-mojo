@@ -239,6 +239,9 @@ export function convertMojoValue(
   if (conversion.kind === "optional-to-union") {
     return convertMojoOptionalToUnion(plan, conversion, context);
   }
+  if (conversion.kind === "union-to-optional") {
+    return convertMojoUnionToOptional(plan, conversion, context);
+  }
   if (conversion.kind === "union-inject") {
     const value = convertMojoValue(plan, conversion.valueConversion, context);
     if (value === undefined) return undefined;
@@ -455,6 +458,7 @@ export function applyMojoConversion(
     case "collection-map":
     case "optional-map":
     case "optional-to-union":
+    case "union-to-optional":
     case "union-map":
       return undefined;
     case "js-box":
@@ -703,6 +707,73 @@ function convertMojoOptionalToUnion(
         }),
       ]),
     }),
+  ]), result);
+}
+
+function convertMojoUnionToOptional(
+  plan: MojoValuePlan,
+  conversion: Extract<MojoValueConversion, { readonly kind: "union-to-optional" }>,
+  context: MojoPlanningContext,
+): MojoValuePlan | undefined {
+  registerMojoTypeImports(conversion.sourceType, context);
+  registerMojoTypeImports(conversion.targetType, context);
+  const sourceName = allocateMojoSyntheticName(context, "union_source");
+  const resultName = allocateMojoSyntheticName(context, "optional_result");
+  const source: MojoExpression = Object.freeze({ kind: "path", path: sourceName });
+  const result: MojoExpression = Object.freeze({ kind: "path", path: resultName });
+  const branches = conversion.presentMembers.map((member) => {
+    registerMojoTypeImports(member.sourceType, context);
+    const converted = convertMojoValue(mojoValue(Object.freeze({
+      kind: "type-element",
+      receiver: source,
+      type: member.sourceType,
+    })), member.conversion, context);
+    return converted === undefined
+      ? undefined
+      : Object.freeze({
+          kind: "if" as const,
+          condition: Object.freeze({
+            kind: "method-call" as const,
+            receiver: source,
+            name: "isa",
+            genericArguments: Object.freeze([{ kind: "type" as const, type: member.sourceType }]),
+            arguments: Object.freeze([]),
+          }),
+          thenStatements: Object.freeze([
+            ...converted.before,
+            Object.freeze({
+              kind: "assignment" as const,
+              operator: "=",
+              left: result,
+              right: Object.freeze({
+                kind: "construct" as const,
+                type: conversion.targetType,
+                arguments: Object.freeze([{ value: converted.value }]),
+              }),
+            }),
+          ]),
+        });
+  });
+  if (branches.some((branch) => branch === undefined)) return undefined;
+  return withMojoValue(Object.freeze([
+    ...plan.before,
+    Object.freeze({
+      kind: "variable",
+      name: sourceName,
+      type: conversion.sourceType,
+      initializer: plan.value,
+    }),
+    Object.freeze({
+      kind: "variable",
+      name: resultName,
+      type: conversion.targetType,
+      initializer: Object.freeze({
+        kind: "construct",
+        type: conversion.targetType,
+        arguments: Object.freeze([]),
+      }),
+    }),
+    ...(branches as readonly MojoStatement[]),
   ]), result);
 }
 

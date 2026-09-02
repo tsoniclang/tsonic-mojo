@@ -12,7 +12,10 @@ import {
   instantiateMojoProviderConstantOperation,
   instantiateMojoProviderPropertyOperation,
 } from "../../policy/operations/provider-instantiation.js";
-import { selectedProviderDeclarationIdentity } from "../../policy/operations/provider-selection.js";
+import {
+  resolveProviderDeclarationIdentity,
+  selectedProviderDeclarationIdentity,
+} from "../../policy/operations/provider-selection.js";
 import type { MojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
 import { selectedMojoSourceProfileDeclarationIdentity } from "../../policy/operations/source-profile-selection.js";
 import { analyzeStaticProviderProperty } from "./static-provider-properties.js";
@@ -44,12 +47,30 @@ export function analyzeMojoProviderProperty(
   }
   const sourceProfile = analyzeSourceProfileProperty(source, context);
   if (sourceProfile !== undefined) return sourceProfile;
-  const selectedIdentity = selectedProviderDeclarationIdentity(context.source, [
-    source.selectedDeclaration,
-    source.selectedSymbol,
-    source.sourceDeclaration,
-    source.sourceSymbol,
-  ]);
+  const exactSubjects = source.accessMode === "read"
+    ? [source.selectedReadDeclaration ?? source.selectedDeclaration]
+    : source.accessMode === "write"
+      ? [source.selectedWriteDeclaration ?? source.selectedDeclaration]
+      : [
+          source.selectedReadDeclaration ?? source.selectedDeclaration,
+          source.selectedWriteDeclaration ?? source.selectedDeclaration,
+        ];
+  const exactIdentity = resolveProviderDeclarationIdentity(context.source, exactSubjects);
+  if (exactIdentity.kind === "conflict") {
+    return {
+      kind: "unsupported",
+      code: "MOJO_PROVIDER_PROPERTY_IDENTITY_CONFLICT",
+      reason: "The exact checker-selected provider property declarations have conflicting identities.",
+    };
+  }
+  const selectedIdentity = exactIdentity.kind === "selected"
+    ? exactIdentity.identity
+    : selectedProviderDeclarationIdentity(context.source, [
+        source.selectedDeclaration,
+        source.selectedSymbol,
+        source.sourceDeclaration,
+        source.sourceSymbol,
+      ]);
   if (selectedIdentity?.exportId !== undefined && selectedIdentity.memberId === undefined) {
     if (source.accessMode !== "read" || source.sourceReadType === undefined) {
       return {
@@ -139,6 +160,34 @@ export function analyzeMojoProviderProperty(
       reason: receiverConversion.reason,
     };
   }
+  const selectedWrite = write === undefined || source.sourceWriteType === undefined
+    ? undefined
+    : context.resolveType(source.sourceWriteType);
+  if (write !== undefined && selectedWrite === undefined) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_PROVIDER_PROPERTY_WRITE_TYPE_NOT_CLOSED",
+      reason: "Selected provider property write has no exact source carrier.",
+    };
+  }
+  const writeParameterType = write?.operation.parameterTypes[0];
+  if (write !== undefined && (write.operation.parameterTypes.length !== 1 || writeParameterType === undefined)) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_PROVIDER_PROPERTY_WRITE_ABI_MISSING",
+      reason: "Selected provider property write has no exact single-value target ABI.",
+    };
+  }
+  const writeValueConversion = selectedWrite === undefined || writeParameterType === undefined
+    ? undefined
+    : classifyMojoValueConversion(selectedWrite, writeParameterType);
+  if (writeValueConversion?.kind === "unsupported") {
+    return {
+      kind: "unsupported",
+      code: "MOJO_PROVIDER_PROPERTY_WRITE_CONVERSION_UNPROVEN",
+      reason: writeValueConversion.reason,
+    };
+  }
   let expressionType: MojoTargetTypeRef;
   let readResultConversion;
   if (read !== undefined) {
@@ -158,19 +207,7 @@ export function analyzeMojoProviderProperty(
     }
     expressionType = selectedRead;
     readResultConversion = conversion.conversion;
-  } else {
-    const selectedWrite = source.sourceWriteType === undefined
-      ? undefined
-      : context.resolveType(source.sourceWriteType);
-    if (selectedWrite === undefined) {
-      return {
-        kind: "unsupported",
-        code: "MOJO_PROVIDER_PROPERTY_WRITE_TYPE_NOT_CLOSED",
-        reason: "Selected provider property write has no exact source carrier.",
-      };
-    }
-    expressionType = selectedWrite;
-  }
+  } else expressionType = selectedWrite!;
   return {
     kind: "resolved",
     expressionType,
@@ -182,6 +219,10 @@ export function analyzeMojoProviderProperty(
       sourceReceiverType: receiverType,
       receiverConversion: receiverConversion.conversion,
       ...(readResultConversion === undefined ? {} : { readResultConversion }),
+      ...(selectedWrite === undefined ? {} : { sourceWriteType: selectedWrite }),
+      ...(writeValueConversion?.kind !== "resolved"
+        ? {}
+        : { writeValueConversion: writeValueConversion.conversion }),
       optionalChain: source.optionalChain,
     }),
   };
@@ -325,6 +366,12 @@ function analyzeSourceProfileProperty(
   if (readResultConversion?.kind === "unsupported") {
     return { kind: "unsupported", code: "MOJO_SOURCE_PROFILE_PROPERTY_READ_CONVERSION_UNPROVEN", reason: readResultConversion.reason };
   }
+  const writeValueConversion = writeType === undefined
+    ? undefined
+    : classifyMojoValueConversion(writeType, writeType);
+  if (writeValueConversion?.kind === "unsupported") {
+    return { kind: "unsupported", code: "MOJO_SOURCE_PROFILE_PROPERTY_WRITE_CONVERSION_UNPROVEN", reason: writeValueConversion.reason };
+  }
   return {
     kind: "resolved",
     expressionType: readType ?? writeType!,
@@ -336,6 +383,10 @@ function analyzeSourceProfileProperty(
       sourceReceiverType: receiverType,
       receiverConversion: receiverConversion.conversion,
       ...(readResultConversion?.kind !== "resolved" ? {} : { readResultConversion: readResultConversion.conversion }),
+      ...(writeType === undefined ? {} : { sourceWriteType: writeType }),
+      ...(writeValueConversion?.kind !== "resolved"
+        ? {}
+        : { writeValueConversion: writeValueConversion.conversion }),
       optionalChain: source.optionalChain,
     }),
   };

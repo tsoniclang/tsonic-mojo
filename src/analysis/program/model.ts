@@ -288,6 +288,8 @@ export type MojoPropertySelection =
       readonly sourceReceiverType: MojoTargetTypeRef;
       readonly receiverConversion?: MojoValueConversion;
       readonly readResultConversion?: MojoValueConversion;
+      readonly sourceWriteType?: MojoTargetTypeRef;
+      readonly writeValueConversion?: MojoValueConversion;
       readonly optionalChain: boolean;
     }
   | {
@@ -300,6 +302,8 @@ export type MojoPropertySelection =
       readonly readOperation?: MojoSelectedProviderOperation;
       readonly writeOperation?: MojoSelectedProviderOperation;
       readonly readResultConversion?: MojoValueConversion;
+      readonly sourceWriteType?: MojoTargetTypeRef;
+      readonly writeValueConversion?: MojoValueConversion;
     };
 
 export interface MojoValueSelection {
@@ -429,6 +433,8 @@ export type MojoElementSelection = {
   readonly indexConversion: MojoValueConversion;
   readonly readType?: MojoTargetTypeRef;
   readonly writeType?: MojoTargetTypeRef;
+  readonly sourceWriteType?: MojoTargetTypeRef;
+  readonly writeValueConversion?: MojoValueConversion;
   readonly readResultConversion?: MojoValueConversion;
   readonly optionalChain: boolean;
 };
@@ -513,6 +519,8 @@ export type MojoTemplateStringConversion =
   | { readonly kind: "number" }
   | { readonly kind: "integer" }
   | { readonly kind: "character" }
+  | { readonly kind: "native-error" }
+  | { readonly kind: "js-dynamic" }
   | { readonly kind: "null" }
   | { readonly kind: "undefined" }
   | {

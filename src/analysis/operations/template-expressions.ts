@@ -9,6 +9,7 @@ import type {
   MojoTemplateStringConversion,
 } from "../program/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import { mojoTargetTypeKey } from "../../target-model/types/key.js";
 
 export type MojoTemplateExpressionAnalysis =
   | { readonly kind: "resolved"; readonly selection: MojoTemplateExpressionSelection }
@@ -18,6 +19,7 @@ export function analyzeMojoTemplateExpression(
   expression: Node,
   source: TargetSourceProgram,
   expressionTypes: WeakMap<Node, MojoTargetTypeRef>,
+  isTypedError: (type: MojoTargetTypeRef) => boolean,
 ): MojoTemplateExpressionAnalysis {
   const resultType = expressionTypes.get(expression);
   if (resultType === undefined || !isStringType(resultType)) {
@@ -31,11 +33,13 @@ export function analyzeMojoTemplateExpression(
   for (const span of spans as readonly Node[]) {
     const substitution = TemplateSpan_Expression(source.ast, span);
     const type = substitution === undefined ? undefined : expressionTypes.get(substitution);
-    const conversion = type === undefined ? undefined : classifyStringification(type, resultType);
+    const conversion = type === undefined
+      ? undefined
+      : classifyStringification(type, resultType, isTypedError);
     if (substitution === undefined || type === undefined || conversion === undefined) {
       return unsupported(
         substitution ?? span,
-        "Template substitution has no exact closed source-string conversion for its selected Mojo carrier.",
+        `Template substitution has no exact closed source-string conversion for Mojo carrier ${mojoTargetTypeKey(type ?? { kind: "never" })}.`,
       );
     }
     substitutions.push(Object.freeze({ expression: substitution, type, conversion }));
@@ -53,6 +57,7 @@ export function analyzeMojoTemplateExpression(
 function classifyStringification(
   type: MojoTargetTypeRef,
   resultType: MojoTargetTypeRef,
+  isTypedError: (type: MojoTargetTypeRef) => boolean,
 ): MojoTemplateStringConversion | undefined {
   if (sameStringDomain(type, resultType)) return Object.freeze({ kind: "identity" });
   if (type.kind === "native-string" && isJsString(resultType)) {
@@ -66,6 +71,12 @@ function classifyStringification(
     return Object.freeze({ kind: "undefined" });
   }
   if (type.kind === "bigint") return Object.freeze({ kind: "integer" });
+  if ((type.kind === "target-named" && type.id === "mojo.builtin.Error") || isTypedError(type)) {
+    return Object.freeze({ kind: "native-error" });
+  }
+  if (type.kind === "dynamic" && type.domain === "js") {
+    return Object.freeze({ kind: "js-dynamic" });
+  }
   if (type.kind === "source-primitive") {
     if (type.name === "bool") return Object.freeze({ kind: "boolean" });
     if (type.name === "char") return Object.freeze({ kind: "character" });
@@ -75,14 +86,14 @@ function classifyStringification(
     return Object.freeze({ kind: "integer" });
   }
   if (type.kind === "optional") {
-    const value = classifyStringification(type.value, resultType);
+    const value = classifyStringification(type.value, resultType, isTypedError);
     return value === undefined
       ? undefined
       : Object.freeze({ kind: "optional", sourceType: type, value });
   }
   if (type.kind === "union") {
     const members = type.members.map((member) => {
-      const conversion = classifyStringification(member, resultType);
+      const conversion = classifyStringification(member, resultType, isTypedError);
       return conversion === undefined ? undefined : Object.freeze({ type: member, conversion });
     });
     return members.some((member) => member === undefined)

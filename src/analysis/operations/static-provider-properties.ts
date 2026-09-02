@@ -60,6 +60,26 @@ export function analyzeStaticProviderProperty(
       reason: "Selected static provider write has no exact unit-valued single-argument target function.",
     };
   }
+  const selectedWrite = writeRow === undefined || source.sourceWriteType === undefined
+    ? undefined
+    : context.resolveType(source.sourceWriteType);
+  if (writeRow !== undefined && selectedWrite === undefined) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_PROVIDER_STATIC_PROPERTY_WRITE_TYPE_NOT_CLOSED",
+      reason: "Selected static provider write has no exact source carrier.",
+    };
+  }
+  const writeValueConversion = selectedWrite === undefined || writeRow?.parameterTypes?.[0] === undefined
+    ? undefined
+    : classifyMojoValueConversion(selectedWrite, writeRow.parameterTypes[0]);
+  if (writeValueConversion?.kind === "unsupported") {
+    return {
+      kind: "unsupported",
+      code: "MOJO_PROVIDER_STATIC_PROPERTY_WRITE_CONVERSION_UNPROVEN",
+      reason: writeValueConversion.reason,
+    };
+  }
   let expressionType: MojoTargetTypeRef | undefined;
   let readResultConversion;
   if (read?.kind === "resolved") {
@@ -85,9 +105,7 @@ export function analyzeStaticProviderProperty(
     readResultConversion = conversion.conversion;
   }
   if (expressionType === undefined) {
-    expressionType = source.sourceWriteType === undefined
-      ? undefined
-      : context.resolveType(source.sourceWriteType);
+    expressionType = selectedWrite;
   }
   if (expressionType === undefined) {
     return {
@@ -114,6 +132,10 @@ export function analyzeStaticProviderProperty(
       ...(read?.kind === "resolved" ? { readOperation: read.operation } : {}),
       ...(writeOperation === undefined ? {} : { writeOperation }),
       ...(readResultConversion === undefined ? {} : { readResultConversion }),
+      ...(selectedWrite === undefined ? {} : { sourceWriteType: selectedWrite }),
+      ...(writeValueConversion?.kind !== "resolved"
+        ? {}
+        : { writeValueConversion: writeValueConversion.conversion }),
     }),
   };
 }

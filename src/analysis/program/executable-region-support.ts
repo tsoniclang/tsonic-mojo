@@ -181,11 +181,23 @@ export function executableRegionErrorTypes(
         }
         addNativeConversionError(
           (selection.receiverConversion !== undefined && mojoConversionRaises(selection.receiverConversion)) ||
-          (selection.readResultConversion !== undefined && mojoConversionRaises(selection.readResultConversion)),
+          (selection.readResultConversion !== undefined && mojoConversionRaises(selection.readResultConversion)) ||
+          (selection.writeValueConversion !== undefined && mojoConversionRaises(selection.writeValueConversion)),
         );
       } else if (selection?.kind === "provider-constant") {
         errors.push(...mojoOperationErrorTypes(selection.operation));
         addNativeConversionError(mojoConversionRaises(selection.readResultConversion));
+      } else if (selection?.kind === "provider-static") {
+        if (selection.readOperation !== undefined) {
+          errors.push(...mojoOperationErrorTypes(selection.readOperation));
+        }
+        if (selection.writeOperation !== undefined) {
+          errors.push(...mojoOperationErrorTypes(selection.writeOperation));
+        }
+        addNativeConversionError(
+          (selection.readResultConversion !== undefined && mojoConversionRaises(selection.readResultConversion)) ||
+          (selection.writeValueConversion !== undefined && mojoConversionRaises(selection.writeValueConversion)),
+        );
       }
     }
     if (input.source.ast.is.IsIdentifier(node)) {
@@ -200,7 +212,9 @@ export function executableRegionErrorTypes(
       if (selection !== undefined) {
         addNativeConversionError(mojoConversionRaises(selection.indexConversion) ||
           (selection.readResultConversion !== undefined &&
-            mojoConversionRaises(selection.readResultConversion)));
+            mojoConversionRaises(selection.readResultConversion)) ||
+          (selection.kind === "provider" && selection.writeValueConversion !== undefined &&
+            mojoConversionRaises(selection.writeValueConversion)));
         if (selection.kind === "provider") {
           if (selection.readOperation !== undefined) {
             errors.push(...mojoOperationErrorTypes(selection.readOperation));

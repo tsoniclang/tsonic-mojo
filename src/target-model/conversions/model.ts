@@ -77,6 +77,15 @@ export type MojoValueConversion =
       readonly valueConversion: MojoValueConversion;
     }
   | {
+      readonly kind: "union-to-optional";
+      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
+      readonly targetType: Extract<MojoTargetTypeRef, { readonly kind: "optional" }>;
+      readonly presentMembers: readonly {
+        readonly sourceType: MojoTargetTypeRef;
+        readonly conversion: MojoValueConversion;
+      }[];
+    }
+  | {
       readonly kind: "union-inject";
       readonly targetType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
       readonly memberType: MojoTargetTypeRef;
