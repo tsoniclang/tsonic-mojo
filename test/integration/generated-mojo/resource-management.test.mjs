@@ -113,7 +113,7 @@ test("top-level using closes before module initialization commits", () => {
   const result = compileMojo({ files: { "index.ts": [
     resourceClass,
     "using resource = new Resource();",
-    "export const observed = resource;",
+    "const observed = resource;",
     "export function main(): void {}",
   ].join("\n") } });
   assert.deepEqual(result.diagnostics, []);

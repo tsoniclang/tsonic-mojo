@@ -179,8 +179,11 @@ export function recordMojoExecutableRegionConversionUses(
       const selection = callSelections.get(expression);
       for (const argument of ast.arguments(expression)) {
         if (argument === undefined) continue;
-        const expected = callArgumentExpectedType(selection, argument);
-        if (expected !== undefined) record(argument, expected);
+        if (selection?.kind !== "project" && selection?.kind !== "provider" &&
+          selection?.kind !== "callable") {
+          const expected = callArgumentExpectedType(selection, argument);
+          if (expected !== undefined) record(argument, expected);
+        }
         visitExpression(argument);
       }
       return;

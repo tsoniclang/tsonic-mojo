@@ -157,6 +157,12 @@ export function classifyMojoValueConversion(
       conversion: Object.freeze({ kind: "primitive-cast", targetType: expected }),
     };
   }
+  if (actual.kind === "bigint" && isIntegralPrimitive(expected)) {
+    return {
+      kind: "resolved",
+      conversion: Object.freeze({ kind: "primitive-cast", targetType: expected }),
+    };
+  }
   if (actual.kind === "reference" && mojoTargetTypeEquals(actual.value, expected) &&
     isTriviallyCopyableMojoType(expected)) {
     return {
@@ -385,6 +391,14 @@ function classifyTruthiness(type: MojoTargetTypeRef): MojoTruthinessConversion |
   if (type.kind === "type-parameter" || type.kind === "associated" ||
     type.kind === "compiler-expression" || type.kind === "symbol") return undefined;
   return Object.freeze({ kind: "always-true" });
+}
+
+function isIntegralPrimitive(
+  type: MojoTargetTypeRef,
+): type is Extract<MojoTargetTypeRef, { readonly kind: "source-primitive" }> {
+  return type.kind === "source-primitive" && type.name !== "bool" &&
+    type.name !== "char" && type.name !== "float16" &&
+    type.name !== "float32" && type.name !== "float64";
 }
 
 function classifyCallableAdaptation(

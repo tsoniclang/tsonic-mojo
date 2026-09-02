@@ -128,6 +128,9 @@ export function analyzeExpressionCarrier(
   if (reference !== undefined) input.bindingSourceFiles.set(node, reference.sourceFile);
   const referencedType = reference === undefined ? undefined : input.bindingTypes.get(reference.declaration);
   const contextualExpected = expectedExpressionType(node, input);
+  const authoredAggregate = ast.is.IsArrayLiteralExpression(node)
+    ? contextualExpected
+    : undefined;
   const contextualAggregate = ast.is.IsArrayLiteralExpression(node) ||
       ast.is.IsObjectLiteralExpression(node)
     ? resolveContextualAggregateCarrier(node, input, semantics)
@@ -145,7 +148,7 @@ export function analyzeExpressionCarrier(
     semantics,
   );
   const resolved = selectedOccurrenceType ?? referencedType ?? erasedCarrier ??
-    contextualAggregate ?? semanticType ?? contextualExpected;
+    authoredAggregate ?? contextualAggregate ?? semanticType ?? contextualExpected;
   if (resolved !== undefined) input.expressionTypes.set(node, resolved);
   if (ast.kindName(node) === "KindThisKeyword" && input.owner !== undefined) {
     input.bindingNames.set(node, "self");

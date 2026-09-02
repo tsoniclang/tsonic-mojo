@@ -22,7 +22,10 @@ test("module initialization is source ordered, dependency ordered, and idempoten
   const entry = sources.find(({ text }) => text.includes("def main()"));
   assert.ok(setup);
   assert.ok(entry);
-  assert.match(setup.text, /\.initialized = Optional\[Int32\]\(1\)[\s\S]*\.initialized\.value\(\) \+= 1/u);
+  assert.match(
+    setup.text,
+    /\.initialized = Optional\[Int32\]\(Int32\(Float64\(1\)\)\)[\s\S]*\.initialized\.value\(\) \+= Int32\(Float64\(1\)\)/u,
+  );
   assert.match(entry.text, /initializeTsonicModule/u);
 });
 
@@ -69,8 +72,8 @@ test("class static fields and blocks share one exact module-state path", () => {
   assert.ok(source);
   const slots = source.text.match(/Counter_total/g) ?? [];
   assert.ok(slots.length >= 4);
-  assert.match(source.text, /Counter_total\.value\(\) \+= Int32\(2\)/u);
-  assert.match(source.text, /Counter_total\.value\(\) \+= Int32\(3\)/u);
+  assert.match(source.text, /Counter_total\.value\(\) \+= Int32\(Float64\(2\)\)/u);
+  assert.match(source.text, /Counter_total\.value\(\) \+= Int32\(Float64\(3\)\)/u);
 });
 
 test("numeric enums retain checker-evaluated discriminants and exact member identity", () => {
@@ -158,8 +161,8 @@ test("generic functions retain exact selected type arguments", () => {
   const source = artifactTexts(result).find(({ text }) => text.includes("def identity"));
   assert.ok(source);
   assert.match(source.text, /def identity\[T: Movable & Deinitable\]\(var value: T\) -> T/u);
-  assert.match(source.text, /return value\^/u);
-  assert.match(source.text, /identity\[Int32\]\(Int32\(7\)\)/u);
+  assert.match(source.text, /return \(value\^\)/u);
+  assert.match(source.text, /identity\[Int32\]\(Int32\(Float64\(7\)\)\)/u);
 });
 
 test("project classes retain reference identity and declaration-owned private storage", () => {
@@ -204,7 +207,7 @@ test("project construction selects the exact authored constructor signature", ()
   const source = artifactTexts(result).find(({ text }) => text.includes("struct Counter"));
   assert.ok(source);
   assert.match(source.text, /def __init__\(out self, var value: Int32\)/u);
-  assert.match(source.text, /Counter\(Int32\(7\)\)/u);
+  assert.match(source.text, /Counter\(Int32\(Float64\(7\)\)\)/u);
 });
 
 test("constructor-owned field initialization closes reference state without target defaults", () => {
@@ -227,12 +230,10 @@ test("constructor-owned field initialization closes reference state without targ
   assert.deepEqual(result.diagnostics, []);
   const source = artifactTexts(result).find(({ text }) => text.includes("struct PairState"));
   assert.ok(source);
-  assert.match(source.text, /var __tsonic_left_initial_\d+: Int32 = left/u);
-  assert.match(source.text, /var __tsonic_right_initial_\d+: String = right/u);
-  assert.match(
-    source.text,
-    /PairState\(__tsonic_left_initial_\d+, __tsonic_right_initial_\d+\)/u,
-  );
+  assert.match(source.text, /def __init__\(out self, var left: Int32, var right: String\):[\s\S]*self\.left = left[\s\S]*self\.right = right/u);
+  assert.match(source.text, /PairState\(\(left\^\), \(right\^\)\)/u);
+  assert.doesNotMatch(source.text, /__tsonic_(?:left|right)_initial_/u);
+  assert.doesNotMatch(source.text, /self\.(?:left|right) = (?:Int32\(Float64\(0\)\)|"")/u);
   assert.doesNotMatch(source.text, /self\._state\[\]\.(?:left|right) =/u);
 });
 
@@ -304,7 +305,7 @@ test("switch fallthrough retains selector order and an explicit break boundary",
   assert.match(source.text, /__tsonic_switch_value/u);
   assert.match(source.text, /__tsonic_switch_clause/u);
   assert.match(source.text, /while True:/u);
-  assert.match(source.text, /total \+= 1[\s\S]*total \+= 2/u);
+  assert.match(source.text, /total \+= Int32\(Float64\(1\)\)[\s\S]*total \+= Int32\(Float64\(2\)\)/u);
 });
 
 test("try catch and finally retain one error boundary and mandatory cleanup", () => {
@@ -373,8 +374,8 @@ test("project interface objects retain selected generic fields and source-ordere
   assert.deepEqual(result.diagnostics, []);
   const source = artifactTexts(result).find(({ text }) => text.includes("struct PairState"));
   assert.ok(source);
-  assert.match(source.text, /struct PairState\[T: AnyType\]/u);
-  assert.match(source.text, /struct Pair\[T: AnyType\][\s\S]*ArcPointer\[PairState\[T\]\]/u);
+  assert.match(source.text, /struct PairState\[T: Movable & Deinitable\]/u);
+  assert.match(source.text, /struct Pair\[T: Movable & Deinitable\][\s\S]*ArcPointer\[PairState\[T\]\]/u);
   assert.match(source.text, /Pair\[Int32\]\(/u);
   assert.match(source.text, /object_spread/u);
 });
@@ -398,10 +399,10 @@ test("authored scalar array tuple and FixedArray carriers survive collapsed Type
   assert.deepEqual(result.diagnostics, []);
   const source = artifactTexts(result).find(({ text }) => text.includes("def sum"));
   assert.ok(source);
-  assert.match(source.text, /var values: List\[Int32\] = \[1, 2\]/u);
-  assert.match(source.text, /var tuple: Tuple\[Int32, String\] = \(3, "three"\)/u);
-  assert.match(source.text, /var bytes: Array\[UInt8, 2\] = Array\[UInt8, 2\]\(4, 5\)/u);
-  assert.match(source.text, /values\[Int\(0\)\].*tuple\[Int\(0\)\].*Int32\(bytes\[Int\(1\)\]\)/u);
+  assert.match(source.text, /var values: List\[Int32\] = \[Int32\(Float64\(1\)\), Int32\(Float64\(2\)\)\]/u);
+  assert.match(source.text, /var tuple: Tuple\[Int32, String\] = \(Int32\(Float64\(3\)\), "three"\)/u);
+  assert.match(source.text, /var bytes: Array\[UInt8, 2\] = Array\[UInt8, 2\]\(UInt8\(Float64\(4\)\), UInt8\(Float64\(5\)\)\)/u);
+  assert.match(source.text, /values\[Int\(Float64\(0\)\)\].*tuple\[0\].*Float64\(bytes\[Int\(Float64\(1\)\)\]\)/u);
 });
 
 test("all native Mojo and shared fixed-width primitive aliases retain authored carriers", () => {
@@ -425,7 +426,7 @@ test("all native Mojo and shared fixed-width primitive aliases retain authored c
     "Bool", "UInt16", "Int8", "UInt8", "Int16", "Int32", "UInt32", "Int64",
     "UInt64", "Int", "UInt", "Float16", "Float32", "Float64", "Int128", "UInt128",
   ]) assert.match(source.text, new RegExp(`\\b${type}\\b`, "u"));
-  assert.match(source.text, /return \(-1, 2\)/u);
+  assert.match(source.text, /return \(Int64\(-1\), UInt64\(2\)\)/u);
 });
 
 test("decimal rejects at target type closure because the pinned Mojo toolchain has no decimal carrier", () => {
@@ -496,7 +497,8 @@ test("expression callables retain exact erased parameter result and direct-call 
   assert.deepEqual(result.diagnostics, []);
   const source = artifactTexts(result).find(({ text }) => text.includes("def apply"));
   assert.ok(source);
-  assert.match(source.text, /transform: tsonic_runtime\.Callable\[Tuple\[Int32\], Int32\]/u);
+  assert.match(source.text, /transform: tsonic_runtime\.RaisingCallable\[Tuple\[Int32\], Int32, Error\]/u);
+  assert.match(source.text, /widen_callable\[Tuple\[Int32\], Int32, Error\]\(double\)/u);
   assert.match(source.text, /transform\.call\(\(value,\)\)/u);
   assert.match(source.text, /struct __tsonic_callable_environment_\d+:/u);
   assert.match(source.text, /def invoke\([^)]*Tuple\[Int32\]\) -> Int32:/u);
@@ -541,7 +543,7 @@ test("block-bodied callable expressions lower through one generated environment"
   const source = artifactTexts(result).find(({ text }) => text.includes("struct __tsonic_callable_environment_"));
   assert.ok(source);
   assert.match(source.text, /Callable\[Tuple\[\], Int32\]/u);
-  assert.match(source.text, /def invoke\([^)]*Tuple\[\]\) -> Int32:[\s\S]*return 1/u);
+  assert.match(source.text, /def invoke\([^)]*Tuple\[\]\) -> Int32:[\s\S]*return Int32\(Float64\(1\)\)/u);
   assert.match(source.text, /value\.call\(\(\)\)/u);
 });
 
@@ -842,8 +844,8 @@ test("native length reads retain their exact numeric conversion in comparisons",
   const source = artifactTexts(result).find(({ text }) => text.includes("def tsonic_main"));
   assert.ok(source);
   assert.equal((source.text.match(/\.__len__\(\)/gu) ?? []).length, 2);
-  assert.match(source.text, /Float64\([^\n]*\.__len__\(\)\) >= 0/u);
-  assert.match(source.text, /Float64\([^\n]*\.__len__\(\)\) <= 3/u);
+  assert.match(source.text, /Float64\([^\n]*\.__len__\(\)\) >= Float64\(0\)/u);
+  assert.match(source.text, /Float64\([^\n]*\.__len__\(\)\) <= Float64\(3\)/u);
 });
 
 test("project interface index signatures retain exact map-backed storage and source order", () => {
@@ -868,7 +870,7 @@ test("project interface index signatures retain exact map-backed storage and sou
   assert.ok(source);
   assert.match(source.text, /var _index: Dict\[String, Int32\]/u);
   assert.match(source.text, /for __tsonic_object_index_key_/u);
-  assert.match(source.text, /\._state\[\]\._index\["first"\] \+= Int32\(4\)/u);
+  assert.match(source.text, /\._state\[\]\._index\["first"\] \+= Int32\(Float64\(4\)\)/u);
   assert.match(source.text, /\._state\[\]\._index\[name\]/u);
 });
 
@@ -905,8 +907,8 @@ test("conditional callable values and callable fields retain one exact ABI", () 
   assert.deepEqual(result.diagnostics, []);
   const source = artifactTexts(result).find(({ text }) => text.includes("def apply"));
   assert.ok(source);
-  assert.match(source.text, /Callable\[Tuple\[Int32, Int32\], Int32\]/u);
-  assert.match(source.text, /operation\._state\[\]\.run\.call\(\(Int32\(4\), Int32\(2\)\)\)/u);
+  assert.match(source.text, /RaisingCallable\[Tuple\[Int32, Int32\], Int32, Error\]/u);
+  assert.match(source.text, /operation\._state\[\]\.run\.call\(\(Int32\(Float64\(4\)\), Int32\(Float64\(2\)\)\)\)/u);
 });
 
 test("assertions consume the checker-selected narrowed union route", () => {

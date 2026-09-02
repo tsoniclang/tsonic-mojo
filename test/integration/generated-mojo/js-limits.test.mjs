@@ -45,7 +45,7 @@ test("unsupported JavaScript semantic families have one deterministic boundary",
   );
   assertTargetRejection(
     compileBody("  console.log({ value: 1 });"),
-    "MOJO_CALL_ARGUMENT_CARRIER_NOT_CLOSED",
+    "MOJO_OBJECT_LITERAL_SHAPE_UNSUPPORTED",
   );
 });
 
