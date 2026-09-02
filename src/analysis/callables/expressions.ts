@@ -34,6 +34,7 @@ export interface MojoCallableExpressionSignatureInput {
   readonly projectTypes: MojoProjectTypeCatalog;
   readonly sourceProfiles: MojoSourceProfileRegistry;
   readonly jsEnabled: boolean;
+  readonly sourceCallableErrorType?: MojoTargetTypeRef;
   readonly allocateLocalName: (sourceName: string) => string;
   readonly bindingNames: WeakMap<Node, string>;
   readonly bindingTypes: WeakMap<Node, MojoTargetTypeRef>;
@@ -65,6 +66,9 @@ export function analyzeMojoCallableExpressionSignature(
     projectTypes: input.projectTypes,
     sourceProfiles: input.sourceProfiles,
     jsEnabled: input.jsEnabled,
+    ...(input.sourceCallableErrorType === undefined
+      ? {}
+      : { sourceCallableErrorType: input.sourceCallableErrorType }),
     declaration: input.expression,
     sourceFile: input.sourceFile,
     name: "",
@@ -232,6 +236,9 @@ export function analyzeAndSealMojoCallableExpression(
     bindingTypes: environment.bindingTypes,
     bindingSourceFiles: environment.bindingSourceFiles,
     diagnostics: environment.diagnostics,
+    ...(environment.sourceCallableErrorType === undefined
+      ? {}
+      : { sourceCallableErrorType: environment.sourceCallableErrorType }),
   });
   if (callable === undefined) return;
   let raises = false;
@@ -373,10 +380,14 @@ export function analyzeAndSealMojoCallableExpression(
     }
     return;
   }
+  const { errorType: _selectedErrorType, ...selectedCallableType } = selectedType;
   const callableType = Object.freeze({
-    ...selectedType,
+    ...selectedCallableType,
     result: callable.resultType,
     raises,
+    ...(raises && environment.sourceCallableErrorType !== undefined
+      ? { errorType: environment.sourceCallableErrorType }
+      : {}),
   });
   environment.expressionTypes.set(input.expression, callableType);
   input.selections.set(input.expression, Object.freeze({

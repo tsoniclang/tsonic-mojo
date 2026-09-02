@@ -419,7 +419,8 @@ export function planMojoValue(
   if (expectedType !== undefined && actualType !== undefined && conversion === undefined) {
     return undefined;
   }
-  const inlineCallableWidening = conversion?.kind === "callable-raise-widen" &&
+  const inlineCallableAdaptation = conversion?.kind === "callable-adapt" &&
+    conversion.error !== "erase" &&
     (ast.is.IsArrowFunction(node) || ast.is.IsFunctionExpression(node));
   let plan: MojoValuePlan | undefined;
   if (ast.is.IsArrayLiteralExpression(node)) {
@@ -446,7 +447,7 @@ export function planMojoValue(
       node,
       context,
       planMojoValue,
-      inlineCallableWidening && conversion?.kind === "callable-raise-widen" &&
+      inlineCallableAdaptation && conversion?.kind === "callable-adapt" &&
           conversion.targetType.kind === "callable"
         ? conversion.targetType
         : undefined,
@@ -471,7 +472,7 @@ export function planMojoValue(
     }
   }
   if (plan === undefined) return undefined;
-  const converted = expectedType === undefined || actualType === undefined || inlineCallableWidening
+  const converted = expectedType === undefined || actualType === undefined || inlineCallableAdaptation
     ? plan
     : conversion === undefined
       ? undefined

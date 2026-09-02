@@ -33,6 +33,10 @@ import {
   uniqueFixedArrayFact,
   uniqueProviderIdentity,
 } from "./resolution-helpers.js";
+import {
+  mojoNativeErrorType,
+  mojoSourceErrorType,
+} from "../../target-model/types/error-domains.js";
 
 export { providerOwnerMatches } from "./resolution-helpers.js";
 
@@ -44,6 +48,7 @@ export interface MojoTypeResolutionContext {
   readonly projectTypes: MojoProjectTypeCatalog;
   readonly sourceProfiles: MojoSourceProfileRegistry;
   readonly jsEnabled: boolean;
+  readonly sourceCallableErrorType?: MojoTargetTypeRef;
 }
 
 export type MojoTypeResolution =
@@ -215,6 +220,9 @@ function resolveMojoTargetTypeWithState(
             type: namedType("tsonic.mojo.js.JsString", ["tsonic_js"], "JsString"),
           }
         : { kind: "resolved", type: { kind: "native-string" } };
+    }
+    if (sourceProfile?.name === "Error") {
+      return { kind: "resolved", type: mojoSourceErrorType() };
     }
     if (sourceProfile?.name === "Promise" || sourceProfile?.name === "PromiseLike") {
       const sourceArguments = types.effectiveTypeArguments(selectedType) ??
@@ -419,6 +427,7 @@ function resolveMojoTargetTypeWithState(
           parameters: Object.freeze(parameters),
           result: result.type,
           raises: true,
+          errorType: context.sourceCallableErrorType ?? mojoNativeErrorType(),
         }),
       };
     }

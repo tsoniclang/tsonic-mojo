@@ -71,7 +71,9 @@ function classifyStringification(
     return Object.freeze({ kind: "undefined" });
   }
   if (type.kind === "bigint") return Object.freeze({ kind: "integer" });
-  if ((type.kind === "target-named" && type.id === "mojo.builtin.Error") || isTypedError(type)) {
+  if ((type.kind === "target-named" &&
+      (type.id === "mojo.builtin.Error" || type.id === "tsonic.mojo.runtime.TsError")) ||
+    isTypedError(type)) {
     return Object.freeze({ kind: "native-error" });
   }
   if (type.kind === "dynamic" && type.domain === "js") {

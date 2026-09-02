@@ -23,6 +23,7 @@ export interface MojoFunctionSignatureInput {
   readonly projectTypes: MojoProjectTypeCatalog;
   readonly sourceProfiles: MojoSourceProfileRegistry;
   readonly jsEnabled: boolean;
+  readonly sourceCallableErrorType?: MojoTargetTypeRef;
   readonly declaration: Node;
   readonly sourceFile: SourceFile;
   readonly name: string;
@@ -210,6 +211,9 @@ function resolve(
     projectTypes: input.projectTypes,
     sourceProfiles: input.sourceProfiles,
     jsEnabled: input.jsEnabled,
+    ...(input.sourceCallableErrorType === undefined
+      ? {}
+      : { sourceCallableErrorType: input.sourceCallableErrorType }),
   });
   if (resolved.kind === "resolved") return resolved.type;
   append(input, "MOJO_TARGET_TYPE_UNSUPPORTED", `Selected source type cannot be represented exactly in Mojo: ${resolved.reason}.`, authoredTypeNode ?? input.declaration);

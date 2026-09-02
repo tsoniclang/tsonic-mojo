@@ -25,6 +25,7 @@ import {
   mojoDynamicTargetType,
   mojoNamedTargetType,
   mojoPrimitiveTargetType,
+  mojoStringTargetType,
 } from "../../target-model/types/constructors.js";
 import type {
   MojoAnalyzedClass,
@@ -53,6 +54,7 @@ export interface MojoCallAnalysisContext {
   readonly projectTypes: MojoProjectTypeCatalog;
   readonly sourceProfiles: MojoSourceProfileRegistry;
   readonly jsEnabled: boolean;
+  readonly sourceCallableErrorType?: MojoTargetTypeRef;
   readonly expressionTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly conversions: MojoConversionIndex;
   readonly functionByDeclaration: WeakMap<Node, MojoAnalyzedFunction>;
@@ -77,6 +79,9 @@ export function analyzeMojoCall(
       projectTypes: context.projectTypes,
       sourceProfiles: context.sourceProfiles,
       jsEnabled: context.jsEnabled,
+      ...(context.sourceCallableErrorType === undefined
+        ? {}
+        : { sourceCallableErrorType: context.sourceCallableErrorType }),
     });
     return result.kind === "resolved" ? result.type : undefined;
   };
@@ -668,6 +673,8 @@ function sourceProfileParameterType(
       );
     case "js-value":
       return mojoDynamicTargetType("js");
+    case "native-string":
+      return mojoStringTargetType();
     case "selected-argument":
       return undefined;
   }

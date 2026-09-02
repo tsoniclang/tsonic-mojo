@@ -63,6 +63,7 @@ export type MojoSourceProfileParameterContract =
   | "float64"
   | "js-string"
   | "js-value"
+  | "native-string"
   | "selected-argument"
   | { readonly kind: "receiver" }
   | { readonly kind: "receiver-argument"; readonly index: number };
@@ -92,7 +93,7 @@ export function selectMojoSourceProfileCallRow(
   const owner = identity.declaringName ?? identity.name;
   const member = expectedKind === "construct"
     ? "constructor"
-    : identity.name;
+    : identity.name ?? (identity.kind === "call" ? "call" : undefined);
   if (owner === undefined || member === undefined ||
     (identity.kind !== expectedKind && identity.kind !== "member")) {
     return {
@@ -302,6 +303,25 @@ const jsConstructorRows: readonly MojoSourceProfileCallRow[] = Object.freeze([
   })),
 ]);
 
+const sourceErrorRows: readonly MojoSourceProfileCallRow[] = Object.freeze(
+  (["native", "js"] as const).flatMap((profile) =>
+    (["call", "construct"] as const).flatMap((kind) =>
+      [0, 1].map((argumentCount): MojoSourceProfileCallRow => Object.freeze({
+        profile,
+        kind,
+        owner: "ErrorConstructor",
+        member: kind === "construct" ? "constructor" : "call",
+        argumentCount,
+        parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["native-string"]),
+        target: Object.freeze({
+          kind: "function",
+          modulePath: Object.freeze(["tsonic_runtime"]),
+          name: "error_new",
+        }),
+      }))),
+  ),
+);
+
 const arrayCallbackVariants = (
   names: readonly string[],
 ): readonly MojoSourceProfileCallbackVariant[] => Object.freeze(names.map((targetName, arity) =>
@@ -335,6 +355,7 @@ const jsCallbackRow = (
 });
 
 export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Object.freeze([
+  ...sourceErrorRows,
   ...jsConstructorRows,
   Object.freeze({
     profile: "js",

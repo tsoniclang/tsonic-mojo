@@ -29,6 +29,7 @@ export interface MojoClassAnalysisInput {
   readonly projectTypes: MojoProjectTypeCatalog;
   readonly sourceProfiles: MojoSourceProfileRegistry;
   readonly jsEnabled: boolean;
+  readonly sourceCallableErrorType?: MojoTargetTypeRef;
   readonly declaration: Node;
   readonly sourceFile: SourceFile;
   readonly name: string;
@@ -226,6 +227,9 @@ function signatureInput(
     projectTypes: input.projectTypes,
     sourceProfiles: input.sourceProfiles,
     jsEnabled: input.jsEnabled,
+    ...(input.sourceCallableErrorType === undefined
+      ? {}
+      : { sourceCallableErrorType: input.sourceCallableErrorType }),
     declaration,
     sourceFile: input.sourceFile,
     name,
@@ -310,6 +314,9 @@ function resolveType(
     projectTypes: input.projectTypes,
     sourceProfiles: input.sourceProfiles,
     jsEnabled: input.jsEnabled,
+    ...(input.sourceCallableErrorType === undefined
+      ? {}
+      : { sourceCallableErrorType: input.sourceCallableErrorType }),
   });
   if (result.kind === "resolved") return result.type;
   append(input, "MOJO_TARGET_TYPE_UNSUPPORTED", `Selected source type cannot be represented exactly in Mojo: ${result.reason}.`, node);

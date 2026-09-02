@@ -59,9 +59,11 @@ export function selectMojoSourceProfileCallback(
     };
   }
   const selectedConversion = conversion ?? (!type.raises
-    ? Object.freeze({
-        kind: "callable-raise-widen" as const,
+      ? Object.freeze({
+        kind: "callable-adapt" as const,
         targetType,
+        result: "preserve" as const,
+        error: "widen" as const,
       })
     : undefined);
   if (contract.result === "float64" &&

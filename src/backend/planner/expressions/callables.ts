@@ -8,6 +8,7 @@ import type {
 } from "../../target-ast/index.js";
 import type { MojoCallableExpressionSelection } from "../../../analysis/program/model.js";
 import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
+import { mojoNativeErrorType } from "../../../target-model/types/error-domains.js";
 import {
   allocateMojoSyntheticName,
   appendMojoPlanningDiagnostic,
@@ -186,11 +187,11 @@ function planCallableEnvironment(
   );
   const argumentType: MojoTargetTypeRef = Object.freeze({
     kind: "tuple",
-    elements: Object.freeze(selection.callableType.parameters.map((parameter) => parameter.type)),
+    elements: Object.freeze(callableType.parameters.map((parameter) => parameter.type)),
   });
   registerMojoTypeImports(contextType, context);
   registerMojoTypeImports(argumentType, context);
-  registerMojoTypeImports(selection.resultType, context);
+  registerMojoTypeImports(callableType.result, context);
 
   const fields: MojoFieldDeclaration[] = selection.captures.map((capture) => {
     const type = capture.storage === "location" ? locationType(capture.type) : capture.type;
@@ -259,7 +260,9 @@ function planCallableEnvironment(
   }
   const callableContext = withMojoErrorType(
     withMojoBindingOverrides(context, overrides),
-    callableType.errorType,
+    callableType.raises
+      ? callableType.errorType ?? mojoNativeErrorType()
+      : undefined,
   );
   const tuplePrelude: MojoStatement[] = selection.parameters.length === 0
     ? []
@@ -289,7 +292,7 @@ function planCallableEnvironment(
       Object.freeze({ name: contextName, type: contextType }),
       Object.freeze({ name: argumentsName, type: argumentType, convention: "var" }),
     ]),
-    resultType: selection.resultType,
+    resultType: callableType.result,
     asynchronous: false,
     raises: callableType.raises,
     ...(callableType.errorType === undefined ? {} : { errorType: callableType.errorType }),

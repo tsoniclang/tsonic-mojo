@@ -84,21 +84,23 @@ export function planSelectedArgument(
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
 ): PlannedMojoCallArgument | undefined {
-  const directCallableWidening = argument.conversion.kind === "callable-raise-widen" &&
+  const directCallableAdaptation = argument.conversion.kind === "callable-adapt" &&
+    argument.conversion.error !== "erase" &&
     (context.program.source.ast.is.IsArrowFunction(argument.expression) ||
       context.program.source.ast.is.IsFunctionExpression(argument.expression));
-  const expression = directCallableWidening
+  const expression = directCallableAdaptation
     ? planMojoCallableExpression(
         argument.expression,
         context,
         planValue,
-        argument.conversion.targetType.kind === "callable"
+        argument.conversion.kind === "callable-adapt" &&
+            argument.conversion.targetType.kind === "callable"
           ? argument.conversion.targetType
           : undefined,
       )
     : planValue(argument.expression, context);
   if (expression === undefined) return undefined;
-  const converted = directCallableWidening
+  const converted = directCallableAdaptation
     ? expression
     : convertMojoValue(expression, argument.conversion, context);
   if (converted === undefined) return undefined;
@@ -385,44 +387,72 @@ export function applyMojoConversion(
   if (conversion === undefined) return undefined;
   switch (conversion.kind) {
     case "identity": return expression;
-    case "callable-raise-widen":
+    case "callable-adapt": {
       registerMojoModuleImport(context, ["tsonic_runtime"]);
       registerMojoTypeImports(conversion.targetType, context);
-      if (conversion.targetType.kind !== "callable" || !conversion.targetType.raises) {
-        return undefined;
+      if (conversion.targetType.kind !== "callable") return undefined;
+      const argumentTuple = Object.freeze({
+        kind: "tuple" as const,
+        elements: Object.freeze(conversion.targetType.parameters.map((parameter) => parameter.type)),
+      });
+      const resultType = conversion.targetType.result.kind === "unit"
+        ? Object.freeze({
+            kind: "target-named" as const,
+            id: "mojo.builtin.NoneType",
+            modulePath: Object.freeze([]),
+            name: "NoneType",
+          })
+        : conversion.targetType.result;
+      const targetError = conversion.targetType.errorType ?? Object.freeze({
+        kind: "target-named" as const,
+        id: "mojo.builtin.Error",
+        modulePath: Object.freeze([]),
+        name: "Error",
+      });
+      let adapted = expression;
+      if (conversion.result === "never") {
+        const sourceRaises = conversion.error !== "widen" &&
+          conversion.targetType.raises;
+        const sourceError = conversion.sourceErrorType ?? targetError;
+        adapted = Object.freeze({
+          kind: "call",
+          callee: Object.freeze({
+            kind: "path",
+            path: sourceRaises
+              ? "tsonic_runtime.adapt_raising_callable_never_result"
+              : "tsonic_runtime.adapt_callable_never_result",
+          }),
+          genericArguments: Object.freeze([
+            Object.freeze({ kind: "type" as const, type: argumentTuple }),
+            Object.freeze({ kind: "type" as const, type: resultType }),
+            ...(sourceRaises
+              ? [Object.freeze({ kind: "type" as const, type: sourceError })]
+              : []),
+          ]),
+          arguments: Object.freeze([{ value: adapted }]),
+        });
       }
-      return {
-        kind: "call",
-        callee: { kind: "path", path: "tsonic_runtime.widen_callable" },
-        genericArguments: Object.freeze([
-          Object.freeze({
-            kind: "type" as const,
-            type: Object.freeze({
-              kind: "tuple" as const,
-              elements: Object.freeze(conversion.targetType.parameters.map((parameter) => parameter.type)),
-            }),
-          }),
-          Object.freeze({ kind: "type" as const, type: conversion.targetType.result }),
-          Object.freeze({
-            kind: "type" as const,
-            type: conversion.targetType.errorType ?? Object.freeze({
-              kind: "target-named" as const,
-              id: "mojo.builtin.Error",
-              modulePath: Object.freeze([]),
-              name: "Error",
-            }),
-          }),
-        ]),
-        arguments: Object.freeze([{ value: expression }]),
-      };
-    case "callable-error-erase":
-      registerMojoModuleImport(context, ["tsonic_runtime"]);
-      registerMojoTypeImports(conversion.targetType, context);
-      return {
-        kind: "call",
-        callee: { kind: "path", path: "tsonic_runtime.erase_callable_error" },
-        arguments: Object.freeze([{ value: expression }]),
-      };
+      if (conversion.error === "widen") {
+        return Object.freeze({
+          kind: "call",
+          callee: Object.freeze({ kind: "path", path: "tsonic_runtime.widen_callable" }),
+          genericArguments: Object.freeze([
+            Object.freeze({ kind: "type" as const, type: argumentTuple }),
+            Object.freeze({ kind: "type" as const, type: resultType }),
+            Object.freeze({ kind: "type" as const, type: targetError }),
+          ]),
+          arguments: Object.freeze([{ value: adapted }]),
+        });
+      }
+      if (conversion.error === "erase") {
+        return Object.freeze({
+          kind: "call",
+          callee: Object.freeze({ kind: "path", path: "tsonic_runtime.erase_callable_error" }),
+          arguments: Object.freeze([{ value: adapted }]),
+        });
+      }
+      return adapted;
+    }
     case "js-truthiness":
       return planMojoTruthiness(expression, conversion.conversion, context);
     case "js-callback-truthiness": {

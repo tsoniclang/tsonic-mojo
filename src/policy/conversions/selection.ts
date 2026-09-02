@@ -15,6 +15,11 @@ export interface MojoConversionIndex {
     actual: MojoTargetTypeRef,
     expected: MojoTargetTypeRef,
   ): MojoConversionClassification;
+  finalizeCallable(
+    expression: Node,
+    actual: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
+    expected: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
+  ): MojoConversionClassification;
   get(
     expression: Node,
     expected: MojoTargetTypeRef,
@@ -23,6 +28,7 @@ export interface MojoConversionIndex {
 
 export function createMojoConversionIndex(): MojoConversionIndex {
   const byExpression = new WeakMap<Node, Map<string, MojoValueConversion>>();
+  const finalizedCallableKeys = new WeakMap<Node, Set<string>>();
   let sealed = false;
   const index: MojoConversionIndex = {
     record(
@@ -46,6 +52,31 @@ export function createMojoConversionIndex(): MojoConversionIndex {
       byExpression.set(expression, entries);
       return classified;
     },
+    finalizeCallable(
+      expression: Node,
+      actual: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
+      expected: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
+    ): MojoConversionClassification {
+      if (sealed) throw new Error("Mojo conversions cannot be finalized after analysis is sealed.");
+      const classified = classifyMojoValueConversion(actual, expected);
+      if (classified.kind === "unsupported") return classified;
+      const key = mojoTargetTypeKey(expected);
+      const finalized = finalizedCallableKeys.get(expression) ?? new Set<string>();
+      const entries = byExpression.get(expression) ?? new Map<string, MojoValueConversion>();
+      const existing = entries.get(key);
+      if (finalized.has(key) && existing !== undefined &&
+        !sameConversion(existing, classified.conversion)) {
+        return {
+          kind: "unsupported",
+          reason: "the same source callable acquired contradictory finalized Mojo conversions",
+        };
+      }
+      entries.set(key, classified.conversion);
+      finalized.add(key);
+      byExpression.set(expression, entries);
+      finalizedCallableKeys.set(expression, finalized);
+      return classified;
+    },
     get(
       expression: Node,
       expected: MojoTargetTypeRef,
@@ -64,16 +95,11 @@ export function classifyMojoValueConversion(
   if (mojoTargetTypeEquals(actual, expected)) {
     return { kind: "resolved", conversion: Object.freeze({ kind: "identity" }) };
   }
-  if (isNonRaisingFunctionWidening(actual, expected)) {
+  const callable = classifyCallableAdaptation(actual, expected);
+  if (callable !== undefined) {
     return {
       kind: "resolved",
-      conversion: Object.freeze({ kind: "callable-raise-widen", targetType: expected }),
-    };
-  }
-  if (isCallableErrorErasure(actual, expected)) {
-    return {
-      kind: "resolved",
-      conversion: Object.freeze({ kind: "callable-error-erase", targetType: expected }),
+      conversion: callable,
     };
   }
   if (expected.kind === "source-primitive" && expected.name === "bool") {
@@ -361,39 +387,56 @@ function classifyTruthiness(type: MojoTargetTypeRef): MojoTruthinessConversion |
   return Object.freeze({ kind: "always-true" });
 }
 
-function isNonRaisingFunctionWidening(
+function classifyCallableAdaptation(
   actual: MojoTargetTypeRef,
   expected: MojoTargetTypeRef,
-): boolean {
-  if (actual.kind !== "callable" || expected.kind !== "callable" ||
-    actual.raises || !expected.raises) {
-    return false;
+): Extract<MojoValueConversion, { readonly kind: "callable-adapt" }> | undefined {
+  if (actual.kind !== "callable" || expected.kind !== "callable") return undefined;
+  const result = mojoTargetTypeEquals(actual.result, expected.result)
+    ? "preserve" as const
+    : actual.result.kind === "never"
+      ? "never" as const
+      : undefined;
+  if (result === undefined) return undefined;
+  let error: "preserve" | "widen" | "erase";
+  if (actual.raises === expected.raises && (!actual.raises || mojoTargetTypeEquals(
+    actual.errorType ?? mojoNativeErrorType,
+    expected.errorType ?? mojoNativeErrorType,
+  ))) {
+    error = "preserve";
+  } else if (!actual.raises && expected.raises) {
+    error = "widen";
+  } else if (actual.raises && expected.raises &&
+    !isNativeErrorType(actual.errorType) && isNativeErrorType(expected.errorType)) {
+    error = "erase";
+  } else {
+    return undefined;
   }
-  return mojoTargetTypeEquals(
-    Object.freeze({
-      ...actual,
-      raises: true,
-      ...(expected.errorType === undefined ? {} : { errorType: expected.errorType }),
-    }),
-    expected,
-  );
+  const { errorType: _actualErrorType, ...actualBase } = actual;
+  const normalized = Object.freeze({
+    ...actualBase,
+    result: expected.result,
+    raises: expected.raises,
+    ...(expected.errorType === undefined ? {} : { errorType: expected.errorType }),
+  });
+  if (!mojoTargetTypeEquals(normalized, expected)) return undefined;
+  return Object.freeze({
+    kind: "callable-adapt",
+    targetType: expected,
+    result,
+    error,
+    ...(result === "never" && actual.raises && actual.errorType !== undefined
+      ? { sourceErrorType: actual.errorType }
+      : {}),
+  });
 }
 
-function isCallableErrorErasure(
-  actual: MojoTargetTypeRef,
-  expected: MojoTargetTypeRef,
-): boolean {
-  if (actual.kind !== "callable" || expected.kind !== "callable" ||
-    !actual.raises || !expected.raises || !isNativeErrorType(expected.errorType)) {
-    return false;
-  }
-  const actualError = actual.errorType;
-  if (actualError === undefined || isNativeErrorType(actualError)) return false;
-  return mojoTargetTypeEquals(
-    Object.freeze({ ...actual, errorType: expected.errorType }),
-    expected,
-  );
-}
+const mojoNativeErrorType: MojoTargetTypeRef = Object.freeze({
+  kind: "target-named",
+  id: "mojo.builtin.Error",
+  modulePath: Object.freeze([]),
+  name: "Error",
+});
 
 function isNativeErrorType(type: MojoTargetTypeRef | undefined): boolean {
   return type === undefined || (type.kind === "target-named" &&

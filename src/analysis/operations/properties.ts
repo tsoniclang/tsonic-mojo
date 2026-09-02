@@ -326,17 +326,20 @@ function analyzeSourceProfileProperty(
       reason: `The computed source-profile property '${owner}.${member}' is not a writable Mojo location.`,
     };
   }
+  const storageType = access.storageType;
+  const readStorageType = access.resultType ?? storageType ?? readType;
+  const writeStorageType = storageType ?? writeType;
   const readOperation: MojoSelectedProviderOperation | undefined = readType === undefined
     ? undefined
     : Object.freeze({
         target: Object.freeze({
           kind: "property-read",
-          access: Object.freeze(access),
+          access: Object.freeze({ kind: access.kind, name: access.name }),
           receiver: "ref",
         }),
         receiverType,
         parameterTypes: Object.freeze([]),
-        resultType: access.resultType ?? readType,
+        resultType: readStorageType!,
         genericArguments: Object.freeze([]),
         genericParameters: Object.freeze([]),
         raises: false,
@@ -351,7 +354,7 @@ function analyzeSourceProfileProperty(
           value: Object.freeze({ convention: "imm", position: "positional-or-keyword" }),
         }),
         receiverType,
-        parameterTypes: Object.freeze([writeType]),
+        parameterTypes: Object.freeze([writeStorageType!]),
         resultType: Object.freeze({ kind: "unit" }),
         genericArguments: Object.freeze([]),
         genericParameters: Object.freeze([]),
@@ -360,7 +363,7 @@ function analyzeSourceProfileProperty(
   const readResultConversion = readType === undefined
     ? undefined
     : classifyMojoValueConversion(
-        access.resultType ?? readType,
+        readStorageType!,
         readType,
       );
   if (readResultConversion?.kind === "unsupported") {
@@ -368,7 +371,7 @@ function analyzeSourceProfileProperty(
   }
   const writeValueConversion = writeType === undefined
     ? undefined
-    : classifyMojoValueConversion(writeType, writeType);
+    : classifyMojoValueConversion(writeType, writeStorageType!);
   if (writeValueConversion?.kind === "unsupported") {
     return { kind: "unsupported", code: "MOJO_SOURCE_PROFILE_PROPERTY_WRITE_CONVERSION_UNPROVEN", reason: writeValueConversion.reason };
   }
@@ -400,7 +403,18 @@ function sourceProfilePropertyAccess(
   readonly kind: "member" | "method";
   readonly name: string;
   readonly resultType?: MojoTargetTypeRef;
+  readonly storageType?: MojoTargetTypeRef;
 } | undefined {
+  if (owner === "Error") {
+    const nativeString = Object.freeze({ kind: "native-string" as const });
+    if (member === "name" || member === "message") {
+      return { kind: "member", name: member, resultType: nativeString, storageType: nativeString };
+    }
+    if (member === "stack") {
+      const stack = Object.freeze({ kind: "optional" as const, value: nativeString });
+      return { kind: "member", name: "stack", resultType: stack, storageType: stack };
+    }
+  }
   if (profile === "native") {
     if ((owner === "String" || owner === "Array" || owner === "ReadonlyArray") && member === "length") {
       return {

@@ -20,6 +20,7 @@ export interface MojoInterfaceAnalysisInput {
   readonly projectTypes: MojoProjectTypeCatalog;
   readonly sourceProfiles: MojoSourceProfileRegistry;
   readonly jsEnabled: boolean;
+  readonly sourceCallableErrorType?: MojoTargetTypeRef;
   readonly declaration: Node;
   readonly sourceFile: SourceFile;
   readonly name: string;
@@ -115,6 +116,9 @@ export function analyzeMojoInterface(
       projectTypes: input.projectTypes,
       sourceProfiles: input.sourceProfiles,
       jsEnabled: input.jsEnabled,
+      ...(input.sourceCallableErrorType === undefined
+        ? {}
+        : { sourceCallableErrorType: input.sourceCallableErrorType }),
     });
     if (resolved.kind === "unsupported") {
       append(input, "MOJO_TARGET_TYPE_UNSUPPORTED", `Selected interface field type cannot be represented exactly in Mojo: ${resolved.reason}.`, member);
@@ -143,6 +147,9 @@ export function analyzeMojoInterface(
     projectTypes: input.projectTypes,
     sourceProfiles: input.sourceProfiles,
     jsEnabled: input.jsEnabled,
+    ...(input.sourceCallableErrorType === undefined
+      ? {}
+      : { sourceCallableErrorType: input.sourceCallableErrorType }),
     declaration,
     sourceFile: input.sourceFile,
     name: input.name,
@@ -181,6 +188,9 @@ function resolveInterfaceType(
     projectTypes: input.projectTypes,
     sourceProfiles: input.sourceProfiles,
     jsEnabled: input.jsEnabled,
+    ...(input.sourceCallableErrorType === undefined
+      ? {}
+      : { sourceCallableErrorType: input.sourceCallableErrorType }),
   });
   if (resolved.kind === "unsupported") {
     append(input, "MOJO_TARGET_TYPE_UNSUPPORTED", `Selected interface type cannot be represented exactly in Mojo: ${resolved.reason}.`, evidence);

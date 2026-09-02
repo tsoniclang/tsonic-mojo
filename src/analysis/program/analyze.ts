@@ -31,6 +31,7 @@ import { createMojoSourceProfileRegistry } from "../../policy/types/source-profi
 import {
   closeMojoErrorType,
   mergeMojoErrorTypes,
+  mojoNativeErrorType,
 } from "./effects.js";
 import type {
   MojoAnalyzedDeclaration,
@@ -91,6 +92,14 @@ import { analyzeMojoTemplateExpression } from "../operations/template-expression
 
 export function analyzeMojoTargetProgram(
   request: MojoTargetAnalysisRequest,
+): TargetStageResult<MojoTargetProgram> {
+  return analyzeMojoTargetProgramWithCallableErrorDomain(request, undefined, 0);
+}
+
+function analyzeMojoTargetProgramWithCallableErrorDomain(
+  request: MojoTargetAnalysisRequest,
+  sourceCallableErrorType: MojoTargetTypeRef | undefined,
+  errorDomainIteration: number,
 ): TargetStageResult<MojoTargetProgram> {
   const { input, configuration, providerSemantics, jsEnabled } = request;
   const { ast } = input.source;
@@ -211,6 +220,7 @@ export function analyzeMojoTargetProgram(
     projectTypes,
     sourceProfiles,
     jsEnabled,
+    ...(sourceCallableErrorType === undefined ? {} : { sourceCallableErrorType }),
     diagnostics,
     allocateModuleName(sourceFile, name) {
       return globalNames(sourceFile)(name);
@@ -267,6 +277,7 @@ export function analyzeMojoTargetProgram(
     projectTypes,
     sourceProfiles,
     jsEnabled,
+    ...(sourceCallableErrorType === undefined ? {} : { sourceCallableErrorType }),
     drafts,
     bindingNames,
     bindingSourceFiles,
@@ -320,6 +331,7 @@ export function analyzeMojoTargetProgram(
     sourceProfiles,
     modules,
     jsEnabled,
+    ...(sourceCallableErrorType === undefined ? {} : { sourceCallableErrorType }),
     diagnostics,
     bindingNames,
     bindingSourceFiles,
@@ -629,6 +641,30 @@ export function analyzeMojoTargetProgram(
     ));
   }
   const errorTypesByDeclaration = errorClosure.errorTypesByDeclaration;
+  const discoveredSourceCallableErrorType = closeMojoErrorType(mergeMojoErrorTypes(
+    Object.freeze([mojoNativeErrorType()]),
+    ...errorTypesByDeclaration.values(),
+  ))!;
+  const currentSourceCallableErrorType = sourceCallableErrorType ?? mojoNativeErrorType();
+  if (!mojoTargetTypeEquals(currentSourceCallableErrorType, discoveredSourceCallableErrorType)) {
+    if (errorDomainIteration >= 8) {
+      diagnostics.push(diagnostic(
+        "MOJO_SOURCE_CALLABLE_ERROR_DOMAIN_DID_NOT_CONVERGE",
+        "Source callable error effects did not reach one deterministic compilation-wide ABI.",
+        sourceFiles[0]!,
+      ));
+    } else {
+      const nextSourceCallableErrorType = closeMojoErrorType(mergeMojoErrorTypes(
+        Object.freeze([currentSourceCallableErrorType]),
+        Object.freeze([discoveredSourceCallableErrorType]),
+      ))!;
+      return analyzeMojoTargetProgramWithCallableErrorDomain(
+        request,
+        nextSourceCallableErrorType,
+        errorDomainIteration + 1,
+      );
+    }
+  }
   const finalizedCallableTypesByDeclaration = new WeakMap<
     Node,
     Extract<MojoTargetTypeRef, { readonly kind: "callable" }>
@@ -651,16 +687,20 @@ export function analyzeMojoTargetProgram(
     const initializer = Node_Initializer(ast, declaration);
     if (initializer === undefined) return;
     expressionTypes.set(initializer, callableType);
-    const conversion = conversions.record(initializer, callableType, callableType);
+    const conversion = conversions.finalizeCallable(initializer, callableType, callableType);
     if (conversion.kind === "unsupported") {
       diagnostics.push(diagnostic("MOJO_VALUE_CONVERSION_UNPROVEN", conversion.reason, initializer));
     }
   };
   for (const expression of callableExpressionNodes) {
     const selection = callableExpressionSelections.get(expression)!;
-    const errorType = closeMojoErrorType(errorTypesByDeclaration.get(expression) ?? []);
+    const exactErrorType = closeMojoErrorType(errorTypesByDeclaration.get(expression) ?? []);
+    const errorType = exactErrorType === undefined
+      ? undefined
+      : sourceCallableErrorType ?? exactErrorType;
+    const { errorType: _previousErrorType, ...baseCallableType } = selection.callableType;
     const callableType = Object.freeze({
-      ...selection.callableType,
+      ...baseCallableType,
       raises: errorType !== undefined,
       ...(errorType === undefined ? {} : { errorType }),
     });

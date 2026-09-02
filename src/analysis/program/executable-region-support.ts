@@ -40,6 +40,9 @@ export function resolveExecutableRegionType(
     projectTypes: input.projectTypes,
     sourceProfiles: input.sourceProfiles,
     jsEnabled: input.jsEnabled,
+    ...(input.sourceCallableErrorType === undefined
+      ? {}
+      : { sourceCallableErrorType: input.sourceCallableErrorType }),
   });
   return resolved.kind === "resolved" ? resolved.type : undefined;
 }

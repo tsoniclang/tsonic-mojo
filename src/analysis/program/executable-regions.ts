@@ -80,6 +80,7 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly sourceProfiles: MojoSourceProfileRegistry;
   readonly modules: MojoSourceModuleCatalog;
   readonly jsEnabled: boolean;
+  readonly sourceCallableErrorType?: MojoTargetTypeRef;
   readonly diagnostics: TargetDiagnostic[];
   readonly bindingNames: WeakMap<Node, string>;
   readonly bindingSourceFiles: WeakMap<Node, SourceFile>;
@@ -698,6 +699,9 @@ function analyzeCall(
     projectTypes: input.projectTypes,
     sourceProfiles: input.sourceProfiles,
     jsEnabled: input.jsEnabled,
+    ...(input.sourceCallableErrorType === undefined
+      ? {}
+      : { sourceCallableErrorType: input.sourceCallableErrorType }),
     expressionTypes: input.expressionTypes,
     conversions: input.conversions,
     functionByDeclaration: input.functionByDeclaration,

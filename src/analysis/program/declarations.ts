@@ -37,6 +37,7 @@ export function analyzeMojoProjectDeclarations(input: {
   readonly projectTypes: MojoProjectTypeCatalog;
   readonly sourceProfiles: MojoSourceProfileRegistry;
   readonly jsEnabled: boolean;
+  readonly sourceCallableErrorType?: MojoTargetTypeRef;
   readonly drafts: MojoDeclarationDrafts;
   readonly bindingNames: WeakMap<Node, string>;
   readonly bindingSourceFiles: WeakMap<Node, SourceFile>;
@@ -62,6 +63,12 @@ export function analyzeMojoProjectDeclarations(input: {
       projectTypes: input.projectTypes,
       sourceProfiles: input.sourceProfiles,
       jsEnabled: input.jsEnabled,
+      ...(input.sourceCallableErrorType === undefined
+        ? {}
+        : { sourceCallableErrorType: input.sourceCallableErrorType }),
+      ...(input.sourceCallableErrorType === undefined
+        ? {}
+        : { sourceCallableErrorType: input.sourceCallableErrorType }),
       declaration: draft.declaration,
       sourceFile: draft.sourceFile,
       name: draft.name,
@@ -94,6 +101,9 @@ export function analyzeMojoProjectDeclarations(input: {
       projectTypes: input.projectTypes,
       sourceProfiles: input.sourceProfiles,
       jsEnabled: input.jsEnabled,
+      ...(input.sourceCallableErrorType === undefined
+        ? {}
+        : { sourceCallableErrorType: input.sourceCallableErrorType }),
       declaration: draft.declaration,
       sourceFile: draft.sourceFile,
       name: draft.name,

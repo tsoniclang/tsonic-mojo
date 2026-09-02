@@ -29,6 +29,7 @@ export interface MojoModuleBindingAnalysisInput {
   readonly projectTypes: MojoProjectTypeCatalog;
   readonly sourceProfiles: MojoSourceProfileRegistry;
   readonly jsEnabled: boolean;
+  readonly sourceCallableErrorType?: MojoTargetTypeRef;
   readonly diagnostics: TargetDiagnostic[];
   readonly allocateModuleName: (sourceFile: SourceFile, name: string) => string;
   readonly bindName: (declaration: Node, name: string) => void;
@@ -130,6 +131,9 @@ export function analyzeMojoModuleBindings(
               projectTypes: input.projectTypes,
               sourceProfiles: input.sourceProfiles,
               jsEnabled: input.jsEnabled,
+              ...(input.sourceCallableErrorType === undefined
+                ? {}
+                : { sourceCallableErrorType: input.sourceCallableErrorType }),
             },
           );
           if (resolved.kind === "unsupported") {
@@ -187,6 +191,9 @@ export function analyzeMojoModuleBindings(
             projectTypes: input.projectTypes,
             sourceProfiles: input.sourceProfiles,
             jsEnabled: input.jsEnabled,
+            ...(input.sourceCallableErrorType === undefined
+              ? {}
+              : { sourceCallableErrorType: input.sourceCallableErrorType }),
           },
         );
         if (initializer === undefined) {
@@ -277,6 +284,9 @@ export function analyzeMojoModuleBindings(
               projectTypes: input.projectTypes,
               sourceProfiles: input.sourceProfiles,
               jsEnabled: input.jsEnabled,
+              ...(input.sourceCallableErrorType === undefined
+                ? {}
+                : { sourceCallableErrorType: input.sourceCallableErrorType }),
             });
             if (resolved.kind === "unsupported") {
               input.diagnostics.push(diagnostic(

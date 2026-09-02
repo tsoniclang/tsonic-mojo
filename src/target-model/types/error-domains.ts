@@ -9,8 +9,19 @@ const nativeErrorType: MojoTargetTypeRef = Object.freeze({
   name: "Error",
 });
 
+const sourceErrorType: MojoTargetTypeRef = Object.freeze({
+  kind: "target-named",
+  id: "tsonic.mojo.runtime.TsError",
+  modulePath: Object.freeze(["tsonic_runtime"]),
+  name: "TsError",
+});
+
 export function mojoNativeErrorType(): MojoTargetTypeRef {
   return nativeErrorType;
+}
+
+export function mojoSourceErrorType(): MojoTargetTypeRef {
+  return sourceErrorType;
 }
 
 export function mojoOperationErrorTypes(operation: {
