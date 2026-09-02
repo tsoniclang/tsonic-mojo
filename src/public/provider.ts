@@ -10,14 +10,19 @@ export type {
 } from "../providers/packages/model.js";
 export type {
   MojoCallArgumentConvention,
-  MojoProviderOperationForm,
+  MojoTargetCallableParameter,
   MojoTargetTypeRef,
-} from "../target-model/provider/model.js";
+} from "../target-model/types/model.js";
+export type {
+  MojoProviderOperationForm,
+} from "../target-model/operations/model.js";
 export {
+  mojoCallableTargetType,
+  mojoFutureTargetType,
   mojoListTargetType,
   mojoNamedTargetType,
   mojoOptionalTargetType,
   mojoPrimitiveTargetType,
   mojoStringTargetType,
   mojoUnitTargetType,
-} from "../target-model/provider/types.js";
+} from "../target-model/types/constructors.js";

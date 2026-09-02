@@ -4,8 +4,8 @@ import {
   BinaryExpression_Right,
   Node_Expression,
 } from "@tsonic/target-api/source";
-import { mojoTypeEquals } from "../types/resolution.js";
-import type { MojoTargetTypeRef } from "../../target-model/provider/model.js";
+import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
+import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { isMojoAssignmentOperator } from "./syntax-validation.js";
 
 export function inferMojoExpressionType(
@@ -36,18 +36,32 @@ export function inferMojoExpressionType(
   if (leftNode === undefined || rightNode === undefined) return expressionTypes.get(node);
   const left = expressionTypes.get(leftNode);
   const right = expressionTypes.get(rightNode);
-  if (left !== undefined && right !== undefined && mojoTypeEquals(left, right)) return left;
-  if (left !== undefined && ast.is.IsNumericLiteral(rightNode) && isNumericCarrier(left)) return left;
-  if (right !== undefined && ast.is.IsNumericLiteral(leftNode) && isNumericCarrier(right)) return right;
+  if (left !== undefined && right !== undefined && mojoTargetTypeEquals(left, right)) return left;
+  if (left !== undefined && isNumericLiteral(rightNode, ast) && isNumericCarrier(left)) return left;
+  if (right !== undefined && isNumericLiteral(leftNode, ast) && isNumericCarrier(right)) return right;
   return expressionTypes.get(node);
 }
 
 export function isMojoExpressionNode(node: Node, ast: AstReader): boolean {
   return ast.is.IsIdentifier(node) || ast.is.IsStringLiteral(node) ||
-    ast.is.IsNoSubstitutionTemplateLiteral(node) || ast.is.IsNumericLiteral(node) ||
-    ast.is.IsBinaryExpression(node) || ast.is.IsCallExpression(node) ||
+    ast.is.IsNoSubstitutionTemplateLiteral(node) || isNumericLiteral(node, ast) ||
+    ast.is.IsBinaryExpression(node) || ast.is.IsCallExpression(node) || ast.is.IsNewExpression(node) ||
+    ast.is.IsPropertyAccessExpression(node) || ast.is.IsElementAccessExpression(node) ||
+    ast.is.IsArrayLiteralExpression(node) || ast.is.IsObjectLiteralExpression(node) ||
+    ast.kindName(node) === "KindTemplateExpression" ||
+    ast.is.IsPrefixUnaryExpression(node) || ast.is.IsPostfixUnaryExpression(node) ||
+    ast.is.IsConditionalExpression(node) ||
+    ast.is.IsArrowFunction(node) || ast.is.IsFunctionExpression(node) ||
+    ast.is.IsAwaitExpression(node) || ast.is.IsAsExpression(node) || ast.is.IsTypeAssertion(node) ||
+    ast.is.IsNonNullExpression(node) || ast.is.IsSatisfiesExpression(node) ||
     ast.is.IsParenthesizedExpression(node) ||
-    ast.kindName(node) === "KindTrueKeyword" || ast.kindName(node) === "KindFalseKeyword";
+    ast.kindName(node) === "KindThisKeyword" || ast.kindName(node) === "KindNullKeyword" ||
+    ast.kindName(node) === "KindUndefinedKeyword" || ast.kindName(node) === "KindTrueKeyword" ||
+    ast.kindName(node) === "KindFalseKeyword";
+}
+
+function isNumericLiteral(node: Node, ast: AstReader): boolean {
+  return ast.is.IsNumericLiteral(node) || ast.is.IsBigIntLiteral(node);
 }
 
 function isNumericCarrier(type: MojoTargetTypeRef): boolean {

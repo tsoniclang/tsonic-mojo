@@ -7,9 +7,12 @@ import type {
   TargetCapabilityImplementation,
 } from "@tsonic/target-api/provider";
 import type {
-  MojoProviderOperationForm,
+  MojoTargetConformanceCondition,
   MojoTargetTypeRef,
-} from "../../target-model/provider/model.js";
+} from "../../target-model/types/model.js";
+import type {
+  MojoProviderOperationForm,
+} from "../../target-model/operations/model.js";
 
 export interface MojoProviderModuleDefinition {
   readonly moduleSpecifier: string;
@@ -31,10 +34,37 @@ export interface MojoProviderRuntimePackage {
   readonly packagePath: string;
 }
 
+export interface MojoProviderBinaryEpilogue {
+  readonly id: string;
+  readonly modulePath: readonly string[];
+  readonly name: string;
+  readonly raises?: boolean;
+}
+
 export interface MojoProviderTypeDefinition {
   readonly exportId: string;
+  readonly sourceGenericParameters: readonly {
+    readonly targetName: string;
+    readonly targetKind: "type" | "value" | "origin";
+    readonly variadic: boolean;
+  }[];
   readonly targetType: MojoTargetTypeRef;
-  readonly objectLiteralConstruction?: "fieldwise";
+  readonly conformances?: readonly {
+    readonly trait: MojoTargetTypeRef;
+    readonly condition?: MojoTargetConformanceCondition;
+  }[];
+  readonly associatedAliases?: readonly {
+    readonly name: string;
+    readonly genericParameters: readonly import("../../target-model/types/model.js").MojoProviderTargetGenericParameter[];
+    readonly category: "type" | "value" | "origin";
+    readonly abstract: boolean;
+    readonly targetType?: MojoTargetTypeRef;
+    readonly valueType?: MojoTargetTypeRef;
+    readonly valueExpression?: string;
+  }[];
+  readonly objectLiteralConstruction?: {
+    readonly kind: "struct-default";
+  };
 }
 
 export type MojoProviderOperationKind =
@@ -55,6 +85,7 @@ export interface MojoProviderOperationDefinition {
   readonly parameterTypes?: readonly MojoTargetTypeRef[];
   readonly receiverType?: MojoTargetTypeRef;
   readonly raises?: boolean;
+  readonly errorType?: MojoTargetTypeRef;
 }
 
 export interface MojoProviderPackageDefinition {
@@ -66,6 +97,7 @@ export interface MojoProviderPackageDefinition {
   readonly modules: readonly MojoProviderModuleDefinition[];
   readonly types?: readonly MojoProviderTypeDefinition[];
   readonly operations: readonly MojoProviderOperationDefinition[];
+  readonly binaryEpilogues?: readonly MojoProviderBinaryEpilogue[];
   readonly runtimePackages: readonly MojoProviderRuntimePackage[];
 }
 
@@ -99,6 +131,7 @@ export interface MojoProviderSemantics {
   readonly exports: readonly MojoProviderExportRow[];
   readonly operations: readonly MojoProviderOperationRow[];
   readonly types: readonly MojoProviderTypeRow[];
+  readonly binaryEpilogues: readonly MojoProviderBinaryEpilogue[];
 }
 
 export const mojoProviderPolicyContributionKind = "mojo-provider-policy";

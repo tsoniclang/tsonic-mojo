@@ -4,6 +4,7 @@ import type {
 import { snapshotClosedMetadata } from "./closed-data.js";
 import type {
   MojoProviderExportRow,
+  MojoProviderBinaryEpilogue,
   MojoProviderOperationRow,
   MojoProviderPackageDefinition,
   MojoProviderPolicyContribution,
@@ -57,6 +58,7 @@ export function collectMojoProviderSemanticsFromDefinitions(
   const exports: MojoProviderExportRow[] = [];
   const operations: MojoProviderOperationRow[] = [];
   const types: MojoProviderTypeRow[] = [];
+  const binaryEpilogues: MojoProviderBinaryEpilogue[] = [];
   for (const definition of definitions) {
     validateMojoProviderPackageDefinition(definition);
     const providerId = mojoProviderBindingProviderId(definition.id);
@@ -107,11 +109,13 @@ export function collectMojoProviderSemanticsFromDefinitions(
         moduleSpecifier: owner.module.moduleSpecifier,
       }));
     }
+    binaryEpilogues.push(...(definition.binaryEpilogues ?? []));
   }
   return Object.freeze({
     exports: mergeExactRows(exports, providerExportRowIdentity, "export"),
     operations: mergeExactRows(operations, providerOperationRowIdentity, "operation"),
     types: mergeExactRows(types, providerTypeRowIdentity, "type"),
+    binaryEpilogues: mergeExactRows(binaryEpilogues, (row) => row.id, "binary epilogue"),
   });
 }
 
@@ -133,6 +137,11 @@ export function mergeMojoProviderSemantics(
       inputs.flatMap((input) => input.types),
       providerTypeRowIdentity,
       "type",
+    ),
+    binaryEpilogues: mergeExactRows(
+      inputs.flatMap((input) => input.binaryEpilogues),
+      (row) => row.id,
+      "binary epilogue",
     ),
   });
 }
