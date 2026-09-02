@@ -25,6 +25,7 @@ import { mojoTypeName, registerMojoTypeImports } from "../types/render.js";
 import { mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { planMojoCallableExpression } from "./callables.js";
+import { adaptMojoRaisingCallableError } from "./callable-error-adapter.js";
 import {
   convertMojoCollection,
   convertMojoOptional,
@@ -419,8 +420,7 @@ export function applyMojoConversion(
       });
       let adapted = expression;
       if (conversion.result === "never") {
-        const sourceRaises = conversion.error !== "widen" &&
-          conversion.targetType.raises;
+        const sourceRaises = conversion.sourceErrorType !== undefined;
         const sourceError = conversion.sourceErrorType ?? targetError;
         adapted = Object.freeze({
           kind: "call",
@@ -441,6 +441,22 @@ export function applyMojoConversion(
         });
       }
       if (conversion.error === "widen") {
+        if (conversion.sourceErrorType !== undefined) {
+          if (conversion.errorConversion === undefined) return undefined;
+          const sourceType = Object.freeze({
+            ...conversion.targetType,
+            raises: true,
+            errorType: conversion.sourceErrorType,
+          });
+          return adaptMojoRaisingCallableError(
+            adapted,
+            sourceType,
+            conversion.targetType,
+            conversion.errorConversion,
+            context,
+            convertMojoValue,
+          );
+        }
         return Object.freeze({
           kind: "call",
           callee: Object.freeze({ kind: "path", path: "tsonic_runtime.widen_callable" }),

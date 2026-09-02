@@ -29,6 +29,7 @@ export type MojoValueConversion =
       readonly result: "preserve" | "never";
       readonly error: "preserve" | "widen" | "erase";
       readonly sourceErrorType?: MojoTargetTypeRef;
+      readonly errorConversion?: MojoValueConversion;
     }
   | { readonly kind: "js-truthiness"; readonly conversion: MojoTruthinessConversion }
   | {

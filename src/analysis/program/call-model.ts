@@ -159,6 +159,7 @@ export type MojoCallSelection =
       readonly receiver?: Node;
       readonly sourceReceiverType?: MojoTargetTypeRef;
       readonly receiverConversion?: MojoValueConversion;
+      readonly propagatedCallbackParameterIndex?: number;
       readonly resultConversion: MojoValueConversion;
       readonly optionalChain: boolean;
     }

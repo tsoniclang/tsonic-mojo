@@ -55,10 +55,10 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
       kind: "constructed-explicit-arguments",
       indexes: Object.freeze([1]),
     }),
-    raises: true,
     callback: Object.freeze({
       parameterIndex: 1,
       result: "preserve",
+      errorMode: "propagate",
       variants: Object.freeze([
         Object.freeze({ arity: 1, targetName: "array_from_map_value" }),
         Object.freeze({ arity: 2, targetName: "array_from_map_with_index" }),
@@ -136,7 +136,7 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
       "array_reduce_from_first_value",
       "array_reduce_from_first_with_index",
       "array_reduce_from_first_with_array",
-    ], 1),
+    ], 1, "native"),
     jsCallbackRow(owner, "reduce", "imm", "preserve", [
       "array_reduce_initial_zero",
       "array_reduce_initial_accumulator",
@@ -427,4 +427,3 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     ["warn", "console_warn"],
   ]),
 ]);
-

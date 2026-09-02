@@ -413,9 +413,16 @@ function classifyCallableAdaptation(
       : undefined;
   if (result === undefined) return undefined;
   let error: "preserve" | "widen" | "erase";
+  let errorConversion: MojoValueConversion | undefined;
+  const actualErrorType = actual.raises
+    ? actual.errorType ?? mojoNativeErrorType
+    : undefined;
+  const expectedErrorType = expected.raises
+    ? expected.errorType ?? mojoNativeErrorType
+    : undefined;
   if (actual.raises === expected.raises && (!actual.raises || mojoTargetTypeEquals(
-    actual.errorType ?? mojoNativeErrorType,
-    expected.errorType ?? mojoNativeErrorType,
+    actualErrorType!,
+    expectedErrorType!,
   ))) {
     error = "preserve";
   } else if (!actual.raises && expected.raises) {
@@ -423,6 +430,11 @@ function classifyCallableAdaptation(
   } else if (actual.raises && expected.raises &&
     !isNativeErrorType(actual.errorType) && isNativeErrorType(expected.errorType)) {
     error = "erase";
+  } else if (actualErrorType !== undefined && expectedErrorType !== undefined) {
+    const classifiedError = classifyMojoValueConversion(actualErrorType, expectedErrorType);
+    if (classifiedError.kind === "unsupported") return undefined;
+    error = "widen";
+    errorConversion = classifiedError.conversion;
   } else {
     return undefined;
   }
@@ -439,9 +451,10 @@ function classifyCallableAdaptation(
     targetType: expected,
     result,
     error,
-    ...(result === "never" && actual.raises && actual.errorType !== undefined
-      ? { sourceErrorType: actual.errorType }
-      : {}),
+    ...(actualErrorType === undefined ? {} : { sourceErrorType: actualErrorType }),
+    ...(errorConversion === undefined
+      ? {}
+      : { errorConversion }),
   });
 }
 

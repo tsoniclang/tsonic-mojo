@@ -177,6 +177,7 @@ export const jsCallbackRow = (
   result: MojoSourceProfileCallbackContract["result"],
   names: readonly string[],
   argumentCount?: number,
+  errorMode: MojoSourceProfileCallbackContract["errorMode"] = "propagate",
 ): MojoSourceProfileCallRow => Object.freeze({
   profile: "js",
   kind: "call",
@@ -189,10 +190,11 @@ export const jsCallbackRow = (
     name: names[names.length - 1]!,
     receiver,
   }),
-  raises: true,
+  ...(errorMode === "native" ? { raises: true } : {}),
   callback: Object.freeze({
     parameterIndex: 0,
     result,
+    errorMode,
     variants: arrayCallbackVariants(names),
   }),
 });

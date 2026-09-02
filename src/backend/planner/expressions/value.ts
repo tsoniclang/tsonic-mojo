@@ -11,6 +11,7 @@ import {
   appendMojoPlanningDiagnostic,
   mojoBindingPlanOverride,
   registerMojoModuleImport,
+  withMojoErrorType,
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import {
@@ -389,10 +390,12 @@ export function planMojoValue(
   expectedType?: MojoTargetTypeRef,
 ): MojoValuePlan | undefined {
   const { ast } = context.program.source;
+  const sourceErrorType = context.program.queries.expressionErrorType(node);
+  const evaluationContext = withMojoErrorType(context, sourceErrorType);
   const actualType = context.program.queries.expressionType(node);
   const conversion = expectedType === undefined || actualType === undefined
     ? undefined
-    : requiredConversion(node, expectedType, context);
+    : requiredConversion(node, expectedType, evaluationContext);
   if (expectedType !== undefined && actualType !== undefined && conversion === undefined) {
     return undefined;
   }
@@ -401,28 +404,28 @@ export function planMojoValue(
     (ast.is.IsArrowFunction(node) || ast.is.IsFunctionExpression(node));
   let plan: MojoValuePlan | undefined;
   if (ast.is.IsArrayLiteralExpression(node)) {
-    plan = planArrayLiteral(node, context, planMojoValue);
+    plan = planArrayLiteral(node, evaluationContext, planMojoValue);
   } else if (ast.kindName(node) === "KindTemplateExpression") {
-    plan = planMojoTemplateExpression(node, context, planMojoValue);
+    plan = planMojoTemplateExpression(node, evaluationContext, planMojoValue);
   } else if (ast.is.IsObjectLiteralExpression(node)) {
-    plan = planObjectLiteral(node, context, planMojoValue);
+    plan = planObjectLiteral(node, evaluationContext, planMojoValue);
   } else if (ast.is.IsParenthesizedExpression(node)) {
-    plan = planParenthesized(node, context, planMojoValue);
+    plan = planParenthesized(node, evaluationContext, planMojoValue);
   } else if (ast.is.IsBinaryExpression(node)) {
-    plan = planBinary(node, context, planMojoValue);
+    plan = planBinary(node, evaluationContext, planMojoValue);
   } else if (ast.is.IsPrefixUnaryExpression(node)) {
-    plan = planPrefixUnary(node, context, planMojoValue);
+    plan = planPrefixUnary(node, evaluationContext, planMojoValue);
   } else if (ast.is.IsConditionalExpression(node)) {
-    plan = planConditional(node, context, planMojoValue);
+    plan = planConditional(node, evaluationContext, planMojoValue);
   } else if (ast.is.IsAwaitExpression(node)) {
-    plan = planAwait(node, context, planMojoValue);
+    plan = planAwait(node, evaluationContext, planMojoValue);
   } else if (ast.is.IsAsExpression(node) || ast.is.IsTypeAssertion(node) ||
     ast.is.IsNonNullExpression(node) || ast.is.IsSatisfiesExpression(node)) {
-    plan = planErasedExpression(node, context, planMojoValue);
+    plan = planErasedExpression(node, evaluationContext, planMojoValue);
   } else if (ast.is.IsArrowFunction(node) || ast.is.IsFunctionExpression(node)) {
     plan = planMojoCallableExpression(
       node,
-      context,
+      evaluationContext,
       planMojoValue,
       inlineCallableAdaptation && conversion?.kind === "callable-adapt" &&
           conversion.targetType.kind === "callable"
@@ -430,21 +433,21 @@ export function planMojoValue(
         : undefined,
     );
   } else if (ast.is.IsCallExpression(node) || ast.is.IsNewExpression(node)) {
-    plan = planMojoCall(node, context, planMojoValue);
+    plan = planMojoCall(node, evaluationContext, planMojoValue);
   } else if (ast.is.IsPropertyAccessExpression(node)) {
-    plan = planMojoProperty(node, context, planMojoValue, "read");
+    plan = planMojoProperty(node, evaluationContext, planMojoValue, "read");
   } else if (ast.is.IsElementAccessExpression(node)) {
-    plan = planMojoElement(node, context, planMojoValue, "read");
+    plan = planMojoElement(node, evaluationContext, planMojoValue, "read");
   } else {
     const selectedValue = context.program.queries.valueSelection(node);
     if (selectedValue !== undefined) {
       plan = planProviderConstant(
         selectedValue.operation,
         selectedValue.resultConversion,
-        context,
+        evaluationContext,
       );
     } else {
-      const expression = planMojoLeafExpression(node, context);
+      const expression = planMojoLeafExpression(node, evaluationContext);
       plan = expression === undefined ? undefined : mojoValue(expression);
     }
   }
@@ -453,7 +456,7 @@ export function planMojoValue(
     ? plan
     : conversion === undefined
       ? undefined
-      : convertMojoValue(plan, conversion, context);
+      : convertMojoValue(plan, conversion, evaluationContext);
   if (converted === undefined) return undefined;
   const resultType = expectedType ?? actualType;
   return resultType === undefined
@@ -461,7 +464,7 @@ export function planMojoValue(
     : adaptMojoValueErrorDomain(
         converted,
         resultType,
-        context.program.queries.expressionErrorType(node),
+        sourceErrorType,
         context.errorType,
         node,
         context,

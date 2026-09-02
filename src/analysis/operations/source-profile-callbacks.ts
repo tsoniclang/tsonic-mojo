@@ -2,6 +2,8 @@ import type { Node, ResolvedSourceCallInfo, Type } from "@tsonic/tsts";
 import type { MojoSourceProfileCallbackContract } from "../../policy/operations/source-profile-selection.js";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
+import { mojoNativeErrorType } from "../../target-model/types/error-domains.js";
 
 export type MojoSourceProfileCallbackSelection =
   | {
@@ -40,13 +42,19 @@ export function selectMojoSourceProfileCallback(
       reason: "A source-profile callback requires one exact callable carrier for the authored argument.",
     };
   }
+  const targetErrorType = contract.errorMode === "native"
+    ? mojoNativeErrorType()
+    : type.raises
+      ? type.errorType ?? mojoNativeErrorType()
+      : mojoNativeErrorType();
   const targetType = contract.result === "bool"
     ? Object.freeze({
         ...type,
         result: Object.freeze({ kind: "source-primitive" as const, name: "bool" as const }),
         raises: true,
+        errorType: targetErrorType,
       })
-    : Object.freeze({ ...type, raises: true });
+    : Object.freeze({ ...type, raises: true, errorType: targetErrorType });
   const conversion = contract.result === "bool" &&
       (type.result.kind !== "source-primitive" || type.result.name !== "bool")
     ? callbackTruthinessConversion(type, targetType)
@@ -58,14 +66,18 @@ export function selectMojoSourceProfileCallback(
       reason: "This JavaScript callback result has no exact target truthiness conversion.",
     };
   }
-  const selectedConversion = conversion ?? (!type.raises
-      ? Object.freeze({
-        kind: "callable-adapt" as const,
-        targetType,
-        result: "preserve" as const,
-        error: "widen" as const,
-      })
-    : undefined);
+  const classified = conversion === undefined
+    ? classifyMojoValueConversion(type, targetType)
+    : undefined;
+  const selectedConversion = conversion ??
+    (classified?.kind === "resolved" ? classified.conversion : undefined);
+  if (conversion === undefined && classified?.kind === "unsupported") {
+    return {
+      kind: "unsupported",
+      code: "MOJO_SOURCE_PROFILE_CALLBACK_CONVERSION_UNPROVEN",
+      reason: classified.reason,
+    };
+  }
   if (contract.result === "float64" &&
     (type.result.kind !== "source-primitive" || type.result.name !== "float64")) {
     return {

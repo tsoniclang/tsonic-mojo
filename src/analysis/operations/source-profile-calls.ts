@@ -216,9 +216,15 @@ export function analyzeSourceProfileCall(
         resultType: result.type,
         genericArguments: Object.freeze(genericArguments),
         genericParameters: Object.freeze([]),
-        raises: selected.row.raises === true || callback !== undefined,
+        raises: selected.row.raises === true,
+        ...(selected.row.raises !== true || callback?.type.errorType === undefined
+          ? {}
+          : { errorType: callback.type.errorType }),
       }),
       arguments: arguments_.arguments,
+      ...(callback === undefined || selected.row.callback?.errorMode !== "propagate"
+        ? {}
+        : { propagatedCallbackParameterIndex: callback.parameterIndex }),
       ...(receiver === undefined ? {} : { receiver }),
       ...(sourceReceiverType === undefined ? {} : { sourceReceiverType }),
       ...(receiverConversion === undefined ? {} : { receiverConversion }),

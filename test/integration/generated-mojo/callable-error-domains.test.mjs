@@ -86,7 +86,35 @@ test("callable declarations replace provisional effects with finalized conversio
   assert.deepEqual(result.diagnostics, []);
   const generated = artifactTexts(result).find(({ text }) => text.includes("def tsonic_main"));
   assert.ok(generated);
-  assert.match(generated.text, /RaisingCallable\[Tuple\[\], NoneType, Variant\[Error, Failure\]\]/u);
+  assert.match(generated.text, /RaisingCallable\[Tuple\[\], NoneType, Failure\]/u);
+});
+
+test("stored callable declarations retain their exact error domain", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        "class FirstFailure {",
+        "  message: string;",
+        "  constructor(message: string) { this.message = message; }",
+        "}",
+        "class SecondFailure {",
+        "  code: number;",
+        "  constructor(code: number) { this.code = code; }",
+        "}",
+        "export const failFirst = (): never => { throw new FirstFailure('first'); };",
+        "function failSecond(): never { throw new SecondFailure(2); }",
+        "function invoke(): void { failFirst(); }",
+        "export function retainSecondDomain(): void { failSecond(); }",
+        "export function main(): void { invoke(); }",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const generated = artifactTexts(result).find(({ text }) => text.includes("def invoke"));
+  assert.ok(generated);
+  assert.match(generated.text, /RaisingCallable\[Tuple\[\], [^,]+, FirstFailure\]/u);
+  assert.match(generated.text, /def invoke\(\) raises FirstFailure/u);
+  assert.doesNotMatch(generated.text, /RaisingCallable\[Tuple\[\], [^,]+, Variant\[[^\]]*SecondFailure/u);
 });
 
 test("closed catch domains stringify every retained error member", () => {

@@ -31,6 +31,46 @@ test("JavaScript array callbacks retain exact authored arities", () => {
   assert.equal((source.match(/tsonic_runtime\.RaisingCallable/gu) ?? []).length, 4);
 });
 
+test("JavaScript callback operations retain the callback's exact error domain", () => {
+  const source = generatedSource(compileMojo({
+    surfaces: ["js"],
+    files: {
+      "index.ts": [
+        "class CallbackFailure {",
+        "  code: number;",
+        "  constructor(code: number) { this.code = code; }",
+        "}",
+        "export function main(): void {",
+        "  [1, -1].map(value => {",
+        "    if (value < 0) throw new CallbackFailure(value);",
+        "    return value + 1;",
+        "  });",
+        "}",
+      ].join("\n"),
+    },
+  }));
+  assert.match(source, /tsonic_js\.array_map_value\[Float64\]/u);
+  assert.match(source, /RaisingCallable\[Tuple\[Float64\], Float64, CallbackFailure\]/u);
+  assert.match(source, /def tsonic_main\(\) raises CallbackFailure/u);
+  assert.doesNotMatch(source, /array_map_value[^\n]*Variant\[/u);
+});
+
+test("JavaScript callbacks calling pure project functions retain an admitted helper domain", () => {
+  const source = generatedSource(compileMojo({
+    surfaces: ["js"],
+    files: {
+      "index.ts": [
+        "function compare(left: number, right: number): number { return left - right; }",
+        "export function main(): void {",
+        "  [3, 1, 2].sort((left, right) => compare(left, right));",
+        "}",
+      ].join("\n"),
+    },
+  }));
+  assert.match(source, /tsonic_js\.array_sort_compare/u);
+  assert.match(source, /def tsonic_main\(\) raises Error/u);
+});
+
 test("JavaScript callback families select one sealed runtime operation", () => {
   const source = generatedSource(compileMojo({
     surfaces: ["js"],

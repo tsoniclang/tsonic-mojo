@@ -54,6 +54,7 @@ export type MojoSourceProfileResultContract =
 export interface MojoSourceProfileCallbackContract {
   readonly parameterIndex: number;
   readonly result: "preserve" | "bool" | "float64";
+  readonly errorMode: "propagate" | "native";
   readonly variants: readonly MojoSourceProfileCallbackVariant[];
 }
 

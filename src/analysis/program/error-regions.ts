@@ -61,7 +61,6 @@ export function closeMojoDeclarationErrorEffects(
     const next = new Map<Node, readonly MojoTargetTypeRef[]>();
     for (const owner of owners) {
       next.set(owner.declaration, mergeMojoErrorTypes(
-        current.get(owner.declaration) ?? Object.freeze([]),
         ...owner.roots.map((root) =>
           collectMojoEscapingErrorTypes(root, indexes, current)),
       ));
@@ -172,6 +171,48 @@ export function collectMojoEscapingErrorTypes(
   return visit(root, root);
 }
 
+export function collectMojoEvaluationErrorTypes(
+  root: Node,
+  indexes: MojoErrorRegionIndexes,
+  errorTypesByDeclaration: ReadonlyMap<Node, readonly MojoTargetTypeRef[]>,
+  cache: WeakMap<Node, readonly MojoTargetTypeRef[]> = new WeakMap(),
+): readonly MojoTargetTypeRef[] {
+  const { ast } = indexes.source;
+  const visit = (node: Node): readonly MojoTargetTypeRef[] => {
+    const cached = cache.get(node);
+    if (cached !== undefined) return cached;
+    let result: readonly MojoTargetTypeRef[];
+    if (isCallableBoundary(node, ast)) {
+      result = directMojoNodeErrorTypes(node, indexes, errorTypesByDeclaration);
+    } else if (ast.is.IsTryStatement(node)) {
+      const tryBlock = TryStatement_TryBlock(ast, node);
+      const catchClause = TryStatement_CatchClause(ast, node);
+      const catchBlock = CatchClause_Block(ast, catchClause);
+      const finallyBlock = TryStatement_FinallyBlock(ast, node);
+      const tryErrors = tryBlock === undefined ? Object.freeze([]) : visit(tryBlock);
+      result = catchClause !== undefined && catchBlock !== undefined
+        ? mergeMojoErrorTypes(
+            visit(catchBlock),
+            finallyBlock === undefined ? Object.freeze([]) : visit(finallyBlock),
+          )
+        : mergeMojoErrorTypes(
+            tryErrors,
+            finallyBlock === undefined ? Object.freeze([]) : visit(finallyBlock),
+          );
+    } else {
+      result = mergeMojoErrorTypes(
+        directMojoNodeErrorTypes(node, indexes, errorTypesByDeclaration),
+        ...ast.children(node)
+          .filter((child): child is Node => child !== undefined)
+          .map(visit),
+      );
+    }
+    cache.set(node, result);
+    return result;
+  };
+  return visit(root);
+}
+
 export function directMojoNodeErrorTypes(
   node: Node,
   indexes: MojoErrorRegionIndexes,
@@ -186,6 +227,25 @@ export function directMojoNodeErrorTypes(
     const selection = indexes.callSelections.get(node);
     if (selection?.kind === "provider") {
       errors.push(...mojoOperationErrorTypes(selection.operation));
+      if (selection.propagatedCallbackParameterIndex !== undefined) {
+        const callbackArguments = selection.arguments.filter((argument) =>
+          argument.parameterIndex === selection.propagatedCallbackParameterIndex);
+        const callbackArgument = callbackArguments.length === 1 ? callbackArguments[0] : undefined;
+        const dependency = indexes.callDependencies.get(node);
+        if (dependency !== undefined) {
+          const dependencyErrors = errorTypesByDeclaration.get(dependency) ?? [];
+          errors.push(...(dependencyErrors.length === 0
+            ? [mojoNativeErrorType()]
+            : dependencyErrors));
+        } else if (callbackArgument?.sourceType.kind === "callable" &&
+          callbackArgument.sourceType.raises) {
+          errors.push(callbackArgument.sourceType.errorType ?? mojoNativeErrorType());
+        }
+        if (callbackArgument?.sourceType.kind === "callable" &&
+          !callbackArgument.sourceType.raises) {
+          errors.push(mojoNativeErrorType());
+        }
+      }
       addNativeConversionError(providerCallRequiresRaisingConversion(selection));
     } else if (selection?.kind === "project") {
       const dependency = indexes.callDependencies.get(node);

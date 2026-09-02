@@ -34,3 +34,34 @@ for (const profile of ["native", "js"]) {
     assert.match(generated.text, /raise/u);
   });
 }
+
+test("nested raising arguments are adapted through their enclosing evaluation region", () => {
+  const result = compileMojo({
+    surfaces: ["js"],
+    files: {
+      "index.ts": [
+        "class ParseFailure {",
+        "  index: number;",
+        "  constructor(index: number) { this.index = index; }",
+        "}",
+        "function parseAt(values: string[], index: number): unknown {",
+        "  if (index < 0) throw new ParseFailure(index);",
+        "  return JSON.parse(values[index]!);",
+        "}",
+        "export function main(): void { parseAt(['{}'], 0); }",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const generated = artifactTexts(result).find(({ text }) => text.includes("def parseAt"));
+  assert.ok(generated);
+  const functionStart = generated.text.indexOf("def parseAt");
+  const functionEnd = generated.text.indexOf("\ndef ", functionStart + 1);
+  const functionText = generated.text.slice(
+    functionStart,
+    functionEnd === -1 ? generated.text.length : functionEnd,
+  );
+  assert.match(functionText, /raises Variant\[Error, ParseFailure\]/u);
+  assert.match(functionText, /tsonic_js\.json_parse\(values\[index\]\)/u);
+  assert.equal((functionText.match(/\btry:/gu) ?? []).length, 1);
+});

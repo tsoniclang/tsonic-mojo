@@ -17,8 +17,8 @@ import {
 } from "./effects.js";
 import {
   closeMojoProgramErrorEffects,
+  collectMojoEvaluationErrorTypes,
   collectMojoEscapingErrorTypes,
-  directMojoNodeErrorTypes,
 } from "./error-regions.js";
 import {
   sealMojoCatchBindingCarrier,
@@ -100,6 +100,21 @@ export function finalizeMojoProgramEffects(
     if (selection?.kind !== "callable") continue;
     const dependency = resolveMojoCallableExpressionDependency(
       selection.callee,
+      source,
+      callableExpressionSelections,
+      callableExpressionByDeclaration,
+    );
+    if (dependency !== undefined) callDependencies.set(callNode, dependency);
+  }
+  for (const callNode of callNodes) {
+    const selection = callSelections.get(callNode);
+    if (selection?.kind !== "provider" ||
+      selection.propagatedCallbackParameterIndex === undefined) continue;
+    const callbackArguments = selection.arguments.filter((argument) =>
+      argument.parameterIndex === selection.propagatedCallbackParameterIndex);
+    if (callbackArguments.length !== 1) continue;
+    const dependency = resolveMojoCallableExpressionDependency(
+      callbackArguments[0]!.expression,
       source,
       callableExpressionSelections,
       callableExpressionByDeclaration,
@@ -235,9 +250,7 @@ export function finalizeMojoProgramEffects(
   for (const expression of callableExpressionNodes) {
     const selection = callableExpressionSelections.get(expression)!;
     const exactErrorType = closeMojoErrorType(errorTypesByDeclaration.get(expression) ?? []);
-    const errorType = exactErrorType === undefined
-      ? undefined
-      : sourceCallableErrorType ?? exactErrorType;
+    const errorType = exactErrorType;
     const { errorType: _previousErrorType, ...baseCallableType } = selection.callableType;
     const callableType = Object.freeze({
       ...baseCallableType,
@@ -312,6 +325,70 @@ export function finalizeMojoProgramEffects(
             replacements.get(argument) ?? argument)),
         })
       : slot;
+  const finalizePropagatedCallback = (
+    selection: Extract<import("./call-model.js").MojoCallSelection, { readonly kind: "provider" }>,
+    arguments_: readonly MojoAnalyzedCallArgument[],
+  ): Extract<import("./call-model.js").MojoCallSelection, { readonly kind: "provider" }> => {
+    const parameterIndex = selection.propagatedCallbackParameterIndex;
+    if (parameterIndex === undefined) return Object.freeze({ ...selection, arguments: arguments_ });
+    const matches = arguments_.filter((argument) => argument.parameterIndex === parameterIndex);
+    const argument = matches.length === 1 ? matches[0] : undefined;
+    if (argument?.sourceType.kind !== "callable" || argument.parameterType.kind !== "callable") {
+      diagnostics.push(diagnostic(
+        "MOJO_PROPAGATED_CALLBACK_FINALIZATION_UNPROVEN",
+        "A callback-propagating operation requires one exact finalized callable argument.",
+        argument?.expression ?? selection.arguments[0]?.expression ?? sourceFiles[0]!,
+      ));
+      return Object.freeze({ ...selection, arguments: arguments_ });
+    }
+    const callbackErrorType = argument.sourceType.raises
+      ? argument.sourceType.errorType ?? mojoNativeErrorType()
+      : mojoNativeErrorType();
+    const targetType = Object.freeze({
+      ...argument.parameterType,
+      raises: true,
+      errorType: callbackErrorType,
+    });
+    const classified = argument.conversion.kind === "js-callback-truthiness"
+      ? undefined
+      : classifyMojoValueConversion(argument.sourceType, targetType);
+    const conversion = argument.conversion.kind === "js-callback-truthiness"
+      ? Object.freeze({
+          ...argument.conversion,
+          targetType,
+          widenRaises: !argument.sourceType.raises,
+        })
+      : classified?.kind === "resolved"
+        ? classified.conversion
+        : undefined;
+    if (conversion === undefined) {
+      diagnostics.push(diagnostic(
+        "MOJO_PROPAGATED_CALLBACK_CONVERSION_UNPROVEN",
+        "A callback-propagating operation cannot align its finalized callable with the native helper ABI.",
+        argument.expression,
+      ));
+      return Object.freeze({ ...selection, arguments: arguments_ });
+    }
+    const finalizedArgument = Object.freeze({
+      ...argument,
+      parameterType: targetType,
+      conversion,
+    });
+    const finalizedArguments = Object.freeze(arguments_.map((entry) =>
+      entry === argument ? finalizedArgument : entry));
+    const parameterTypes = Object.freeze(selection.operation.parameterTypes.map((type, index) =>
+      index === parameterIndex ? targetType : type));
+    return Object.freeze({
+      ...selection,
+      operation: Object.freeze({
+        ...selection.operation,
+        parameterTypes,
+        raises: true,
+        errorType: callbackErrorType,
+      }),
+      arguments: finalizedArguments,
+    });
+  };
   for (const callNode of callNodes) {
     const selection = callSelections.get(callNode);
     if (selection === undefined || selection.kind === "explicit-safety" ||
@@ -323,16 +400,19 @@ export function finalizeMojoProgramEffects(
       replacements.set(argument, finalized);
       return finalized;
     });
-    callSelections.set(callNode, Object.freeze({
-      ...selection,
-      arguments: Object.freeze(arguments_),
-      ...(selection.kind === "callable"
-        ? {
-            argumentSlots: Object.freeze(selection.argumentSlots.map((slot) =>
-              finalizeCallableArgumentSlot(slot, replacements))),
-          }
-        : {}),
-    }));
+    const finalizedArguments = Object.freeze(arguments_);
+    callSelections.set(callNode, selection.kind === "provider"
+      ? finalizePropagatedCallback(selection, finalizedArguments)
+      : Object.freeze({
+          ...selection,
+          arguments: finalizedArguments,
+          ...(selection.kind === "callable"
+            ? {
+                argumentSlots: Object.freeze(selection.argumentSlots.map((slot) =>
+                  finalizeCallableArgumentSlot(slot, replacements))),
+              }
+            : {}),
+        }));
   }
   for (const callNode of callNodes) {
     const selection = callSelections.get(callNode);
@@ -351,14 +431,17 @@ export function finalizeMojoProgramEffects(
       sealCallableDeclaration(reference.declaration, callable.callableType);
     }
   }
+  const evaluationErrorTypeCache = new WeakMap<Node, readonly MojoTargetTypeRef[]>();
   for (const sourceFile of sourceFiles) {
     walkSourceTree(sourceFile, ast, (node): void => {
-      const errorType = closeMojoErrorType(directMojoNodeErrorTypes(
+      const errorType = closeMojoErrorType(collectMojoEvaluationErrorTypes(
         node,
         errorRegionIndexes,
         errorTypesByDeclaration,
+        evaluationErrorTypeCache,
       ));
-      if (errorType !== undefined) expressionErrorTypes.set(node, errorType);
+      if (errorType === undefined) expressionErrorTypes.delete(node);
+      else expressionErrorTypes.set(node, errorType);
     });
   }
   for (const module of analyzedModules) {
