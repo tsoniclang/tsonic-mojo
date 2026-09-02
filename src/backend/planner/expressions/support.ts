@@ -170,7 +170,8 @@ export function orderMojoValues(
   const expressions: MojoExpression[] = [];
   for (const [index, value] of values.entries()) {
     before.push(...value.plan.before);
-    if (value.stabilize === true || stabilizeAll || index < finalPreludeIndex) {
+    if ((value.stabilize === true || stabilizeAll || index < finalPreludeIndex) &&
+      !isStableMojoLocation(value.plan.value)) {
       registerMojoTypeImports(value.type, context);
       const name = allocateMojoSyntheticName(context, value.role);
       before.push(Object.freeze({
@@ -188,6 +189,16 @@ export function orderMojoValues(
     before: Object.freeze(before),
     values: Object.freeze(expressions),
   });
+}
+
+function isStableMojoLocation(expression: MojoExpression): boolean {
+  switch (expression.kind) {
+    case "path": return true;
+    case "member": return isStableMojoLocation(expression.receiver);
+    case "element": return isStableMojoLocation(expression.receiver);
+    case "postfix-deref": return true;
+    default: return false;
+  }
 }
 
 export function convertMojoValue(

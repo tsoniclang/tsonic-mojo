@@ -41,6 +41,11 @@ export type MojoSourceProfileResultContract =
       readonly element:
         | { readonly kind: "receiver-argument"; readonly index: number }
         | { readonly kind: "tuple"; readonly indexes: readonly number[] };
+    }
+  | {
+      readonly kind: "receiver-argument";
+      readonly index: number;
+      readonly optional?: boolean;
     };
 
 export interface MojoSourceProfileCallbackContract {
@@ -472,7 +477,10 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
   jsInstanceParameterRow("Map", "delete", "mut", [receiverArgument(0)]),
   jsInstanceParameterRow("Map", "set", "mut", [receiverArgument(0), receiverArgument(1)]),
   ...["Map", "ReadonlyMap"].flatMap((owner) => [
-    jsInstanceParameterRow(owner, "get", "imm", [receiverArgument(0)]),
+    Object.freeze({
+      ...jsInstanceParameterRow(owner, "get", "imm", [receiverArgument(0)]),
+      resultContract: Object.freeze({ kind: "receiver-argument" as const, index: 1, optional: true }),
+    }),
     jsInstanceParameterRow(owner, "has", "imm", [receiverArgument(0)]),
   ]),
   ...["Map", "ReadonlyMap"].flatMap((owner) => [

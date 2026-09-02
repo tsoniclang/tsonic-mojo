@@ -85,7 +85,14 @@ export function planMojoLeafExpression(
   } else if (ast.is.IsStringLiteral(node) || ast.is.IsNoSubstitutionTemplateLiteral(node)) {
     planned = { kind: "string-literal", value: ast.text(node) };
   } else if (ast.is.IsNumericLiteral(node)) {
-    planned = { kind: "number-literal", text: ast.text(node) };
+    const literal = Object.freeze({ kind: "number-literal" as const, text: ast.text(node) });
+    planned = actualType?.kind === "source-primitive"
+      ? Object.freeze({
+          kind: "construct",
+          type: actualType,
+          arguments: Object.freeze([Object.freeze({ value: literal })]),
+        })
+      : literal;
   } else if (ast.is.IsBigIntLiteral(node)) {
     const text = ast.text(node);
     if (!text.endsWith("n")) {

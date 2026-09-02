@@ -30,7 +30,9 @@ export type MojoProviderOperationForm =
     }
   | {
       readonly kind: "property-write";
-      readonly access: { readonly kind: "member"; readonly name: string };
+      readonly access:
+        | { readonly kind: "member"; readonly name: string }
+        | { readonly kind: "method"; readonly name: string };
       readonly receiver: MojoCallArgumentConvention;
       readonly value: MojoProviderTargetArgument;
     }

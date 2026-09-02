@@ -659,6 +659,7 @@ export interface MojoProgramQueries {
   bindingSourceFile(referenceOrDeclaration: Node): SourceFile | undefined;
   bindingType(declaration: Node): MojoTargetTypeRef | undefined;
   expressionType(expression: Node): MojoTargetTypeRef | undefined;
+  expressionErrorType(expression: Node): MojoTargetTypeRef | undefined;
   expressionConversion(
     expression: Node,
     expectedType: MojoTargetTypeRef,
@@ -677,6 +678,7 @@ export interface MojoProgramQueries {
   templateExpressionSelection(expression: Node): MojoTemplateExpressionSelection | undefined;
   bindingPatternSelection(declaration: Node): MojoBindingPatternSelection | undefined;
   returnValueTransfer(expression: Node): boolean;
+  catchErrorType(catchClause: Node): MojoTargetTypeRef | undefined;
   moduleForSourceFile(sourceFile: SourceFile): MojoAnalyzedModule | undefined;
   moduleForId(id: string): MojoAnalyzedModule | undefined;
   moduleBinding(referenceOrDeclaration: Node): MojoAnalyzedModuleBinding | undefined;

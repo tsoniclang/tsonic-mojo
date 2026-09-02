@@ -77,9 +77,11 @@ import { collectMojoAddressedStorageDeclarations } from "./addressed-storage.js"
 import { analyzeMojoProjectDeclarations } from "./declarations.js";
 import { createMojoStructuralObjectCatalog } from "../bindings/structural-objects.js";
 import {
-  closeMojoDeclarationErrorEffects,
+  closeMojoProgramErrorEffects,
   collectMojoEscapingErrorTypes,
+  directMojoNodeErrorTypes,
 } from "./error-regions.js";
+import { walkSourceTree } from "./traversal.js";
 import type {
   MojoAnalyzedCallArgument,
   MojoCallableArgumentSlot,
@@ -117,6 +119,7 @@ export function analyzeMojoTargetProgram(
   const bindingSourceFiles = new WeakMap<Node, SourceFile>();
   const bindingTypes = new WeakMap<Node, MojoTargetTypeRef>();
   const expressionTypes = new WeakMap<Node, MojoTargetTypeRef>();
+  const expressionErrorTypes = new WeakMap<Node, MojoTargetTypeRef>();
   const callSelections = new WeakMap<Node, MojoCallSelection>();
   const callNodes = new Set<Node>();
   const callDependencies = new WeakMap<Node, Node>();
@@ -589,16 +592,32 @@ export function analyzeMojoTargetProgram(
   ): void => {
     if (errorType !== undefined) {
       catchErrorTypes.set(catchClause, errorType);
-      sealMojoCatchBindingCarrier(catchClause, catchBlock, errorType, executableEnvironment);
+      sealMojoCatchBindingCarrier(
+        catchClause,
+        catchBlock,
+        errorType,
+        executableEnvironment,
+      );
     } else {
       catchErrorTypes.delete(catchClause);
     }
   };
-  const errorClosure = closeMojoDeclarationErrorEffects(
+  const errorClosure = closeMojoProgramErrorEffects(
     effectOwners,
+    Object.freeze([
+      ...effectOwners.flatMap((owner) => owner.roots),
+      ...analyzedModules.flatMap((module) => moduleEffectRoots.get(module) ?? []),
+    ]),
     errorRegionIndexes,
     sealCatchDomain,
   );
+  if (!errorClosure.catchDomainsConsistent) {
+    diagnostics.push(diagnostic(
+      "MOJO_CATCH_ERROR_DOMAIN_CONFLICT",
+      "One catch clause was reached with conflicting exact Mojo error domains.",
+      sourceFiles[0]!,
+    ));
+  }
   if (!errorClosure.converged) {
     diagnostics.push(diagnostic(
       "MOJO_ERROR_EFFECT_CLOSURE_DID_NOT_CONVERGE",
@@ -749,13 +768,22 @@ export function analyzeMojoTargetProgram(
       sealCallableDeclaration(reference.declaration, callable.callableType);
     }
   }
+  for (const sourceFile of sourceFiles) {
+    walkSourceTree(sourceFile, ast, (node): void => {
+      const errorType = closeMojoErrorType(directMojoNodeErrorTypes(
+        node,
+        errorRegionIndexes,
+        errorTypesByDeclaration,
+      ));
+      if (errorType !== undefined) expressionErrorTypes.set(node, errorType);
+    });
+  }
   for (const module of analyzedModules) {
     const directErrorTypes = mergeMojoErrorTypes(...(moduleEffectRoots.get(module) ?? []).map((root) =>
       collectMojoEscapingErrorTypes(
         root,
         errorRegionIndexes,
         errorTypesByDeclaration,
-        sealCatchDomain,
       )));
     moduleRegionFacts.set(module, Object.freeze({
       dependencies: new Set<Node>(),
@@ -877,6 +905,7 @@ export function analyzeMojoTargetProgram(
     bindingSourceFiles,
     bindingTypes,
     expressionTypes,
+    expressionErrorTypes,
     conversions,
     callSelections,
     propertySelections,
@@ -892,6 +921,7 @@ export function analyzeMojoTargetProgram(
     templateExpressionSelections,
     bindingPatternSelections,
     returnValueTransfers,
+    catchErrorTypes,
     moduleBySourceFile: finalizedModuleBySourceFile,
     moduleById: finalizedModuleById,
     moduleBindingByDeclaration,

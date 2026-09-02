@@ -45,14 +45,13 @@ export interface MojoErrorEffectClosure {
   readonly converged: boolean;
 }
 
+export interface MojoProgramErrorEffectClosure extends MojoErrorEffectClosure {
+  readonly catchDomainsConsistent: boolean;
+}
+
 export function closeMojoDeclarationErrorEffects(
   owners: readonly MojoErrorEffectOwner[],
   indexes: MojoErrorRegionIndexes,
-  onCatchDomain: (
-    catchClause: Node,
-    catchBlock: Node,
-    errorType: MojoTargetTypeRef | undefined,
-  ) => void,
 ): MojoErrorEffectClosure {
   let current = new Map<Node, readonly MojoTargetTypeRef[]>(
     owners.map((owner) => [owner.declaration, Object.freeze([])] as const),
@@ -64,7 +63,7 @@ export function closeMojoDeclarationErrorEffects(
       next.set(owner.declaration, mergeMojoErrorTypes(
         current.get(owner.declaration) ?? Object.freeze([]),
         ...owner.roots.map((root) =>
-          collectMojoEscapingErrorTypes(root, indexes, current, onCatchDomain)),
+          collectMojoEscapingErrorTypes(root, indexes, current)),
       ));
     }
     if (errorEffectMapsEqual(current, next, owners)) {
@@ -73,6 +72,59 @@ export function closeMojoDeclarationErrorEffects(
     current = next;
   }
   return Object.freeze({ errorTypesByDeclaration: current, converged: false });
+}
+
+export function closeMojoProgramErrorEffects(
+  owners: readonly MojoErrorEffectOwner[],
+  executableRoots: readonly Node[],
+  indexes: MojoErrorRegionIndexes,
+  publishCatchDomain: (
+    catchClause: Node,
+    catchBlock: Node,
+    errorType: MojoTargetTypeRef | undefined,
+  ) => void,
+): MojoProgramErrorEffectClosure {
+  let closure = closeMojoDeclarationErrorEffects(owners, indexes);
+  let catchDomains = collectMojoCatchDomains(
+    executableRoots,
+    indexes,
+    closure.errorTypesByDeclaration,
+  );
+  const maximumIterations = Math.max(16, owners.length * 2 + executableRoots.length * 2 + 4);
+  for (let iteration = 0; iteration < maximumIterations; iteration += 1) {
+    if (!catchDomains.consistent) {
+      return Object.freeze({
+        errorTypesByDeclaration: closure.errorTypesByDeclaration,
+        converged: false,
+        catchDomainsConsistent: false,
+      });
+    }
+    for (const domain of catchDomains.domains.values()) {
+      publishCatchDomain(domain.catchClause, domain.catchBlock, domain.errorType);
+    }
+    const nextClosure = closeMojoDeclarationErrorEffects(owners, indexes);
+    const nextCatchDomains = collectMojoCatchDomains(
+      executableRoots,
+      indexes,
+      nextClosure.errorTypesByDeclaration,
+    );
+    if (closure.converged && nextClosure.converged && nextCatchDomains.consistent &&
+      errorEffectMapsEqual(closure.errorTypesByDeclaration, nextClosure.errorTypesByDeclaration, owners) &&
+      catchDomainMapsEqual(catchDomains.domains, nextCatchDomains.domains)) {
+      return Object.freeze({
+        errorTypesByDeclaration: nextClosure.errorTypesByDeclaration,
+        converged: true,
+        catchDomainsConsistent: true,
+      });
+    }
+    closure = nextClosure;
+    catchDomains = nextCatchDomains;
+  }
+  return Object.freeze({
+    errorTypesByDeclaration: closure.errorTypesByDeclaration,
+    converged: false,
+    catchDomainsConsistent: catchDomains.consistent,
+  });
 }
 
 export function collectMojoEscapingErrorTypes(
@@ -113,14 +165,14 @@ export function collectMojoEscapingErrorTypes(
       .filter((child): child is Node => child !== undefined)
       .map((child) => visit(child, regionRoot));
     return mergeMojoErrorTypes(
-      directNodeErrorTypes(node, indexes, errorTypesByDeclaration),
+      directMojoNodeErrorTypes(node, indexes, errorTypesByDeclaration),
       ...children,
     );
   };
   return visit(root, root);
 }
 
-function directNodeErrorTypes(
+export function directMojoNodeErrorTypes(
   node: Node,
   indexes: MojoErrorRegionIndexes,
   errorTypesByDeclaration: ReadonlyMap<Node, readonly MojoTargetTypeRef[]>,
@@ -235,6 +287,67 @@ function closedErrorType(types: readonly MojoTargetTypeRef[]): MojoTargetTypeRef
   if (types.length === 0) return undefined;
   if (types.length === 1) return types[0];
   return Object.freeze({ kind: "union", members: types });
+}
+
+interface MojoCatchDomain {
+  readonly catchClause: Node;
+  readonly catchBlock: Node;
+  readonly errorType?: MojoTargetTypeRef;
+}
+
+function collectMojoCatchDomains(
+  roots: readonly Node[],
+  indexes: MojoErrorRegionIndexes,
+  errorTypesByDeclaration: ReadonlyMap<Node, readonly MojoTargetTypeRef[]>,
+): {
+  readonly domains: ReadonlyMap<Node, MojoCatchDomain>;
+  readonly consistent: boolean;
+} {
+  const domains = new Map<Node, MojoCatchDomain>();
+  let consistent = true;
+  const collect = (
+    catchClause: Node,
+    catchBlock: Node,
+    errorType: MojoTargetTypeRef | undefined,
+  ): void => {
+    const existing = domains.get(catchClause);
+    if (existing !== undefined &&
+      (existing.catchBlock !== catchBlock || !optionalTargetTypesEqual(existing.errorType, errorType))) {
+      consistent = false;
+      return;
+    }
+    domains.set(catchClause, Object.freeze({
+      catchClause,
+      catchBlock,
+      ...(errorType === undefined ? {} : { errorType }),
+    }));
+  };
+  for (const root of roots) {
+    collectMojoEscapingErrorTypes(root, indexes, errorTypesByDeclaration, collect);
+  }
+  return Object.freeze({ domains, consistent });
+}
+
+function catchDomainMapsEqual(
+  left: ReadonlyMap<Node, MojoCatchDomain>,
+  right: ReadonlyMap<Node, MojoCatchDomain>,
+): boolean {
+  if (left.size !== right.size) return false;
+  for (const [catchClause, leftDomain] of left) {
+    const rightDomain = right.get(catchClause);
+    if (rightDomain === undefined || leftDomain.catchBlock !== rightDomain.catchBlock ||
+      !optionalTargetTypesEqual(leftDomain.errorType, rightDomain.errorType)) return false;
+  }
+  return true;
+}
+
+function optionalTargetTypesEqual(
+  left: MojoTargetTypeRef | undefined,
+  right: MojoTargetTypeRef | undefined,
+): boolean {
+  return left === undefined || right === undefined
+    ? left === right
+    : mojoTargetTypeEquals(left, right);
 }
 
 function errorEffectMapsEqual(

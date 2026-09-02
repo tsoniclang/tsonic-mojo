@@ -490,6 +490,30 @@ function closeSourceProfileResult(
   resolve: (type: Type, authoredTypeNode?: Node) => MojoTargetTypeRef | undefined,
   context: MojoCallAnalysisContext,
 ): ClosedSourceProfileResult {
+  if (row.resultContract?.kind === "receiver-argument") {
+    if (sourceReceiverType?.kind !== "target-named") {
+      return {
+        kind: "unsupported",
+        code: "MOJO_SOURCE_PROFILE_RESULT_CONTRACT_INVALID",
+        reason: "A receiver-derived source-profile result requires one exact generic receiver carrier.",
+      };
+    }
+    const argument = sourceReceiverType.genericArguments?.[row.resultContract.index];
+    if (argument?.kind !== "type") {
+      return {
+        kind: "unsupported",
+        code: "MOJO_SOURCE_PROFILE_RESULT_CONTRACT_INVALID",
+        reason: "The selected source-profile receiver does not supply the required result type argument.",
+      };
+    }
+    return Object.freeze({
+      kind: "resolved",
+      type: row.resultContract.optional
+        ? Object.freeze({ kind: "optional" as const, value: argument.type })
+        : argument.type,
+      conversion: Object.freeze({ kind: "identity" }),
+    });
+  }
   if (row.resultContract?.kind === "receiver-array") {
     if (sourceReceiverType?.kind !== "target-named") {
       return {

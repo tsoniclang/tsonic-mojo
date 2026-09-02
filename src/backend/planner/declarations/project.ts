@@ -11,7 +11,7 @@ import type {
   MojoStructDeclaration,
 } from "../../target-ast/index.js";
 import { planMojoValue } from "../expressions/value.js";
-import { withMojoStateInitialization } from "../program/context.js";
+import { withMojoErrorType, withMojoStateInitialization } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import { planMojoFunctionStatements } from "../statements/structured.js";
 import { registerMojoTypeImports } from "../types/render.js";
@@ -32,18 +32,19 @@ export function planMojoProjectFunction(
 ): MojoFunctionDeclaration | undefined {
   registerMojoTypeImports(function_.resultType, context);
   if (function_.errorType !== undefined) registerMojoTypeImports(function_.errorType, context);
+  const functionContext = withMojoErrorType(context, function_.errorType);
   const parameterPrelude = planMojoParameterPrelude(
     function_.parameters,
-    context,
+    functionContext,
     planMojoValue,
     true,
   );
   if (parameterPrelude === undefined) return undefined;
-  const bodyStatements = planMojoFunctionStatements(function_, context);
+  const bodyStatements = planMojoFunctionStatements(function_, functionContext);
   if (bodyStatements === undefined) return undefined;
   const statements = Object.freeze([
     ...parameterPrelude,
-    ...planLocationParameterPrelude(function_, context),
+    ...planLocationParameterPrelude(function_, functionContext),
     ...bodyStatements,
   ]);
   return Object.freeze({
@@ -84,7 +85,10 @@ export function planMojoProjectClass(
     registerMojoTypeImports(class_.initializationErrorType, context);
   }
   const sourceConstructor = class_.constructors[0];
-  const stateContext = withMojoStateInitialization(context, class_.targetType, stateType);
+  const stateContext = withMojoErrorType(
+    withMojoStateInitialization(context, class_.targetType, stateType),
+    sourceConstructor?.errorType ?? class_.initializationErrorType,
+  );
   const stateInitializationStatements: MojoStatement[] = [];
   for (const field of class_.fields) {
     if (field.initializer === undefined) continue;
@@ -142,7 +146,12 @@ export function planMojoProjectClass(
     methods: Object.freeze([stateConstructor]),
   });
   const fieldArguments = (sourceConstructor?.parameters ?? []).map((parameter) => Object.freeze({
-    value: Object.freeze({ kind: "path" as const, path: parameter.incomingName }),
+    value: parameter.convention === "var"
+      ? Object.freeze({
+          kind: "consume" as const,
+          expression: Object.freeze({ kind: "path" as const, path: parameter.incomingName }),
+        })
+      : Object.freeze({ kind: "path" as const, path: parameter.incomingName }),
     ...(parameter.omissionKind === "rest" ? { spread: true } : {}),
   }));
   const stateConstruction = Object.freeze({

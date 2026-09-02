@@ -1,5 +1,5 @@
 import type { Node } from "@tsonic/tsts";
-import type { MojoExpression } from "../../target-ast/index.js";
+import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 import {
   appendMojoPlanningDiagnostic,
 } from "../program/context.js";
@@ -254,6 +254,15 @@ export function planMojoProperty(
     );
     return undefined;
   }
+  if (mode === "write" && target.kind === "property-write" && target.access.kind === "method") {
+    appendMojoPlanningDiagnostic(
+      context,
+      "MOJO_PROVIDER_PROPERTY_METHOD_WRITE_REQUIRES_VALUE",
+      "A provider method-backed property write must be planned with its exact assigned value.",
+      node,
+    );
+    return undefined;
+  }
   const convertedReceiver = selection.receiverConversion === undefined
     ? receiver.plan
     : convertMojoValue(receiver.plan, selection.receiverConversion, context);
@@ -276,4 +285,94 @@ export function planMojoProperty(
   return operationPlan === undefined
     ? undefined
     : finishOptionalMojoOperation(node, receiver, operationPlan, context);
+}
+
+export function planMojoProviderPropertyMethodWrite(
+  node: Node,
+  value: MojoValuePlan,
+  operator: string,
+  context: MojoPlanningContext,
+  planValue: MojoValuePlanner,
+): { readonly before: readonly MojoStatement[]; readonly statement: MojoStatement } | undefined {
+  const selection = context.program.queries.propertySelection(node);
+  if (selection?.kind !== "provider") return undefined;
+  const write = selection.writeOperation;
+  if (write?.target.kind !== "property-write" || write.target.access.kind !== "method" ||
+    write.receiverType === undefined || write.parameterTypes.length !== 1) return undefined;
+  if (selection.optionalChain) {
+    appendMojoPlanningDiagnostic(
+      context,
+      "MOJO_PROVIDER_OPTIONAL_PROPERTY_METHOD_WRITE_UNSUPPORTED",
+      "An optional property assignment has no exact JavaScript write semantics.",
+      node,
+    );
+    return undefined;
+  }
+  const prepared = prepareMojoReceiver(
+    selection.receiver,
+    selection.sourceReceiverType,
+    false,
+    context,
+    planValue,
+  );
+  const converted = prepared === undefined || selection.receiverConversion === undefined
+    ? undefined
+    : convertMojoValue(prepared.plan, selection.receiverConversion, context);
+  if (prepared === undefined || converted === undefined) return undefined;
+  const ordered = orderMojoValues([
+    Object.freeze({ plan: converted, type: write.receiverType, role: "property_write_receiver" }),
+    Object.freeze({ plan: value, type: write.parameterTypes[0]!, role: "property_write_value" }),
+  ], context);
+  let assigned = ordered.values[1]!;
+  if (operator !== "=") {
+    const read = selection.readOperation;
+    if (read?.target.kind !== "property-read" || read.receiverType === undefined ||
+      selection.readResultConversion === undefined ||
+      !mojoTargetTypeEquals(read.receiverType, write.receiverType)) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROVIDER_PROPERTY_METHOD_COMPOUND_WRITE_UNSUPPORTED",
+        "A method-backed compound property write requires one compatible exact read operation.",
+        node,
+      );
+      return undefined;
+    }
+    const rawRead: MojoExpression = read.target.access.kind === "member"
+      ? Object.freeze({ kind: "member", receiver: ordered.values[0]!, name: read.target.access.name })
+      : Object.freeze({
+          kind: "method-call",
+          receiver: ordered.values[0]!,
+          name: read.target.access.name,
+          arguments: Object.freeze([]),
+        });
+    const current = convertMojoValue(
+      mojoValue(rawRead),
+      selection.readResultConversion,
+      context,
+    );
+    if (current === undefined || current.before.length !== 0) return undefined;
+    assigned = Object.freeze({
+      kind: "binary",
+      operator: operator.slice(0, -1),
+      left: current.value,
+      right: assigned,
+    });
+  }
+  return Object.freeze({
+    before: ordered.before,
+    statement: Object.freeze({
+      kind: "expression",
+      expression: Object.freeze({
+        kind: "method-call",
+        receiver: ordered.values[0]!,
+        name: write.target.access.name,
+        arguments: Object.freeze([Object.freeze({
+          value: assigned,
+          ...(write.target.value.position === "keyword"
+            ? { name: write.target.value.nativeName! }
+            : {}),
+        })]),
+      }),
+    }),
+  });
 }

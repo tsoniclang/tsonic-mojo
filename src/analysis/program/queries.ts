@@ -27,6 +27,7 @@ export interface MojoProgramQueryIndexes {
   readonly bindingSourceFiles: WeakMap<Node, SourceFile>;
   readonly bindingTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly expressionTypes: WeakMap<Node, MojoTargetTypeRef>;
+  readonly expressionErrorTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly conversions: MojoConversionIndex;
   readonly callSelections: WeakMap<Node, MojoCallSelection>;
   readonly propertySelections: WeakMap<Node, MojoPropertySelection>;
@@ -42,6 +43,7 @@ export interface MojoProgramQueryIndexes {
   readonly templateExpressionSelections: WeakMap<Node, MojoTemplateExpressionSelection>;
   readonly bindingPatternSelections: WeakMap<Node, MojoBindingPatternSelection>;
   readonly returnValueTransfers: WeakSet<Node>;
+  readonly catchErrorTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly moduleBySourceFile: WeakMap<SourceFile, MojoAnalyzedModule>;
   readonly moduleById: ReadonlyMap<string, MojoAnalyzedModule>;
   readonly moduleBindingByDeclaration: WeakMap<Node, MojoAnalyzedModuleBinding>;
@@ -63,6 +65,9 @@ export function createMojoProgramQueries(
     },
     expressionType(expression: Node): MojoTargetTypeRef | undefined {
       return indexes.expressionTypes.get(expression);
+    },
+    expressionErrorType(expression: Node): MojoTargetTypeRef | undefined {
+      return indexes.expressionErrorTypes.get(expression);
     },
     expressionConversion(expression: Node, expectedType: MojoTargetTypeRef) {
       return indexes.conversions.get(expression, expectedType);
@@ -108,6 +113,9 @@ export function createMojoProgramQueries(
     },
     returnValueTransfer(expression: Node): boolean {
       return indexes.returnValueTransfers.has(expression);
+    },
+    catchErrorType(catchClause: Node): MojoTargetTypeRef | undefined {
+      return indexes.catchErrorTypes.get(catchClause);
     },
     moduleForSourceFile(sourceFile: SourceFile) {
       return indexes.moduleBySourceFile.get(sourceFile);

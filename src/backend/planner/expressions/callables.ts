@@ -13,6 +13,7 @@ import {
   appendMojoPlanningDiagnostic,
   registerMojoModuleImport,
   withMojoBindingOverrides,
+  withMojoErrorType,
 } from "../program/context.js";
 import type {
   MojoBindingPlanOverride,
@@ -256,7 +257,10 @@ function planCallableEnvironment(
       storage: "value",
     }));
   }
-  const callableContext = withMojoBindingOverrides(context, overrides);
+  const callableContext = withMojoErrorType(
+    withMojoBindingOverrides(context, overrides),
+    callableType.errorType,
+  );
   const tuplePrelude: MojoStatement[] = selection.parameters.length === 0
     ? []
     : [Object.freeze({

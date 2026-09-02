@@ -22,6 +22,7 @@ import {
   mojoQualifiedModuleMember,
   registerMojoModuleImport,
   registerMojoSymbolImport,
+  withMojoErrorType,
 } from "./context.js";
 import {
   planMojoAssignment,
@@ -32,6 +33,8 @@ import { mojoModuleBindingSlot, mojoModuleStatePointerExpression } from "../bind
 import { registerMojoTypeImports } from "../types/render.js";
 import { planMojoStatementRegion } from "../statements/structured.js";
 import { planMojoResourceScope } from "../statements/resources.js";
+import { adaptMojoValueErrorDomain } from "../expressions/error-domains.js";
+import { mojoValue } from "../expressions/value-plan.js";
 
 export function planMojoModuleState(
   program: MojoTargetProgram,
@@ -176,6 +179,7 @@ function planModuleInitializer(
   context: MojoPlanningContext,
 ): MojoFunctionDeclaration | undefined {
   if (module.errorType !== undefined) registerMojoTypeImports(module.errorType, context);
+  const moduleContext = withMojoErrorType(context, module.errorType);
   const stateName = allocateMojoSyntheticName(context, "module_state");
   const statePointer = mojoModuleStatePointerExpression(module, context);
   if (statePointer === undefined) {
@@ -196,7 +200,7 @@ function planModuleInitializer(
   for (const dependency of definition.dependencies) {
     const target = program.queries.moduleForId(dependency.target.id);
     if (target === undefined || !target.runtimeInitializationRequired) continue;
-    const call = Object.freeze({
+    const call: MojoExpression = Object.freeze({
       kind: "call" as const,
       callee: Object.freeze({
         kind: "path" as const,
@@ -204,9 +208,7 @@ function planModuleInitializer(
       }),
       arguments: Object.freeze([]),
     });
-    initialization.push(Object.freeze({
-      kind: "expression",
-      expression: target.asynchronous
+    const expression: MojoExpression = target.asynchronous
         ? Object.freeze({
             kind: "await",
             expression: Object.freeze({
@@ -220,10 +222,22 @@ function planModuleInitializer(
               arguments: Object.freeze([Object.freeze({ value: call })]),
             }),
           })
-        : call,
-    }));
+        : call;
+    const adapted = adaptMojoValueErrorDomain(
+      mojoValue(expression),
+      Object.freeze({ kind: "unit" }),
+      target.errorType,
+      module.errorType,
+      module.sourceFile,
+      moduleContext,
+    );
+    if (adapted === undefined) return undefined;
+    initialization.push(...adapted.before);
+    if (adapted.value.kind !== "tuple" || adapted.value.elements.length !== 0) {
+      initialization.push(Object.freeze({ kind: "expression", expression: adapted.value }));
+    }
   }
-  const sourceInitialization = planModuleInitializationSteps(module, context, 0);
+  const sourceInitialization = planModuleInitializationSteps(module, moduleContext, 0);
   if (sourceInitialization === undefined) return undefined;
   initialization.push(...sourceInitialization);
   initialization.push(Object.freeze({

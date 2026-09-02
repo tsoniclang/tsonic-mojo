@@ -663,20 +663,8 @@ function analyzeExpressionCarrier(
     input,
     semantics,
   );
-  const exactSemanticFirst = ast.is.IsIdentifier(node) ||
-    ast.is.IsStringLiteral(node) ||
-    ast.is.IsNoSubstitutionTemplateLiteral(node) ||
-    ast.is.IsNumericLiteral(node) ||
-    ast.is.IsBigIntLiteral(node) ||
-    ast.kindName(node) === "KindTemplateExpression" ||
-    ast.kindName(node) === "KindTrueKeyword" ||
-    ast.kindName(node) === "KindFalseKeyword" ||
-    ast.kindName(node) === "KindNullKeyword" ||
-    ast.kindName(node) === "KindUndefinedKeyword";
   const resolved = selectedOccurrenceType ?? referencedType ?? erasedCarrier ??
-    (exactSemanticFirst
-      ? semanticType ?? contextualAggregate ?? contextualExpected
-      : contextualAggregate ?? contextualExpected ?? semanticType);
+    contextualAggregate ?? semanticType ?? contextualExpected;
   if (resolved !== undefined) input.expressionTypes.set(node, resolved);
   if (ast.kindName(node) === "KindThisKeyword" && input.owner !== undefined) {
     input.bindingNames.set(node, "self");

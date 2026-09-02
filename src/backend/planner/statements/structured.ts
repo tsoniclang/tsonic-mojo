@@ -28,7 +28,11 @@ import type {
 import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 import type { MojoPlanningContext } from "../program/context.js";
-import { allocateMojoSyntheticName, appendMojoPlanningDiagnostic } from "../program/context.js";
+import {
+  allocateMojoSyntheticName,
+  appendMojoPlanningDiagnostic,
+  withMojoErrorType,
+} from "../program/context.js";
 import { planMojoAssignment, planMojoValue, planMojoUpdate } from "../expressions/value.js";
 import { registerMojoTypeImports } from "../types/render.js";
 import { planMojoBindingPattern } from "../bindings/patterns.js";
@@ -385,7 +389,10 @@ function planStatement(
     const tryBlock = TryStatement_TryBlock(ast, node);
     const catchClause = TryStatement_CatchClause(ast, node);
     const finallyBlock = TryStatement_FinallyBlock(ast, node);
-    const tryStatements = tryBlock === undefined ? undefined : planBlock(tryBlock, scope, context, flow);
+    const tryContext = catchClause === undefined
+      ? context
+      : withMojoErrorType(context, context.program.queries.catchErrorType(catchClause));
+    const tryStatements = tryBlock === undefined ? undefined : planBlock(tryBlock, scope, tryContext, flow);
     const catchBlock = CatchClause_Block(ast, catchClause);
     const catchStatements = catchBlock === undefined ? undefined : planBlock(catchBlock, scope, context, flow);
     const finallyStatements = finallyBlock === undefined ? undefined : planBlock(finallyBlock, scope, context, flow);

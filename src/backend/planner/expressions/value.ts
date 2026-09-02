@@ -24,7 +24,7 @@ import {
   planMojoCall,
 } from "./calls.js";
 import { planMojoElement } from "./elements.js";
-import { planMojoProperty } from "./properties.js";
+import { planMojoProperty, planMojoProviderPropertyMethodWrite } from "./properties.js";
 import { planMojoLeafExpression } from "./leaves.js";
 import {
   convertMojoValue,
@@ -53,6 +53,7 @@ import {
   planPrefixUnary,
 } from "./conditional-values.js";
 import { planMojoTemplateExpression } from "./template-strings.js";
+import { adaptMojoValueErrorDomain } from "./error-domains.js";
 
 const binaryOperatorText = new Map<string, string>([
   ["KindPlusToken", "+"], ["KindMinusToken", "-"], ["KindAsteriskToken", "*"],
@@ -175,6 +176,17 @@ export function planMojoAssignment(
   const targetType = writeType ?? leftType;
   const right = planMojoValue(rightNode, context, targetType);
   if (right === undefined) return undefined;
+  if (property?.kind === "provider" &&
+    property.writeOperation?.target.kind === "property-write" &&
+    property.writeOperation.target.access.kind === "method") {
+    return planMojoProviderPropertyMethodWrite(
+      leftNode,
+      right,
+      operator,
+      context,
+      planMojoValue,
+    );
+  }
   if (property?.kind === "provider-static") {
     const write = property.writeOperation;
     if (write?.target.kind !== "function-write" || write.parameterTypes.length !== 1 ||
@@ -393,10 +405,23 @@ export function planMojoValue(
     plan = expression === undefined ? undefined : mojoValue(expression);
   }
   if (plan === undefined) return undefined;
-  if (expectedType === undefined || actualType === undefined) return plan;
-  if (inlineCallableWidening) return plan;
-  if (conversion === undefined) return undefined;
-  return convertMojoValue(plan, conversion, context);
+  const converted = expectedType === undefined || actualType === undefined || inlineCallableWidening
+    ? plan
+    : conversion === undefined
+      ? undefined
+      : convertMojoValue(plan, conversion, context);
+  if (converted === undefined) return undefined;
+  const resultType = expectedType ?? actualType;
+  return resultType === undefined
+    ? converted
+    : adaptMojoValueErrorDomain(
+        converted,
+        resultType,
+        context.program.queries.expressionErrorType(node),
+        context.errorType,
+        node,
+        context,
+      );
 }
 
 function planArrayLiteral(node: Node, context: MojoPlanningContext): MojoValuePlan | undefined {
