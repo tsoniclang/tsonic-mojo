@@ -129,7 +129,7 @@ export function analyzeExpressionCarrier(
   const referencedType = reference === undefined ? undefined : input.bindingTypes.get(reference.declaration);
   const contextualExpected = expectedExpressionType(node, input);
   const authoredAggregate = ast.is.IsArrayLiteralExpression(node)
-    ? contextualExpected
+    ? selectAuthoredArrayCarrier(contextualExpected)
     : undefined;
   const contextualAggregate = ast.is.IsArrayLiteralExpression(node) ||
       ast.is.IsObjectLiteralExpression(node)
@@ -154,6 +154,24 @@ export function analyzeExpressionCarrier(
     input.bindingNames.set(node, "self");
     input.expressionTypes.set(node, input.owner.type);
   }
+}
+
+function selectAuthoredArrayCarrier(
+  type: MojoTargetTypeRef | undefined,
+): MojoTargetTypeRef | undefined {
+  if (type === undefined) return undefined;
+  if (type.kind === "list" || type.kind === "fixed-array" || type.kind === "tuple" ||
+    (type.kind === "target-named" && type.id === "tsonic.mojo.js.JsArray")) return type;
+  if (type.kind === "optional") return selectAuthoredArrayCarrier(type.value);
+  if (type.kind !== "union") return undefined;
+  const candidates: MojoTargetTypeRef[] = [];
+  for (const member of type.members) {
+    const candidate = selectAuthoredArrayCarrier(member);
+    if (candidate === undefined || candidates.some((existing) =>
+      mojoTargetTypeEquals(existing, candidate))) continue;
+    candidates.push(candidate);
+  }
+  return candidates.length === 1 ? candidates[0] : undefined;
 }
 
 function resolveContextualAggregateCarrier(

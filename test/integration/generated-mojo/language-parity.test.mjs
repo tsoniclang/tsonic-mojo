@@ -405,6 +405,26 @@ test("authored scalar array tuple and FixedArray carriers survive collapsed Type
   assert.match(source.text, /values\[Int\(Float64\(0\)\)\].*tuple\[0\].*Float64\(bytes\[Int\(Float64\(1\)\)\]\)/u);
 });
 
+test("contextual array literals select the exact present aggregate from an optional target", () => {
+  const result = compileMojo({
+    surfaces: ["js"],
+    files: {
+      "index.ts": [
+        "export function main(): void {",
+        "  let values: number[] | undefined = undefined;",
+        "  if (values === undefined) values = [];",
+        "  values.push(1);",
+        "}",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("def tsonic_main"));
+  assert.ok(source);
+  assert.match(source.text, /Optional\[tsonic_js\.JsArray\[Float64\]\]/u);
+  assert.match(source.text, /Optional\[tsonic_js\.JsArray\[Float64\]\]\(tsonic_js\.JsArray\[Float64\]\(\[\]\)\)/u);
+});
+
 test("all native Mojo and shared fixed-width primitive aliases retain authored carriers", () => {
   const result = compileMojo({
     files: {
