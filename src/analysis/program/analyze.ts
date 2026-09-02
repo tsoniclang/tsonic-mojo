@@ -72,6 +72,7 @@ import {
 } from "./module-effects.js";
 import type { MojoAnalyzedModuleRegionFacts } from "./module-effects.js";
 import { createMojoProgramQueries } from "./queries.js";
+import { mojoOwnedTemporaryPassing } from "../value-semantics/owned-temporaries.js";
 import { collectMojoDeclarationDrafts } from "./declaration-drafts.js";
 import { collectMojoAddressedStorageDeclarations } from "./addressed-storage.js";
 import { analyzeMojoProjectDeclarations } from "./declarations.js";
@@ -922,6 +923,7 @@ export function analyzeMojoTargetProgram(
     bindingPatternSelections,
     returnValueTransfers,
     catchErrorTypes,
+    ownedTemporaryPassing: (type) => mojoOwnedTemporaryPassing(type, projectTypes),
     moduleBySourceFile: finalizedModuleBySourceFile,
     moduleById: finalizedModuleById,
     moduleBindingByDeclaration,

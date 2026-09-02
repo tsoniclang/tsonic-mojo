@@ -681,6 +681,7 @@ export interface MojoProgramQueries {
   bindingPatternSelection(declaration: Node): MojoBindingPatternSelection | undefined;
   returnValueTransfer(expression: Node): boolean;
   catchErrorType(catchClause: Node): MojoTargetTypeRef | undefined;
+  ownedTemporaryPassing(type: MojoTargetTypeRef): "plain" | "consume";
   moduleForSourceFile(sourceFile: SourceFile): MojoAnalyzedModule | undefined;
   moduleForId(id: string): MojoAnalyzedModule | undefined;
   moduleBinding(referenceOrDeclaration: Node): MojoAnalyzedModuleBinding | undefined;

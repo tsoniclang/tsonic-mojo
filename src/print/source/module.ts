@@ -213,7 +213,7 @@ function printExpression(expression: MojoExpression, modulePath: readonly string
     case "type-element": return `${printExpression(expression.receiver, modulePath)}[${requiredTypeName(expression.type, modulePath)}]`;
     case "slice": return `${printExpression(expression.receiver, modulePath)}[${expression.start === undefined ? "" : printExpression(expression.start, modulePath)}:${expression.end === undefined ? "" : printExpression(expression.end, modulePath)}${expression.step === undefined ? "" : `:${printExpression(expression.step, modulePath)}`}]`;
     case "construct": return `${requiredTypeName(expression.type, modulePath)}${printCallGenericArguments(expression.genericArguments, modulePath)}(${expression.arguments.map((argument) => printCallArgument(argument, modulePath)).join(", ")})`;
-    case "consume": return `${printExpression(expression.expression, modulePath)}^`;
+    case "consume": return `(${printExpression(expression.expression, modulePath)}^)`;
     case "postfix-deref": return `${printExpression(expression.expression, modulePath)}[]`;
     case "await": return `await ${printExpression(expression.expression, modulePath)}`;
     case "parenthesized": return `(${printExpression(expression.expression, modulePath)})`;

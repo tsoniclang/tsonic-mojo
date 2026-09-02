@@ -1,5 +1,6 @@
 import type { Node } from "@tsonic/tsts";
 import { mojoTargetTypeEquals } from "../../../target-model/types/equality.js";
+import { closeMojoErrorType } from "../../../target-model/types/error-domains.js";
 import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 import {
@@ -19,11 +20,18 @@ export function adaptMojoValueErrorDomain(
   sourceNode: Node,
   context: MojoPlanningContext,
 ): MojoValuePlan | undefined {
-  if (sourceErrorType === undefined ||
-    (targetErrorType !== undefined && mojoTargetTypeEquals(sourceErrorType, targetErrorType))) {
+  const normalizedSourceErrorType = sourceErrorType === undefined
+    ? undefined
+    : closeMojoErrorType(Object.freeze([sourceErrorType]));
+  const normalizedTargetErrorType = targetErrorType === undefined
+    ? undefined
+    : closeMojoErrorType(Object.freeze([targetErrorType]));
+  if (normalizedSourceErrorType === undefined ||
+    (normalizedTargetErrorType !== undefined &&
+      mojoTargetTypeEquals(normalizedSourceErrorType, normalizedTargetErrorType))) {
     return plan;
   }
-  if (targetErrorType === undefined) {
+  if (normalizedTargetErrorType === undefined) {
     appendMojoPlanningDiagnostic(
       context,
       "MOJO_ERROR_DOMAIN_NOT_ADMITTED",
@@ -32,7 +40,7 @@ export function adaptMojoValueErrorDomain(
     );
     return undefined;
   }
-  if (!errorDomainContains(targetErrorType, sourceErrorType)) {
+  if (!errorDomainContains(normalizedTargetErrorType, normalizedSourceErrorType)) {
     appendMojoPlanningDiagnostic(
       context,
       "MOJO_ERROR_DOMAIN_INCOMPATIBLE",
@@ -41,44 +49,51 @@ export function adaptMojoValueErrorDomain(
     );
     return undefined;
   }
-  registerMojoTypeImports(sourceErrorType, context);
-  registerMojoTypeImports(targetErrorType, context);
+  registerMojoTypeImports(normalizedSourceErrorType, context);
+  registerMojoTypeImports(normalizedTargetErrorType, context);
   registerMojoTypeImports(resultType, context);
   const errorName = allocateMojoSyntheticName(context, "caught_error");
   const error = Object.freeze({ kind: "path" as const, path: errorName });
   const caught = Object.freeze({
     name: errorName,
-    statements: rethrowInErrorDomain(error, sourceErrorType, targetErrorType),
+    statements: rethrowInErrorDomain(error, normalizedSourceErrorType, normalizedTargetErrorType),
   });
   if (resultType.kind === "unit") {
     return withMojoValue(Object.freeze([
-      ...plan.before,
       Object.freeze({
         kind: "try" as const,
-        statements: Object.freeze([Object.freeze({
-          kind: "expression" as const,
-          expression: plan.value,
-        })]),
+        statements: Object.freeze([
+          ...plan.before,
+          Object.freeze({
+            kind: "expression" as const,
+            expression: plan.value,
+          }),
+        ]),
         catches: Object.freeze([caught]),
       }),
     ]), Object.freeze({ kind: "tuple", elements: Object.freeze([]) }));
   }
   const resultName = allocateMojoSyntheticName(context, "raising_result");
   const result = Object.freeze({ kind: "path" as const, path: resultName });
+  const resultValue: MojoExpression = context.program.queries.ownedTemporaryPassing(resultType) === "consume"
+    ? Object.freeze({ kind: "consume", expression: result })
+    : result;
   return withMojoValue(Object.freeze([
-    ...plan.before,
     Object.freeze({ kind: "variable" as const, name: resultName, type: resultType }),
     Object.freeze({
       kind: "try" as const,
-      statements: Object.freeze([Object.freeze({
-        kind: "assignment" as const,
-        operator: "=" as const,
-        left: result,
-        right: plan.value,
-      })]),
+      statements: Object.freeze([
+        ...plan.before,
+        Object.freeze({
+          kind: "assignment" as const,
+          operator: "=" as const,
+          left: result,
+          right: plan.value,
+        }),
+      ]),
       catches: Object.freeze([caught]),
     }),
-  ]), Object.freeze({ kind: "consume", expression: result }));
+  ]), resultValue);
 }
 
 function errorDomainContains(

@@ -2,6 +2,7 @@ import type { Node, SourceFile } from "@tsonic/tsts";
 import type { TargetPlanningSourceNavigation } from "@tsonic/target-api/analysis";
 import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import type { MojoOwnedTemporaryPassing } from "../value-semantics/owned-temporaries.js";
 import type {
   MojoAnalyzedModule,
   MojoAnalyzedModuleBinding,
@@ -44,6 +45,7 @@ export interface MojoProgramQueryIndexes {
   readonly bindingPatternSelections: WeakMap<Node, MojoBindingPatternSelection>;
   readonly returnValueTransfers: WeakSet<Node>;
   readonly catchErrorTypes: WeakMap<Node, MojoTargetTypeRef>;
+  readonly ownedTemporaryPassing: (type: MojoTargetTypeRef) => MojoOwnedTemporaryPassing;
   readonly moduleBySourceFile: WeakMap<SourceFile, MojoAnalyzedModule>;
   readonly moduleById: ReadonlyMap<string, MojoAnalyzedModule>;
   readonly moduleBindingByDeclaration: WeakMap<Node, MojoAnalyzedModuleBinding>;
@@ -116,6 +118,9 @@ export function createMojoProgramQueries(
     },
     catchErrorType(catchClause: Node): MojoTargetTypeRef | undefined {
       return indexes.catchErrorTypes.get(catchClause);
+    },
+    ownedTemporaryPassing(type: MojoTargetTypeRef): MojoOwnedTemporaryPassing {
+      return indexes.ownedTemporaryPassing(type);
     },
     moduleForSourceFile(sourceFile: SourceFile) {
       return indexes.moduleBySourceFile.get(sourceFile);
