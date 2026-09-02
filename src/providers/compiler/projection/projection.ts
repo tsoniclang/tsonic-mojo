@@ -37,7 +37,6 @@ import {
   samePath,
   sourceExportId,
 } from "./declaration-support.js";
-
 export function projectMojoCompilerModule(
   snapshot: MojoCompilerProjectSnapshot,
   package_: MojoCompilerPackageSnapshot,
@@ -256,7 +255,6 @@ function projectTypeDeclaration(
     ...documentation(declaration.documentation),
   });
 }
-
 const implicitMojoConformancePaths = new Set([
   "/std/traits/anytype/AnyType",
   "/std/traits/deinitable/Deinitable",

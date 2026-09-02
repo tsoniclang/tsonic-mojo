@@ -1,41 +1,19 @@
 import type { Node, SourceFile } from "@tsonic/tsts";
-import {
-  rejectedTargetStage,
-  resolvedTargetStage,
-} from "@tsonic/target-api/artifacts";
+import { rejectedTargetStage } from "@tsonic/target-api/artifacts";
 import type {
   TargetDiagnostic,
   TargetStageResult,
 } from "@tsonic/target-api/artifacts";
-import {
-  snapshotTargetPlanningSourceNavigation,
-  targetSourceSyntaxProgram,
-} from "@tsonic/target-api/analysis";
-import { Node_Initializer } from "@tsonic/target-api/source";
 import { createMojoNameAllocator } from "../names/allocator.js";
 import {
   normalizeMojoPackageDeclarationIdentifier,
 } from "../../target-model/names/identifiers.js";
-import {
-  analyzeAndSealMojoCallableExpression,
-  resolveMojoCallableExpressionDependency,
-} from "../callables/expressions.js";
-import {
-  classifyMojoValueConversion,
-  createMojoConversionIndex,
-} from "../../policy/conversions/selection.js";
+import { analyzeAndSealMojoCallableExpression } from "../callables/expressions.js";
+import { createMojoConversionIndex } from "../../policy/conversions/selection.js";
 import { recordMojoExecutableRegionConversionUses } from "../conversions/uses.js";
-import { analyzeMojoRuntimePackages } from "../runtime/references.js";
 import { createMojoProjectTypeCatalog } from "../project-types/catalog.js";
 import { createMojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
-import {
-  closeMojoErrorType,
-  mergeMojoErrorTypes,
-  mojoNativeErrorType,
-} from "./effects.js";
 import type {
-  MojoAnalyzedDeclaration,
-  MojoAnalyzedFunction,
   MojoAnalyzedProjectProperty,
   MojoBindingPatternSelection,
   MojoCallSelection,
@@ -53,42 +31,19 @@ import type {
   MojoValueSelection,
 } from "./model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
-import type { MojoValueConversion } from "../../target-model/conversions/model.js";
-import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
-import { validateMojoFunctionSyntax } from "./syntax-validation.js";
 import { analyzeMojoSourceModules } from "../source-modules/index.js";
-import {
-  analyzeMojoModuleBindings,
-  finalizeMojoModuleBindingTypes,
-} from "./module-bindings.js";
-import {
-  analyzeMojoExecutableRegion,
-  sealMojoCatchBindingCarrier,
-} from "./executable-regions.js";
+import { analyzeMojoModuleBindings } from "./module-bindings.js";
+import { analyzeMojoExecutableRegion } from "./executable-regions.js";
 import type { MojoExecutableRegionAnalysisEnvironment } from "./executable-regions.js";
 import { allocateMojoLocalBindings } from "./local-bindings.js";
-import {
-  finalizeMojoModuleEffects,
-} from "./module-effects.js";
 import type { MojoAnalyzedModuleRegionFacts } from "./module-effects.js";
-import { createMojoProgramQueries } from "./queries.js";
-import { mojoOwnedTemporaryPassing } from "../value-semantics/owned-temporaries.js";
 import { collectMojoDeclarationDrafts } from "./declaration-drafts.js";
 import { collectMojoAddressedStorageDeclarations } from "./addressed-storage.js";
 import { analyzeMojoProjectDeclarations } from "./declarations.js";
 import { createMojoStructuralObjectCatalog } from "../bindings/structural-objects.js";
-import {
-  closeMojoProgramErrorEffects,
-  collectMojoEscapingErrorTypes,
-  directMojoNodeErrorTypes,
-} from "./error-regions.js";
-import { walkSourceTree } from "./traversal.js";
-import type {
-  MojoAnalyzedCallArgument,
-  MojoCallableArgumentSlot,
-} from "./call-model.js";
-import { analyzeMojoTemplateExpression } from "../operations/template-expressions.js";
+import { finalizeMojoProgramEffects } from "./program-effects-finalization.js";
+import { finalizeMojoProgramResult } from "./program-result-finalization.js";
 
 export function analyzeMojoTargetProgram(
   request: MojoTargetAnalysisRequest,
@@ -554,469 +509,49 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     );
   }
 
-  for (const callNode of callNodes) {
-    const selection = callSelections.get(callNode);
-    if (selection?.kind !== "callable") continue;
-    const dependency = resolveMojoCallableExpressionDependency(
-      selection.callee,
-      input.source,
-      callableExpressionSelections,
-      callableExpressionByDeclaration,
-    );
-    if (dependency !== undefined) callDependencies.set(callNode, dependency);
-  }
-
-  const errorRegionIndexes = Object.freeze({
-    source: input.source,
-    expressionTypes,
-    callSelections,
-    callDependencies,
-    propertySelections,
-    elementSelections,
-    resourceManagementSelections,
-    valueSelections,
-  });
-  const effectOwners = Object.freeze([
-    ...functions.map((function_) => Object.freeze({
-      declaration: function_.declaration,
-      roots: Object.freeze(functionEffectRoots.get(function_.declaration) ?? []),
-    })),
-    ...classes.filter((class_) => class_.constructors.length === 0)
-      .map((class_) => Object.freeze({
-        declaration: class_.declaration,
-        roots: Object.freeze(classInitializationRoots.get(class_.declaration) ?? []),
-      })),
-    ...[...callableExpressionNodes].map((expression) => {
-      const selection = callableExpressionSelections.get(expression)!;
-      return Object.freeze({
-        declaration: expression,
-        roots: Object.freeze([
-          ...selection.parameters.flatMap((parameter) => parameter.initializer === undefined
-            ? []
-            : [parameter.initializer]),
-          selection.body,
-        ]),
-      });
-    }),
-  ]);
-  const catchErrorTypes = new WeakMap<Node, MojoTargetTypeRef>();
-  const sealCatchDomain = (
-    catchClause: Node,
-    catchBlock: Node,
-    errorType: MojoTargetTypeRef | undefined,
-  ): void => {
-    if (errorType !== undefined) {
-      catchErrorTypes.set(catchClause, errorType);
-      sealMojoCatchBindingCarrier(
-        catchClause,
-        catchBlock,
-        errorType,
-        executableEnvironment,
-      );
-    } else {
-      catchErrorTypes.delete(catchClause);
-    }
-  };
-  const errorClosure = closeMojoProgramErrorEffects(
-    effectOwners,
-    Object.freeze([
-      ...effectOwners.flatMap((owner) => owner.roots),
-      ...analyzedModules.flatMap((module) => moduleEffectRoots.get(module) ?? []),
-    ]),
-    errorRegionIndexes,
-    sealCatchDomain,
-  );
-  if (!errorClosure.catchDomainsConsistent) {
-    diagnostics.push(diagnostic(
-      "MOJO_CATCH_ERROR_DOMAIN_CONFLICT",
-      "One catch clause was reached with conflicting exact Mojo error domains.",
-      sourceFiles[0]!,
-    ));
-  }
-  if (!errorClosure.converged) {
-    diagnostics.push(diagnostic(
-      "MOJO_ERROR_EFFECT_CLOSURE_DID_NOT_CONVERGE",
-      "Project error effects did not reach one deterministic fixed point.",
-      sourceFiles[0]!,
-    ));
-  }
-  const errorTypesByDeclaration = errorClosure.errorTypesByDeclaration;
-  const discoveredSourceCallableErrorType = closeMojoErrorType(mergeMojoErrorTypes(
-    Object.freeze([mojoNativeErrorType()]),
-    ...errorTypesByDeclaration.values(),
-  ))!;
-  const currentSourceCallableErrorType = sourceCallableErrorType ?? mojoNativeErrorType();
-  if (!mojoTargetTypeEquals(currentSourceCallableErrorType, discoveredSourceCallableErrorType)) {
-    if (errorDomainIteration >= 8) {
-      diagnostics.push(diagnostic(
-        "MOJO_SOURCE_CALLABLE_ERROR_DOMAIN_DID_NOT_CONVERGE",
-        "Source callable error effects did not reach one deterministic compilation-wide ABI.",
-        sourceFiles[0]!,
-      ));
-    } else {
-      const nextSourceCallableErrorType = closeMojoErrorType(mergeMojoErrorTypes(
-        Object.freeze([currentSourceCallableErrorType]),
-        Object.freeze([discoveredSourceCallableErrorType]),
-      ))!;
-      return analyzeMojoTargetProgramWithCallableErrorDomain(
-        request,
-        nextSourceCallableErrorType,
-        errorDomainIteration + 1,
-      );
-    }
-  }
-  const finalizedCallableTypesByDeclaration = new WeakMap<
-    Node,
-    Extract<MojoTargetTypeRef, { readonly kind: "callable" }>
-  >();
-  const sealCallableDeclaration = (
-    declaration: Node,
-    callableType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
-  ): void => {
-    const existing = finalizedCallableTypesByDeclaration.get(declaration);
-    if (existing !== undefined && !mojoTargetTypeEquals(existing, callableType)) {
-      diagnostics.push(diagnostic(
-        "MOJO_CALLABLE_DECLARATION_ERROR_DOMAIN_CONFLICT",
-        "One callable declaration resolves to conflicting exact error domains.",
-        declaration,
-      ));
-      return;
-    }
-    finalizedCallableTypesByDeclaration.set(declaration, callableType);
-    bindingTypes.set(declaration, callableType);
-    const initializer = Node_Initializer(ast, declaration);
-    if (initializer === undefined) return;
-    expressionTypes.set(initializer, callableType);
-    const conversion = conversions.finalizeCallable(initializer, callableType, callableType);
-    if (conversion.kind === "unsupported") {
-      diagnostics.push(diagnostic("MOJO_VALUE_CONVERSION_UNPROVEN", conversion.reason, initializer));
-    }
-  };
-  for (const expression of callableExpressionNodes) {
-    const selection = callableExpressionSelections.get(expression)!;
-    const exactErrorType = closeMojoErrorType(errorTypesByDeclaration.get(expression) ?? []);
-    const errorType = exactErrorType === undefined
-      ? undefined
-      : sourceCallableErrorType ?? exactErrorType;
-    const { errorType: _previousErrorType, ...baseCallableType } = selection.callableType;
-    const callableType = Object.freeze({
-      ...baseCallableType,
-      raises: errorType !== undefined,
-      ...(errorType === undefined ? {} : { errorType }),
-    });
-    expressionTypes.set(expression, callableType);
-    callableExpressionSelections.set(expression, Object.freeze({
-      ...selection,
-      raises: errorType !== undefined,
-      ...(errorType === undefined ? {} : { errorType }),
-      ...(selection.recursiveBinding === undefined
-        ? {}
-        : { recursiveBinding: Object.freeze({ ...selection.recursiveBinding, type: callableType }) }),
-      callableType,
-    }));
-    const declaration = callableDeclarationByExpression.get(expression);
-    if (declaration !== undefined) sealCallableDeclaration(declaration, callableType);
-  }
-  const finalizeCallableArgument = (
-    argument: MojoAnalyzedCallArgument,
-  ): MojoAnalyzedCallArgument => {
-    const dependency = resolveMojoCallableExpressionDependency(
-      argument.expression,
-      input.source,
-      callableExpressionSelections,
-      callableExpressionByDeclaration,
-    );
-    const callable = dependency === undefined
-      ? undefined
-      : callableExpressionSelections.get(dependency);
-    if (callable === undefined) return argument;
-    let conversion: MojoValueConversion | undefined;
-    let incompatibilityReason: string | undefined;
-    if (argument.conversion.kind === "js-callback-truthiness") {
-      conversion = Object.freeze({
-        ...argument.conversion,
-        widenRaises: !callable.callableType.raises,
-      });
-    } else {
-      const classified = classifyMojoValueConversion(
-        callable.callableType,
-        argument.parameterType,
-      );
-      conversion = classified.kind === "resolved" ? classified.conversion : undefined;
-      incompatibilityReason = classified.kind === "unsupported" ? classified.reason : undefined;
-    }
-    if (conversion === undefined) {
-      diagnostics.push(diagnostic(
-        "MOJO_CALLABLE_ARGUMENT_FINAL_CONVERSION_UNPROVEN",
-        `A finalized callable argument is incompatible with its exact selected parameter carrier${
-          incompatibilityReason === undefined ? "." : `: ${incompatibilityReason}`}`,
-        argument.expression,
-      ));
-      return argument;
-    }
-    return Object.freeze({
-      ...argument,
-      sourceType: callable.callableType,
-      conversion,
-    });
-  };
-  const finalizeCallableArgumentSlot = (
-    slot: MojoCallableArgumentSlot,
-    replacements: ReadonlyMap<MojoAnalyzedCallArgument, MojoAnalyzedCallArgument>,
-  ): MojoCallableArgumentSlot => slot.kind === "value"
-    ? Object.freeze({ kind: "value", argument: replacements.get(slot.argument) ?? slot.argument })
-    : slot.kind === "rest"
-      ? Object.freeze({
-          ...slot,
-          arguments: Object.freeze(slot.arguments.map((argument) =>
-            replacements.get(argument) ?? argument)),
-        })
-      : slot;
-  for (const callNode of callNodes) {
-    const selection = callSelections.get(callNode);
-    if (selection === undefined || selection.kind === "explicit-safety" ||
-      selection.kind === "native-pointer" || selection.kind === "raw-pointer" ||
-      selection.kind === "typed-location") continue;
-    const replacements = new Map<MojoAnalyzedCallArgument, MojoAnalyzedCallArgument>();
-    const arguments_ = selection.arguments.map((argument) => {
-      const finalized = finalizeCallableArgument(argument);
-      replacements.set(argument, finalized);
-      return finalized;
-    });
-    callSelections.set(callNode, Object.freeze({
-      ...selection,
-      arguments: Object.freeze(arguments_),
-      ...(selection.kind === "callable"
-        ? {
-            argumentSlots: Object.freeze(selection.argumentSlots.map((slot) =>
-              finalizeCallableArgumentSlot(slot, replacements))),
-          }
-        : {}),
-    }));
-  }
-  for (const callNode of callNodes) {
-    const selection = callSelections.get(callNode);
-    if (selection?.kind !== "callable") continue;
-    const dependency = callDependencies.get(callNode);
-    if (dependency === undefined) continue;
-    const callable = callableExpressionSelections.get(dependency);
-    if (callable === undefined) continue;
-    callSelections.set(callNode, Object.freeze({
-      ...selection,
-      callableType: callable.callableType,
-    }));
-    expressionTypes.set(selection.callee, callable.callableType);
-    const reference = input.source.navigation.sourceReferenceFor(selection.callee);
-    if (reference?.project === true) {
-      sealCallableDeclaration(reference.declaration, callable.callableType);
-    }
-  }
-  for (const sourceFile of sourceFiles) {
-    walkSourceTree(sourceFile, ast, (node): void => {
-      const errorType = closeMojoErrorType(directMojoNodeErrorTypes(
-        node,
-        errorRegionIndexes,
-        errorTypesByDeclaration,
-      ));
-      if (errorType !== undefined) expressionErrorTypes.set(node, errorType);
-    });
-  }
-  for (const module of analyzedModules) {
-    const directErrorTypes = mergeMojoErrorTypes(...(moduleEffectRoots.get(module) ?? []).map((root) =>
-      collectMojoEscapingErrorTypes(
-        root,
-        errorRegionIndexes,
-        errorTypesByDeclaration,
-      )));
-    moduleRegionFacts.set(module, Object.freeze({
-      dependencies: new Set<Node>(),
-      directErrorTypes,
-    }));
-  }
-  for (const declaration of resourceDeclarations) {
-    const selection = resourceManagementSelections.get(declaration);
-    if (selection === undefined || !selection.alternatives.some(({ disposal }) =>
-      disposal.kind === "project")) continue;
-    resourceManagementSelections.set(declaration, Object.freeze({
-      ...selection,
-      alternatives: Object.freeze(selection.alternatives.map((alternative) =>
-        alternative.disposal.kind !== "project"
-          ? alternative
-          : Object.freeze({
-              ...alternative,
-              disposal: Object.freeze({
-                ...alternative.disposal,
-                raises: (errorTypesByDeclaration.get(alternative.disposal.dependency)?.length ?? 0) > 0,
-              }),
-            }))),
-    }));
-  }
-  const finalizedFunctions = functions.map((function_) => {
-    const errorType = closeMojoErrorType(errorTypesByDeclaration.get(function_.declaration) ?? []);
-    return Object.freeze({
-      ...function_,
-      raises: errorType !== undefined,
-      ...(errorType === undefined ? {} : { errorType }),
-    });
-  });
-  const finalizedByDeclaration = new WeakMap<Node, MojoAnalyzedFunction>();
-  for (const function_ of finalizedFunctions) finalizedByDeclaration.set(function_.declaration, function_);
-  const finalizedClasses = classes.map((class_) => {
-    const initializationErrorType = class_.constructors.length === 0
-      ? closeMojoErrorType(errorTypesByDeclaration.get(class_.declaration) ?? [])
-      : undefined;
-    const targetTypeId = class_.targetType.kind === "target-named"
-      ? class_.targetType.id
-      : undefined;
-    const typedError = targetTypeId !== undefined &&
-      [...errorTypesByDeclaration.values()].some((types) => types.some((type) =>
-        type.kind === "target-named" && type.id === targetTypeId));
-    return Object.freeze({
-      ...class_,
-      methods: Object.freeze(class_.methods.map((method) =>
-        finalizedByDeclaration.get(method.declaration) ?? method)),
-      constructors: Object.freeze(class_.constructors.map((constructor) =>
-        finalizedByDeclaration.get(constructor.declaration) ?? constructor)),
-      ...(initializationErrorType === undefined ? {} : { initializationErrorType }),
-      ...(typedError ? { errorRole: "typed" as const } : {}),
-    });
-  });
-  const finalizedModules = finalizeMojoModuleBindingTypes(finalizeMojoModuleEffects(
-    analyzedModules,
-    modules,
-    moduleRegionFacts,
-    errorTypesByDeclaration,
-  ), bindingTypes);
-  for (const module of finalizedModules) {
-    for (const binding of module.bindings) {
-      moduleBindingByDeclaration.set(binding.declaration, binding);
-      if (binding.kind !== "class-static-field") continue;
-      const field = fieldByDeclaration.get(binding.declaration);
-      if (field?.kind === "static-field") {
-        fieldByDeclaration.set(binding.declaration, Object.freeze({
-          ...field,
-          type: binding.type,
-          binding,
-        }));
-      }
-    }
-  }
-  if (configuration.outputType !== "bin") {
-    for (const module of finalizedModules) {
-      if (!module.asynchronous) continue;
-      diagnostics.push(diagnostic(
-        "MOJO_LIBRARY_TOP_LEVEL_AWAIT_UNSUPPORTED",
-        "Mojo library output cannot publish an asynchronous TypeScript module-initialization contract; select binary output or remove top-level await from the exported module graph.",
-        module.sourceFile,
-      ));
-    }
-  }
-  const finalizedModuleBySourceFile = new WeakMap(
-    finalizedModules.map((module) => [module.sourceFile, module] as const),
-  );
-  const finalizedModuleById = new Map(
-    finalizedModules.map((module) => [module.id, module] as const),
-  );
-
-  const typedErrorTypeIds = new Set(finalizedClasses.flatMap((class_) =>
-    class_.errorRole === "typed" && class_.targetType.kind === "target-named"
-      ? [class_.targetType.id]
-      : []));
-  for (const expression of templateExpressionNodes) {
-    const template = analyzeMojoTemplateExpression(
-      expression,
-      input.source,
-      expressionTypes,
-      (type) => type.kind === "target-named" && typedErrorTypeIds.has(type.id),
-    );
-    if (template.kind === "unsupported") {
-      diagnostics.push(diagnostic(
-        "MOJO_TEMPLATE_STRING_CONVERSION_UNSUPPORTED",
-        template.reason,
-        template.node,
-      ));
-    } else {
-      templateExpressionSelections.set(expression, template.selection);
-    }
-  }
-
-  for (const function_ of finalizedFunctions) {
-    validateMojoFunctionSyntax(
-      function_,
-      ast,
-      callSelections,
-      propertySelections,
-      elementSelections,
-      iterationSelections,
-      valueSelections,
-      typeTestSelections,
-      objectLiteralSelections,
-      callableExpressionSelections,
-      bindingPatternSelections,
-      resourceManagementSelections,
-      bindingNames,
-      expressionTypes,
-      templateExpressionSelections,
-      diagnostics,
-    );
-  }
-  if (diagnostics.length > 0) return rejectedTargetStage(diagnostics);
-
-  const source = targetSourceSyntaxProgram(input.source);
-  const sourceNavigation = snapshotTargetPlanningSourceNavigation(input.source);
-  const queries = createMojoProgramQueries({
-    sourceNavigation,
-    bindingNames,
-    bindingSourceFiles,
-    bindingTypes,
-    expressionTypes,
+  const effects = finalizeMojoProgramEffects({
+    sourceFiles,
+    environment: executableEnvironment,
     expressionErrorTypes,
-    conversions,
-    callSelections,
-    propertySelections,
-    valueSelections,
-    valueRefinements,
-    typeTestSelections,
-    nullishCoalescingSelections,
-    elementSelections,
-    iterationSelections,
-    resourceManagementSelections,
-    objectLiteralSelections,
+    ...(sourceCallableErrorType === undefined ? {} : { sourceCallableErrorType }),
+    errorDomainIteration,
+    functions,
+    classes,
+    analyzedModules,
+    functionEffectRoots,
+    classInitializationRoots,
+    moduleEffectRoots,
+    callableExpressionNodes,
+    callableExpressionSelections,
+    callableExpressionByDeclaration,
+    callableDeclarationByExpression,
+    moduleRegionFacts,
+  });
+  if (effects.kind === "reanalyze") {
+    return analyzeMojoTargetProgramWithCallableErrorDomain(
+      request,
+      effects.sourceCallableErrorType,
+      errorDomainIteration + 1,
+    );
+  }
+  return finalizeMojoProgramResult({
+    request,
+    sourceFiles,
+    diagnostics,
+    environment: executableEnvironment,
+    expressionErrorTypes,
+    functions,
+    classes,
+    interfaces,
+    enums,
+    analyzedModules,
+    moduleRegionFacts,
+    errorTypesByDeclaration: effects.errorTypesByDeclaration,
+    catchErrorTypes: effects.catchErrorTypes,
     callableExpressionSelections,
     templateExpressionSelections,
-    bindingPatternSelections,
-    returnValueTransfers,
-    catchErrorTypes,
-    ownedTemporaryPassing: (type) => mojoOwnedTemporaryPassing(type, projectTypes),
-    moduleBySourceFile: finalizedModuleBySourceFile,
-    moduleById: finalizedModuleById,
+    templateExpressionNodes,
     moduleBindingByDeclaration,
-    locationStorageNames,
+    reservedNames,
   });
-  const topLevelFunctions = finalizedFunctions.filter((function_) => function_.kind === "function");
-  const declarations: MojoAnalyzedDeclaration[] = [
-    ...topLevelFunctions,
-    ...finalizedClasses,
-    ...interfaces,
-    ...enums,
-  ];
-  return resolvedTargetStage(Object.freeze({
-    host: Object.freeze({
-      paths: Object.freeze({ ...input.paths }),
-      entryPoint: input.project.entryPoint,
-      sourcePackages: input.sourcePackages,
-    }),
-    configuration,
-    source,
-    sourceNavigation,
-    sourceFiles,
-    projectTypes,
-    modules,
-    analyzedModules: finalizedModules,
-    declarations: Object.freeze(declarations),
-    queries,
-    runtimePackages: analyzeMojoRuntimePackages(input.runtimeReferences),
-    binaryEpilogues: providerSemantics.binaryEpilogues,
-    reservedNames: Object.freeze([...reservedNames].sort((left, right) => left.localeCompare(right, "en"))),
-  }));
 }
