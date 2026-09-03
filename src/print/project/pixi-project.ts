@@ -53,7 +53,8 @@ export function printPixiProject(plan: MojoOutputPlan): string {
     if (taskName === undefined) continue;
     const commands = package_.translationUnits.map((unit) => [
       `mkdir -p ${shellQuote(parentPath(unit.objectPath))} &&`,
-      `"$CC" -O3 -fPIC -std=${unit.standard}`,
+      `${plan.configuration.toolchain.cCompiler} -O3 -fPIC -std=${unit.standard}`,
+      `-I"$CONDA_PREFIX/include"`,
       ...package_.includeDirectories.map((path) =>
         `-I${shellEnvironmentPath(path)}`),
       "-c",
@@ -100,6 +101,9 @@ function nativeLinkArguments(plan: MojoOutputPlan): readonly string[] {
       package_.translationUnits.map((unit) => `-Xlinker ${shellQuote(unit.objectPath)}`)),
     ...plan.nativeBuild.staticLibraries.map((path) =>
       `-Xlinker ${shellEnvironmentPath(path)}`),
+    ...(plan.nativeBuild.dependencies.length === 0
+      ? []
+      : [`-Xlinker -L"$CONDA_PREFIX/lib"`]),
     ...plan.nativeBuild.dynamicLibraries.map((library) => `-Xlinker -l${library}`),
   ]);
 }

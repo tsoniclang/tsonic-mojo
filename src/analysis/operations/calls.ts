@@ -216,6 +216,13 @@ export function analyzeMojoCall(
     return { kind: "unsupported", code: "MOJO_PROVIDER_CALL_NOT_CLOSED", reason: instantiated.reason };
   }
   const target = instantiated.operation.target;
+  if (target.kind === "unsupported") {
+    return {
+      kind: "unsupported",
+      code: target.code,
+      reason: target.reason,
+    };
+  }
   if (target.kind !== "function-call" && target.kind !== "instance-call") {
     return {
       kind: "unsupported",

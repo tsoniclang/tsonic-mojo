@@ -6,6 +6,11 @@ import type {
 
 export type MojoProviderOperationForm =
   | {
+      readonly kind: "unsupported";
+      readonly code: string;
+      readonly reason: string;
+    }
+  | {
       readonly kind: "function-call";
       readonly modulePath: readonly string[];
       readonly ownerPath?: readonly string[];

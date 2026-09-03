@@ -238,13 +238,18 @@ function validateOperation(
     if (signature === undefined) {
       throw new Error(`Provider ${operation.operationKind} '${operation.exportId}' requires an exact signature identity.`);
     }
-    if (operation.target.kind !== "function-call" && operation.target.kind !== "instance-call") {
+    if (operation.target.kind !== "function-call" && operation.target.kind !== "instance-call" &&
+      operation.target.kind !== "unsupported") {
       throw new Error(`Provider ${operation.operationKind} '${operation.exportId}' requires a Mojo call target.`);
     }
     const parameters = operation.parameterTypes ?? [];
     if (parameters.length !== signature.declaration.parameters.length ||
-      parameters.length !== operation.target.arguments.length) {
+      operation.target.kind !== "unsupported" && parameters.length !== operation.target.arguments.length) {
       throw new Error(`Provider ${operation.operationKind} '${operation.signatureId}' has inconsistent source, target, and ABI arity.`);
+    }
+    if (operation.target.kind === "unsupported" &&
+      (!/^MOJO_[A-Z0-9_]+$/.test(operation.target.code) || operation.target.reason.length === 0)) {
+      throw new Error(`Provider ${operation.operationKind} '${operation.signatureId}' has an invalid unsupported-operation diagnostic.`);
     }
   } else if (operation.operationKind === "property") {
     const memberProperty = operation.memberId !== undefined &&

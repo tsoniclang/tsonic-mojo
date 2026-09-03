@@ -4,6 +4,7 @@ export interface MojoSupportedToolchain {
   readonly channels: readonly ["conda-forge", "https://conda.modular.com/max-nightly/"];
   readonly platforms: readonly ["linux-64"];
   readonly commandEnvironment: "posix";
+  readonly cCompiler: "cc";
 }
 
 export function supportedMojoToolchain(): MojoSupportedToolchain {
@@ -18,5 +19,6 @@ export function supportedMojoToolchain(): MojoSupportedToolchain {
     channels,
     platforms,
     commandEnvironment: "posix",
+    cCompiler: "cc",
   });
 }
