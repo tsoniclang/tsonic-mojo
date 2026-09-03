@@ -9,7 +9,9 @@ import { createMojoConversionIndex } from "../../policy/conversions/selection.js
 import { mojoValueConversionNarrowing } from "../refinements/value.js";
 import { recordMojoExecutableRegionConversionUses } from "../conversions/uses.js";
 import { createMojoProjectTypeCatalog } from "../project-types/catalog.js";
+import { createMojoProjectTypeRelationships } from "../project-types/relationships.js";
 import { createMojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
+import { resolveMojoTargetType } from "../../policy/types/resolution.js";
 import type {
   MojoAnalyzedProjectProperty,
   MojoBindingPatternSelection,
@@ -110,8 +112,6 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
   const bindingPatternSelections = new WeakMap<Node, MojoBindingPatternSelection>();
   const returnValueTransfers = new WeakSet<Node>();
   const analyzedCallableExpressions = new WeakSet<Node>();
-  const conversions = createMojoConversionIndex((expression) =>
-    mojoValueConversionNarrowing(valueRefinements.get(expression)));
   const structuralObjects = createMojoStructuralObjectCatalog(ast);
   const fieldByDeclaration = new WeakMap<Node, MojoAnalyzedProjectProperty>();
   const moduleBindingByDeclaration = new WeakMap<
@@ -165,6 +165,33 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
   for (const issue of projectTypes.issues) {
     diagnostics.push(diagnostic(issue.code, issue.message, issue.node));
   }
+  const projectRelationships = createMojoProjectTypeRelationships({
+    source: input.source,
+    projectTypes,
+    resolveSelectedType(selectedType, authoredTypeNode, evidence) {
+      const sourceFile = ast.getSourceFile(evidence);
+      if (sourceFile === undefined) return undefined;
+      const resolved = resolveMojoTargetType(selectedType, authoredTypeNode, {
+        ast,
+        navigation: input.source.navigation,
+        semantics: input.source.semantics.forFile(sourceFile),
+        sourceFacts: input.source.sourceFacts,
+        providerSemantics,
+        projectTypes,
+        sourceProfiles,
+        jsEnabled,
+        ...(sourceCallableErrorType === undefined ? {} : { sourceCallableErrorType }),
+      });
+      return resolved.kind === "resolved" ? resolved.type : undefined;
+    },
+  });
+  for (const issue of projectRelationships.issues) {
+    diagnostics.push(diagnostic(issue.code, issue.message, issue.node));
+  }
+  const conversions = createMojoConversionIndex(
+    (expression) => mojoValueConversionNarrowing(valueRefinements.get(expression)),
+    projectRelationships,
+  );
   const lifecycle = createMojoLifecycleResolver({ projectTypes, providerSemantics });
   const valueOwnership = createMojoValueOwnershipResolver({
     source: input.source,
@@ -232,6 +259,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     enums,
     typeAliases,
     functionByDeclaration,
+    callableByDeclaration,
     classByDeclaration,
     classByTypeId,
     interfaceByTypeId,
@@ -239,6 +267,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     source: input.source,
     providerSemantics,
     projectTypes,
+    projectRelationships,
     modules,
     lifecycle,
     sourceProfiles,
@@ -294,6 +323,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     source: input.source,
     providerSemantics,
     projectTypes,
+    projectRelationships,
     lifecycle,
     valueOwnership,
     sourceProfiles,
@@ -325,6 +355,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     analyzeCallableExpression,
     conversions,
     functionByDeclaration,
+    callableByDeclaration,
     classByDeclaration,
     classByTypeId,
     locationStorageNames,

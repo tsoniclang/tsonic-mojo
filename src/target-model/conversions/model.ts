@@ -24,6 +24,11 @@ export type MojoTruthinessConversion =
 export type MojoValueConversion =
   | { readonly kind: "identity" }
   | {
+      readonly kind: "project-view";
+      readonly sourceType: MojoTargetTypeRef;
+      readonly targetType: MojoTargetTypeRef;
+    }
+  | {
       readonly kind: "callable-adapt";
       readonly targetType: MojoTargetTypeRef;
       readonly result: "preserve" | "never";

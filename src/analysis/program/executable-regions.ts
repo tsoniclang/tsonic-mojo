@@ -16,7 +16,10 @@ import type { MojoStructuralObjectCatalog } from "../bindings/structural-objects
 import { analyzeMojoObjectLiteral } from "../objects/object-literals.js";
 import { analyzeMojoResourceManagement } from "../resources/management.js";
 import { analyzeMojoProviderRecordLiteral } from "../objects/provider-records.js";
-import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
+import type {
+  MojoProjectTypeCatalog,
+  MojoProjectTypeRelationships,
+} from "../../target-model/types/project.js";
 import type { MojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
 import { inferMojoExpressionType, isMojoExpressionNode } from "./expression-types.js";
 import type {
@@ -78,6 +81,7 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly source: TargetSourceProgram;
   readonly providerSemantics: MojoProviderSemantics;
   readonly projectTypes: MojoProjectTypeCatalog;
+  readonly projectRelationships: MojoProjectTypeRelationships;
   readonly lifecycle: MojoLifecycleAnalysis;
   readonly valueOwnership: (expression: Node) => MojoValueOwnership;
   readonly sourceProfiles: MojoSourceProfileRegistry;
@@ -108,6 +112,7 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly structuralObjects: MojoStructuralObjectCatalog;
   readonly conversions: MojoConversionIndex;
   readonly functionByDeclaration: WeakMap<Node, MojoAnalyzedFunction>;
+  readonly callableByDeclaration: WeakMap<Node, import("./model.js").MojoAnalyzedProjectCallable>;
   readonly classByDeclaration: WeakMap<Node, MojoAnalyzedClass>;
   readonly classByTypeId: ReadonlyMap<string, MojoAnalyzedClass>;
   readonly locationStorageNames: WeakMap<Node, string>;
@@ -260,6 +265,7 @@ export function analyzeMojoExecutableRegion(
       bindingTypes: input.bindingTypes,
       classByTypeId: input.classByTypeId,
       interfaceByTypeId: input.interfaceByTypeId,
+      projectRelationships: input.projectRelationships,
       structuralObjects: input.structuralObjects,
       diagnostics: input.diagnostics,
     });
@@ -425,7 +431,7 @@ export function analyzeMojoExecutableRegion(
       source: input.source,
       sourceInfo,
       providerSemantics: input.providerSemantics,
-      functionByDeclaration: input.functionByDeclaration,
+      callableByDeclaration: input.callableByDeclaration,
       bindingNames: input.bindingNames,
       bindingTypes: input.bindingTypes,
       resolveType(type) {

@@ -9,6 +9,7 @@ import {
 import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
 import { instantiateProjectFieldType } from "../operations/project-fields.js";
 import type {
@@ -38,6 +39,7 @@ export interface MojoBindingPatternAnalysisInput {
   readonly bindingTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly classByTypeId: ReadonlyMap<string, MojoAnalyzedClass>;
   readonly interfaceByTypeId: ReadonlyMap<string, MojoAnalyzedInterface>;
+  readonly projectRelationships: MojoProjectTypeRelationships;
   readonly structuralObjects: MojoStructuralObjectCatalog;
   readonly diagnostics: TargetDiagnostic[];
 }
@@ -364,7 +366,7 @@ function objectDataFields(
   const fields = class_?.fields ?? interface_?.fields;
   if (fields === undefined || (interface_?.indexSignatures.length ?? 0) !== 0) return undefined;
   const selected = fields.map((field) => {
-    const type = instantiateProjectFieldType(field, sourceType);
+    const type = instantiateProjectFieldType(field, sourceType, input.projectRelationships);
     return type === undefined
       ? undefined
       : Object.freeze({

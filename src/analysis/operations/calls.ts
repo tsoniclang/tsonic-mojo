@@ -16,7 +16,7 @@ import { analyzeMojoExplicitSafety } from "./explicit-safety.js";
 import { analyzeMojoNativePointer } from "./native-pointers.js";
 import type {
   MojoAnalyzedClass,
-  MojoAnalyzedFunction,
+  MojoAnalyzedProjectCallable,
   MojoCallSelection,
 } from "../program/model.js";
 import {
@@ -35,6 +35,7 @@ import { analyzeSourceProfileCall } from "./source-profile-calls.js";
 import { analyzeMojoSourceIntrinsic } from "./source-intrinsics.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 import type { MojoValueOwnership } from "../../target-model/lifecycle/model.js";
+import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
 
 export type MojoCallAnalysis =
   | { readonly kind: "resolved"; readonly selection: MojoCallSelection; readonly dependency?: Node }
@@ -44,6 +45,7 @@ export interface MojoCallAnalysisContext {
   readonly source: TargetSourceProgram;
   readonly providerSemantics: MojoProviderSemantics;
   readonly projectTypes: MojoProjectTypeCatalog;
+  readonly projectRelationships: MojoProjectTypeRelationships;
   readonly lifecycle: MojoLifecycleResolver;
   readonly valueOwnership: (expression: Node) => MojoValueOwnership;
   readonly sourceProfiles: MojoSourceProfileRegistry;
@@ -52,7 +54,7 @@ export interface MojoCallAnalysisContext {
   readonly expressionTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly valueRefinements: WeakMap<Node, import("../program/model.js").MojoValueRefinementSelection>;
   readonly conversions: MojoConversionIndex;
-  readonly functionByDeclaration: WeakMap<Node, MojoAnalyzedFunction>;
+  readonly callableByDeclaration: WeakMap<Node, MojoAnalyzedProjectCallable>;
   readonly classByDeclaration: WeakMap<Node, MojoAnalyzedClass>;
   readonly classByTypeId: ReadonlyMap<string, MojoAnalyzedClass>;
   readonly locationStorageNames: WeakMap<Node, string>;
@@ -142,11 +144,11 @@ export function analyzeMojoCall(
   if (typedLocation.kind === "resolved") {
     return { kind: "resolved", selection: typedLocation.selection };
   }
-  const projectFunction = selectedSignatureDeclaration === undefined
+  const projectCallable = selectedSignatureDeclaration === undefined
     ? undefined
-    : context.functionByDeclaration.get(selectedSignatureDeclaration);
-  if (projectFunction !== undefined) {
-    return analyzeProjectCall(sourceCall, projectFunction, resolve, context);
+    : context.callableByDeclaration.get(selectedSignatureDeclaration);
+  if (projectCallable !== undefined) {
+    return analyzeProjectCall(sourceCall, projectCallable, resolve, context);
   }
   const directlySelectedClass = selectedDeclaration === undefined
     ? undefined
@@ -232,6 +234,7 @@ export function analyzeMojoCall(
     context.valueOwnership,
     undefined,
     (expression) => context.source.ast.is.IsObjectLiteralExpression(expression),
+    context.projectRelationships,
   );
   if (arguments_.kind === "unsupported") return arguments_;
   const locationConflict = locationBackedMutableArgument(
@@ -244,6 +247,7 @@ export function analyzeMojoCall(
     instantiated.operation.resultType,
     sourceCall.sourceResultType,
     resolve,
+    context.projectRelationships,
   );
   if (result.kind === "unsupported") return result;
   let receiverConversion;
@@ -270,6 +274,7 @@ export function analyzeMojoCall(
       actual,
       instantiated.operation.receiverType,
       context.valueRefinements.get(receiver.expression),
+      context.projectRelationships,
     );
     if (conversion.kind === "unsupported") {
       return { kind: "unsupported", code: "MOJO_PROVIDER_RECEIVER_CONVERSION_UNPROVEN", reason: conversion.reason };
@@ -365,6 +370,7 @@ function analyzeCallableValueCall(
     context.valueOwnership,
     undefined,
     (expression) => context.source.ast.is.IsObjectLiteralExpression(expression),
+    context.projectRelationships,
   );
   if (arguments_.kind === "unsupported") return arguments_;
   const argumentSlots = callableType.parameters.map((parameter, parameterIndex) => {

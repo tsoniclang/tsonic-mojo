@@ -24,6 +24,10 @@ import { planMojoModuleState } from "./module-state.js";
 import { planMojoPublicModuleExports } from "./public-exports.js";
 import { planMojoInterface } from "../declarations/interfaces.js";
 import {
+  planMojoPolymorphicInterface,
+  planMojoPolymorphicProjectClass,
+} from "../objects/polymorphism/index.js";
+import {
   planMojoProjectClass,
   planMojoProjectEnum,
   planMojoProjectFunction,
@@ -107,7 +111,9 @@ function planSourceModule(
     if (program.modules.forSourceFile(declaration.sourceFile)?.id !== module.id) continue;
     if (declaration.kind === "class") {
       const diagnosticCount = context.diagnostics.length;
-      const planned = planMojoProjectClass(declaration, context);
+      const planned = declaration.polymorphic
+        ? planMojoPolymorphicProjectClass(declaration, context)
+        : planMojoProjectClass(declaration, context);
       if (planned !== undefined) {
         declarations.push(...planned);
       } else if (context.diagnostics.length === diagnosticCount) {
@@ -124,7 +130,21 @@ function planSourceModule(
       continue;
     }
     if (declaration.kind === "interface") {
-      declarations.push(...planMojoInterface(declaration, context));
+      if (!declaration.polymorphic) {
+        declarations.push(...planMojoInterface(declaration, context));
+        continue;
+      }
+      const diagnosticCount = context.diagnostics.length;
+      const planned = planMojoPolymorphicInterface(declaration, context);
+      if (planned !== undefined) {
+        declarations.push(...planned);
+      } else if (context.diagnostics.length === diagnosticCount) {
+        context.diagnostics.push(planningDiagnostic(
+          "MOJO_PROJECT_INTERFACE_NOT_PLANNED",
+          `Project interface '${declaration.name}' has no exact sealed Mojo declaration plan.`,
+          declaration.declaration,
+        ));
+      }
       continue;
     }
     if (declaration.kind === "type-alias") {

@@ -134,7 +134,10 @@ export function createMojoProjectTypeCatalog(
       arguments_: readonly MojoTargetGenericArgument[],
     ) {
       if (arguments_.length !== definition.typeParameters.length ||
-        arguments_.some((argument, index) => argument.kind !== definition.typeParameters[index]!.kind)) {
+        arguments_.some((argument, index) => !genericArgumentMatchesParameter(
+          argument,
+          definition.typeParameters[index]!.kind,
+        ))) {
         return undefined;
       }
       return Object.freeze({
@@ -150,6 +153,18 @@ export function createMojoProjectTypeCatalog(
       });
     },
   });
+}
+
+function genericArgumentMatchesParameter(
+  argument: MojoTargetGenericArgument,
+  parameterKind: MojoProjectTypeDefinition["typeParameters"][number]["kind"],
+): boolean {
+  if (parameterKind === "type") {
+    return argument.kind === "type" || argument.kind === "type-expression";
+  }
+  if (parameterKind === "origin") return argument.kind === "origin";
+  return argument.kind !== "type" && argument.kind !== "type-expression" &&
+    argument.kind !== "origin" && argument.kind !== "unbound";
 }
 
 function projectTypeKind(

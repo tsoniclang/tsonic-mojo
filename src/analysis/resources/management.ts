@@ -11,7 +11,7 @@ import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoSelectedProviderOperation } from "../../target-model/operations/selection.js";
 import type {
-  MojoAnalyzedFunction,
+  MojoAnalyzedProjectCallable,
   MojoResourceDisposalAlternative,
   MojoResourceDisposalSelection,
   MojoResourceManagementSelection,
@@ -26,7 +26,7 @@ export function analyzeMojoResourceManagement(input: {
   readonly source: TargetSourceProgram;
   readonly sourceInfo: ResolvedSourceResourceManagementInfo;
   readonly providerSemantics: MojoProviderSemantics;
-  readonly functionByDeclaration: WeakMap<Node, MojoAnalyzedFunction>;
+  readonly callableByDeclaration: WeakMap<Node, MojoAnalyzedProjectCallable>;
   readonly bindingNames: WeakMap<Node, string>;
   readonly bindingTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly resolveType: (type: Type) => MojoTargetTypeRef | undefined;
@@ -105,12 +105,13 @@ function selectDisposal(
   }
   const project = alternative.selectedDeclaration === undefined
     ? undefined
-    : input.functionByDeclaration.get(alternative.selectedDeclaration);
+    : input.callableByDeclaration.get(alternative.selectedDeclaration);
   if (project !== undefined) {
-    if (project.kind !== "method" || project.static === true || project.owner === undefined ||
-      project.parameters.length !== 0 || project.resultType.kind !== "unit" ||
-      project.asynchronous !== (alternative.kind === "async") ||
-      !projectOwnerMatches(project.owner.type, selectedResource)) {
+    const contract = project.contract;
+    if (contract.kind !== "method" || contract.static === true || contract.owner === undefined ||
+      contract.parameters.length !== 0 || contract.resultType.kind !== "unit" ||
+      contract.asynchronous !== (alternative.kind === "async") ||
+      !projectOwnerMatches(contract.owner.type, selectedResource)) {
       return unsupported(
         "MOJO_PROJECT_RESOURCE_DISPOSER_ABI_CONFLICT",
         "The checker-selected project disposer does not have one exact zero-argument receiver ABI.",
@@ -122,10 +123,10 @@ function selectDisposal(
         resourceType: selectedResource,
         disposal: Object.freeze({
           kind: "project",
-          name: project.name,
-          asynchronous: project.asynchronous,
-          raises: project.raises,
-          dependency: project.declaration,
+          name: contract.name,
+          asynchronous: contract.asynchronous,
+          raises: contract.raises,
+          dependency: project.implementation?.declaration ?? contract.declaration,
         }),
       }),
     };

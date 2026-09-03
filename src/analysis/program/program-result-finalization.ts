@@ -26,6 +26,7 @@ import {
   mojoRepresentationParameters,
   mojoRepresentationRootTypes,
 } from "../representations/index.js";
+import { createMojoProjectDispatchPlan } from "../project-types/dispatch.js";
 import type { MojoAnalyzedModuleRegionFacts } from "./module-effects.js";
 import type { MojoExecutableRegionAnalysisEnvironment } from "./executable-regions.js";
 import type {
@@ -142,6 +143,8 @@ export function finalizeMojoProgramResult(
       ...class_,
       methods: Object.freeze(class_.methods.map((method) =>
         finalizedByDeclaration.get(method.declaration) ?? method)),
+      accessors: Object.freeze(class_.accessors.map((accessor) =>
+        finalizedByDeclaration.get(accessor.declaration) ?? accessor)),
       constructors: Object.freeze(class_.constructors.map((constructor) =>
         finalizedByDeclaration.get(constructor.declaration) ?? constructor)),
       ...(initializationErrorType === undefined ? {} : { initializationErrorType }),
@@ -270,6 +273,19 @@ export function finalizeMojoProgramResult(
     ...enums,
     ...typeAliases,
   ];
+  const projectDispatch = createMojoProjectDispatchPlan({
+    classes: finalizedClasses,
+    interfaces,
+    relationships: environment.projectRelationships,
+    callNodes: environment.callNodes,
+    callSelections,
+    implementations: finalizedByDeclaration,
+    libraryOutput: configuration.outputType !== "bin",
+  });
+  for (const issue of projectDispatch.issues) {
+    diagnostics.push(diagnostic(issue.code, issue.message, issue.node));
+  }
+  if (diagnostics.length > 0) return rejectedTargetStage(diagnostics);
   const representations = createMojoRepresentationCatalog({
     ast,
     sourceFiles,
@@ -305,6 +321,8 @@ export function finalizeMojoProgramResult(
     sourceNavigation,
     sourceFiles,
     projectTypes,
+    projectRelationships: environment.projectRelationships,
+    projectDispatch,
     modules,
     analyzedModules: finalizedModules,
     declarations: Object.freeze(declarations),

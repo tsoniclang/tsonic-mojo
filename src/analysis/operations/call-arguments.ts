@@ -9,6 +9,7 @@ import { classifyMojoRefinedValueConversion } from "../refinements/value.js";
 import type { MojoArgumentDisposition } from "../representations/model.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 import type { MojoValueOwnership } from "../../target-model/lifecycle/model.js";
+import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
 
 export interface MojoCallArgumentTarget {
   readonly convention: "imm" | "mut" | "var" | "ref" | "out" | "deinit";
@@ -41,6 +42,7 @@ export function analyzeArguments(
   valueOwnership: (expression: Node) => MojoValueOwnership,
   conversionOverrides?: ReadonlyMap<number, MojoValueConversion>,
   contextualAggregate?: (expression: Node, targetType: MojoTargetTypeRef) => boolean,
+  projectRelationships?: MojoProjectTypeRelationships,
 ): { readonly kind: "resolved"; readonly arguments: readonly MojoAnalyzedCallArgument[] } |
   { readonly kind: "unsupported"; readonly code: string; readonly reason: string } {
   if (parameterTypes.length !== targetArguments.length) {
@@ -103,6 +105,7 @@ export function analyzeArguments(
           sourceType,
           parameterType,
           valueRefinements.get(sourceArgument.expression),
+          projectRelationships,
         )
       : { kind: "resolved" as const, conversion: overriddenConversion };
     if (conversion.kind === "unsupported") {
@@ -187,6 +190,7 @@ export function closeResultConversion(
   targetResult: MojoTargetTypeRef,
   sourceResult: Type,
   resolve: (type: Type) => MojoTargetTypeRef | undefined,
+  projectRelationships?: MojoProjectTypeRelationships,
 ): { readonly kind: "resolved"; readonly conversion: MojoValueConversion } |
   { readonly kind: "unsupported"; readonly code: string; readonly reason: string } {
   const sourceCarrier = resolve(sourceResult);
@@ -199,7 +203,7 @@ export function closeResultConversion(
   }
   const conversion = sourceFutureShapeMatches(targetResult, sourceCarrier)
     ? { kind: "resolved" as const, conversion: Object.freeze({ kind: "identity" as const }) }
-    : classifyMojoValueConversion(targetResult, sourceCarrier);
+    : classifyMojoValueConversion(targetResult, sourceCarrier, undefined, projectRelationships);
   return conversion.kind === "unsupported"
     ? { kind: "unsupported", code: "MOJO_CALL_RESULT_CONVERSION_UNPROVEN", reason: conversion.reason }
     : { kind: "resolved", conversion: conversion.conversion };

@@ -141,6 +141,8 @@ export function analyzeSourceProfileCall(
     callback?.conversion === undefined
       ? undefined
       : new Map([[callback.parameterIndex, callback.conversion]]),
+    undefined,
+    context.projectRelationships,
   );
   if (arguments_.kind === "unsupported") return arguments_;
   const genericArguments: MojoTargetGenericArgument[] = [];
@@ -198,6 +200,7 @@ export function analyzeSourceProfileCall(
       sourceCall.sourceReceiver === undefined
         ? undefined
         : context.valueRefinements.get(sourceCall.sourceReceiver.expression),
+      context.projectRelationships,
     );
     if (conversion.kind === "unsupported") return {
       kind: "unsupported",
@@ -389,6 +392,7 @@ function closeSourceProfileResult(
     selectedResult,
     sourceCall.sourceResultType,
     resolve,
+    context.projectRelationships,
   );
   return conversion.kind === "unsupported"
     ? conversion

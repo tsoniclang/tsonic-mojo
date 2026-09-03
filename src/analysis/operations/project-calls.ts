@@ -6,25 +6,30 @@ import { substituteMojoTargetType } from "../../target-model/types/substitution.
 import type {
   MojoAnalyzedCallArgument,
   MojoAnalyzedClass,
-  MojoAnalyzedFunction,
+  MojoAnalyzedProjectCallable,
   MojoCallSelection,
 } from "../program/model.js";
-import { analyzeArguments } from "./call-arguments.js";
+import { analyzeArguments, closeResultConversion } from "./call-arguments.js";
 import type { MojoCallAnalysis, MojoCallAnalysisContext } from "./calls.js";
 import {
   mojoParameterArgumentDisposition,
   mojoParameterConvention,
 } from "../representations/index.js";
+import { resolveMojoValueGenericArgument } from "../../policy/types/generic-arguments.js";
+import { resolveMojoSourceOrigin } from "../../policy/types/origins.js";
 
 export function analyzeProjectCall(
   sourceCall: ResolvedSourceCallInfo,
-  function_: MojoAnalyzedFunction,
+  callable: MojoAnalyzedProjectCallable,
   resolve: (type: Type, authoredTypeNode?: Node) => MojoTargetTypeRef | undefined,
   context: MojoCallAnalysisContext,
 ): MojoCallAnalysis {
+  const contract = callable.contract;
   const typeSubstitutions = new Map<string, MojoTargetTypeRef>();
+  const valueSubstitutions = new Map<string, MojoTargetGenericArgument>();
+  const originSubstitutions = new Map<string, import("../../target-model/origins/model.js").MojoOriginRef>();
   const genericArguments: MojoTargetGenericArgument[] = [];
-  for (const parameter of function_.typeParameters) {
+  for (const parameter of contract.typeParameters) {
     const selected = (sourceCall.sourceSelectedMethodTypeArguments ?? [])
       .filter((argument) => argument.typeParameterName === parameter.name);
     if (selected.length !== 1) {
@@ -34,37 +39,64 @@ export function analyzeProjectCall(
         reason: `Selected project call type parameter '${parameter.name}' has ${selected.length} exact arguments.`,
       };
     }
-    const targetType = resolve(
-      selected[0]!.selectedType,
-      selected[0]!.explicitTypeNode,
-    );
-    if (targetType === undefined) {
+    const argument = projectGenericArgument(parameter, selected[0]!, resolve, context, contract);
+    if (argument === undefined) {
       return {
         kind: "unsupported",
         code: "MOJO_PROJECT_CALL_TYPE_ARGUMENT_NOT_CLOSED",
         reason: `Selected project call type argument '${parameter.name}' has no Mojo carrier.`,
       };
     }
-    typeSubstitutions.set(parameter.name, targetType);
-    genericArguments.push(Object.freeze({ kind: "type", type: targetType }));
+    if (parameter.kind === "type" && argument.kind === "type") {
+      typeSubstitutions.set(parameter.name, argument.type);
+    } else if (parameter.kind === "origin" && argument.kind === "origin") {
+      originSubstitutions.set(parameter.name, argument.origin);
+    } else if (parameter.kind === "value" && argument.kind !== "type" && argument.kind !== "origin") {
+      valueSubstitutions.set(parameter.name, argument);
+    } else {
+      return {
+        kind: "unsupported",
+        code: "MOJO_PROJECT_CALL_TYPE_ARGUMENT_KIND_CONFLICT",
+        reason: `Selected project call argument '${parameter.name}' conflicts with its exact ${parameter.kind} parameter kind.`,
+      };
+    }
+    genericArguments.push(argument);
   }
   const substitutions = {
     types: typeSubstitutions,
-    values: new Map(),
-    origins: new Map(),
+    values: valueSubstitutions,
+    origins: originSubstitutions,
     packs: new Map(),
   };
-  const parameterTypes = function_.parameters.map((parameter) =>
-    substituteMojoTargetType(
-      parameter.omissionKind === "rest" ? parameter.type : parameter.callType,
-      substitutions,
-    ));
-  const targetArguments = function_.parameters.map((parameter) => Object.freeze({
+  const receiverType = sourceCall.sourceReceiver === undefined
+    ? undefined
+    : resolve(sourceCall.sourceReceiver.type, sourceCall.sourceReceiver.authoredTypeNode);
+  const constructedType = contract.kind === "constructor"
+    ? resolve(sourceCall.sourceResultType)
+    : undefined;
+  const ownerInstance = contract.kind === "constructor" ? constructedType : receiverType;
+  const declaredParameterTypes = contract.parameters.map((parameter) =>
+    parameter.omissionKind === "rest" ? parameter.type : parameter.callType);
+  const ownerParameterTypes = declaredParameterTypes.map((type) =>
+    instantiateProjectContractType(contract, ownerInstance, type, context));
+  const ownerCallTypes = contract.parameters.map((parameter) =>
+    instantiateProjectContractType(contract, ownerInstance, parameter.callType, context));
+  if (ownerParameterTypes.some((type) => type === undefined) ||
+    ownerCallTypes.some((type) => type === undefined)) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_PROJECT_CALL_OWNER_SUBSTITUTION_UNRESOLVED",
+      reason: "A selected project call cannot instantiate its member contract through the exact owning type.",
+    };
+  }
+  const parameterTypes = (ownerParameterTypes as readonly MojoTargetTypeRef[]).map((type) =>
+    substituteMojoTargetType(type, substitutions));
+  const targetArguments = contract.parameters.map((parameter, index) => Object.freeze({
     convention: mojoParameterConvention(parameter.disposition),
     position: "positional-or-keyword" as const,
     variadic: parameter.omissionKind === "rest",
     ...(parameter.omissionKind === "rest"
-      ? { variadicCollectionType: substituteMojoTargetType(parameter.callType, substitutions) }
+      ? { variadicCollectionType: substituteMojoTargetType(ownerCallTypes[index]!, substitutions) }
       : {}),
     passing: mojoParameterArgumentDisposition(parameter.disposition).kind === "transfer"
       ? "consume" as const
@@ -81,6 +113,7 @@ export function analyzeProjectCall(
     context.valueOwnership,
     undefined,
     (expression) => context.source.ast.is.IsObjectLiteralExpression(expression),
+    context.projectRelationships,
   );
   if (arguments_.kind === "unsupported") return arguments_;
   const locationConflict = locationBackedMutableArgument(
@@ -89,17 +122,30 @@ export function analyzeProjectCall(
     context,
   );
   if (locationConflict !== undefined) return locationConflict;
-  const targetOutput = substituteMojoTargetType(function_.resultType, substitutions);
-  const targetResult = function_.asynchronous
+  const ownerResultType = instantiateProjectContractType(
+    contract,
+    ownerInstance,
+    contract.resultType,
+    context,
+  );
+  if (ownerResultType === undefined) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_PROJECT_CALL_RESULT_OWNER_SUBSTITUTION_UNRESOLVED",
+      reason: "A selected project call cannot instantiate its result through the exact owning type.",
+    };
+  }
+  const targetOutput = substituteMojoTargetType(ownerResultType, substitutions);
+  const targetResult = contract.asynchronous
     ? Object.freeze({
         kind: "future" as const,
-        domain: function_.asyncDomain ?? "native",
+        domain: contract.asyncDomain ?? "native",
         output: targetOutput,
-        raises: function_.raises,
+        raises: contract.raises,
       })
     : targetOutput;
-  const callResult = function_.kind === "constructor"
-    ? function_.owner?.type
+  const callResult = contract.kind === "constructor"
+    ? constructedType
     : targetResult;
   if (callResult === undefined) {
     return {
@@ -108,13 +154,18 @@ export function analyzeProjectCall(
       reason: "Project constructor has no exact owning class carrier.",
     };
   }
-  const result = closeCanonicalProjectResult(callResult);
+  const result = closeResultConversion(
+    callResult,
+    sourceCall.sourceResultType,
+    resolve,
+    context.projectRelationships,
+  );
   if (result.kind === "unsupported") return result;
-  const target = projectCallTarget(function_, sourceCall, callResult, context);
+  const target = projectCallTarget(callable, sourceCall, callResult, resolve, context);
   if (target.kind === "unsupported") return target;
   return {
     kind: "resolved",
-    dependency: function_.declaration,
+    dependency: callable.implementation?.declaration ?? contract.declaration,
     selection: Object.freeze({
       kind: "project",
       target: target.target,
@@ -125,6 +176,22 @@ export function analyzeProjectCall(
       optionalChain: sourceCall.optionalChain,
     }),
   };
+}
+
+function instantiateProjectContractType(
+  contract: MojoAnalyzedProjectCallable["contract"],
+  ownerInstance: MojoTargetTypeRef | undefined,
+  type: MojoTargetTypeRef,
+  context: MojoCallAnalysisContext,
+): MojoTargetTypeRef | undefined {
+  if (contract.owner === undefined) return type;
+  return ownerInstance === undefined
+    ? undefined
+    : context.projectRelationships.instantiateMemberType(
+        contract.declaration,
+        ownerInstance,
+        type,
+      );
 }
 
 export function analyzeImplicitProjectConstruction(
@@ -187,36 +254,46 @@ export function locationBackedMutableArgument(
 }
 
 function projectCallTarget(
-  function_: MojoAnalyzedFunction,
+  callable: MojoAnalyzedProjectCallable,
   sourceCall: ResolvedSourceCallInfo,
   resultType: MojoTargetTypeRef,
+  resolve: (type: Type, authoredTypeNode?: Node) => MojoTargetTypeRef | undefined,
   context: MojoCallAnalysisContext,
 ): { readonly kind: "resolved"; readonly target: Extract<MojoCallSelection, { kind: "project" }>["target"] } |
   { readonly kind: "unsupported"; readonly code: string; readonly reason: string } {
-  if (function_.kind === "constructor") {
+  const contract = callable.contract;
+  const implementation = callable.implementation;
+  if (contract.kind === "constructor") {
     return { kind: "resolved", target: Object.freeze({ kind: "constructor", type: resultType }) };
   }
-  if (function_.kind === "function") {
-    return {
-      kind: "resolved",
-      target: Object.freeze({
-        kind: "function",
-        name: function_.name,
-        modulePath: Object.freeze([...context.modulePathForSourceFile(function_.sourceFile)]),
-      }),
-    };
-  }
-  if (function_.static === true) {
-    if (function_.owner === undefined) {
+  if (contract.kind === "function") {
+    if (implementation === undefined) {
       return {
         kind: "unsupported",
-        code: "MOJO_PROJECT_STATIC_METHOD_OWNER_MISSING",
-        reason: "Static project method has no exact owning class carrier.",
+        code: "MOJO_PROJECT_FUNCTION_IMPLEMENTATION_MISSING",
+        reason: "A selected project function contract has no exact implementation.",
       };
     }
     return {
       kind: "resolved",
-      target: Object.freeze({ kind: "static-method", owner: function_.owner.type, name: function_.name }),
+      target: Object.freeze({
+        kind: "function",
+        name: implementation.name,
+        modulePath: Object.freeze([...context.modulePathForSourceFile(implementation.sourceFile)]),
+      }),
+    };
+  }
+  if (contract.static === true) {
+    if (implementation?.owner === undefined) {
+      return {
+        kind: "unsupported",
+        code: "MOJO_PROJECT_STATIC_METHOD_OWNER_MISSING",
+        reason: "A selected static project method has no exact implementation owner.",
+      };
+    }
+    return {
+      kind: "resolved",
+      target: Object.freeze({ kind: "static-method", owner: implementation.owner.type, name: implementation.name }),
     };
   }
   const receiver = sourceCall.sourceReceiver?.expression;
@@ -231,11 +308,48 @@ function projectCallTarget(
     kind: "resolved",
     target: Object.freeze({
       kind: "method",
-      name: function_.name,
+      name: contract.name,
+      declaration: contract.declaration,
+      implementationDeclaration: implementation?.declaration ?? contract.declaration,
       receiver,
-      receiverType: function_.owner!.type,
+      receiverType: resolve(sourceCall.sourceReceiver!.type, sourceCall.sourceReceiver!.authoredTypeNode) ??
+        contract.owner!.type,
+      dispatch: context.source.ast.kindName(receiver) === "KindSuperKeyword" ? "exact" : "virtual",
     }),
   };
+}
+
+function projectGenericArgument(
+  parameter: MojoAnalyzedProjectCallable["contract"]["typeParameters"][number],
+  selected: NonNullable<ResolvedSourceCallInfo["sourceSelectedMethodTypeArguments"]>[number],
+  resolve: (type: Type, authoredTypeNode?: Node) => MojoTargetTypeRef | undefined,
+  context: MojoCallAnalysisContext,
+  contract: MojoAnalyzedProjectCallable["contract"],
+): MojoTargetGenericArgument | undefined {
+  if (parameter.kind === "type") {
+    const type = resolve(selected.selectedType, selected.explicitTypeNode);
+    return type === undefined ? undefined : Object.freeze({ kind: "type", type });
+  }
+  const authored = selected.explicitTypeNode;
+  if (authored === undefined) return parameter.defaultArgument;
+  const typeContext = {
+    ast: context.source.ast,
+    navigation: context.source.navigation,
+    semantics: context.source.semantics.forFile(contract.sourceFile),
+    sourceFacts: context.source.sourceFacts,
+    providerSemantics: context.providerSemantics,
+    projectTypes: context.projectTypes,
+    sourceProfiles: context.sourceProfiles,
+    jsEnabled: context.jsEnabled,
+    ...(context.sourceCallableErrorType === undefined
+      ? {}
+      : { sourceCallableErrorType: context.sourceCallableErrorType }),
+  };
+  if (parameter.kind === "origin") {
+    const origin = resolveMojoSourceOrigin(authored, typeContext);
+    return origin === undefined ? undefined : Object.freeze({ kind: "origin", origin });
+  }
+  return resolveMojoValueGenericArgument(authored, typeContext);
 }
 
 export function closeCanonicalProjectResult(

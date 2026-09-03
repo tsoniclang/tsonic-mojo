@@ -8,6 +8,7 @@ import type {
 } from "../../policy/conversions/selection.js";
 import type { MojoValueConversionNarrowing } from "../../target-model/conversions/model.js";
 import type { MojoValueRefinementSelection } from "./model.js";
+import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
 
 export function classifyMojoValueRefinement(
   sourceType: MojoTargetTypeRef,
@@ -44,10 +45,12 @@ export function classifyMojoRefinedValueConversion(
   actual: MojoTargetTypeRef,
   expected: MojoTargetTypeRef,
   refinement: MojoValueRefinementSelection | undefined,
+  projectRelationships?: MojoProjectTypeRelationships,
 ): MojoConversionClassification {
   return classifyMojoValueConversion(
     actual,
     expected,
     mojoValueConversionNarrowing(refinement),
+    projectRelationships,
   );
 }

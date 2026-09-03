@@ -18,7 +18,12 @@ import {
   planMojoCall,
 } from "./calls.js";
 import { planMojoElement } from "./elements.js";
-import { planMojoProperty, planMojoProviderPropertyMethodWrite } from "./properties.js";
+import {
+  planMojoProjectPropertyWrite,
+  projectPropertyUsesMethodWrite,
+  planMojoProperty,
+  planMojoProviderPropertyMethodWrite,
+} from "./properties.js";
 import { planMojoLeafExpression } from "./leaves.js";
 import { mojoNumericLiteralCanInitialize } from "../../../target-model/types/numeric-literals.js";
 import {
@@ -105,6 +110,30 @@ export function planMojoUpdate(
   }
   const property = context.program.queries.propertySelection(operand);
   const element = context.program.queries.elementSelection(operand);
+  if (property !== undefined && projectPropertyUsesMethodWrite(property, context)) {
+    const type = property.kind === "project-field"
+      ? property.fieldType
+      : property.kind === "project-accessor"
+        ? property.writeType ?? property.readType
+        : undefined;
+    if (type === undefined || type.kind !== "source-primitive" ||
+      type.name === "bool" || type.name === "char") {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_UPDATE_TARGET_UNSUPPORTED",
+        "Increment and decrement require one exact mutable numeric Mojo location.",
+        node,
+      );
+      return undefined;
+    }
+    return planMojoProjectPropertyWrite(
+      operand,
+      mojoValue(Object.freeze({ kind: "number-literal", text: "1" })),
+      operator,
+      context,
+      planMojoValue,
+    );
+  }
   const left = ast.is.IsPropertyAccessExpression(operand)
     ? planMojoProperty(operand, context, planMojoValue, "write", false)
     : ast.is.IsElementAccessExpression(operand)
@@ -177,6 +206,7 @@ export function planMojoAssignment(
   const element = context.program.queries.elementSelection(leftNode);
   const targetWriteType = property?.kind === "provider" || property?.kind === "provider-static"
     ? property.targetWriteType
+    : property?.kind === "project-accessor" ? property.writeType
     : element?.kind === "provider" ? element.targetWriteType : element?.writeType;
   const providerProperty = property?.kind === "provider" || property?.kind === "provider-static"
     ? property
@@ -207,6 +237,15 @@ export function planMojoAssignment(
   const right = planMojoValue(rightNode, context, targetWriteType ?? leftType);
   if (right === undefined) return undefined;
   const targetType = targetWriteType ?? leftType;
+  if (projectPropertyUsesMethodWrite(property, context)) {
+    return planMojoProjectPropertyWrite(
+      leftNode,
+      right,
+      operator,
+      context,
+      planMojoValue,
+    );
+  }
   if (property?.kind === "provider" &&
     property.writeOperation?.target.kind === "property-write" &&
     property.writeOperation.target.access.kind === "method") {

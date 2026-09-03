@@ -440,6 +440,19 @@ export function applyMojoConversion(
   if (conversion === undefined) return undefined;
   switch (conversion.kind) {
     case "identity": return expression;
+    case "project-view": {
+      const selected = context.program.projectDispatch.conversionFor(
+        conversion.sourceType,
+        conversion.targetType,
+      );
+      if (selected === undefined) return undefined;
+      return Object.freeze({
+        kind: "method-call",
+        receiver: expression,
+        name: selected.name,
+        arguments: Object.freeze([]),
+      });
+    }
     case "callable-adapt": {
       registerMojoTypeImports(conversion.targetType, context);
       if (conversion.targetType.kind !== "callable") return undefined;

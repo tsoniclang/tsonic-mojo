@@ -23,6 +23,7 @@ import { registerMojoTypeImports } from "../types/imports.js";
 import { consumeMojoValue, mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { applyArgumentDisposition, planCallableArgumentSlot } from "./call-arguments.js";
+import { mojoTargetTypeEquals } from "../../../target-model/types/equality.js";
 
 export function planMojoCall(
   node: Node,
@@ -274,13 +275,46 @@ export function planMojoCall(
         break;
       }
       case "method": {
-        const receiver = prepareMojoReceiver(
-          selection.target.receiver,
-          selection.target.receiverType,
-          selection.optionalChain,
-          context,
-          planValue,
-        );
+        const exactDispatch = selection.target.dispatch === "exact";
+        const exactConversion = exactDispatch && context.selfType !== undefined
+          ? context.program.projectDispatch.conversionFor(
+              context.selfType,
+              selection.target.receiverType,
+            )
+          : undefined;
+        const exactReceiver = exactDispatch && context.selfType !== undefined
+          ? exactConversion === undefined &&
+              mojoTargetTypeEquals(context.selfType, selection.target.receiverType)
+            ? mojoValue(Object.freeze({ kind: "path", path: "self" }))
+            : exactConversion === undefined
+              ? undefined
+              : mojoValue(Object.freeze({
+                  kind: "method-call",
+                  receiver: Object.freeze({ kind: "path", path: "self" }),
+                  name: exactConversion.name,
+                  arguments: Object.freeze([]),
+                }))
+          : undefined;
+        const receiver = exactDispatch
+          ? exactReceiver === undefined
+            ? undefined
+            : Object.freeze({ kind: "required", plan: exactReceiver })
+          : prepareMojoReceiver(
+              selection.target.receiver,
+              selection.target.receiverType,
+              selection.optionalChain,
+              context,
+              planValue,
+            );
+        if (exactDispatch && receiver === undefined) {
+          appendMojoPlanningDiagnostic(
+            context,
+            "MOJO_PROJECT_EXACT_DISPATCH_RECEIVER_NOT_SEALED",
+            "An exact super-method call has no sealed conversion from the current project view to its selected owner view.",
+            node,
+          );
+          return undefined;
+        }
         if (receiver === undefined) return undefined;
         const ordered = orderCallArguments(plannedArguments, context, Object.freeze({
           plan: receiver.plan,
@@ -288,11 +322,36 @@ export function planMojoCall(
           role: "call_receiver",
         }));
         before = ordered.before;
+        const dispatchView = context.program.projectDispatch.viewForType(selection.target.receiverType);
+        const dispatch = dispatchView === undefined
+          ? undefined
+          : context.program.projectDispatch.callableFor(
+              selection.target.receiverType,
+              selection.target.declaration,
+              selection.genericArguments,
+            );
+        const exactName = exactDispatch
+          ? context.program.projectDispatch.implementationName(
+              selection.target.implementationDeclaration,
+            )
+          : undefined;
+        if (dispatchView !== undefined && (!exactDispatch && dispatch === undefined ||
+          exactDispatch && exactName === undefined)) {
+          appendMojoPlanningDiagnostic(
+            context,
+            "MOJO_PROJECT_METHOD_DISPATCH_NOT_SEALED",
+            "A polymorphic project method call has no exact sealed Mojo dispatch slot.",
+            node,
+          );
+          return undefined;
+        }
         call = {
           kind: "method-call",
           receiver: ordered.receiver!,
-          name: selection.target.name,
-          ...(selection.genericArguments.length === 0 ? {} : { genericArguments: selection.genericArguments }),
+          name: exactName ?? dispatch?.name ?? selection.target.name,
+          ...(dispatch !== undefined || exactName !== undefined || selection.genericArguments.length === 0
+            ? {}
+            : { genericArguments: selection.genericArguments }),
           arguments: ordered.arguments,
         };
         const converted = convertMojoValue(withMojoValue(before, call), selection.resultConversion, context);

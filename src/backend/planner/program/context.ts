@@ -26,7 +26,9 @@ export interface MojoPlanningContext {
   readonly callableArtifactNames: WeakMap<Node, string>;
   readonly bindingOverrides: ReadonlyMap<Node, MojoBindingPlanOverride>;
   readonly errorType?: MojoTargetTypeRef;
+  readonly selfType?: MojoTargetTypeRef;
   readonly initializingState?: {
+    readonly definition: import("../../../target-model/types/project.js").MojoProjectTypeDefinition;
     readonly referenceType: MojoTargetTypeRef;
     readonly stateType: MojoTargetTypeRef;
   };
@@ -101,12 +103,13 @@ export function withMojoLocalNameScope(
 
 export function withMojoStateInitialization(
   context: MojoPlanningContext,
+  definition: import("../../../target-model/types/project.js").MojoProjectTypeDefinition,
   referenceType: MojoTargetTypeRef,
   stateType: MojoTargetTypeRef,
 ): MojoPlanningContext {
   return Object.freeze({
     ...context,
-    initializingState: Object.freeze({ referenceType, stateType }),
+    initializingState: Object.freeze({ definition, referenceType, stateType }),
   });
 }
 
@@ -127,6 +130,13 @@ export function withMojoErrorType(
   errorType: MojoTargetTypeRef | undefined,
 ): MojoPlanningContext {
   return Object.freeze({ ...context, errorType });
+}
+
+export function withMojoSelfType(
+  context: MojoPlanningContext,
+  selfType: MojoTargetTypeRef | undefined,
+): MojoPlanningContext {
+  return selfType === undefined ? context : Object.freeze({ ...context, selfType });
 }
 
 export function mojoBindingPlanOverride(

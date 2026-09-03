@@ -26,11 +26,20 @@ export function mojoRepresentationParameters(
 ): readonly MojoAnalyzedParameter[] {
   return Object.freeze(declarations.flatMap((declaration) => {
     if (declaration.kind === "function") return declaration.parameters;
-    if (declaration.kind !== "class") return [];
-    return [
-      ...declaration.methods.flatMap((method) => method.parameters),
-      ...declaration.constructors.flatMap((constructor) => constructor.parameters),
-    ];
+    if (declaration.kind === "class") {
+      return [
+        ...declaration.methods.flatMap((method) => method.parameters),
+        ...declaration.accessors.flatMap((accessor) => accessor.parameters),
+        ...declaration.constructors.flatMap((constructor) => constructor.parameters),
+      ];
+    }
+    if (declaration.kind === "interface") {
+      return [
+        ...declaration.methods.flatMap((method) => method.parameters),
+        ...declaration.accessors.flatMap((accessor) => accessor.parameters),
+      ];
+    }
+    return [];
   }));
 }
 
@@ -72,6 +81,8 @@ function classTypes(class_: MojoAnalyzedClass): readonly MojoTargetTypeRef[] {
     ...class_.typeParameters.flatMap((parameter) => parameter.constraints),
     ...class_.fields.flatMap((field) => [field.type, field.ownerType]),
     ...class_.methods.flatMap(functionTypes),
+    ...class_.accessors.flatMap(functionTypes),
+    ...class_.callableContracts.flatMap(callableTypes),
     ...class_.constructors.flatMap(functionTypes),
     ...(class_.initializationErrorType === undefined ? [] : [class_.initializationErrorType]),
   ]);
@@ -87,5 +98,23 @@ function interfaceTypes(interface_: MojoAnalyzedInterface): readonly MojoTargetT
       signature.valueType,
       signature.ownerType,
     ]),
+    ...interface_.methods.flatMap(callableTypes),
+    ...interface_.accessors.flatMap(callableTypes),
+  ]);
+}
+
+function callableTypes(
+  callable: import("../program/model.js").MojoAnalyzedCallableSignature,
+): readonly MojoTargetTypeRef[] {
+  return Object.freeze([
+    callable.resultType,
+    ...callable.parameters.flatMap((parameter) => [
+      parameter.type,
+      parameter.bodyType,
+      parameter.callType,
+    ]),
+    ...callable.typeParameters.flatMap((parameter) => parameter.constraints),
+    ...(callable.errorType === undefined ? [] : [callable.errorType]),
+    ...(callable.owner === undefined ? [] : [callable.owner.type]),
   ]);
 }

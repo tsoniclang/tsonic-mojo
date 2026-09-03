@@ -3,7 +3,10 @@ import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import type { MojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
-import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
+import type {
+  MojoProjectTypeCatalog,
+  MojoProjectTypeRelationships,
+} from "../../target-model/types/project.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { analyzeMojoFunctionSignature } from "../callables/signatures.js";
 import { analyzeMojoClass } from "../declarations/classes.js";
@@ -17,6 +20,7 @@ import type {
   MojoAnalyzedEnum,
   MojoAnalyzedFunction,
   MojoAnalyzedInterface,
+  MojoAnalyzedProjectCallable,
   MojoAnalyzedProjectProperty,
   MojoAnalyzedTypeAlias,
 } from "./model.js";
@@ -31,6 +35,7 @@ export interface MojoProjectDeclarationAnalysis {
   readonly enums: MojoAnalyzedEnum[];
   readonly typeAliases: MojoAnalyzedTypeAlias[];
   readonly functionByDeclaration: WeakMap<Node, MojoAnalyzedFunction>;
+  readonly callableByDeclaration: WeakMap<Node, MojoAnalyzedProjectCallable>;
   readonly classByDeclaration: WeakMap<Node, MojoAnalyzedClass>;
   readonly classByTypeId: Map<string, MojoAnalyzedClass>;
   readonly interfaceByTypeId: Map<string, MojoAnalyzedInterface>;
@@ -40,6 +45,7 @@ export function analyzeMojoProjectDeclarations(input: {
   readonly source: TargetSourceProgram;
   readonly providerSemantics: MojoProviderSemantics;
   readonly projectTypes: MojoProjectTypeCatalog;
+  readonly projectRelationships: MojoProjectTypeRelationships;
   readonly modules: MojoSourceModuleCatalog;
   readonly lifecycle: MojoLifecycleResolver;
   readonly sourceProfiles: MojoSourceProfileRegistry;
@@ -62,6 +68,7 @@ export function analyzeMojoProjectDeclarations(input: {
   const enums: MojoAnalyzedEnum[] = [];
   const typeAliases: MojoAnalyzedTypeAlias[] = [];
   const functionByDeclaration = new WeakMap<Node, MojoAnalyzedFunction>();
+  const callableByDeclaration = new WeakMap<Node, MojoAnalyzedProjectCallable>();
   const classByDeclaration = new WeakMap<Node, MojoAnalyzedClass>();
   const classByTypeId = new Map<string, MojoAnalyzedClass>();
   const interfaceByTypeId = new Map<string, MojoAnalyzedInterface>();
@@ -113,6 +120,10 @@ export function analyzeMojoProjectDeclarations(input: {
     if (function_ === undefined) continue;
     functions.push(function_);
     functionByDeclaration.set(draft.declaration, function_);
+    callableByDeclaration.set(draft.declaration, Object.freeze({
+      contract: function_,
+      implementation: function_,
+    }));
     for (const parameter of function_.parameters) {
       input.bindingSourceFiles.set(parameter.declaration, draft.sourceFile);
     }
@@ -131,6 +142,7 @@ export function analyzeMojoProjectDeclarations(input: {
       source: input.source,
       providerSemantics: input.providerSemantics,
       projectTypes: input.projectTypes,
+      projectRelationships: input.projectRelationships,
       lifecycle: input.lifecycle,
       sourceProfiles: input.sourceProfiles,
       jsEnabled: input.jsEnabled,
@@ -160,6 +172,17 @@ export function analyzeMojoProjectDeclarations(input: {
       input.bindingSourceFiles.set(indexSignature.declaration, draft.sourceFile);
       input.fieldByDeclaration.set(indexSignature.declaration, indexSignature);
     }
+    for (const callable of [...analyzed.methods, ...analyzed.accessors]) {
+      input.bindingSourceFiles.set(callable.declaration, draft.sourceFile);
+      for (const parameter of callable.parameters) {
+        input.bindingSourceFiles.set(parameter.declaration, draft.sourceFile);
+      }
+    }
+    for (const accessor of analyzed.accessorProperties) {
+      for (const declaration of accessor.declarations) {
+        input.fieldByDeclaration.set(declaration, accessor);
+      }
+    }
   }
 
   for (const draft of input.drafts.classes) {
@@ -167,6 +190,7 @@ export function analyzeMojoProjectDeclarations(input: {
       source: input.source,
       providerSemantics: input.providerSemantics,
       projectTypes: input.projectTypes,
+      projectRelationships: input.projectRelationships,
       lifecycle: input.lifecycle,
       sourceProfiles: input.sourceProfiles,
       jsEnabled: input.jsEnabled,
@@ -194,6 +218,12 @@ export function analyzeMojoProjectDeclarations(input: {
       input.bindingSourceFiles.set(field.declaration, draft.sourceFile);
       input.fieldByDeclaration.set(field.declaration, field);
     }
+    for (const accessor of analyzed.class_.accessorProperties) {
+      for (const declaration of accessor.declarations) {
+        input.bindingSourceFiles.set(declaration, draft.sourceFile);
+        input.fieldByDeclaration.set(declaration, accessor);
+      }
+    }
     for (const callable of analyzed.callables) {
       input.bindingSourceFiles.set(callable.declaration, draft.sourceFile);
       for (const parameter of callable.parameters) {
@@ -206,6 +236,27 @@ export function analyzeMojoProjectDeclarations(input: {
     classByDeclaration.set(draft.declaration, analyzed.class_);
     if (analyzed.class_.targetType.kind === "target-named") {
       classByTypeId.set(analyzed.class_.targetType.id, analyzed.class_);
+    }
+  }
+
+  for (const interface_ of interfaces) {
+    for (const contract of [...interface_.methods, ...interface_.accessors]) {
+      callableByDeclaration.set(contract.declaration, Object.freeze({ contract }));
+    }
+  }
+  for (const class_ of classes) {
+    for (const contract of class_.callableContracts) {
+      const direct = functionByDeclaration.get(contract.declaration);
+      const selected = direct === undefined
+        ? input.source.navigation.callableImplementation(contract.declaration)
+        : undefined;
+      const implementation = direct ?? (selected?.kind === "resolved"
+        ? functionByDeclaration.get(selected.implementation.declaration)
+        : undefined);
+      callableByDeclaration.set(contract.declaration, Object.freeze({
+        contract,
+        ...(implementation === undefined ? {} : { implementation }),
+      }));
     }
   }
 
@@ -254,6 +305,7 @@ export function analyzeMojoProjectDeclarations(input: {
     enums,
     typeAliases,
     functionByDeclaration,
+    callableByDeclaration,
     classByDeclaration: closedClassByDeclaration,
     classByTypeId: closedClassByTypeId,
     interfaceByTypeId: closedInterfaceByTypeId,

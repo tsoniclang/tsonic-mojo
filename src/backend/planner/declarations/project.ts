@@ -21,6 +21,7 @@ import { consumeMojoValue } from "../expressions/value-plan.js";
 import {
   withMojoErrorType,
   withMojoLocalNameScope,
+  withMojoSelfType,
   withMojoStateInitialization,
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
@@ -45,9 +46,9 @@ export function planMojoProjectFunction(
 ): MojoFunctionDeclaration | undefined {
   registerMojoTypeImports(function_.resultType, context);
   if (function_.errorType !== undefined) registerMojoTypeImports(function_.errorType, context);
-  const functionContext = withMojoErrorType(
-    withMojoLocalNameScope(context),
-    function_.errorType,
+  const functionContext = withMojoSelfType(
+    withMojoErrorType(withMojoLocalNameScope(context), function_.errorType),
+    self === undefined ? undefined : function_.owner?.type,
   );
   const parameterPrelude = planMojoParameterPrelude(
     function_.parameters,
@@ -118,6 +119,7 @@ export function planMojoProjectClass(
   const stateContext = withMojoErrorType(
     withMojoStateInitialization(
       withMojoLocalNameScope(context),
+      class_.definition,
       class_.targetType,
       stateType,
     ),
@@ -243,6 +245,17 @@ export function planMojoProjectClass(
       ? Object.freeze({ ...planned, decorators: mojoStaticMethodDecorators })
       : planned);
   }
+  for (const accessor of class_.accessors) {
+    const planned = planMojoProjectFunction(
+      accessor,
+      context,
+      accessor.static === true ? undefined : "self",
+    );
+    if (planned === undefined) return undefined;
+    methods.push(accessor.static === true
+      ? Object.freeze({ ...planned, decorators: mojoStaticMethodDecorators })
+      : planned);
+  }
   const wrapper: MojoStructDeclaration = Object.freeze({
     kind: "struct",
     name: class_.name,
@@ -334,7 +347,7 @@ export function planMojoProjectTypeAlias(
   });
 }
 
-function planLocationParameterPrelude(
+export function planLocationParameterPrelude(
   function_: MojoAnalyzedFunction,
   context: MojoPlanningContext,
 ): readonly MojoStatement[] {

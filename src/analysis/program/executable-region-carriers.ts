@@ -66,6 +66,7 @@ function propertyReceiver(selection: MojoPropertySelection): Node | undefined {
   switch (selection.kind) {
     case "project-field":
     case "project-index-property":
+    case "project-accessor":
     case "structural-field":
     case "project-union-field":
     case "provider":
@@ -82,6 +83,7 @@ function propertyReceiverType(selection: MojoPropertySelection): MojoTargetTypeR
   switch (selection.kind) {
     case "project-field":
     case "project-index-property":
+    case "project-accessor":
     case "structural-field":
     case "project-union-field":
       return selection.receiverType;

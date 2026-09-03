@@ -1,5 +1,6 @@
 import type { AstReader, Node, ResolvedSourcePropertyAccessInfo } from "@tsonic/tsts";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import { substituteMojoTargetType } from "../../target-model/types/substitution.js";
 import type {
@@ -23,6 +24,7 @@ export function analyzeMojoProjectProperty(
   receiverType: MojoTargetTypeRef | undefined,
   selectedSubjects: readonly object[],
   ast: AstReader,
+  projectRelationships: MojoProjectTypeRelationships,
 ): MojoProjectFieldAnalysis {
   if (source.accessMode === "delete") {
     return {
@@ -43,7 +45,12 @@ export function analyzeMojoProjectProperty(
   const unique = [...new Set(candidates)];
   if (unique.length === 0) return { kind: "not-project-field" };
   if (unique.length !== 1) {
-    return analyzeProjectUnionProperty(source, unique, receiverType);
+    return analyzeProjectUnionProperty(
+      source,
+      unique,
+      receiverType,
+      projectRelationships,
+    );
   }
   const field = unique[0]!;
   if (field.kind === "enum-member") {
@@ -80,7 +87,11 @@ export function analyzeMojoProjectProperty(
         reason: "Selected project index-property receiver has no exact non-null Mojo carrier.",
       };
     }
-    const instantiated = instantiateProjectIndexSignature(field, receiverType);
+    const instantiated = instantiateProjectIndexSignature(
+      field,
+      receiverType,
+      projectRelationships,
+    );
     const propertyName = ast.name(source.expression);
     const key = propertyName === undefined ? "" : ast.text(propertyName);
     if (instantiated === undefined || key === "") {
@@ -113,6 +124,57 @@ export function analyzeMojoProjectProperty(
       }),
     };
   }
+  if (field.kind === "accessor-property") {
+    if (receiverType === undefined) {
+      return {
+        kind: "unsupported",
+        code: "MOJO_PROJECT_ACCESSOR_RECEIVER_NOT_CLOSED",
+        reason: "Selected project accessor receiver has no exact non-null Mojo carrier.",
+      };
+    }
+    const readType = field.read === undefined
+      ? undefined
+      : projectRelationships.instantiateMemberType(
+          field.read.declaration,
+          receiverType,
+          field.read.resultType,
+        );
+    const writeParameter = field.write?.parameters[0];
+    const writeType = writeParameter === undefined
+      ? undefined
+      : projectRelationships.instantiateMemberType(
+          field.write!.declaration,
+          receiverType,
+          writeParameter.callType,
+        );
+    if ((source.accessMode === "read" || source.accessMode === "read-write") &&
+        (field.read === undefined || readType === undefined) ||
+      (source.accessMode === "write" || source.accessMode === "read-write") &&
+        (field.write === undefined || writeParameter === undefined || writeType === undefined)) {
+      return {
+        kind: "unsupported",
+        code: "MOJO_PROJECT_ACCESSOR_MODE_UNAVAILABLE",
+        reason: `Selected project accessor '${field.sourceName}' does not close its exact ${source.accessMode} contract.`,
+      };
+    }
+    return {
+      kind: "resolved",
+      expressionType: optionalAccessResult(readType ?? writeType!, source.optionalChain),
+      selection: Object.freeze({
+        kind: "project-accessor",
+        declarations: field.declarations,
+        receiver: source.receiver.expression,
+        receiverType,
+        ...(field.read === undefined ? {} : { readName: field.read.name }),
+        ...(readType === undefined ? {} : { readType }),
+        ...(field.write === undefined ? {} : { writeName: field.write.name }),
+        ...(writeType === undefined ? {} : { writeType }),
+        ...(writeParameter === undefined ? {} : { writeDisposition: writeParameter.disposition }),
+        accessMode: source.accessMode,
+        optionalChain: source.optionalChain,
+      }),
+    };
+  }
   if (receiverType === undefined) {
     return {
       kind: "unsupported",
@@ -120,7 +182,7 @@ export function analyzeMojoProjectProperty(
       reason: "Selected project-property receiver has no exact non-null Mojo carrier.",
     };
   }
-  const fieldType = instantiateProjectFieldType(field, receiverType);
+  const fieldType = instantiateProjectFieldType(field, receiverType, projectRelationships);
   if (fieldType === undefined) {
     return {
       kind: "unsupported",
@@ -133,6 +195,7 @@ export function analyzeMojoProjectProperty(
     expressionType: optionalAccessResult(fieldType, source.optionalChain),
     selection: Object.freeze({
       kind: "project-field",
+      declaration: field.declaration,
       receiver: source.receiver.expression,
       fieldName: field.name,
       fieldType,
@@ -146,10 +209,16 @@ export function analyzeMojoProjectProperty(
 export function instantiateProjectIndexSignature(
   indexSignature: MojoAnalyzedInterfaceIndexSignature,
   receiverType: MojoTargetTypeRef,
+  projectRelationships: MojoProjectTypeRelationships,
 ): { readonly keyType: MojoTargetTypeRef; readonly valueType: MojoTargetTypeRef } | undefined {
-  if (indexSignature.ownerType.kind !== "target-named" || receiverType.kind !== "target-named" ||
-    indexSignature.ownerType.id !== receiverType.id) return undefined;
-  const arguments_ = receiverType.genericArguments ?? [];
+  const owner = projectRelationships.definitionContainingDeclaration(indexSignature.declaration);
+  const relationship = owner === undefined
+    ? undefined
+    : projectRelationships.relationship(receiverType, owner);
+  if (relationship?.kind !== "related" || relationship.targetType.kind !== "target-named") {
+    return undefined;
+  }
+  const arguments_ = relationship.targetType.genericArguments ?? [];
   const substitutions = projectOwnerSubstitutions(indexSignature.ownerTypeParameters, arguments_);
   if (substitutions === undefined) return undefined;
   return Object.freeze({
@@ -162,6 +231,7 @@ function analyzeProjectUnionProperty(
   source: ResolvedSourcePropertyAccessInfo,
   candidates: readonly MojoAnalyzedProjectProperty[],
   receiverType: MojoTargetTypeRef | undefined,
+  projectRelationships: MojoProjectTypeRelationships,
 ): MojoProjectFieldAnalysis {
   if (receiverType?.kind !== "union" || source.accessMode !== "read" || source.optionalChain) {
     return {
@@ -172,17 +242,20 @@ function analyzeProjectUnionProperty(
   }
   const fields = receiverType.members.map((member) => {
     if (member.kind !== "target-named") return undefined;
-    const matching = candidates.filter((candidate) =>
-      (candidate.kind === "instance-field" || candidate.kind === "interface-field") &&
-      candidate.ownerType.kind === "target-named" && candidate.ownerType.id === member.id);
+    const matching = candidates.flatMap((candidate) => {
+      if (candidate.kind !== "instance-field" && candidate.kind !== "interface-field") return [];
+      const fieldType = instantiateProjectFieldType(candidate, member, projectRelationships);
+      return fieldType === undefined ? [] : [{ field: candidate, fieldType }];
+    });
     if (matching.length !== 1) return undefined;
-    const field = matching[0] as Extract<MojoAnalyzedProjectProperty, {
+    const field = matching[0]!.field as Extract<MojoAnalyzedProjectProperty, {
       readonly kind: "instance-field" | "interface-field";
     }>;
-    const fieldType = instantiateProjectFieldType(field, member);
-    return fieldType === undefined
-      ? undefined
-      : Object.freeze({ receiverType: member, fieldName: field.name, fieldType });
+    return Object.freeze({
+      receiverType: member,
+      fieldName: field.name,
+      fieldType: matching[0]!.fieldType,
+    });
   });
   if (fields.some((field) => field === undefined)) {
     return {
@@ -229,10 +302,16 @@ export function instantiateProjectFieldType(
     readonly kind: "instance-field" | "interface-field";
   }>,
   receiverType: MojoTargetTypeRef,
+  projectRelationships: MojoProjectTypeRelationships,
 ): MojoTargetTypeRef | undefined {
-  if (field.ownerType.kind !== "target-named" || receiverType.kind !== "target-named" ||
-    field.ownerType.id !== receiverType.id) return undefined;
-  const arguments_ = receiverType.genericArguments ?? [];
+  const owner = projectRelationships.definitionContainingDeclaration(field.declaration);
+  const relationship = owner === undefined
+    ? undefined
+    : projectRelationships.relationship(receiverType, owner);
+  if (relationship?.kind !== "related" || relationship.targetType.kind !== "target-named") {
+    return undefined;
+  }
+  const arguments_ = relationship.targetType.genericArguments ?? [];
   const substitutions = projectOwnerSubstitutions(field.ownerTypeParameters, arguments_);
   return substitutions === undefined
     ? undefined

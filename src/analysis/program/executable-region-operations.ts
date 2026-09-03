@@ -30,6 +30,7 @@ export function analyzeCall(
     source: input.source,
     providerSemantics: input.providerSemantics,
     projectTypes: input.projectTypes,
+    projectRelationships: input.projectRelationships,
     lifecycle: input.lifecycle,
     valueOwnership: input.valueOwnership,
     sourceProfiles: input.sourceProfiles,
@@ -40,7 +41,7 @@ export function analyzeCall(
     expressionTypes: input.expressionTypes,
     valueRefinements: input.valueRefinements,
     conversions: input.conversions,
-    functionByDeclaration: input.functionByDeclaration,
+    callableByDeclaration: input.callableByDeclaration,
     classByDeclaration: input.classByDeclaration,
     classByTypeId: input.classByTypeId,
     locationStorageNames: input.locationStorageNames,
@@ -97,6 +98,7 @@ export function analyzeProperty(
           ...semantics.facts.selectedSubjects(selected.sourceSymbol, selected.sourceDeclaration),
         ]),
         input.source.ast,
+        input.projectRelationships,
       )
     : structural;
   const property = project.kind === "not-project-field"
@@ -148,6 +150,7 @@ export function analyzeElement(
     expressionTypes: input.expressionTypes,
     valueRefinements: input.valueRefinements,
     projectPropertyByDeclaration: input.fieldByDeclaration,
+    projectRelationships: input.projectRelationships,
     resolveType(type) {
       return resolveType(type, undefined, input, semantics);
     },

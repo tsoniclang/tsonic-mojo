@@ -162,8 +162,11 @@ export type MojoCallSelection =
         | {
             readonly kind: "method";
             readonly name: string;
+            readonly declaration: Node;
+            readonly implementationDeclaration: Node;
             readonly receiver: Node;
             readonly receiverType: MojoTargetTypeRef;
+            readonly dispatch: "virtual" | "exact";
           }
         | { readonly kind: "static-method"; readonly owner: MojoTargetTypeRef; readonly name: string }
         | { readonly kind: "constructor"; readonly type: MojoTargetTypeRef };

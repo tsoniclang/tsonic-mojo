@@ -144,6 +144,14 @@ export function substituteMojoTargetType(
   }
 }
 
+export function substituteMojoTargetGenericArguments(
+  arguments_: readonly MojoTargetGenericArgument[],
+  substitutions: MojoTargetTypeSubstitutions,
+): readonly MojoTargetGenericArgument[] {
+  return Object.freeze(arguments_.flatMap((argument) =>
+    substituteGenericArguments(argument, substitutions)));
+}
+
 function substituteGenericParameter(
   parameter: MojoProviderTargetGenericParameter,
   substitutions: MojoTargetTypeSubstitutions,

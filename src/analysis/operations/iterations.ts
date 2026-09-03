@@ -28,10 +28,10 @@ export interface MojoIterationAnalysisInput {
 
 export function analyzeMojoIteration(input: MojoIterationAnalysisInput): MojoIterationAnalysis {
   const { source } = input;
-  if (source.iterationKind === "for-await-of") {
+  if (source.iterationKind === "for-await-of" && !isSynchronousAsyncAdaptation(source.mechanism)) {
     return unsupported(
-      "MOJO_ASYNC_ITERATION_NATIVE_LIMIT",
-      "The active Mojo compiler exposes no native asynchronous iteration statement contract.",
+      "MOJO_ASYNC_ITERATOR_PROTOCOL_NATIVE_LIMIT",
+      "The active Mojo compiler exposes no native asynchronous iterator protocol; only checker-selected synchronous iteration adapted to for-await is representable without a target-owned suspension machine.",
     );
   }
   const bindingDeclaration = selectedBindingDeclaration(input.statement, input.ast);
@@ -59,7 +59,10 @@ export function analyzeMojoIteration(input: MojoIterationAnalysisInput): MojoIte
       `Iteration lacks an exact ${missing.join(", ")}.`,
     );
   }
-  const target = targetIterationContract(source.iterationKind, iterableType);
+  const target = targetIterationContract(
+    source.iterationKind === "for-await-of" ? "for-of" : source.iterationKind,
+    iterableType,
+  );
   if (target === undefined) {
     return unsupported(
       "MOJO_ITERATION_TARGET_UNSUPPORTED",
@@ -81,7 +84,7 @@ export function analyzeMojoIteration(input: MojoIterationAnalysisInput): MojoIte
   return {
     kind: "resolved",
     selection: Object.freeze({
-      kind: source.iterationKind,
+      kind: source.iterationKind === "for-await-of" ? "for-of" : source.iterationKind,
       statement: input.statement,
       iterable: input.iterable,
       bindingDeclaration,
@@ -91,6 +94,19 @@ export function analyzeMojoIteration(input: MojoIterationAnalysisInput): MojoIte
       target: target.target,
     }),
   };
+}
+
+function isSynchronousAsyncAdaptation(
+  mechanism: Extract<ResolvedSourceIterationInfo, { readonly iterationKind: "for-await-of" }>[
+    "mechanism"
+  ],
+): boolean {
+  if (mechanism.kind === "union") {
+    return mechanism.alternatives.every(isSynchronousAsyncAdaptation);
+  }
+  return mechanism.kind === "synchronous-iterator-adapted-to-async" ||
+    mechanism.kind === "array-like-index-adapted-to-async" ||
+    mechanism.kind === "string-code-unit-index-adapted-to-async";
 }
 
 function selectedBindingDeclaration(statement: Node, ast: AstReader): Node | undefined {

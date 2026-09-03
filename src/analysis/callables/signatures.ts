@@ -11,6 +11,7 @@ import type { MojoSourceProfileRegistry } from "../../policy/types/source-profil
 import { resolveMojoTargetType } from "../../policy/types/resolution.js";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
 import type {
+  MojoAnalyzedCallableSignature,
   MojoAnalyzedFunction,
   MojoAnalyzedParameter,
   MojoAnalyzedTypeParameter,
@@ -42,25 +43,27 @@ export interface MojoTypeParameterAnalysisInput {
   readonly diagnostics: TargetDiagnostic[];
 }
 
-export interface MojoFunctionSignatureInput extends MojoTypeParameterAnalysisInput {
+export interface MojoCallableSignatureInput extends MojoTypeParameterAnalysisInput {
   readonly name: string;
-  readonly body: Node;
   readonly allocateLocalName: (sourceName: string) => string;
   readonly bindingNames: WeakMap<Node, string>;
   readonly bindingTypes: WeakMap<Node, MojoTargetTypeRef>;
-  readonly kind?: MojoAnalyzedFunction["kind"];
-  readonly owner?: MojoAnalyzedFunction["owner"];
+  readonly kind?: MojoAnalyzedCallableSignature["kind"];
+  readonly owner?: MojoAnalyzedCallableSignature["owner"];
   readonly static?: boolean;
   readonly callable?: SourceCallableTypeEvidence;
   readonly resultType?: MojoTargetTypeRef;
 }
 
+export interface MojoFunctionSignatureInput extends MojoCallableSignatureInput {
+  readonly body: Node;
+}
+
 export function analyzeMojoFunctionSignature(
   input: MojoFunctionSignatureInput,
 ): MojoAnalyzedFunction | undefined {
-  const { source, declaration, sourceFile } = input;
-  const { ast } = source;
-  const semantics = source.semantics.forFile(sourceFile);
+  const { source, declaration } = input;
+  const semantics = source.semantics.forFile(input.sourceFile);
   const generator = semantics.operations.generator(declaration);
   if (generator !== undefined) {
     append(
@@ -71,6 +74,18 @@ export function analyzeMojoFunctionSignature(
     );
     return undefined;
   }
+  const signature = analyzeMojoCallableSignature(input);
+  return signature === undefined
+    ? undefined
+    : Object.freeze({ ...signature, body: input.body });
+}
+
+export function analyzeMojoCallableSignature(
+  input: MojoCallableSignatureInput,
+): MojoAnalyzedCallableSignature | undefined {
+  const { source, declaration, sourceFile } = input;
+  const { ast } = source;
+  const semantics = source.semantics.forFile(sourceFile);
   const callableType = semantics.declarations.declaredValueType(declaration);
   const callable = input.callable ??
     (callableType === undefined ? undefined : semantics.types.callable(callableType));
@@ -177,7 +192,6 @@ export function analyzeMojoFunctionSignature(
     typeParameters,
     parameters: Object.freeze(parameters),
     resultType,
-    body: input.body,
     asynchronous,
     ...(asyncResult === undefined ? {} : { asyncDomain: asyncResult.domain }),
     raises: false,

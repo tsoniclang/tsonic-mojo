@@ -18,7 +18,10 @@ import type {
 import type {
   MojoValueConversion,
 } from "../../target-model/conversions/model.js";
-import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
+import type {
+  MojoProjectTypeCatalog,
+  MojoProjectTypeRelationships,
+} from "../../target-model/types/project.js";
 import type { MojoSourceModuleCatalog } from "../source-modules/model.js";
 import type { MojoValueRefinementSelection } from "../refinements/model.js";
 export type { MojoValueRefinementSelection } from "../refinements/model.js";
@@ -85,21 +88,36 @@ export interface MojoAnalyzedClassOwner {
   readonly type: MojoTargetTypeRef;
 }
 
-export interface MojoAnalyzedFunction {
-  readonly kind: "function" | "method" | "constructor" | "getter" | "setter";
+export type MojoAnalyzedCallableKind =
+  | "function"
+  | "method"
+  | "constructor"
+  | "getter"
+  | "setter";
+
+export interface MojoAnalyzedCallableSignature {
+  readonly kind: MojoAnalyzedCallableKind;
   readonly declaration: Node;
   readonly sourceFile: SourceFile;
   readonly name: string;
   readonly typeParameters: readonly MojoAnalyzedTypeParameter[];
   readonly parameters: readonly MojoAnalyzedParameter[];
   readonly resultType: MojoTargetTypeRef;
-  readonly body: Node;
   readonly asynchronous: boolean;
   readonly asyncDomain?: "native" | "js";
   readonly raises: boolean;
   readonly errorType?: MojoTargetTypeRef;
   readonly static?: boolean;
   readonly owner?: MojoAnalyzedClassOwner;
+}
+
+export interface MojoAnalyzedFunction extends MojoAnalyzedCallableSignature {
+  readonly body: Node;
+}
+
+export interface MojoAnalyzedProjectCallable {
+  readonly contract: MojoAnalyzedCallableSignature;
+  readonly implementation?: MojoAnalyzedFunction;
 }
 
 export type MojoAnalyzedTopLevelFunction = MojoAnalyzedFunction & {
@@ -127,6 +145,7 @@ export interface MojoAnalyzedInterfaceField {
   readonly ownerType: MojoTargetTypeRef;
   readonly ownerTypeParameters: readonly import("../../target-model/types/project.js").MojoProjectTypeParameterDefinition[];
   readonly optional: boolean;
+  readonly readonly: boolean;
 }
 
 export interface MojoAnalyzedInterfaceIndexSignature {
@@ -138,6 +157,16 @@ export interface MojoAnalyzedInterfaceIndexSignature {
   readonly ownerType: MojoTargetTypeRef;
   readonly ownerTypeParameters: readonly import("../../target-model/types/project.js").MojoProjectTypeParameterDefinition[];
   readonly readonly: boolean;
+}
+
+export interface MojoAnalyzedAccessorProperty {
+  readonly kind: "accessor-property";
+  readonly declarations: readonly Node[];
+  readonly sourceName: string;
+  readonly read?: MojoAnalyzedCallableSignature;
+  readonly write?: MojoAnalyzedCallableSignature;
+  readonly ownerType: MojoTargetTypeRef;
+  readonly ownerTypeParameters: readonly import("../../target-model/types/project.js").MojoProjectTypeParameterDefinition[];
 }
 
 export interface MojoAnalyzedStaticClassField {
@@ -156,6 +185,7 @@ export type MojoAnalyzedProjectField =
 
 export interface MojoAnalyzedClass {
   readonly kind: "class";
+  readonly definition: import("../../target-model/types/project.js").MojoProjectTypeDefinition;
   readonly declaration: Node;
   readonly sourceFile: SourceFile;
   readonly name: string;
@@ -163,8 +193,13 @@ export interface MojoAnalyzedClass {
   readonly typeParameters: readonly MojoAnalyzedTypeParameter[];
   readonly fields: readonly MojoAnalyzedClassField[];
   readonly methods: readonly MojoAnalyzedFunction[];
+  readonly accessors: readonly MojoAnalyzedFunction[];
+  readonly callableContracts: readonly MojoAnalyzedCallableSignature[];
+  readonly accessorProperties: readonly MojoAnalyzedAccessorProperty[];
   readonly constructors: readonly MojoAnalyzedFunction[];
+  readonly heritage: readonly import("../../target-model/types/project.js").MojoProjectHeritageEdge[];
   readonly targetType: MojoTargetTypeRef;
+  readonly polymorphic: boolean;
   readonly stateStorage: "direct" | "erased";
   readonly initializationErrorType?: MojoTargetTypeRef;
   readonly errorRole?: "typed";
@@ -172,6 +207,7 @@ export interface MojoAnalyzedClass {
 
 export interface MojoAnalyzedInterface {
   readonly kind: "interface";
+  readonly definition: import("../../target-model/types/project.js").MojoProjectTypeDefinition;
   readonly declaration: Node;
   readonly sourceFile: SourceFile;
   readonly name: string;
@@ -179,8 +215,138 @@ export interface MojoAnalyzedInterface {
   readonly typeParameters: readonly MojoAnalyzedTypeParameter[];
   readonly fields: readonly MojoAnalyzedInterfaceField[];
   readonly indexSignatures: readonly MojoAnalyzedInterfaceIndexSignature[];
+  readonly methods: readonly MojoAnalyzedCallableSignature[];
+  readonly accessors: readonly MojoAnalyzedCallableSignature[];
+  readonly accessorProperties: readonly MojoAnalyzedAccessorProperty[];
+  readonly heritage: readonly import("../../target-model/types/project.js").MojoProjectHeritageEdge[];
   readonly targetType: MojoTargetTypeRef;
+  readonly polymorphic: boolean;
   readonly stateStorage: "direct" | "erased";
+}
+
+export interface MojoProjectDispatchCallableVariant {
+  readonly contract: MojoAnalyzedCallableSignature;
+  readonly genericArguments: readonly import("../../target-model/types/model.js").MojoTargetGenericArgument[];
+  readonly name: string;
+  readonly slotName: string;
+  readonly slotType: Extract<MojoTargetTypeRef, { readonly kind: "function" }>;
+  readonly parameters: readonly MojoAnalyzedParameter[];
+  readonly resultType: MojoTargetTypeRef;
+  readonly errorType?: MojoTargetTypeRef;
+}
+
+export interface MojoProjectDispatchFieldAccess {
+  readonly name: string;
+  readonly slotName: string;
+  readonly slotType: Extract<MojoTargetTypeRef, { readonly kind: "function" }>;
+  readonly valueType: MojoTargetTypeRef;
+  readonly disposition?: MojoParameterDisposition;
+}
+
+export interface MojoProjectDispatchField {
+  readonly property: MojoAnalyzedClassField | MojoAnalyzedInterfaceField | MojoAnalyzedAccessorProperty;
+  readonly read?: MojoProjectDispatchFieldAccess;
+  readonly write?: MojoProjectDispatchFieldAccess;
+}
+
+export interface MojoProjectDispatchView {
+  readonly definition: import("../../target-model/types/project.js").MojoProjectTypeDefinition;
+  readonly type: MojoTargetTypeRef;
+  readonly callables: readonly MojoProjectDispatchCallableVariant[];
+  readonly fields: readonly MojoProjectDispatchField[];
+  readonly conversions: readonly {
+    readonly target: import("../../target-model/types/project.js").MojoProjectTypeDefinition;
+    readonly targetType: MojoTargetTypeRef;
+    readonly name: string;
+    readonly slotName: string;
+    readonly slotType: Extract<MojoTargetTypeRef, { readonly kind: "function" }>;
+  }[];
+}
+
+export interface MojoProjectDispatchCallableAdapter {
+  readonly variant: MojoProjectDispatchCallableVariant;
+  readonly genericArguments: readonly import("../../target-model/types/model.js").MojoTargetGenericArgument[];
+  readonly parameters: readonly MojoAnalyzedParameter[];
+  readonly resultType: MojoTargetTypeRef;
+  readonly errorType?: MojoTargetTypeRef;
+  readonly adapterName: string;
+  readonly implementationName: string;
+  readonly implementation: MojoAnalyzedFunction;
+  readonly implementationOwnerType: MojoTargetTypeRef;
+  readonly implementationParameters: readonly MojoAnalyzedParameter[];
+  readonly argumentConversions: readonly MojoValueConversion[];
+  readonly resultConversion: MojoValueConversion;
+}
+
+export type MojoProjectDispatchFieldAdapter =
+  | {
+      readonly kind: "stored";
+      readonly field: MojoProjectDispatchField;
+      readonly readAdapterName?: string;
+      readonly writeAdapterName?: string;
+      readonly statePath: readonly string[];
+      readonly storageType: MojoTargetTypeRef;
+      readonly readType?: MojoTargetTypeRef;
+      readonly writeType?: MojoTargetTypeRef;
+      readonly readResultConversion?: MojoValueConversion;
+      readonly writeValueConversion?: MojoValueConversion;
+    }
+  | {
+      readonly kind: "accessor";
+      readonly field: MojoProjectDispatchField;
+      readonly readAdapterName?: string;
+      readonly writeAdapterName?: string;
+      readonly readImplementation?: MojoAnalyzedFunction;
+      readonly writeImplementation?: MojoAnalyzedFunction;
+      readonly implementationOwnerType: MojoTargetTypeRef;
+      readonly readType?: MojoTargetTypeRef;
+      readonly writeType?: MojoTargetTypeRef;
+      readonly readResultConversion?: MojoValueConversion;
+      readonly writeValueConversion?: MojoValueConversion;
+      readonly writeImplementationParameter?: MojoAnalyzedParameter;
+    };
+
+export interface MojoProjectConcreteViewDispatch {
+  readonly view: MojoProjectDispatchView;
+  readonly viewType: MojoTargetTypeRef;
+  readonly conversionAdapterName: string;
+  readonly callableAdapters: readonly MojoProjectDispatchCallableAdapter[];
+  readonly fieldAdapters: readonly MojoProjectDispatchFieldAdapter[];
+}
+
+export interface MojoProjectConcreteDispatch {
+  readonly concrete: MojoAnalyzedClass;
+  readonly views: readonly MojoProjectConcreteViewDispatch[];
+}
+
+export interface MojoProjectDispatchPlan {
+  readonly issues: readonly {
+    readonly node: Node;
+    readonly code: string;
+    readonly message: string;
+  }[];
+  viewForType(type: MojoTargetTypeRef): MojoProjectDispatchView | undefined;
+  callableFor(
+    receiverType: MojoTargetTypeRef,
+    declaration: Node,
+    genericArguments: readonly import("../../target-model/types/model.js").MojoTargetGenericArgument[],
+  ): MojoProjectDispatchCallableVariant | undefined;
+  fieldFor(
+    receiverType: MojoTargetTypeRef,
+    declaration: Node,
+  ): MojoProjectDispatchField | undefined;
+  conversionFor(
+    sourceType: MojoTargetTypeRef,
+    targetType: MojoTargetTypeRef,
+  ): MojoProjectDispatchView["conversions"][number] | undefined;
+  concreteFor(
+    definition: import("../../target-model/types/project.js").MojoProjectTypeDefinition,
+  ): MojoProjectConcreteDispatch | undefined;
+  statePath(
+    definition: import("../../target-model/types/project.js").MojoProjectTypeDefinition,
+    declaration: Node,
+  ): readonly string[] | undefined;
+  implementationName(declaration: Node): string | undefined;
 }
 
 export interface MojoAnalyzedEnumMember {
@@ -216,6 +382,7 @@ export type MojoAnalyzedProjectProperty =
   | MojoAnalyzedProjectField
   | MojoAnalyzedInterfaceField
   | MojoAnalyzedInterfaceIndexSignature
+  | MojoAnalyzedAccessorProperty
   | MojoAnalyzedEnumMember;
 
 export type MojoAnalyzedDeclaration =
@@ -274,6 +441,7 @@ export interface MojoAnalyzedModule {
 export type MojoPropertySelection =
   | {
       readonly kind: "project-field";
+      readonly declaration: Node;
       readonly receiver: Node;
       readonly fieldName: string;
       readonly fieldType: MojoTargetTypeRef;
@@ -289,6 +457,19 @@ export type MojoPropertySelection =
       readonly key: string;
       readonly keyType: MojoTargetTypeRef;
       readonly fieldType: MojoTargetTypeRef;
+      readonly accessMode: "read" | "write" | "read-write";
+      readonly optionalChain: boolean;
+    }
+  | {
+      readonly kind: "project-accessor";
+      readonly declarations: readonly Node[];
+      readonly receiver: Node;
+      readonly receiverType: MojoTargetTypeRef;
+      readonly readName?: string;
+      readonly readType?: MojoTargetTypeRef;
+      readonly writeName?: string;
+      readonly writeType?: MojoTargetTypeRef;
+      readonly writeDisposition?: MojoParameterDisposition;
       readonly accessMode: "read" | "write" | "read-write";
       readonly optionalChain: boolean;
     }
@@ -573,6 +754,8 @@ export interface MojoTargetProgram {
   readonly sourceNavigation: TargetPlanningSourceNavigation;
   readonly sourceFiles: readonly SourceFile[];
   readonly projectTypes: MojoProjectTypeCatalog;
+  readonly projectRelationships: MojoProjectTypeRelationships;
+  readonly projectDispatch: MojoProjectDispatchPlan;
   readonly modules: MojoSourceModuleCatalog;
   readonly analyzedModules: readonly MojoAnalyzedModule[];
   readonly declarations: readonly MojoAnalyzedDeclaration[];

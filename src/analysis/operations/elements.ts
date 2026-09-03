@@ -4,6 +4,7 @@ import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
 import type { MojoElementSelection } from "../program/model.js";
@@ -41,6 +42,7 @@ export interface MojoElementAnalysisContext {
   readonly expressionTypes: WeakMap<import("@tsonic/tsts").Node, MojoTargetTypeRef>;
   readonly valueRefinements: WeakMap<Node, MojoValueRefinementSelection>;
   readonly projectPropertyByDeclaration: WeakMap<Node, MojoAnalyzedProjectProperty>;
+  readonly projectRelationships: MojoProjectTypeRelationships;
 }
 
 export function analyzeMojoElementAccess(
@@ -117,7 +119,11 @@ function analyzeProjectIndex(
     );
   }
   const selected = unique[0]!;
-  const instantiated = instantiateProjectIndexSignature(selected, receiver);
+  const instantiated = instantiateProjectIndexSignature(
+    selected,
+    receiver,
+    context.projectRelationships,
+  );
   if (instantiated === undefined) {
     return unsupported(
       "MOJO_PROJECT_INDEX_INSTANTIATION_UNRESOLVED",
