@@ -213,6 +213,14 @@ export function planMojoSourceModuleIdentities(
       componentId: component.id,
       packageName: componentPackageName,
       root: component.id === rootPackage.componentId,
+      dependencies: Object.freeze(component.dependencies.flatMap((dependencyId) => {
+        if (componentPackageNames.has(dependencyId)) return [dependencyId];
+        issues.push(issue(
+          "MOJO_SOURCE_PACKAGE_COMPONENT_MISSING",
+          `Source-package component '${component.id}' depends on unknown component '${dependencyId}'.`,
+        ));
+        return [];
+      }).sort((left, right) => left.localeCompare(right, "en"))),
       moduleDirectories: Object.freeze([...directories.values()].sort(comparePaths)),
     })];
   });

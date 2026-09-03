@@ -2,6 +2,7 @@ import type {
   MojoOutputType,
   MojoProjectConfiguration,
 } from "../project/model.js";
+import type { MojoSupportedToolchain } from "../toolchain/supported.js";
 
 export interface MojoCompilerCommandConfiguration {
   readonly executable: string;
@@ -30,5 +31,5 @@ export interface MojoTargetConfiguration {
   readonly outputType: MojoOutputType;
   readonly project: MojoProjectConfiguration;
   readonly compilerProvider: MojoCompilerProviderConfiguration;
-  readonly toolchainVersion: "1.1.0.dev2026083005";
+  readonly toolchain: MojoSupportedToolchain;
 }

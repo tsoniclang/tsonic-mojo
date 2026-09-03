@@ -298,7 +298,13 @@ test("incremental compiler-provider slices isolate unrelated unsupported exports
 
       const session = createMojoCompilerProviderSession({
         compilerProvider: providerConfiguration,
-        toolchainVersion: "1.1.0.dev2026083005",
+        toolchain: {
+          kind: "pixi-mojo",
+          compilerVersion: "1.1.0.dev2026083005",
+          channels: ["conda-forge", "https://conda.modular.com/max-nightly/"],
+          platforms: ["linux-64"],
+          commandEnvironment: "posix",
+        },
       }, { snapshot, loader });
       try {
         const provider = session.sourceProviders[0];
@@ -746,9 +752,23 @@ test("runtime package artifacts retain the exact analyzed Mojo sources", () => {
       outputType: "bin",
       project: { kind: "generated" },
       compilerProvider: configuration(),
-      toolchainVersion: "1.1.0.dev2026083005",
+      toolchain: {
+        kind: "pixi-mojo",
+        compilerVersion: "1.1.0.dev2026083005",
+        channels: ["conda-forge", "https://conda.modular.com/max-nightly/"],
+        platforms: ["linux-64"],
+        commandEnvironment: "posix",
+      },
     },
+    components: [{
+      id: "fixture",
+      packageName: "fixture",
+      root: true,
+      dependencies: [],
+      artifactKey: "0".repeat(64),
+    }],
     sources: [{
+      componentId: "fixture",
       path: "src/main.mojo",
       module: { modulePath: [], imports: [], typeAliases: [], declarations: [] },
     }],

@@ -4,16 +4,22 @@ import { printPixiProject } from "../../print/project/pixi-project.js";
 import { printMojoModule } from "../../print/source/index.js";
 
 export function materializeMojoOutputPlan(plan: MojoOutputPlan): TargetCompileOutput {
-  const sourcePath = plan.configuration.outputType === "bin"
-    ? "src/main.mojo"
-    : `src/${plan.configuration.packageName}/__init__.mojo`;
+  const components = new Map(plan.components.map((component) => [component.id, component]));
   const artifacts: import("@tsonic/target-api/artifacts").TargetArtifact[] = plan.sources.map(
-    (source) => Object.freeze<TargetSourceFile>({
-      kind: "source",
-      language: "mojo",
-      path: source.path,
-      text: printMojoModule(source.module),
-    }),
+    (source) => {
+      const component = components.get(source.componentId);
+      if (component === undefined) {
+        throw new Error(`Mojo source '${source.path}' has no sealed output component.`);
+      }
+      return Object.freeze<TargetSourceFile>({
+        kind: "source",
+        language: "mojo",
+        path: component.root
+          ? source.path
+          : `components/${component.packageName}/${source.path}`,
+        text: printMojoModule(source.module),
+      });
+    },
   );
   for (const runtime of plan.runtimePackages) {
     for (const source of runtime.sources) {
@@ -29,7 +35,7 @@ export function materializeMojoOutputPlan(plan: MojoOutputPlan): TargetCompileOu
     artifacts.push(Object.freeze({
       kind: "project",
       path: "pixi.toml",
-      text: printPixiProject(plan, sourcePath),
+      text: printPixiProject(plan),
     }));
   }
   return Object.freeze({ artifacts: Object.freeze(artifacts) });

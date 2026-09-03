@@ -45,6 +45,7 @@ export interface MojoSourcePackageDefinition {
   readonly componentId: string;
   readonly packageName: string;
   readonly root: boolean;
+  readonly dependencies: readonly string[];
   readonly moduleDirectories: readonly (readonly string[])[];
 }
 

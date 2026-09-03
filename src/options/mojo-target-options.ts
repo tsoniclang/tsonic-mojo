@@ -7,6 +7,7 @@ import type {
 } from "../target-model/configuration/model.js";
 import type { MojoOutputType } from "../target-model/project/model.js";
 import { resolveMojoProjectConfiguration } from "./mojo-user-project.js";
+import { supportedMojoToolchain } from "../target-model/toolchain/supported.js";
 import { realpathSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -35,7 +36,7 @@ export function createMojoTargetConfiguration(
       targetOutputRoot,
     ),
     compilerProvider: readCompilerProvider(target, projectDirectory),
-    toolchainVersion: "1.1.0.dev2026083005",
+    toolchain: supportedMojoToolchain(),
   });
 }
 

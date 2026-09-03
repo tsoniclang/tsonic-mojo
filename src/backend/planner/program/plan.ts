@@ -31,6 +31,7 @@ import {
 } from "../declarations/project.js";
 import { planMojoPhysicalTypeAliases } from "../types/aliases.js";
 import { normalizeMojoDeclarations } from "../../normalization/index.js";
+import { createMojoOutputComponents } from "../../artifact-model/project/components.js";
 
 export function planMojoOutput(
   input: MojoOutputPlanningContext,
@@ -57,9 +58,17 @@ export function planMojoOutput(
     ));
   }
   if (diagnostics.length > 0) return rejectedTargetStage(Object.freeze(diagnostics));
+  const orderedSources = Object.freeze([...sources].sort((left, right) =>
+    left.path.localeCompare(right.path, "en")));
   return resolvedTargetStage(Object.freeze({
     configuration: program.configuration,
-    sources: Object.freeze([...sources].sort((left, right) => left.path.localeCompare(right.path, "en"))),
+    components: createMojoOutputComponents(
+      program.modules.packages,
+      orderedSources,
+      program.runtimePackages,
+      program.configuration,
+    ),
+    sources: orderedSources,
     runtimePackages: program.runtimePackages,
   }));
 }
@@ -145,6 +154,7 @@ function planSourceModule(
   return Object.freeze({
     kind: "resolved",
     source: Object.freeze({
+      componentId: module.componentId,
       path: module.artifactPath,
       module: Object.freeze({
         modulePath: module.modulePath,
@@ -169,6 +179,7 @@ function planPackageInitializers(
         imports.push(...entryExportImports(program, diagnostics));
       }
       sources.push(Object.freeze({
+        componentId: package_.componentId,
         path: `src/${modulePath.join("/")}/__init__.mojo`,
         module: Object.freeze({
           modulePath,
@@ -388,7 +399,16 @@ function planBinaryEntry(
       }),
     ]),
   });
-  return Object.freeze({ path: "src/main.mojo", module });
+  const rootComponent = program.modules.packages.find((package_) => package_.root);
+  if (rootComponent === undefined) {
+    diagnostics.push(planningDiagnostic(
+      "MOJO_ROOT_SOURCE_PACKAGE_MISSING",
+      "Binary output has no sealed root source-package component.",
+      entry.sourceFile,
+    ));
+    return undefined;
+  }
+  return Object.freeze({ componentId: rootComponent.componentId, path: "src/main.mojo", module });
 }
 
 function binarySourceBoundaryStatements(
