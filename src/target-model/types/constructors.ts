@@ -6,6 +6,7 @@ import type {
   MojoTargetGenericArgument,
   MojoTargetTypeRef,
 } from "./model.js";
+import type { MojoProjectTypeParameterDefinition } from "./project.js";
 
 export function mojoPrimitiveTargetType(name: SourcePrimitiveKind): MojoTargetTypeRef {
   return Object.freeze({ kind: "source-primitive", name });
@@ -41,6 +42,25 @@ export function mojoBigIntTargetType(): MojoTargetTypeRef {
 
 export function mojoSymbolTargetType(): MojoTargetTypeRef {
   return Object.freeze({ kind: "symbol" });
+}
+
+export function mojoGenericParameterReference(
+  parameter: Pick<MojoProjectTypeParameterDefinition, "kind" | "name">,
+): MojoTargetGenericArgument {
+  switch (parameter.kind) {
+    case "type":
+      return Object.freeze({
+        kind: "type",
+        type: Object.freeze({ kind: "type-parameter", name: parameter.name }),
+      });
+    case "value":
+      return Object.freeze({ kind: "value-reference", path: Object.freeze([parameter.name]) });
+    case "origin":
+      return Object.freeze({
+        kind: "origin",
+        origin: Object.freeze({ kind: "parameter", name: parameter.name }),
+      });
+  }
 }
 
 export function mojoNamedTargetType(

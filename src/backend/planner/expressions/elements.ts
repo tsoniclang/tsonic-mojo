@@ -141,7 +141,7 @@ export function planMojoElement(
     finished.before,
     applyValueRefinement(
       finished.value,
-      context.program.queries.valueRefinement(node),
+      context.program.representations.narrowing(node),
       context,
     ),
   );

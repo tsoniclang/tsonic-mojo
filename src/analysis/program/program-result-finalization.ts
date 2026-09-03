@@ -15,12 +15,16 @@ import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { analyzeMojoRuntimePackages } from "../runtime/references.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import { analyzeMojoTemplateExpression } from "../operations/template-expressions.js";
-import { mojoOwnedTemporaryPassing } from "../value-semantics/owned-temporaries.js";
 import { closeMojoErrorType } from "./effects.js";
 import { validateMojoFunctionSyntax } from "./syntax-validation.js";
 import { createMojoProgramQueries } from "./queries.js";
 import { finalizeMojoModuleBindingTypes } from "./module-bindings.js";
 import { finalizeMojoModuleEffects } from "./module-effects.js";
+import {
+  createMojoRepresentationCatalog,
+  mojoRepresentationParameters,
+  mojoRepresentationRootTypes,
+} from "../representations/index.js";
 import type { MojoAnalyzedModuleRegionFacts } from "./module-effects.js";
 import type { MojoExecutableRegionAnalysisEnvironment } from "./executable-regions.js";
 import type {
@@ -31,6 +35,7 @@ import type {
   MojoAnalyzedInterface,
   MojoAnalyzedModule,
   MojoAnalyzedModuleBinding,
+  MojoAnalyzedTypeAlias,
   MojoCallableExpressionSelection,
   MojoTargetAnalysisRequest,
   MojoTargetProgram,
@@ -47,11 +52,14 @@ export interface MojoProgramResultFinalizationInput {
   readonly classes: readonly MojoAnalyzedClass[];
   readonly interfaces: readonly MojoAnalyzedInterface[];
   readonly enums: readonly MojoAnalyzedEnum[];
+  readonly typeAliases: readonly MojoAnalyzedTypeAlias[];
   readonly analyzedModules: readonly MojoAnalyzedModule[];
   readonly moduleRegionFacts: WeakMap<MojoAnalyzedModule, MojoAnalyzedModuleRegionFacts>;
   readonly errorTypesByDeclaration: ReadonlyMap<Node, readonly MojoTargetTypeRef[]>;
   readonly catchErrorTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly callableExpressionSelections: WeakMap<Node, MojoCallableExpressionSelection>;
+  readonly callableExpressionNodes: ReadonlySet<Node>;
+  readonly callableDeclarationByExpression: WeakMap<Node, Node>;
   readonly templateExpressionSelections: WeakMap<Node, MojoTemplateExpressionSelection>;
   readonly templateExpressionNodes: ReadonlySet<Node>;
   readonly moduleBindingByDeclaration: WeakMap<Node, MojoAnalyzedModuleBinding>;
@@ -71,11 +79,14 @@ export function finalizeMojoProgramResult(
     classes,
     interfaces,
     enums,
+    typeAliases,
     analyzedModules,
     moduleRegionFacts,
     errorTypesByDeclaration,
     catchErrorTypes,
     callableExpressionSelections,
+    callableExpressionNodes,
+    callableDeclarationByExpression,
     templateExpressionSelections,
     templateExpressionNodes,
     moduleBindingByDeclaration,
@@ -94,7 +105,6 @@ export function finalizeMojoProgramResult(
     callSelections,
     propertySelections,
     valueSelections,
-    valueRefinements,
     typeTestSelections,
     nullishCoalescingSelections,
     elementSelections,
@@ -231,7 +241,6 @@ export function finalizeMojoProgramResult(
     callSelections,
     propertySelections,
     valueSelections,
-    valueRefinements,
     typeTestSelections,
     nullishCoalescingSelections,
     elementSelections,
@@ -243,19 +252,46 @@ export function finalizeMojoProgramResult(
     bindingPatternSelections,
     returnValueTransfers,
     catchErrorTypes,
-    ownedTemporaryPassing: (type) => mojoOwnedTemporaryPassing(type, projectTypes),
     moduleBySourceFile: finalizedModuleBySourceFile,
     moduleById: finalizedModuleById,
     moduleBindingByDeclaration,
     locationStorageNames,
   });
-  const topLevelFunctions = finalizedFunctions.filter((function_) => function_.kind === "function");
+  const topLevelFunctions = finalizedFunctions.filter(
+    (function_): function_ is import("./model.js").MojoAnalyzedTopLevelFunction =>
+      function_.kind === "function",
+  );
   const declarations: MojoAnalyzedDeclaration[] = [
     ...topLevelFunctions,
     ...finalizedClasses,
     ...interfaces,
     ...enums,
+    ...typeAliases,
   ];
+  const representations = createMojoRepresentationCatalog({
+    ast,
+    sourceFiles,
+    bindingTypes,
+    expressionTypes,
+    valueRefinements: environment.valueRefinements,
+    rootTypes: mojoRepresentationRootTypes(declarations, finalizedModules),
+    parameters: mojoRepresentationParameters(declarations),
+    modules: finalizedModules,
+    sourceModules: modules,
+    authoredTypeAliases: typeAliases,
+    sourceNavigation,
+    callableNavigation: checkedSource.navigation,
+    callableExpressionNodes,
+    callableExpressionSelections,
+    callableDeclarationByExpression,
+    lifecycle: environment.lifecycle,
+    diagnostics,
+    reservedNames,
+  });
+  if (diagnostics.length > 0) return rejectedTargetStage(diagnostics);
+  const lifecycle = environment.lifecycle.seal(
+    representations.carriers().map((carrier) => carrier.type),
+  );
   return resolvedTargetStage(Object.freeze({
     host: Object.freeze({
       paths: Object.freeze({ ...hostInput.paths }),
@@ -270,6 +306,8 @@ export function finalizeMojoProgramResult(
     modules,
     analyzedModules: finalizedModules,
     declarations: Object.freeze(declarations),
+    representations,
+    lifecycle,
     queries,
     runtimePackages: analyzeMojoRuntimePackages(hostInput.runtimeReferences),
     binaryEpilogues: providerSemantics.binaryEpilogues,

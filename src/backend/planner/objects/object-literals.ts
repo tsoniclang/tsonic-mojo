@@ -8,7 +8,7 @@ import {
 import type { MojoPlanningContext } from "../program/context.js";
 import { orderMojoValues } from "../expressions/support.js";
 import type { MojoValuePlanner } from "../expressions/support.js";
-import { registerMojoTypeImports } from "../types/render.js";
+import { registerMojoTypeImports } from "../types/imports.js";
 import { applyMojoConversion } from "../expressions/support.js";
 import { withMojoValue } from "../expressions/value-plan.js";
 import type { MojoValuePlan } from "../expressions/value-plan.js";

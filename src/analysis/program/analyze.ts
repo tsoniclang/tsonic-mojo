@@ -6,10 +6,14 @@ import type {
 } from "@tsonic/target-api/artifacts";
 import { createMojoNameAllocator } from "../names/allocator.js";
 import {
+  normalizeMojoConstantIdentifier,
+  normalizeMojoIdentifier,
   normalizeMojoPackageDeclarationIdentifier,
+  normalizeMojoTypeIdentifier,
 } from "../../target-model/names/identifiers.js";
 import { analyzeAndSealMojoCallableExpression } from "../callables/expressions.js";
 import { createMojoConversionIndex } from "../../policy/conversions/selection.js";
+import { mojoValueConversionNarrowing } from "../refinements/value.js";
 import { recordMojoExecutableRegionConversionUses } from "../conversions/uses.js";
 import { createMojoProjectTypeCatalog } from "../project-types/catalog.js";
 import { createMojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
@@ -44,6 +48,10 @@ import { analyzeMojoProjectDeclarations } from "./declarations.js";
 import { createMojoStructuralObjectCatalog } from "../bindings/structural-objects.js";
 import { finalizeMojoProgramEffects } from "./program-effects-finalization.js";
 import { finalizeMojoProgramResult } from "./program-result-finalization.js";
+import {
+  createMojoLifecycleResolver,
+  createMojoValueOwnershipResolver,
+} from "../lifecycle/index.js";
 
 export function analyzeMojoTargetProgram(
   request: MojoTargetAnalysisRequest,
@@ -108,7 +116,8 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
   const bindingPatternSelections = new WeakMap<Node, MojoBindingPatternSelection>();
   const returnValueTransfers = new WeakSet<Node>();
   const analyzedCallableExpressions = new WeakSet<Node>();
-  const conversions = createMojoConversionIndex();
+  const conversions = createMojoConversionIndex((expression) =>
+    mojoValueConversionNarrowing(valueRefinements.get(expression)));
   const structuralObjects = createMojoStructuralObjectCatalog(ast);
   const fieldByDeclaration = new WeakMap<Node, MojoAnalyzedProjectProperty>();
   const moduleBindingByDeclaration = new WeakMap<
@@ -126,17 +135,35 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
   );
   const locationStorageNames = new WeakMap<Node, string>();
   const reservedNames = new Set<string>();
-  const createNameAllocator = (): ((name: string) => string) =>
-    createMojoNameAllocator([], (name) => reservedNames.add(name));
-  const globalNamesBySourceFile = new WeakMap<SourceFile, (name: string) => string>();
-  const createGlobalNameAllocator = (): ((name: string) => string) =>
-    createMojoNameAllocator(
-      [],
-      (name) => reservedNames.add(name),
-      normalizeMojoPackageDeclarationIdentifier,
-    );
+  type NameRole = "value" | "type" | "constant";
+  const normalizer = (role: NameRole): ((name: string) => string) =>
+    role === "type"
+      ? normalizeMojoTypeIdentifier
+      : role === "constant"
+        ? normalizeMojoConstantIdentifier
+        : normalizeMojoIdentifier;
+  const createNameAllocator = (role: NameRole = "value"): ((name: string) => string) =>
+    createMojoNameAllocator([], (name) => reservedNames.add(name), normalizer(role));
+  const globalNamesBySourceFile = new WeakMap<SourceFile, (
+    name: string,
+    role?: NameRole,
+  ) => string>();
+  const createGlobalNameAllocator = (): ((name: string, role?: NameRole) => string) => {
+    const used = new Set<string>();
+    return (name, role = "value") => {
+      const normalized = role === "value"
+        ? normalizeMojoPackageDeclarationIdentifier(name)
+        : normalizer(role)(name);
+      let candidate = normalized;
+      let suffix = 2;
+      while (used.has(candidate)) candidate = `${normalized}_${suffix++}`;
+      used.add(candidate);
+      reservedNames.add(candidate);
+      return candidate;
+    };
+  };
   const unownedGlobalNames = createGlobalNameAllocator();
-  const globalNames = (sourceFile: SourceFile): ((name: string) => string) => {
+  const globalNames = (sourceFile: SourceFile): ((name: string, role?: NameRole) => string) => {
     const existing = globalNamesBySourceFile.get(sourceFile);
     if (existing !== undefined) return existing;
     const created = createGlobalNameAllocator();
@@ -149,7 +176,12 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
       if (statement === undefined) continue;
       const nameNode = ast.name(statement);
       if (nameNode !== undefined && ast.is.IsIdentifier(nameNode)) {
-        globalNameByDeclaration.set(statement, globalNames(sourceFile)(ast.text(nameNode)));
+        const role: NameRole = ast.is.IsClassDeclaration(statement) ||
+            ast.is.IsInterfaceDeclaration(statement) || ast.is.IsEnumDeclaration(statement) ||
+            ast.is.IsTypeAliasDeclaration(statement)
+          ? "type"
+          : "value";
+        globalNameByDeclaration.set(statement, globalNames(sourceFile)(ast.text(nameNode), role));
         bindingSourceFiles.set(statement, sourceFile);
       }
     }
@@ -160,13 +192,22 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     (declaration, sourceName) => {
       const sourceFile = ast.getSourceFile(declaration);
       return globalNameByDeclaration.get(declaration) ??
-        (sourceFile === undefined ? unownedGlobalNames(sourceName) : globalNames(sourceFile)(sourceName));
+        (sourceFile === undefined
+          ? unownedGlobalNames(sourceName, "type")
+          : globalNames(sourceFile)(sourceName, "type"));
     },
     (sourceFile) => modules.forSourceFile(sourceFile)?.modulePath ?? Object.freeze([]),
   );
   for (const issue of projectTypes.issues) {
     diagnostics.push(diagnostic(issue.code, issue.message, issue.node));
   }
+  const lifecycle = createMojoLifecycleResolver({ projectTypes, providerSemantics });
+  const valueOwnership = createMojoValueOwnershipResolver({
+    source: input.source,
+    expressionTypes,
+    callSelections,
+    objectLiteralSelections,
+  });
   const analyzedModules = analyzeMojoModuleBindings({
     source: input.source,
     sourceFiles,
@@ -179,6 +220,9 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     diagnostics,
     allocateModuleName(sourceFile, name) {
       return globalNames(sourceFile)(name);
+    },
+    allocateModuleTypeName(sourceFile, name) {
+      return globalNames(sourceFile)(name, "type");
     },
     bindName(declaration, name) {
       bindingNames.set(declaration, name);
@@ -222,6 +266,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     classes,
     interfaces,
     enums,
+    typeAliases,
     functionByDeclaration,
     classByDeclaration,
     classByTypeId,
@@ -230,6 +275,8 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     source: input.source,
     providerSemantics,
     projectTypes,
+    modules,
+    lifecycle,
     sourceProfiles,
     jsEnabled,
     ...(sourceCallableErrorType === undefined ? {} : { sourceCallableErrorType }),
@@ -283,6 +330,8 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     source: input.source,
     providerSemantics,
     projectTypes,
+    lifecycle,
+    valueOwnership,
     sourceProfiles,
     modules,
     jsEnabled,
@@ -544,11 +593,14 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     classes,
     interfaces,
     enums,
+    typeAliases,
     analyzedModules,
     moduleRegionFacts,
     errorTypesByDeclaration: effects.errorTypesByDeclaration,
     catchErrorTypes: effects.catchErrorTypes,
     callableExpressionSelections,
+    callableExpressionNodes,
+    callableDeclarationByExpression,
     templateExpressionSelections,
     templateExpressionNodes,
     moduleBindingByDeclaration,

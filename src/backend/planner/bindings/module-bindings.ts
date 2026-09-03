@@ -4,20 +4,18 @@ import type {
 } from "../../../analysis/program/model.js";
 import type { MojoExpression } from "../../target-ast/index.js";
 import type { MojoPlanningContext } from "../program/context.js";
-import { mojoQualifiedModuleMember } from "../program/context.js";
+import { mojoModuleMemberExpression } from "../program/context.js";
 
 export function mojoModuleBindingRead(
   binding: MojoAnalyzedModuleBinding,
   context: MojoPlanningContext,
 ): MojoExpression | undefined {
-  if (binding.storage === "comptime") {
+  if (binding.disposition.kind === "comptime" ||
+    binding.disposition.kind === "direct-function") {
     const owner = context.program.modules.forSourceFile(binding.sourceFile);
     return owner === undefined
       ? undefined
-      : Object.freeze({
-          kind: "path",
-          path: mojoQualifiedModuleMember(context, owner.modulePath, binding.name),
-        });
+      : mojoModuleMemberExpression(context, owner.modulePath, binding.name);
   }
   const slot = mojoModuleBindingSlot(binding, context);
   return slot === undefined
@@ -34,7 +32,7 @@ export function mojoModuleBindingWrite(
   binding: MojoAnalyzedModuleBinding,
   context: MojoPlanningContext,
 ): MojoExpression | undefined {
-  return binding.storage === "cell"
+  return binding.disposition.kind === "live-cell"
     ? mojoModuleBindingRead(binding, context)
     : undefined;
 }
@@ -43,6 +41,8 @@ export function mojoModuleBindingSlot(
   binding: MojoAnalyzedModuleBinding,
   context: MojoPlanningContext,
 ): MojoExpression | undefined {
+  if (binding.disposition.kind !== "immutable-runtime" &&
+    binding.disposition.kind !== "live-cell") return undefined;
   const owner = context.program.modules.forSourceFile(binding.sourceFile);
   const module = owner === undefined ? undefined : context.program.queries.moduleForId(owner.id);
   if (module === undefined || owner === undefined) return undefined;
@@ -85,10 +85,7 @@ function moduleStatePointer(
   module: MojoAnalyzedModule,
   modulePath: readonly string[],
 ): MojoExpression {
-  const cell: MojoExpression = Object.freeze({
-    kind: "path",
-    path: mojoQualifiedModuleMember(context, modulePath, module.cellName),
-  });
+  const cell = mojoModuleMemberExpression(context, modulePath, module.cellName);
   return Object.freeze({
     kind: "method-call",
     receiver: cell,

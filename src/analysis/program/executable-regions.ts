@@ -66,6 +66,8 @@ import {
   selectReturnValueTransfer,
 } from "./executable-region-flow.js";
 import { analyzeCall, analyzeElement, analyzeProperty } from "./executable-region-operations.js";
+import type { MojoLifecycleAnalysis } from "../lifecycle/model.js";
+import type { MojoValueOwnership } from "../../target-model/lifecycle/model.js";
 
 export interface MojoExecutableRegionAnalysisInput {
   readonly root: Node;
@@ -76,6 +78,8 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly source: TargetSourceProgram;
   readonly providerSemantics: MojoProviderSemantics;
   readonly projectTypes: MojoProjectTypeCatalog;
+  readonly lifecycle: MojoLifecycleAnalysis;
+  readonly valueOwnership: (expression: Node) => MojoValueOwnership;
   readonly sourceProfiles: MojoSourceProfileRegistry;
   readonly modules: MojoSourceModuleCatalog;
   readonly jsEnabled: boolean;

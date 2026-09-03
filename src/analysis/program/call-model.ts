@@ -6,13 +6,14 @@ import type {
   MojoTargetGenericArgument,
   MojoTargetTypeRef,
 } from "../../target-model/types/model.js";
+import type { MojoArgumentDisposition } from "../representations/model.js";
 
 export interface MojoAnalyzedCallArgument {
   readonly expression: Node;
   readonly sourceType: MojoTargetTypeRef;
   readonly parameterType: MojoTargetTypeRef;
   readonly conversion: MojoValueConversion;
-  readonly passing: "plain" | "consume";
+  readonly disposition: MojoArgumentDisposition;
   readonly spread: boolean;
   readonly position: MojoCallArgumentPosition;
   readonly nativeName?: string;
@@ -30,6 +31,26 @@ export type MojoCallableArgumentSlot =
     };
 
 export type MojoCallSelection =
+  | {
+      readonly kind: "source-intrinsic";
+      readonly operation:
+        | "comptime-value"
+        | "comptime-type"
+        | "comptime-condition"
+        | "comptime-iteration"
+        | "copy"
+        | "materialize"
+        | "write-only-reference"
+        | "read-write-reference"
+        | "read-only-reference"
+        | "shared-borrow"
+        | "mutable-borrow"
+        | "move"
+        | "js-string";
+      readonly operand?: Node;
+      readonly value?: MojoTargetGenericArgument;
+      readonly resultType: MojoTargetTypeRef;
+    }
   | {
       readonly kind: "explicit-safety";
       readonly form: "remaining-block";
@@ -159,6 +180,7 @@ export type MojoCallSelection =
       readonly receiver?: Node;
       readonly sourceReceiverType?: MojoTargetTypeRef;
       readonly receiverConversion?: MojoValueConversion;
+      readonly receiverDisposition?: MojoArgumentDisposition;
       readonly propagatedCallbackParameterIndex?: number;
       readonly resultConversion: MojoValueConversion;
       readonly optionalChain: boolean;

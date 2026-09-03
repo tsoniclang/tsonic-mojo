@@ -9,7 +9,7 @@ import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 import { allocateMojoSyntheticName } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import type { MojoValuePlanner } from "../expressions/support.js";
-import { registerMojoTypeImports } from "../types/render.js";
+import { registerMojoTypeImports } from "../types/imports.js";
 
 export function planMojoBindingPattern(
   selection: MojoBindingPatternSelection,

@@ -13,11 +13,14 @@ import type {
 import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
 import { resolveMojoTargetType } from "../../policy/types/resolution.js";
 import type { MojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
+import { mojoGenericParameterReference } from "../../target-model/types/constructors.js";
+import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 
 export interface MojoInterfaceAnalysisInput {
   readonly source: TargetSourceProgram;
   readonly providerSemantics: MojoProviderSemantics;
   readonly projectTypes: MojoProjectTypeCatalog;
+  readonly lifecycle: MojoLifecycleResolver;
   readonly sourceProfiles: MojoSourceProfileRegistry;
   readonly jsEnabled: boolean;
   readonly sourceCallableErrorType?: MojoTargetTypeRef;
@@ -50,8 +53,7 @@ export function analyzeMojoInterface(
     append(input, "MOJO_INTERFACE_HERITAGE_UNSUPPORTED", "Interface heritage requires a sealed Mojo object-representation plan.", declaration);
     return undefined;
   }
-  const targetArguments = definition.typeParameterNames.map((name) =>
-    Object.freeze({ kind: "type-parameter" as const, name }));
+  const targetArguments = definition.typeParameters.map(mojoGenericParameterReference);
   const targetType = input.projectTypes.targetTypeForDefinition(definition, targetArguments);
   if (targetType === undefined) {
     append(input, "MOJO_INTERFACE_TYPE_NOT_CLOSED", "Interface generic parameters do not close its exact Mojo carrier.", declaration);
@@ -86,7 +88,7 @@ export function analyzeMojoInterface(
         keyType: resolvedKey,
         valueType: resolvedValue,
         ownerType: targetType,
-        ownerTypeParameters: Object.freeze([...definition.typeParameterNames]),
+        ownerTypeParameters: definition.typeParameters,
         readonly: ast.hasModifierKind(member, "readonly"),
       });
       indexSignatures.push(indexSignature);
@@ -133,7 +135,7 @@ export function analyzeMojoInterface(
       name,
       type: resolved.type,
       ownerType: targetType,
-      ownerTypeParameters: Object.freeze([...definition.typeParameterNames]),
+      ownerTypeParameters: definition.typeParameters,
       optional: ast.questionToken(member) !== undefined,
     });
     fields.push(field);
@@ -145,6 +147,7 @@ export function analyzeMojoInterface(
     source,
     providerSemantics: input.providerSemantics,
     projectTypes: input.projectTypes,
+    lifecycle: input.lifecycle,
     sourceProfiles: input.sourceProfiles,
     jsEnabled: input.jsEnabled,
     ...(input.sourceCallableErrorType === undefined
@@ -152,11 +155,6 @@ export function analyzeMojoInterface(
       : { sourceCallableErrorType: input.sourceCallableErrorType }),
     declaration,
     sourceFile: input.sourceFile,
-    name: input.name,
-    body: declaration,
-    allocateLocalName: input.createNameAllocator(),
-    bindingNames: input.bindingNames,
-    bindingTypes: input.bindingTypes,
     diagnostics: input.diagnostics,
   });
   if (typeParameters === undefined) return undefined;

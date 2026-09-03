@@ -11,6 +11,10 @@ import type {
 } from "../program/model.js";
 import { analyzeArguments } from "./call-arguments.js";
 import type { MojoCallAnalysis, MojoCallAnalysisContext } from "./calls.js";
+import {
+  mojoParameterArgumentDisposition,
+  mojoParameterConvention,
+} from "../representations/index.js";
 
 export function analyzeProjectCall(
   sourceCall: ResolvedSourceCallInfo,
@@ -44,20 +48,27 @@ export function analyzeProjectCall(
     typeSubstitutions.set(parameter.name, targetType);
     genericArguments.push(Object.freeze({ kind: "type", type: targetType }));
   }
-  const substitutions = { types: typeSubstitutions, values: new Map(), packs: new Map() };
+  const substitutions = {
+    types: typeSubstitutions,
+    values: new Map(),
+    origins: new Map(),
+    packs: new Map(),
+  };
   const parameterTypes = function_.parameters.map((parameter) =>
     substituteMojoTargetType(
       parameter.omissionKind === "rest" ? parameter.type : parameter.callType,
       substitutions,
     ));
   const targetArguments = function_.parameters.map((parameter) => Object.freeze({
-    convention: parameter.convention,
+    convention: mojoParameterConvention(parameter.disposition),
     position: "positional-or-keyword" as const,
     variadic: parameter.omissionKind === "rest",
     ...(parameter.omissionKind === "rest"
       ? { variadicCollectionType: substituteMojoTargetType(parameter.callType, substitutions) }
       : {}),
-    passing: parameter.passing,
+    passing: mojoParameterArgumentDisposition(parameter.disposition).kind === "transfer"
+      ? "consume" as const
+      : "plain" as const,
   }));
   const arguments_ = analyzeArguments(
     sourceCall,
@@ -65,6 +76,9 @@ export function analyzeProjectCall(
     targetArguments,
     resolve,
     context.expressionTypes,
+    context.valueRefinements,
+    context.lifecycle,
+    context.valueOwnership,
     undefined,
     (expression) => context.source.ast.is.IsObjectLiteralExpression(expression),
   );

@@ -8,8 +8,8 @@ import {
   appendMojoPlanningDiagnostic,
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
-import { registerMojoTypeImports } from "../types/render.js";
-import { withMojoValue } from "./value-plan.js";
+import { registerMojoTypeImports } from "../types/imports.js";
+import { consumeMojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 
 export function adaptMojoValueErrorDomain(
@@ -75,9 +75,7 @@ export function adaptMojoValueErrorDomain(
   }
   const resultName = allocateMojoSyntheticName(context, "raising_result");
   const result = Object.freeze({ kind: "path" as const, path: resultName });
-  const resultValue: MojoExpression = context.program.queries.ownedTemporaryPassing(resultType) === "consume"
-    ? Object.freeze({ kind: "consume", expression: result })
-    : result;
+  const resultValue = consumeMojoValue(result, resultType, context.program.lifecycle);
   return withMojoValue(Object.freeze([
     Object.freeze({ kind: "variable" as const, name: resultName, type: resultType }),
     Object.freeze({

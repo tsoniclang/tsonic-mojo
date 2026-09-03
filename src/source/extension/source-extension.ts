@@ -1,14 +1,30 @@
 import { sourceSemanticsExtensionId } from "@tsonic/tsts";
-import type { CompilerExtension, ExtensionInitializeContext } from "@tsonic/tsts";
+import type {
+  CompilerExtension,
+  ExtensionInitializeContext,
+  ProviderExportDeclaration,
+  SourceAnalysisContext,
+} from "@tsonic/tsts";
 import {
   createSourceSemanticsVirtualModuleProvider,
   providerExportDeclarationsForSemanticsModule,
 } from "@tsonic/source-core/extension";
 import { mojoSourceSemanticsModules } from "../profiles/source-modules.js";
 import {
+  analyzeMojoSourceValueOperations,
+} from "../semantics/analysis/operations.js";
+import {
+  mojoSourceOperationDeclarations,
+} from "../semantics/declarations/operations.js";
+import {
+  mojoSourceOriginDeclarations,
+} from "../semantics/declarations/origins.js";
+import {
+  mojoLangModule,
   mojoSourceProviderVersion,
   mojoSourceSemanticsExtensionId,
   mojoSourceVirtualModulesProviderId,
+  mojoTypesModule,
 } from "../semantics/identity.js";
 
 export function createMojoSourceSemanticsExtension(
@@ -31,7 +47,17 @@ export function createMojoSourceSemanticsExtension(
           displayName: "Tsonic Mojo source alias modules",
           virtualDirectory: "mojo-source",
           modules: mojoSourceSemanticsModules(),
-          exportsForModule: providerExportDeclarationsForSemanticsModule,
+          exportsForModule(module): readonly ProviderExportDeclaration[] {
+            return Object.freeze([
+              ...providerExportDeclarationsForSemanticsModule(module),
+              ...(module.moduleSpecifier === mojoLangModule
+                ? mojoSourceOperationDeclarations()
+                : []),
+              ...(module.moduleSpecifier === mojoTypesModule
+                ? mojoSourceOriginDeclarations()
+                : []),
+            ]);
+          },
           evidenceMessage:
             "Mojo target supplies source alias semantics as a complete virtual module.",
           diagnostics: Object.freeze({
@@ -49,6 +75,9 @@ export function createMojoSourceSemanticsExtension(
       for (const provider of additionalProviders) {
         context.registerSourceDeclarationProvider(provider);
       }
+    },
+    analyzeSource(context: SourceAnalysisContext): void {
+      analyzeMojoSourceValueOperations(context);
     },
   });
 }

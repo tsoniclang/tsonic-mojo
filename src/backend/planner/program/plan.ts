@@ -10,13 +10,12 @@ import type {
 } from "../../target-ast/index.js";
 import {
   createMojoPlanningContext,
-  registerMojoModuleImport,
 } from "./context.js";
 import type {
   MojoOutputPlanningContext,
 } from "./context.js";
 import type {
-  MojoAnalyzedFunction,
+  MojoAnalyzedTopLevelFunction,
   MojoTargetProgram,
 } from "../../../analysis/program/model.js";
 import { normalizeMojoIdentifier } from "../../../target-model/names/identifiers.js";
@@ -28,7 +27,10 @@ import {
   planMojoProjectClass,
   planMojoProjectEnum,
   planMojoProjectFunction,
+  planMojoProjectTypeAlias,
 } from "../declarations/project.js";
+import { planMojoPhysicalTypeAliases } from "../types/aliases.js";
+import { normalizeMojoDeclarations } from "../../normalization/index.js";
 
 export function planMojoOutput(
   input: MojoOutputPlanningContext,
@@ -69,9 +71,6 @@ function planSourceModule(
   | { readonly kind: "resolved"; readonly source: MojoOutputSourceFile }
   | { readonly kind: "rejected"; readonly diagnostics: readonly TargetDiagnostic[] } {
   const context = createMojoPlanningContext(program, module);
-  for (const dependency of module.dependencies) {
-    registerMojoModuleImport(context, dependency.target.modulePath);
-  }
   const declarations: MojoDeclaration[] = [];
   const analyzedModule = program.queries.moduleForId(module.id);
   if (analyzedModule === undefined) {
@@ -119,6 +118,10 @@ function planSourceModule(
       declarations.push(...planMojoInterface(declaration, context));
       continue;
     }
+    if (declaration.kind === "type-alias") {
+      declarations.push(planMojoProjectTypeAlias(declaration, context));
+      continue;
+    }
     const diagnosticCount = context.diagnostics.length;
     const planned = planMojoProjectFunction(declaration, context);
     if (planned !== undefined) {
@@ -134,6 +137,11 @@ function planSourceModule(
   if (context.diagnostics.length > 0) {
     return Object.freeze({ kind: "rejected", diagnostics: Object.freeze(context.diagnostics) });
   }
+  const plannedDeclarations = normalizeMojoDeclarations([
+    ...declarations,
+    ...context.syntheticDeclarations,
+  ]);
+  const physicalTypeAliases = planMojoPhysicalTypeAliases(plannedDeclarations, context);
   return Object.freeze({
     kind: "resolved",
     source: Object.freeze({
@@ -141,7 +149,9 @@ function planSourceModule(
       module: Object.freeze({
         modulePath: module.modulePath,
         imports: sortedImports(context.imports.values()),
-        declarations: Object.freeze([...declarations, ...context.syntheticDeclarations]),
+        typeAliases: Object.freeze([...context.typeAliases.values()].sort((left, right) =>
+          left.typeKey.localeCompare(right.typeKey, "en"))),
+        declarations: Object.freeze([...physicalTypeAliases, ...plannedDeclarations]),
       }),
     }),
   });
@@ -163,6 +173,7 @@ function planPackageInitializers(
         module: Object.freeze({
           modulePath,
           imports: Object.freeze(imports),
+          typeAliases: Object.freeze([]),
           declarations: Object.freeze([]),
         }),
       }));
@@ -235,7 +246,7 @@ function planBinaryEntry(
   const exportedMain = entry.exports.find((exported) => exported.exportName === "main");
   const function_ = exportedMain === undefined
     ? undefined
-    : program.declarations.find((declaration): declaration is MojoAnalyzedFunction =>
+    : program.declarations.find((declaration): declaration is MojoAnalyzedTopLevelFunction =>
       declaration.kind === "function" && declaration.declaration === exportedMain.declaration);
   if (exportedMain === undefined || function_ === undefined ||
     function_.parameters.length !== 0 || function_.typeParameters.length !== 0 ||
@@ -247,7 +258,7 @@ function planBinaryEntry(
     ));
     return undefined;
   }
-  const importedName = "__tsonic_entry";
+  const importedName = "_entry";
   const analyzedEntry = program.queries.moduleForId(entry.id);
   if (analyzedEntry === undefined) {
     diagnostics.push(planningDiagnostic(
@@ -257,7 +268,7 @@ function planBinaryEntry(
     ));
     return undefined;
   }
-  const initializerName = "__tsonic_initialize_entry";
+  const initializerName = "_initialize_entry";
   const importedSymbols = [
     Object.freeze({ name: function_.name, alias: importedName }),
     ...(analyzedEntry.runtimeInitializationRequired
@@ -268,7 +279,7 @@ function planBinaryEntry(
   const sourceEntryRaises = function_.raises || analyzedEntry.raises;
   const binaryRaises = sourceEntryRaises ||
     program.binaryEpilogues.some((epilogue) => epilogue.raises === true);
-  const bootstrapName = "__tsonic_async_entry";
+  const bootstrapName = "_async_entry";
   const call = (path: string) => Object.freeze({
     kind: "call" as const,
     callee: Object.freeze({ kind: "path" as const, path }),
@@ -339,7 +350,8 @@ function planBinaryEntry(
           modulePath,
         })),
     ]),
-    declarations: Object.freeze([
+    typeAliases: Object.freeze([]),
+    declarations: normalizeMojoDeclarations([
       ...(bootstrap === undefined ? [] : [bootstrap]),
       Object.freeze({
         kind: "function" as const,
@@ -384,7 +396,7 @@ function binarySourceBoundaryStatements(
   raises: boolean,
 ): readonly MojoStatement[] {
   if (!raises) return statements;
-  const errorName = "__tsonic_entry_error";
+  const errorName = "_entry_error";
   const error = Object.freeze({ kind: "path" as const, path: errorName });
   return Object.freeze([Object.freeze({
     kind: "try" as const,
@@ -415,8 +427,8 @@ function binaryEpilogueStatements(program: MojoTargetProgram): readonly MojoStat
     expression: Object.freeze({
       kind: "call" as const,
       callee: Object.freeze({
-        kind: "path" as const,
-        path: [...epilogue.modulePath, epilogue.name].join("."),
+        kind: "qualified-path" as const,
+        segments: Object.freeze([...epilogue.modulePath, epilogue.name]),
       }),
       arguments: Object.freeze([]),
     }),

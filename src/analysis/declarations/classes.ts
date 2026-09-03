@@ -11,6 +11,7 @@ import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
 import type { MojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
+import { mojoGenericParameterReference } from "../../target-model/types/constructors.js";
 import { resolveMojoTargetType } from "../../policy/types/resolution.js";
 import {
   analyzeMojoFunctionSignature,
@@ -22,11 +23,13 @@ import type {
   MojoAnalyzedClassField,
   MojoAnalyzedFunction,
 } from "../program/model.js";
+import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 
 export interface MojoClassAnalysisInput {
   readonly source: TargetSourceProgram;
   readonly providerSemantics: MojoProviderSemantics;
   readonly projectTypes: MojoProjectTypeCatalog;
+  readonly lifecycle: MojoLifecycleResolver;
   readonly sourceProfiles: MojoSourceProfileRegistry;
   readonly jsEnabled: boolean;
   readonly sourceCallableErrorType?: MojoTargetTypeRef;
@@ -70,9 +73,8 @@ export function analyzeMojoClass(
     return undefined;
   }
 
-  const typeParameterTypes = definition.typeParameterNames.map((name) =>
-    Object.freeze({ kind: "type-parameter" as const, name }));
-  const targetType = input.projectTypes.targetTypeForDefinition(definition, typeParameterTypes);
+  const targetArguments = definition.typeParameters.map(mojoGenericParameterReference);
+  const targetType = input.projectTypes.targetTypeForDefinition(definition, targetArguments);
   if (targetType === undefined) {
     append(input, "MOJO_CLASS_TYPE_NOT_CLOSED", "Class generic parameters do not close its exact Mojo carrier.", declaration);
     return undefined;
@@ -105,7 +107,11 @@ export function analyzeMojoClass(
       const resolved = resolveType(input, selected, ast.typeNode(member), member);
       if (resolved === undefined) continue;
       const sourceName = ast.text(nameNode);
-      const name = classNames(sourceName);
+      const privateMember = ast.hasModifierKind(member, "private") ||
+        ast.hasModifierKind(member, "protected") || ast.is.IsPrivateIdentifier(nameNode);
+      const name = classNames(privateMember
+        ? `_${sourceName.replace(/^#/u, "")}`
+        : sourceName);
       input.bindingNames.set(member, name);
       input.bindingTypes.set(member, resolved);
       fields.push(Object.freeze({
@@ -115,12 +121,9 @@ export function analyzeMojoClass(
         name,
         type: resolved,
         ownerType: targetType,
-        ownerTypeParameters: Object.freeze([...definition.typeParameterNames]),
+        ownerTypeParameters: definition.typeParameters,
         ...(initializer === undefined ? {} : { initializer }),
-        visibility: ast.hasModifierKind(member, "private") ||
-            ast.hasModifierKind(member, "protected") || ast.is.IsPrivateIdentifier(nameNode)
-          ? "private"
-          : "public",
+        visibility: privateMember ? "private" : "public",
       }));
       continue;
     }
@@ -136,7 +139,11 @@ export function analyzeMojoClass(
         continue;
       }
       const localNames = input.createNameAllocator();
-      const name = classNames(selectedName);
+      const privateMember = ast.hasModifierKind(member, "private") ||
+        ast.hasModifierKind(member, "protected") || ast.is.IsPrivateIdentifier(nameNode);
+      const name = classNames(privateMember
+        ? `_${selectedName.replace(/^#/u, "")}`
+        : selectedName);
       const method = analyzeMojoFunctionSignature({
         ...signatureInput(input, member, body, name, localNames),
         kind: "method",
@@ -225,6 +232,7 @@ function signatureInput(
     source: input.source,
     providerSemantics: input.providerSemantics,
     projectTypes: input.projectTypes,
+    lifecycle: input.lifecycle,
     sourceProfiles: input.sourceProfiles,
     jsEnabled: input.jsEnabled,
     ...(input.sourceCallableErrorType === undefined

@@ -26,6 +26,7 @@ import {
   sourceVisibleMojoGenericParameters,
 } from "./types.js";
 import type { MojoCompilerTypeProjectionContext } from "./types.js";
+import { mojoLifecycleRoleForCompilerPath } from "../classification/lifecycle.js";
 import {
   canonicalExportMappings,
   compareText,
@@ -177,9 +178,7 @@ function projectTypeDeclaration(
   const typeParameters = declaration.kind === "struct"
     ? projectMojoGenericParameters(declaration.genericParameters, context)
     : Object.freeze([]);
-  const projectedConformances = declaration.parentTraits
-    .filter(({ path }) => path === undefined || !implicitMojoConformancePaths.has(path))
-    .map((trait) => {
+  const projectedConformances = declaration.parentTraits.map((trait) => {
       const projected = projectMojoCompilerType({
         kind: "named",
         name: trait.name,
@@ -189,7 +188,8 @@ function projectTypeDeclaration(
       return Object.freeze({ trait, projected });
     });
   const heritage = projectedConformances
-    .filter(({ trait }) => trait.condition === undefined)
+    .filter(({ trait }) => trait.condition === undefined &&
+      (trait.path === undefined || !implicitMojoConformancePaths.has(trait.path)))
     .map(({ projected }) => Object.freeze({
       kind: declaration.kind === "struct" ? "implements" as const : "extends" as const,
       type: projected.source,
@@ -241,6 +241,9 @@ function projectTypeDeclaration(
           conformances: Object.freeze(projectedConformances.map(({ trait, projected }) => Object.freeze({
             trait: projected.target,
             ...(trait.condition === undefined ? {} : { condition: trait.condition }),
+            ...(mojoLifecycleRoleForCompilerPath(trait.path) === undefined
+              ? {}
+              : { lifecycleRole: mojoLifecycleRoleForCompilerPath(trait.path)! }),
           }))),
         }),
   }));

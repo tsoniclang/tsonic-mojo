@@ -6,11 +6,11 @@ import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 import {
   allocateMojoSyntheticName,
-  registerMojoModuleImport,
+  mojoModuleMemberExpression,
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
-import { registerMojoTypeImports } from "../types/render.js";
-import { mojoValue, withMojoValue } from "./value-plan.js";
+import { registerMojoTypeImports } from "../types/imports.js";
+import { consumeMojoValue, mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 
 export type MojoNestedValueConverter = (
@@ -27,7 +27,6 @@ export function convertMojoCollection(
 ): MojoValuePlan | undefined {
   if (conversion.elementConversion?.kind === "identity") {
     if (conversion.source === "list" && conversion.target === "js-array") {
-      registerMojoModuleImport(context, ["tsonic_js"]);
       registerMojoTypeImports(conversion.targetType, context);
       return withMojoValue(plan.before, Object.freeze({
         kind: "construct",
@@ -107,11 +106,12 @@ export function convertMojoCollection(
     before.push(Object.freeze({ kind: "discard", expression: source }));
   }
   if (conversion.target === "list") return withMojoValue(before, result);
-  registerMojoModuleImport(context, ["tsonic_js"]);
   return withMojoValue(before, Object.freeze({
     kind: "construct",
     type: conversion.targetType,
-    arguments: Object.freeze([{ value: Object.freeze({ kind: "consume", expression: result }) }]),
+    arguments: Object.freeze([{
+      value: consumeMojoValue(result, resultListType, context.program.lifecycle),
+    }]),
   }));
 }
 
@@ -305,15 +305,59 @@ export function convertMojoUnion(
   context: MojoPlanningContext,
   convertNested: MojoNestedValueConverter,
 ): MojoValuePlan | undefined {
-  registerMojoTypeImports(conversion.sourceType, context);
-  registerMojoTypeImports(conversion.targetType, context);
+  return convertMojoUnionMembers(
+    plan,
+    conversion.sourceType,
+    conversion.targetType,
+    conversion.members.map((member) => Object.freeze({
+      sourceType: member.sourceType,
+      conversion: Object.freeze({
+        kind: "union-inject" as const,
+        targetType: conversion.targetType,
+        memberType: member.targetType,
+        valueConversion: member.conversion,
+      }),
+    })),
+    context,
+    convertNested,
+  );
+}
+
+export function convertMojoNarrowedUnion(
+  plan: MojoValuePlan,
+  conversion: Extract<MojoValueConversion, { readonly kind: "narrowed-union-map" }>,
+  context: MojoPlanningContext,
+  convertNested: MojoNestedValueConverter,
+): MojoValuePlan | undefined {
+  return convertMojoUnionMembers(
+    plan,
+    conversion.sourceType,
+    conversion.targetType,
+    conversion.members,
+    context,
+    convertNested,
+  );
+}
+
+function convertMojoUnionMembers(
+  plan: MojoValuePlan,
+  sourceType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>,
+  targetType: MojoTargetTypeRef,
+  members: readonly {
+    readonly sourceType: MojoTargetTypeRef;
+    readonly conversion: MojoValueConversion;
+  }[],
+  context: MojoPlanningContext,
+  convertNested: MojoNestedValueConverter,
+): MojoValuePlan | undefined {
+  registerMojoTypeImports(sourceType, context);
+  registerMojoTypeImports(targetType, context);
   const sourceName = allocateMojoSyntheticName(context, "union_source");
   const resultName = allocateMojoSyntheticName(context, "union_result");
   const source: MojoExpression = Object.freeze({ kind: "path", path: sourceName });
   const result: MojoExpression = Object.freeze({ kind: "path", path: resultName });
-  const branches = conversion.members.map((member) => {
+  const branches = members.map((member) => {
     registerMojoTypeImports(member.sourceType, context);
-    registerMojoTypeImports(member.targetType, context);
     const converted = convertNested(mojoValue(Object.freeze({
       kind: "type-element",
       receiver: source,
@@ -335,11 +379,7 @@ export function convertMojoUnion(
               kind: "assignment" as const,
               operator: "=",
               left: result,
-              right: Object.freeze({
-                kind: "construct" as const,
-                type: conversion.targetType,
-                arguments: Object.freeze([{ value: converted.value }]),
-              }),
+              right: converted.value,
             }),
           ]),
         });
@@ -360,10 +400,10 @@ export function convertMojoUnion(
     Object.freeze({
       kind: "variable",
       name: sourceName,
-      type: conversion.sourceType,
+      type: sourceType,
       initializer: plan.value,
     }),
-    Object.freeze({ kind: "variable", name: resultName, type: conversion.targetType }),
+    Object.freeze({ kind: "variable", name: resultName, type: targetType }),
     ...selectedStatements,
   ]), result);
 }
@@ -415,10 +455,9 @@ export function planMojoTruthiness(
       right: Object.freeze({ kind: "number-literal", text: "0" }),
     });
     case "float":
-      registerMojoModuleImport(context, ["tsonic_js"]);
       return Object.freeze({
         kind: "call",
-        callee: Object.freeze({ kind: "path", path: "tsonic_js.js_truthy_number" }),
+        callee: mojoModuleMemberExpression(context, ["tsonic_js"], "js_truthy_number"),
         arguments: Object.freeze([{ value: expression }]),
       });
     case "string": return Object.freeze({
@@ -432,10 +471,9 @@ export function planMojoTruthiness(
       right: Object.freeze({ kind: "number-literal", text: "0" }),
     });
     case "dynamic":
-      registerMojoModuleImport(context, ["tsonic_js"]);
       return Object.freeze({
         kind: "call",
-        callee: Object.freeze({ kind: "path", path: "tsonic_js.js_truthy" }),
+        callee: mojoModuleMemberExpression(context, ["tsonic_js"], "js_truthy"),
         arguments: Object.freeze([{ value: expression }]),
       });
     case "optional": {

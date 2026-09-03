@@ -16,11 +16,11 @@ import type {
   MojoStatement,
   MojoStructDeclaration,
 } from "../../target-ast/index.js";
+import { mojoFieldwiseInitDecorators } from "../../target-ast/index.js";
 import type { MojoPlanningContext } from "./context.js";
 import {
   allocateMojoSyntheticName,
-  mojoQualifiedModuleMember,
-  registerMojoModuleImport,
+  mojoModuleMemberExpression,
   registerMojoSymbolImport,
   withMojoErrorType,
 } from "./context.js";
@@ -30,11 +30,13 @@ import {
   planMojoValue,
 } from "../expressions/value.js";
 import { mojoModuleBindingSlot, mojoModuleStatePointerExpression } from "../bindings/module-bindings.js";
-import { registerMojoTypeImports } from "../types/render.js";
+import { registerMojoTypeImports } from "../types/imports.js";
 import { planMojoStatementRegion } from "../statements/structured.js";
 import { planMojoResourceScope } from "../statements/resources.js";
 import { adaptMojoValueErrorDomain } from "../expressions/error-domains.js";
 import { mojoValue } from "../expressions/value-plan.js";
+import { planMojoProjectFunction } from "../declarations/project.js";
+import { planMojoCompileTimeInitializer } from "../compile-time/values.js";
 
 export function planMojoModuleState(
   program: MojoTargetProgram,
@@ -42,8 +44,11 @@ export function planMojoModuleState(
   module: MojoAnalyzedModule,
   context: MojoPlanningContext,
 ): readonly MojoDeclaration[] | undefined {
-  const comptimeBindings = module.bindings.filter((binding) => binding.storage === "comptime");
-  const cellBindings = module.bindings.filter((binding) => binding.storage === "cell");
+  const comptimeBindings = module.bindings.filter((binding) => binding.disposition.kind === "comptime");
+  const directFunctionBindings = module.bindings.filter((binding) =>
+    binding.disposition.kind === "direct-function");
+  const cellBindings = module.bindings.filter((binding) =>
+    binding.disposition.kind === "immutable-runtime" || binding.disposition.kind === "live-cell");
   const declarations: MojoDeclaration[] = [];
   for (const binding of comptimeBindings) {
     const diagnosticCount = context.diagnostics.length;
@@ -60,22 +65,38 @@ export function planMojoModuleState(
     }
     declarations.push(declaration);
   }
+  for (const binding of directFunctionBindings) {
+    const diagnosticCount = context.diagnostics.length;
+    const declaration = planDirectFunctionBinding(binding, context);
+    if (declaration === undefined) {
+      appendPlanningFailure(
+        context,
+        diagnosticCount,
+        "MOJO_DIRECT_FUNCTION_BINDING_NOT_PLANNED",
+        `Top-level callable '${binding.sourceName}' has no exact direct Mojo function plan.`,
+        binding.initializer,
+      );
+      return undefined;
+    }
+    declarations.push(declaration);
+  }
   if (!module.runtimeInitializationRequired && cellBindings.length === 0) {
     return Object.freeze(declarations);
   }
 
-  const stateType = moduleStateType(definition, module);
-  const lockType = namedType("mojo.std.utils.BlockingSpinLock", ["std", "utils"], "BlockingSpinLock");
-  const scopedLockType = namedType("mojo.std.utils.BlockingScopedLock", ["std", "utils"], "BlockingScopedLock");
-  registerMojoTypeImports(stateType, context);
-  registerMojoTypeImports(lockType, context);
-  registerMojoTypeImports(scopedLockType, context);
-  registerMojoModuleImport(context, ["tsonic_runtime"]);
-  registerMojoSymbolImport(context, ["std", "collections"], "Optional");
-
-  declarations.push(moduleStateStruct(module, cellBindings, lockType));
-  declarations.push(moduleStateFactory(module, stateType, cellBindings, lockType));
-  declarations.push(moduleStateCell(module, definition.id));
+  let scopedLockType: MojoTargetTypeRef | undefined;
+  if (module.initializationStateRequired) {
+    const stateType = moduleStateType(definition, module);
+    const lockType = namedType("mojo.std.utils.BlockingSpinLock", ["std", "utils"], "BlockingSpinLock");
+    scopedLockType = namedType("mojo.std.utils.BlockingScopedLock", ["std", "utils"], "BlockingScopedLock");
+    registerMojoTypeImports(stateType, context);
+    registerMojoTypeImports(lockType, context);
+    registerMojoTypeImports(scopedLockType, context);
+    registerMojoSymbolImport(context, ["std", "collections"], "Optional");
+    declarations.push(moduleStateStruct(module, cellBindings, lockType));
+    declarations.push(moduleStateFactory(module, stateType, cellBindings, lockType));
+    declarations.push(moduleStateCell(module, definition.id));
+  }
   const diagnosticCount = context.diagnostics.length;
   const initializer = planModuleInitializer(program, definition, module, scopedLockType, context);
   if (initializer === undefined) {
@@ -116,7 +137,7 @@ function moduleStateStruct(
       })),
     ]),
     methods: Object.freeze([]),
-    decorators: Object.freeze(["fieldwise_init"]),
+    decorators: mojoFieldwiseInitDecorators,
   });
 }
 
@@ -175,11 +196,32 @@ function planModuleInitializer(
   program: MojoTargetProgram,
   definition: MojoSourceModuleDefinition,
   module: MojoAnalyzedModule,
-  scopedLockType: MojoTargetTypeRef,
+  scopedLockType: MojoTargetTypeRef | undefined,
   context: MojoPlanningContext,
 ): MojoFunctionDeclaration | undefined {
   if (module.errorType !== undefined) registerMojoTypeImports(module.errorType, context);
   const moduleContext = withMojoErrorType(context, module.errorType);
+  const dependencyInitialization = planDependencyInitialization(
+    program,
+    definition,
+    module,
+    moduleContext,
+  );
+  if (dependencyInitialization === undefined) return undefined;
+  if (!module.initializationStateRequired) {
+    return Object.freeze({
+      kind: "function",
+      name: module.initializeName,
+      genericParameters: Object.freeze([]),
+      parameters: Object.freeze([]),
+      resultType: Object.freeze({ kind: "unit" }),
+      asynchronous: module.asynchronous,
+      raises: module.raises,
+      ...(module.errorType === undefined ? {} : { errorType: module.errorType }),
+      statements: dependencyInitialization,
+    });
+  }
+  if (scopedLockType === undefined) return undefined;
   const stateName = allocateMojoSyntheticName(context, "module_state");
   const statePointer = mojoModuleStatePointerExpression(module, context);
   if (statePointer === undefined) {
@@ -196,47 +238,7 @@ function planModuleInitializer(
     kind: "postfix-deref" as const,
     expression: Object.freeze({ kind: "path" as const, path: stateName }),
   });
-  const initialization: MojoStatement[] = [];
-  for (const dependency of definition.dependencies) {
-    const target = program.queries.moduleForId(dependency.target.id);
-    if (target === undefined || !target.runtimeInitializationRequired) continue;
-    const call: MojoExpression = Object.freeze({
-      kind: "call" as const,
-      callee: Object.freeze({
-        kind: "path" as const,
-        path: mojoQualifiedModuleMember(context, dependency.target.modulePath, target.initializeName),
-      }),
-      arguments: Object.freeze([]),
-    });
-    const expression: MojoExpression = target.asynchronous
-        ? Object.freeze({
-            kind: "await",
-            expression: Object.freeze({
-              kind: "call",
-              callee: Object.freeze({
-                kind: "path",
-                path: target.raises
-                  ? "tsonic_runtime.create_raising_task"
-                  : "tsonic_runtime.create_task",
-              }),
-              arguments: Object.freeze([Object.freeze({ value: call })]),
-            }),
-          })
-        : call;
-    const adapted = adaptMojoValueErrorDomain(
-      mojoValue(expression),
-      Object.freeze({ kind: "unit" }),
-      target.errorType,
-      module.errorType,
-      module.sourceFile,
-      moduleContext,
-    );
-    if (adapted === undefined) return undefined;
-    initialization.push(...adapted.before);
-    if (adapted.value.kind !== "tuple" || adapted.value.elements.length !== 0) {
-      initialization.push(Object.freeze({ kind: "expression", expression: adapted.value }));
-    }
-  }
+  const initialization: MojoStatement[] = [...dependencyInitialization];
   const sourceInitialization = planModuleInitializationSteps(module, moduleContext, 0);
   if (sourceInitialization === undefined) return undefined;
   initialization.push(...sourceInitialization);
@@ -288,6 +290,56 @@ function planModuleInitializer(
       }),
     ]),
   });
+}
+
+function planDependencyInitialization(
+  program: MojoTargetProgram,
+  definition: MojoSourceModuleDefinition,
+  module: MojoAnalyzedModule,
+  context: MojoPlanningContext,
+): readonly MojoStatement[] | undefined {
+  const initialization: MojoStatement[] = [];
+  for (const dependency of definition.dependencies) {
+    const target = program.queries.moduleForId(dependency.target.id);
+    if (target === undefined || !target.runtimeInitializationRequired) continue;
+    const call: MojoExpression = Object.freeze({
+      kind: "call" as const,
+      callee: mojoModuleMemberExpression(
+        context,
+        dependency.target.modulePath,
+        target.initializeName,
+      ),
+      arguments: Object.freeze([]),
+    });
+    const expression: MojoExpression = target.asynchronous
+        ? Object.freeze({
+            kind: "await",
+            expression: Object.freeze({
+              kind: "call",
+              callee: mojoModuleMemberExpression(
+                context,
+                ["tsonic_runtime"],
+                target.raises ? "create_raising_task" : "create_task",
+              ),
+              arguments: Object.freeze([Object.freeze({ value: call })]),
+            }),
+          })
+        : call;
+    const adapted = adaptMojoValueErrorDomain(
+      mojoValue(expression),
+      Object.freeze({ kind: "unit" }),
+      target.errorType,
+      module.errorType,
+      module.sourceFile,
+      context,
+    );
+    if (adapted === undefined) return undefined;
+    initialization.push(...adapted.before);
+    if (adapted.value.kind !== "tuple" || adapted.value.elements.length !== 0) {
+      initialization.push(Object.freeze({ kind: "expression", expression: adapted.value }));
+    }
+  }
+  return Object.freeze(initialization);
 }
 
 function planModuleInitializationSteps(
@@ -356,7 +408,8 @@ function planModuleBindingInitialization(
   binding: MojoAnalyzedModuleBinding,
   context: MojoPlanningContext,
 ): readonly MojoStatement[] | undefined {
-  if (binding.storage !== "cell") return Object.freeze([]);
+  if (binding.disposition.kind !== "immutable-runtime" &&
+    binding.disposition.kind !== "live-cell") return Object.freeze([]);
   const value = planMojoValue(binding.initializer, context, binding.type);
   const slot = mojoModuleBindingSlot(binding, context);
   if (value === undefined || slot === undefined) return undefined;
@@ -373,11 +426,39 @@ function planModuleBindingInitialization(
   })]);
 }
 
+function planDirectFunctionBinding(
+  binding: MojoAnalyzedModuleBinding,
+  context: MojoPlanningContext,
+): MojoFunctionDeclaration | undefined {
+  if (binding.disposition.kind !== "direct-function") return undefined;
+  const selection = context.program.queries.callableExpressionSelection(
+    binding.disposition.expression,
+  );
+  if (selection === undefined) return undefined;
+  return planMojoProjectFunction(Object.freeze({
+    kind: "function" as const,
+    declaration: selection.expression,
+    sourceFile: binding.sourceFile,
+    name: binding.name,
+    typeParameters: Object.freeze([]),
+    parameters: selection.parameters,
+    resultType: selection.resultType,
+    body: selection.body,
+    asynchronous: false,
+    raises: selection.raises,
+    ...(selection.errorType === undefined ? {} : { errorType: selection.errorType }),
+  }), context);
+}
+
 function planComptimeBinding(
   binding: MojoAnalyzedModuleBinding,
   context: MojoPlanningContext,
 ): MojoComptimeDeclaration | undefined {
-  const value = planMojoValue(binding.initializer, context, binding.type);
+  const value = planMojoCompileTimeInitializer(
+    binding.initializer,
+    context,
+    planMojoValue,
+  );
   if (value === undefined || value.before.length !== 0) return undefined;
   registerMojoTypeImports(binding.type, context);
   return Object.freeze({

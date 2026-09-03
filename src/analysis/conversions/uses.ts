@@ -210,9 +210,9 @@ export function recordMojoExecutableRegionConversionUses(
         const property = left === undefined ? undefined : propertySelections.get(left);
         const element = left === undefined ? undefined : elementSelections.get(left);
         const leftType = property?.kind === "provider" || property?.kind === "provider-static"
-          ? property.sourceWriteType
+          ? property.targetWriteType
           : element?.kind === "provider"
-            ? element.sourceWriteType
+            ? element.targetWriteType
             : element?.writeType ??
               (left === undefined ? undefined : expressionTypes.get(left));
         if (leftType !== undefined) record(right, leftType);

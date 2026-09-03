@@ -184,8 +184,7 @@ export function executableRegionErrorTypes(
         }
         addNativeConversionError(
           (selection.receiverConversion !== undefined && mojoConversionRaises(selection.receiverConversion)) ||
-          (selection.readResultConversion !== undefined && mojoConversionRaises(selection.readResultConversion)) ||
-          (selection.writeValueConversion !== undefined && mojoConversionRaises(selection.writeValueConversion)),
+          (selection.readResultConversion !== undefined && mojoConversionRaises(selection.readResultConversion)),
         );
       } else if (selection?.kind === "provider-constant") {
         errors.push(...mojoOperationErrorTypes(selection.operation));
@@ -198,8 +197,7 @@ export function executableRegionErrorTypes(
           errors.push(...mojoOperationErrorTypes(selection.writeOperation));
         }
         addNativeConversionError(
-          (selection.readResultConversion !== undefined && mojoConversionRaises(selection.readResultConversion)) ||
-          (selection.writeValueConversion !== undefined && mojoConversionRaises(selection.writeValueConversion)),
+          selection.readResultConversion !== undefined && mojoConversionRaises(selection.readResultConversion),
         );
       }
     }
@@ -215,9 +213,7 @@ export function executableRegionErrorTypes(
       if (selection !== undefined) {
         addNativeConversionError(mojoConversionRaises(selection.indexConversion) ||
           (selection.readResultConversion !== undefined &&
-            mojoConversionRaises(selection.readResultConversion)) ||
-          (selection.kind === "provider" && selection.writeValueConversion !== undefined &&
-            mojoConversionRaises(selection.writeValueConversion)));
+            mojoConversionRaises(selection.readResultConversion)));
         if (selection.kind === "provider") {
           if (selection.readOperation !== undefined) {
             errors.push(...mojoOperationErrorTypes(selection.readOperation));

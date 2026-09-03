@@ -285,8 +285,7 @@ export function directMojoNodeErrorTypes(
       }
       addNativeConversionError(
         (selection.receiverConversion !== undefined && mojoConversionRaises(selection.receiverConversion)) ||
-        (selection.readResultConversion !== undefined && mojoConversionRaises(selection.readResultConversion)) ||
-        (selection.writeValueConversion !== undefined && mojoConversionRaises(selection.writeValueConversion)),
+        (selection.readResultConversion !== undefined && mojoConversionRaises(selection.readResultConversion)),
       );
     } else if (selection?.kind === "provider-constant") {
       errors.push(...mojoOperationErrorTypes(selection.operation));
@@ -300,9 +299,6 @@ export function directMojoNodeErrorTypes(
       }
       if (selection.readResultConversion !== undefined) {
         addNativeConversionError(mojoConversionRaises(selection.readResultConversion));
-      }
-      if (selection.writeValueConversion !== undefined) {
-        addNativeConversionError(mojoConversionRaises(selection.writeValueConversion));
       }
     }
   }
@@ -319,9 +315,7 @@ export function directMojoNodeErrorTypes(
       addNativeConversionError(
         mojoConversionRaises(selection.indexConversion) ||
         (selection.readResultConversion !== undefined &&
-          mojoConversionRaises(selection.readResultConversion)) ||
-        (selection.kind === "provider" && selection.writeValueConversion !== undefined &&
-          mojoConversionRaises(selection.writeValueConversion)),
+          mojoConversionRaises(selection.readResultConversion)),
       );
       if (selection.kind === "provider") {
         if (selection.readOperation !== undefined) {

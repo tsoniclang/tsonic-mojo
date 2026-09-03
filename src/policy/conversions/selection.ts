@@ -3,6 +3,7 @@ import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
 import type { MojoTruthinessConversion } from "../../target-model/conversions/model.js";
+import type { MojoValueConversionNarrowing } from "../../target-model/conversions/model.js";
 import { mojoTargetTypeKey } from "../../target-model/types/key.js";
 
 export type MojoConversionClassification =
@@ -26,7 +27,9 @@ export interface MojoConversionIndex {
   ): MojoValueConversion | undefined;
 }
 
-export function createMojoConversionIndex(): MojoConversionIndex {
+export function createMojoConversionIndex(
+  narrowingForExpression: (expression: Node) => MojoValueConversionNarrowing | undefined = () => undefined,
+): MojoConversionIndex {
   const byExpression = new WeakMap<Node, Map<string, MojoValueConversion>>();
   const finalizedCallableKeys = new WeakMap<Node, Set<string>>();
   let sealed = false;
@@ -37,7 +40,11 @@ export function createMojoConversionIndex(): MojoConversionIndex {
       expected: MojoTargetTypeRef,
     ): MojoConversionClassification {
       if (sealed) throw new Error("Mojo conversions cannot be recorded after analysis is sealed.");
-      const classified = classifyMojoValueConversion(actual, expected);
+      const classified = classifyMojoValueConversion(
+        actual,
+        expected,
+        narrowingForExpression(expression),
+      );
       if (classified.kind === "unsupported") return classified;
       const key = mojoTargetTypeKey(expected);
       const entries = byExpression.get(expression) ?? new Map<string, MojoValueConversion>();
@@ -91,7 +98,31 @@ export function createMojoConversionIndex(): MojoConversionIndex {
 export function classifyMojoValueConversion(
   actual: MojoTargetTypeRef,
   expected: MojoTargetTypeRef,
+  narrowing?: MojoValueConversionNarrowing,
 ): MojoConversionClassification {
+  if (narrowing !== undefined && mojoTargetTypeEquals(actual, narrowing.selectedType)) {
+    const members = narrowing.selectedType.members.map((sourceType) => {
+      const conversion = classifyMojoValueConversion(sourceType, expected);
+      return conversion.kind === "resolved"
+        ? Object.freeze({ sourceType, conversion: conversion.conversion })
+        : undefined;
+    });
+    if (members.length > 0 && members.every((member) => member !== undefined)) {
+      return {
+        kind: "resolved",
+        conversion: Object.freeze({
+          kind: "narrowed-union-map",
+          sourceType: narrowing.sourceType,
+          selectedType: narrowing.selectedType,
+          targetType: expected,
+          members: Object.freeze(members as readonly {
+            readonly sourceType: MojoTargetTypeRef;
+            readonly conversion: MojoValueConversion;
+          }[]),
+        }),
+      };
+    }
+  }
   if (mojoTargetTypeEquals(actual, expected)) {
     return { kind: "resolved", conversion: Object.freeze({ kind: "identity" }) };
   }

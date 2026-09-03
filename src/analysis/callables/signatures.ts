@@ -1,6 +1,6 @@
 import { argumentPassingFactKey } from "@tsonic/tsts";
 import type { Node, SourceFile, Type } from "@tsonic/tsts";
-import { Node_Initializer } from "@tsonic/target-api/source";
+import { Node_Initializer, sourceNodeIdentity } from "@tsonic/target-api/source";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { SourceCallableTypeEvidence } from "@tsonic/target-api/source";
@@ -15,23 +15,38 @@ import type {
   MojoAnalyzedParameter,
   MojoAnalyzedTypeParameter,
 } from "../program/model.js";
-import { mojoParameterAbi } from "../../policy/callables/parameter-abi.js";
+import {
+  analyzeMojoParameterDisposition,
+} from "../representations/index.js";
+import type { MojoLifecycleResolver } from "../lifecycle/model.js";
+import {
+  classifyMojoSourceGenericParameter,
+} from "../../policy/types/source-generic-parameters.js";
+import {
+  resolveMojoValueGenericArgument,
+} from "../../policy/types/generic-arguments.js";
+import { resolveMojoSourceOrigin } from "../../policy/types/origins.js";
+import { mojoLifecycleTraitTargetType } from "../../target-model/lifecycle/index.js";
 
-export interface MojoFunctionSignatureInput {
+export interface MojoTypeParameterAnalysisInput {
   readonly source: TargetSourceProgram;
   readonly providerSemantics: MojoProviderSemantics;
   readonly projectTypes: MojoProjectTypeCatalog;
+  readonly lifecycle: MojoLifecycleResolver;
   readonly sourceProfiles: MojoSourceProfileRegistry;
   readonly jsEnabled: boolean;
   readonly sourceCallableErrorType?: MojoTargetTypeRef;
   readonly declaration: Node;
   readonly sourceFile: SourceFile;
+  readonly diagnostics: TargetDiagnostic[];
+}
+
+export interface MojoFunctionSignatureInput extends MojoTypeParameterAnalysisInput {
   readonly name: string;
   readonly body: Node;
   readonly allocateLocalName: (sourceName: string) => string;
   readonly bindingNames: WeakMap<Node, string>;
   readonly bindingTypes: WeakMap<Node, MojoTargetTypeRef>;
-  readonly diagnostics: TargetDiagnostic[];
   readonly kind?: MojoAnalyzedFunction["kind"];
   readonly owner?: MojoAnalyzedFunction["owner"];
   readonly static?: boolean;
@@ -88,7 +103,21 @@ export function analyzeMojoFunctionSignature(
       return undefined;
     }
     const passingFact = source.sourceFacts.getFact(parameter, argumentPassingFactKey);
-    const abi = mojoParameterAbi(passingFact?.mode);
+    const useSummary = source.navigation.parameterUseSummary(parameter);
+    const disposition = analyzeMojoParameterDisposition(
+      passingFact?.mode,
+      useSummary?.bindingWritten === true,
+    );
+    if (disposition.kind === "immutable" && disposition.localCopy &&
+      input.lifecycle.capabilities(parameterType).copy === "unavailable") {
+      append(
+        input,
+        "MOJO_REASSIGNED_PARAMETER_COPY_UNPROVEN",
+        "A reassigned ordinary parameter requires an exactly copyable Mojo carrier or an explicit ownership contract.",
+        parameter,
+      );
+      return undefined;
+    }
     const name = input.allocateLocalName(ast.text(nameNode));
     const omissionKind = selected.omissionKind;
     const omittedType = (omissionKind === "undefined" || omissionKind === "initializer") &&
@@ -99,7 +128,8 @@ export function analyzeMojoFunctionSignature(
     const callType = omissionKind === "undefined" || omissionKind === "initializer"
       ? omittedType
       : resolved;
-    const incomingName = omissionKind === "initializer" || omissionKind === "rest"
+    const incomingName = omissionKind === "initializer" || omissionKind === "rest" ||
+        disposition.kind === "immutable" && disposition.localCopy
       ? input.allocateLocalName(`${ast.text(nameNode)}_slot`)
       : name;
     input.bindingNames.set(parameter, name);
@@ -111,8 +141,7 @@ export function analyzeMojoFunctionSignature(
       type: rest ? parameterType : bodyType,
       bodyType,
       callType,
-      convention: abi.convention,
-      passing: abi.passing,
+      disposition,
       omissionKind,
       ...(Node_Initializer(ast, parameter) === undefined
         ? {}
@@ -157,7 +186,7 @@ export function analyzeMojoFunctionSignature(
 }
 
 export function analyzeMojoTypeParameters(
-  input: MojoFunctionSignatureInput,
+  input: MojoTypeParameterAnalysisInput,
 ): readonly MojoAnalyzedTypeParameter[] | undefined {
   const { ast } = input.source;
   const parameters: MojoAnalyzedTypeParameter[] = [];
@@ -169,41 +198,94 @@ export function analyzeMojoTypeParameters(
       return undefined;
     }
     const constraintNode = ast.as.AsTypeParameterDeclaration(parameter)?.Constraint;
-    const constraints: MojoTargetTypeRef[] = [
-      Object.freeze({
-        kind: "target-named",
-        id: "mojo.builtin.Movable",
-        modulePath: Object.freeze([]),
-        name: "Movable",
-      }),
-      Object.freeze({
-        kind: "target-named",
-        id: "mojo.builtin.Deinitable",
-        modulePath: Object.freeze([]),
-        name: "Deinitable",
-      }),
-    ];
-    if (constraintNode !== undefined) {
+    const classified = classifyMojoSourceGenericParameter(
+      input.declaration,
+      parameter,
+      typeResolutionContext(input),
+    );
+    if (classified.kind === "unsupported") {
+      append(input, "MOJO_GENERIC_PARAMETER_KIND_UNRESOLVED", classified.reason, parameter);
+      return undefined;
+    }
+    const constraints: MojoTargetTypeRef[] = classified.parameter.kind === "type"
+      ? [
+          mojoLifecycleTraitTargetType("movable"),
+          mojoLifecycleTraitTargetType("deinitializable"),
+        ]
+      : classified.parameter.kind === "origin"
+        ? [Object.freeze({
+            kind: "target-named",
+            id: "mojo.builtin.Origin",
+            modulePath: Object.freeze([]),
+            name: "Origin",
+          })]
+        : [];
+    if (constraintNode !== undefined && classified.parameter.kind !== "origin") {
       const selected = input.source.semantics.forFile(input.sourceFile).types.authoredType(constraintNode);
       const constraint = resolve(input, selected, constraintNode);
       if (constraint === undefined) return undefined;
       constraints.push(constraint);
     }
+    if (classified.parameter.kind === "value" && constraints.length !== 1) {
+      append(
+        input,
+        "MOJO_COMPTIME_VALUE_PARAMETER_CONSTRAINT_REQUIRED",
+        "A compile-time value parameter requires one exact target value type constraint.",
+        parameter,
+      );
+      return undefined;
+    }
+    const defaultType = ast.as.AsTypeParameterDeclaration(parameter)?.DefaultType;
+    const defaultArgument = defaultType === undefined
+      ? undefined
+      : resolveGenericDefault(input, classified.parameter.kind, defaultType);
+    if (defaultType !== undefined && defaultArgument === undefined) return undefined;
+    const identity = sourceNodeIdentity(ast, parameter);
+    if (identity === undefined) {
+      append(input, "MOJO_TYPE_PARAMETER_IDENTITY_UNRESOLVED", "A generic parameter requires one stable source identity.", parameter);
+      return undefined;
+    }
     parameters.push(Object.freeze({
       declaration: parameter,
-      name: ast.text(nameNode),
+      identity,
+      kind: classified.parameter.kind,
+      name: classified.parameter.name,
+      position: "positional-or-keyword",
+      variadic: false,
       constraints: Object.freeze(constraints),
+      ...(defaultArgument === undefined ? {} : { defaultArgument }),
     }));
   }
   return Object.freeze(parameters);
 }
 
-function resolve(
-  input: MojoFunctionSignatureInput,
-  selectedType: Type | undefined,
-  authoredTypeNode: Node | undefined,
-): MojoTargetTypeRef | undefined {
-  const resolved = resolveMojoTargetType(selectedType, authoredTypeNode, {
+function resolveGenericDefault(
+  input: MojoTypeParameterAnalysisInput,
+  kind: MojoAnalyzedTypeParameter["kind"],
+  node: Node,
+): import("../../target-model/types/model.js").MojoTargetGenericArgument | undefined {
+  if (kind === "value") {
+    const value = resolveMojoValueGenericArgument(node, typeResolutionContext(input));
+    if (value === undefined) {
+      append(input, "MOJO_COMPTIME_VALUE_DEFAULT_UNSUPPORTED", "A compile-time value default must be one exact literal value.", node);
+    }
+    return value;
+  }
+  if (kind === "origin") {
+    const origin = resolveMojoSourceOrigin(node, typeResolutionContext(input));
+    if (origin === undefined) {
+      append(input, "MOJO_ORIGIN_DEFAULT_UNSUPPORTED", "An origin default requires one exact authored Mojo origin.", node);
+      return undefined;
+    }
+    return Object.freeze({ kind: "origin", origin });
+  }
+  const selected = input.source.semantics.forFile(input.sourceFile).types.authoredType(node);
+  const type = resolve(input, selected, node);
+  return type === undefined ? undefined : Object.freeze({ kind: "type", type });
+}
+
+function typeResolutionContext(input: MojoTypeParameterAnalysisInput) {
+  return {
     ast: input.source.ast,
     semantics: input.source.semantics.forFile(input.sourceFile),
     sourceFacts: input.source.sourceFacts,
@@ -214,7 +296,15 @@ function resolve(
     ...(input.sourceCallableErrorType === undefined
       ? {}
       : { sourceCallableErrorType: input.sourceCallableErrorType }),
-  });
+  };
+}
+
+function resolve(
+  input: MojoTypeParameterAnalysisInput,
+  selectedType: Type | undefined,
+  authoredTypeNode: Node | undefined,
+): MojoTargetTypeRef | undefined {
+  const resolved = resolveMojoTargetType(selectedType, authoredTypeNode, typeResolutionContext(input));
   if (resolved.kind === "resolved") return resolved.type;
   append(input, "MOJO_TARGET_TYPE_UNSUPPORTED", `Selected source type cannot be represented exactly in Mojo: ${resolved.reason}.`, authoredTypeNode ?? input.declaration);
   return undefined;
@@ -230,7 +320,7 @@ function restElementType(type: MojoTargetTypeRef): MojoTargetTypeRef | undefined
 }
 
 function append(
-  input: MojoFunctionSignatureInput,
+  input: MojoTypeParameterAnalysisInput,
   code: string,
   message: string,
   node: Node,

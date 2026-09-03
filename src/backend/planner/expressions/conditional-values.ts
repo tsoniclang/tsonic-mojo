@@ -15,13 +15,17 @@ import {
   registerMojoSymbolImport,
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
-import { registerMojoTypeImports } from "../types/render.js";
+import { registerMojoTypeImports } from "../types/imports.js";
 import { applyValueRefinement } from "./leaves.js";
 import { convertMojoValue, isJsString } from "./support.js";
 import { orderMojoValues } from "./support.js";
 import type { MojoValuePlanner } from "./support.js";
 import { withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
+import {
+  isMojoCompileTimeCondition,
+  planMojoCompileTimeCondition,
+} from "../compile-time/values.js";
 
 export function planNullishCoalescing(
   node: Node,
@@ -71,7 +75,13 @@ export function planNullishCoalescing(
         name: "value",
         arguments: Object.freeze([]),
       })
-    : applyValueRefinement(optionalPath, selection.presentRefinement, context);
+    : applyValueRefinement(
+        optionalPath,
+        selection.presentRefinement === undefined
+          ? undefined
+          : context.program.representations.narrowingFor(selection.presentRefinement),
+        context,
+      );
   const convertedPresent = convertMojoValue(
     withMojoValue(Object.freeze([]), presentValue),
     selection.presentConversion,
@@ -155,13 +165,17 @@ export function planConditional(
   const trueNode = ConditionalExpression_WhenTrue(ast, node);
   const falseNode = ConditionalExpression_WhenFalse(ast, node);
   const resultType = context.program.queries.expressionType(node);
+  const compileTime = conditionNode !== undefined &&
+    isMojoCompileTimeCondition(conditionNode, context);
   const condition = conditionNode === undefined
     ? undefined
-    : planValue(conditionNode, context, { kind: "source-primitive", name: "bool" });
+    : compileTime
+      ? planMojoCompileTimeCondition(conditionNode, context, planValue)
+      : planValue(conditionNode, context, { kind: "source-primitive", name: "bool" });
   const whenTrue = trueNode === undefined ? undefined : planValue(trueNode, context, resultType);
   const whenFalse = falseNode === undefined ? undefined : planValue(falseNode, context, resultType);
   if (condition === undefined || whenTrue === undefined || whenFalse === undefined) return undefined;
-  if (whenTrue.before.length === 0 && whenFalse.before.length === 0) {
+  if (!compileTime && whenTrue.before.length === 0 && whenFalse.before.length === 0) {
     return withMojoValue(condition.before, {
       kind: "conditional",
       condition: condition.value,
@@ -178,6 +192,7 @@ export function planConditional(
     Object.freeze({ kind: "variable", name: resultName, type: resultType }),
     Object.freeze({
       kind: "if",
+      ...(compileTime ? { compileTime: true } : {}),
       condition: condition.value,
       thenStatements: Object.freeze([
         ...whenTrue.before,
@@ -237,7 +252,7 @@ export function planErasedExpression(
 ): MojoValuePlan | undefined {
   const inner = Node_Expression(context.program.source.ast, node);
   if (inner === undefined) return undefined;
-  const refinement = context.program.queries.valueRefinement(node);
+  const refinement = context.program.representations.narrowing(node);
   const plan = planValue(
     inner,
     context,
@@ -319,10 +334,23 @@ export function planMojoTypeTest(
     return undefined;
   }
   if (selection.kind === "constant") {
+    const operandType = context.program.queries.expressionType(selection.operand);
+    if (operandType === undefined) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_CONSTANT_TYPE_TEST_OPERAND_TYPE_MISSING",
+        "A constant type-test result requires the exact sealed operand carrier.",
+        selection.operand,
+      );
+      return undefined;
+    }
     return withMojoValue(
       Object.freeze([
         ...operand.before,
-        Object.freeze({ kind: "expression" as const, expression: operand.value }),
+        Object.freeze({
+          kind: operandType.kind === "unit" ? "expression" as const : "discard" as const,
+          expression: operand.value,
+        }),
       ]),
       Object.freeze({ kind: "bool-literal", value: selection.value }),
     );

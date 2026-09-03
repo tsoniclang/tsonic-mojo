@@ -8,6 +8,12 @@ import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoCallSelection } from "../program/model.js";
+import {
+  fixedMojoLifecycleContract,
+  mojoImplicitHeapLifecycleCapabilities,
+} from "../../target-model/lifecycle/index.js";
+
+const locationLifecycle = fixedMojoLifecycleContract(mojoImplicitHeapLifecycleCapabilities);
 
 export type MojoTypedLocationAnalysis =
   | { readonly kind: "not-typed-location" }
@@ -33,6 +39,7 @@ export function mojoLocationTargetType(pointee: MojoTargetTypeRef): MojoTargetTy
     modulePath: Object.freeze(["tsonic_runtime"]),
     name: "Location",
     genericArguments: Object.freeze([Object.freeze({ kind: "type", type: pointee })]),
+    lifecycle: locationLifecycle,
   });
 }
 

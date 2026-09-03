@@ -13,6 +13,7 @@ import type {
 import type {
   MojoProviderOperationForm,
 } from "../../target-model/operations/model.js";
+import type { MojoLifecycleTraitRole } from "../../target-model/lifecycle/model.js";
 
 export interface MojoProviderModuleDefinition {
   readonly moduleSpecifier: string;
@@ -52,6 +53,7 @@ export interface MojoProviderTypeDefinition {
   readonly conformances?: readonly {
     readonly trait: MojoTargetTypeRef;
     readonly condition?: MojoTargetConformanceCondition;
+    readonly lifecycleRole?: MojoLifecycleTraitRole;
   }[];
   readonly associatedAliases?: readonly {
     readonly name: string;

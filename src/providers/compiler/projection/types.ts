@@ -18,6 +18,8 @@ import type {
 import { compilerModuleIdentity } from "../model/normalization.js";
 import { mojoCompilerModuleSpecifier } from "./module-specifier.js";
 import { projectMojoPassingMode } from "./call-conventions.js";
+import { parseMojoProviderReferenceOrigin } from "../../../target-model/origins/parser.js";
+import { mojoLifecycleRoleForCompilerPath } from "../classification/lifecycle.js";
 
 export interface MojoCompilerTypeProjection {
   readonly source: ProviderTypeExpression;
@@ -63,7 +65,12 @@ export function projectMojoCompilerType(
           ? Object.freeze({ kind: "unbound" })
           : parameter.kind === "type"
             ? Object.freeze({ kind: "type", type: Object.freeze({ kind: "type-parameter", name: parameter.name }) })
-            : Object.freeze({ kind: "value-reference", path: Object.freeze([parameter.name]) }));
+            : parameter.kind === "origin"
+              ? Object.freeze({
+                  kind: "origin",
+                  origin: Object.freeze({ kind: "parameter", name: parameter.name }),
+                })
+              : Object.freeze({ kind: "value-reference", path: Object.freeze([parameter.name]) }));
       const ownerTarget = namedTargetType(
         context.package,
         context.modulePath,
@@ -119,9 +126,20 @@ export function projectMojoCompilerType(
     }
     case "reference": {
       const target = projectMojoCompilerType(type.target, context);
+      const originParameters = new Set(
+        (context.owner?.genericParameters ?? [])
+          .filter((parameter) => parameter.kind === "origin")
+          .map((parameter) => parameter.name),
+      );
+      const parsedOrigin = parseMojoProviderReferenceOrigin(type.origin, originParameters);
       return Object.freeze({
         source: target.source,
-        target: Object.freeze({ kind: "reference", origin: type.origin, value: target.target }),
+        target: Object.freeze({
+          kind: "reference",
+          origin: parsedOrigin.origin,
+          mutable: parsedOrigin.mutable,
+          value: target.target,
+        }),
       });
     }
     case "compiler-expression": return Object.freeze({
@@ -299,6 +317,7 @@ function projectNamedType(
       location.modulePath,
       location.exportName,
       projectedArguments.map(({ target }) => target),
+      mojoLifecycleRoleForCompilerPath(type.path),
     ),
   });
 }
@@ -441,12 +460,14 @@ function namedTargetType(
   modulePath: readonly string[],
   name: string,
   genericArguments: readonly MojoTargetGenericArgument[],
+  lifecycleRequirement?: import("../../../target-model/lifecycle/model.js").MojoLifecycleTraitRole,
 ): MojoTargetTypeRef {
   return Object.freeze({
     kind: "target-named",
     id: `${compilerModuleIdentity(package_, modulePath)}::type:${name}`,
     modulePath: Object.freeze([package_.packageName, ...modulePath]),
     name,
+    ...(lifecycleRequirement === undefined ? {} : { lifecycleRequirement }),
     ...(genericArguments.length === 0 ? {} : { genericArguments: Object.freeze(genericArguments) }),
   });
 }

@@ -130,6 +130,10 @@ export function validateMojoProviderPackageDefinition(
     validateType(type.targetType);
     for (const conformance of type.conformances ?? []) {
       validateType(conformance.trait);
+      if (conformance.lifecycleRole !== undefined &&
+        !lifecycleTraitRoles.has(conformance.lifecycleRole)) {
+        throw new Error(`Provider type '${type.exportId}' has an invalid lifecycle conformance role.`);
+      }
       if (conformance.condition !== undefined) {
         validateConformanceCondition(conformance.condition, type.exportId);
       }
@@ -198,6 +202,15 @@ export function validateMojoProviderPackageDefinition(
     runtimeNames.add(runtime.packageName);
   }
 }
+
+const lifecycleTraitRoles = new Set([
+  "copyable",
+  "implicitly-copyable",
+  "movable",
+  "deinitializable",
+  "register-passable",
+  "trivial-register-passable",
+]);
 
 function validateOperation(
   operation: MojoProviderOperationDefinition,
@@ -399,6 +412,7 @@ function validateType(type: MojoTargetTypeRef): void {
       return;
     case "type-parameter":
       if (!identifierPattern.test(type.name)) throw new Error(`Invalid Mojo type parameter '${type.name}'.`);
+      validateLifecycleRoles(type.lifecycleRequirements, `type parameter '${type.name}'`);
       return;
     case "target-named":
       requireText(type.id, "target type id");
@@ -407,6 +421,15 @@ function validateType(type: MojoTargetTypeRef): void {
       }
       for (const argument of type.genericArguments ?? []) {
         validateGenericArgument(argument, `target type '${type.id}'`);
+      }
+      if (type.lifecycle !== undefined && type.lifecycleRequirement !== undefined) {
+        throw new Error(`Target type '${type.id}' cannot be both a lifecycle carrier and a lifecycle requirement.`);
+      }
+      if (type.lifecycleRequirement !== undefined && !lifecycleTraitRoles.has(type.lifecycleRequirement)) {
+        throw new Error(`Target type '${type.id}' has an invalid lifecycle requirement.`);
+      }
+      if (type.lifecycle !== undefined) {
+        validateNamedLifecycle(type.lifecycle, type, `target type '${type.id}'`);
       }
       return;
     case "list":
@@ -451,7 +474,7 @@ function validateType(type: MojoTargetTypeRef): void {
       }
       return;
     case "reference":
-      requireText(type.origin, "reference origin");
+      validateOrigin(type.origin);
       validateType(type.value);
       return;
     case "callable":
@@ -481,6 +504,69 @@ function validateType(type: MojoTargetTypeRef): void {
       validateType(type.result);
       if (type.errorType !== undefined) validateType(type.errorType);
       if (type.capture !== undefined) requireText(type.capture, "function capture origin");
+      return;
+  }
+}
+
+function validateLifecycleRoles(
+  roles: readonly import("../../target-model/lifecycle/model.js").MojoLifecycleTraitRole[] | undefined,
+  owner: string,
+): void {
+  const seen = new Set<string>();
+  for (const role of roles ?? []) {
+    if (!lifecycleTraitRoles.has(role) || seen.has(role)) {
+      throw new Error(`Mojo ${owner} has an invalid or duplicate lifecycle requirement '${role}'.`);
+    }
+    seen.add(role);
+  }
+}
+
+function validateNamedLifecycle(
+  lifecycle: import("../../target-model/lifecycle/model.js").MojoNamedLifecycleContract,
+  type: Extract<MojoTargetTypeRef, { readonly kind: "target-named" }>,
+  owner: string,
+): void {
+  if (lifecycle.kind === "fixed") {
+    if (!new Set(["implicit", "explicit", "unavailable"]).has(lifecycle.capabilities.copy) ||
+      !new Set(["trivial", "register", "unavailable"]).has(lifecycle.capabilities.registerPassing) ||
+      typeof lifecycle.capabilities.movable !== "boolean" ||
+      typeof lifecycle.capabilities.deinitializable !== "boolean" ||
+      typeof lifecycle.capabilities.explicitDestruction !== "boolean") {
+      throw new Error(`Mojo ${owner} has an invalid fixed lifecycle contract.`);
+    }
+    return;
+  }
+  const indexes = new Set<number>();
+  const arguments_ = type.genericArguments ?? [];
+  for (const index of lifecycle.genericArgumentIndexes) {
+    if (!Number.isSafeInteger(index) || index < 0 || index >= arguments_.length ||
+      arguments_[index]?.kind !== "type" || indexes.has(index)) {
+      throw new Error(`Mojo ${owner} has an invalid aggregate lifecycle argument index '${index}'.`);
+    }
+    indexes.add(index);
+  }
+  if (typeof lifecycle.implicitCopyWhenPossible !== "boolean" ||
+    typeof lifecycle.explicitDestruction !== "boolean") {
+    throw new Error(`Mojo ${owner} has an invalid aggregate lifecycle contract.`);
+  }
+}
+
+function validateOrigin(origin: import("../../target-model/origins/model.js").MojoOriginRef): void {
+  switch (origin.kind) {
+    case "static":
+    case "comptime":
+    case "inferred": return;
+    case "untracked":
+    case "unsafe":
+      if (typeof origin.mutable !== "boolean") throw new Error("Mojo reference origin has no exact mutability.");
+      return;
+    case "parameter":
+      if (!identifierPattern.test(origin.name)) throw new Error(`Invalid Mojo origin parameter '${origin.name}'.`);
+      return;
+    case "provider-expression":
+      if (origin.tokens.length === 0 || origin.tokens.some((token) => token.text.length === 0)) {
+        throw new Error("Mojo provider origin expression must contain exact non-empty tokens.");
+      }
       return;
   }
 }

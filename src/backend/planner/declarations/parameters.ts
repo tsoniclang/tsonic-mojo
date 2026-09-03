@@ -11,7 +11,8 @@ import {
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import type { MojoValuePlanner } from "../expressions/support.js";
-import { registerMojoTypeImports } from "../types/render.js";
+import { registerMojoTypeImports } from "../types/imports.js";
+import { mojoParameterConvention } from "../../../analysis/representations/index.js";
 
 export function planMojoParameterDeclaration(
   parameter: MojoAnalyzedParameter,
@@ -22,7 +23,7 @@ export function planMojoParameterDeclaration(
   return Object.freeze({
     name: parameter.incomingName,
     type,
-    convention: parameter.convention,
+    convention: mojoParameterConvention(parameter.disposition),
     variadic: parameter.omissionKind === "rest",
     ...(parameter.omissionKind === "undefined" || parameter.omissionKind === "initializer"
       ? { defaultValue: Object.freeze({ kind: "none-literal" as const }) }
@@ -85,6 +86,17 @@ export function planMojoParameterPrelude(
           ]),
         }),
       );
+      continue;
+    }
+    if (parameter.disposition.kind === "immutable" && parameter.disposition.localCopy &&
+      parameter.omissionKind !== "rest") {
+      registerMojoTypeImports(parameter.bodyType, context);
+      statements.push(Object.freeze({
+        kind: "variable",
+        name: parameter.name,
+        type: parameter.bodyType,
+        initializer: Object.freeze({ kind: "path", path: parameter.incomingName }),
+      }));
       continue;
     }
     if (parameter.omissionKind !== "rest" || !normalizeRest) continue;

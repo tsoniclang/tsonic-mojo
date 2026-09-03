@@ -73,6 +73,7 @@ export function finalizeMojoModuleEffects(
       asynchronous: asynchronous.get(module) === true,
       raises: errorType !== undefined,
       ...(errorType === undefined ? {} : { errorType }),
+      initializationStateRequired: module.initializationStateRequired,
       runtimeInitializationRequired: runtimeInitialization.get(module) === true,
     });
   }));

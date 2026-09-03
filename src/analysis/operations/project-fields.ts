@@ -150,15 +150,8 @@ export function instantiateProjectIndexSignature(
   if (indexSignature.ownerType.kind !== "target-named" || receiverType.kind !== "target-named" ||
     indexSignature.ownerType.id !== receiverType.id) return undefined;
   const arguments_ = receiverType.genericArguments ?? [];
-  if (arguments_.length !== indexSignature.ownerTypeParameters.length ||
-    arguments_.some((argument) => argument.kind !== "type")) return undefined;
-  const types = new Map<string, MojoTargetTypeRef>();
-  for (const [index, name] of indexSignature.ownerTypeParameters.entries()) {
-    const argument = arguments_[index];
-    if (argument?.kind !== "type") return undefined;
-    types.set(name, argument.type);
-  }
-  const substitutions = { types, values: new Map<string, never>(), packs: new Map<string, never>() };
+  const substitutions = projectOwnerSubstitutions(indexSignature.ownerTypeParameters, arguments_);
+  if (substitutions === undefined) return undefined;
   return Object.freeze({
     keyType: substituteMojoTargetType(indexSignature.keyType, substitutions),
     valueType: substituteMojoTargetType(indexSignature.valueType, substitutions),
@@ -240,13 +233,42 @@ export function instantiateProjectFieldType(
   if (field.ownerType.kind !== "target-named" || receiverType.kind !== "target-named" ||
     field.ownerType.id !== receiverType.id) return undefined;
   const arguments_ = receiverType.genericArguments ?? [];
-  if (arguments_.length !== field.ownerTypeParameters.length ||
-    arguments_.some((argument) => argument.kind !== "type")) return undefined;
+  const substitutions = projectOwnerSubstitutions(field.ownerTypeParameters, arguments_);
+  return substitutions === undefined
+    ? undefined
+    : substituteMojoTargetType(field.type, substitutions);
+}
+
+function projectOwnerSubstitutions(
+  parameters: readonly import("../../target-model/types/project.js").MojoProjectTypeParameterDefinition[],
+  arguments_: readonly import("../../target-model/types/model.js").MojoTargetGenericArgument[],
+): import("../../target-model/types/substitution.js").MojoTargetTypeSubstitutions | undefined {
+  if (parameters.length !== arguments_.length) return undefined;
   const types = new Map<string, MojoTargetTypeRef>();
-  for (const [index, name] of field.ownerTypeParameters.entries()) {
+  const values = new Map<string, import("../../target-model/types/model.js").MojoTargetGenericArgument>();
+  const origins = new Map<string, import("../../target-model/origins/model.js").MojoOriginRef>();
+  for (const [index, parameter] of parameters.entries()) {
     const argument = arguments_[index];
-    if (argument?.kind !== "type") return undefined;
-    types.set(name, argument.type);
+    if (parameter.kind === "type" && argument?.kind === "type") {
+      types.set(parameter.name, argument.type);
+    } else if (parameter.kind === "origin" && argument?.kind === "origin") {
+      origins.set(parameter.name, argument.origin);
+    } else if (parameter.kind === "value" && argument !== undefined && isValueGenericArgument(argument)) {
+      values.set(parameter.name, argument);
+    } else {
+      return undefined;
+    }
   }
-  return substituteMojoTargetType(field.type, { types, values: new Map(), packs: new Map() });
+  return Object.freeze({
+    types,
+    values,
+    origins,
+    packs: new Map<string, readonly import("../../target-model/types/model.js").MojoTargetGenericArgument[]>(),
+  });
+}
+
+function isValueGenericArgument(
+  argument: import("../../target-model/types/model.js").MojoTargetGenericArgument,
+): boolean {
+  return argument.kind !== "type" && argument.kind !== "origin" && argument.kind !== "unbound";
 }

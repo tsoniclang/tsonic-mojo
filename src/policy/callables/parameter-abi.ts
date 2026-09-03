@@ -15,6 +15,6 @@ export function mojoParameterAbi(
     case "borrow-shared": return { convention: "ref", passing: "plain" };
     case "move": return { convention: "var", passing: "consume" };
     case "by-value":
-    case undefined: return { convention: "var", passing: "plain" };
+    case undefined: return { convention: "imm", passing: "plain" };
   }
 }

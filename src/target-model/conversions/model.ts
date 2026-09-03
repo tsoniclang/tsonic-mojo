@@ -106,4 +106,19 @@ export type MojoValueConversion =
         readonly targetType: MojoTargetTypeRef;
         readonly conversion: MojoValueConversion;
       }[];
+    }
+  | {
+      readonly kind: "narrowed-union-map";
+      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
+      readonly selectedType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
+      readonly targetType: MojoTargetTypeRef;
+      readonly members: readonly {
+        readonly sourceType: MojoTargetTypeRef;
+        readonly conversion: MojoValueConversion;
+      }[];
     };
+
+export interface MojoValueConversionNarrowing {
+  readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
+  readonly selectedType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
+}

@@ -24,6 +24,7 @@ import type {
 } from "../program/executable-regions.js";
 import { recordMojoExecutableRegionConversionUses } from "../conversions/uses.js";
 import { allocateMojoLocalBindings } from "../program/local-bindings.js";
+import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 
 export interface MojoCallableExpressionSignatureInput {
   readonly expression: Node;
@@ -32,6 +33,7 @@ export interface MojoCallableExpressionSignatureInput {
   readonly source: TargetSourceProgram;
   readonly providerSemantics: MojoProviderSemantics;
   readonly projectTypes: MojoProjectTypeCatalog;
+  readonly lifecycle: MojoLifecycleResolver;
   readonly sourceProfiles: MojoSourceProfileRegistry;
   readonly jsEnabled: boolean;
   readonly sourceCallableErrorType?: MojoTargetTypeRef;
@@ -64,6 +66,7 @@ export function analyzeMojoCallableExpressionSignature(
     source: input.source,
     providerSemantics: input.providerSemantics,
     projectTypes: input.projectTypes,
+    lifecycle: input.lifecycle,
     sourceProfiles: input.sourceProfiles,
     jsEnabled: input.jsEnabled,
     ...(input.sourceCallableErrorType === undefined
@@ -229,6 +232,7 @@ export function analyzeAndSealMojoCallableExpression(
     source: environment.source,
     providerSemantics: environment.providerSemantics,
     projectTypes: environment.projectTypes,
+    lifecycle: environment.lifecycle,
     sourceProfiles: environment.sourceProfiles,
     jsEnabled: environment.jsEnabled,
     allocateLocalName: input.allocateLocalName,

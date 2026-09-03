@@ -3,8 +3,8 @@ import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 import {
   allocateMojoSyntheticName,
   appendMojoPlanningDiagnostic,
-  mojoQualifiedModuleMember,
-  registerMojoModuleImport,
+  mojoModuleMemberExpression,
+  mojoModulePathExpression,
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import {
@@ -14,15 +14,14 @@ import {
   orderMojoValues,
   planSelectedArgument,
   prepareMojoReceiver,
-  requiredMojoTypeName,
   unsupportedOptionalCall,
 } from "./support.js";
 import type {
   MojoValuePlanner,
   PlannedMojoCallArgument,
 } from "./support.js";
-import { registerMojoTypeImports } from "../types/render.js";
-import { mojoValue, withMojoValue } from "./value-plan.js";
+import { registerMojoTypeImports } from "../types/imports.js";
+import { consumeMojoValue, mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import type { MojoCallableArgumentSlot } from "../../../analysis/program/call-model.js";
 
@@ -35,6 +34,57 @@ export function planMojoCall(
   if (selection === undefined) {
     appendMojoPlanningDiagnostic(context, "MOJO_CALL_PLAN_MISSING", "Call expression has no sealed target selection.", node);
     return undefined;
+  }
+  if (selection.kind === "source-intrinsic") {
+    if (selection.operation === "comptime-type") {
+      return selection.value === undefined
+        ? undefined
+        : mojoValue(Object.freeze({ kind: "generic-argument-value", value: selection.value }));
+    }
+    if (selection.operand === undefined) return undefined;
+    const operand = planValue(selection.operand, context, selection.resultType);
+    if (operand === undefined) return undefined;
+    switch (selection.operation) {
+      case "comptime-value":
+      case "comptime-condition":
+        return withMojoValue(operand.before, Object.freeze({
+          kind: "forced-comptime",
+          expression: operand.value,
+        }));
+      case "comptime-iteration":
+      case "write-only-reference":
+      case "read-write-reference":
+      case "read-only-reference":
+      case "shared-borrow":
+      case "mutable-borrow":
+        return operand;
+      case "js-string":
+        registerMojoTypeImports(selection.resultType, context);
+        return withMojoValue(operand.before, Object.freeze({
+          kind: "construct",
+          type: selection.resultType,
+          arguments: Object.freeze([Object.freeze({ value: operand.value })]),
+        }));
+      case "copy":
+        return withMojoValue(operand.before, Object.freeze({
+          kind: "copy",
+          expression: operand.value,
+        }));
+      case "materialize":
+        return withMojoValue(operand.before, Object.freeze({
+          kind: "materialize",
+          expression: operand.value,
+        }));
+      case "move":
+        return withMojoValue(
+          operand.before,
+          consumeMojoValue(
+            operand.value,
+            selection.resultType,
+            context.program.lifecycle,
+          ),
+        );
+    }
   }
   if (selection.kind === "explicit-safety") {
     return selection.form === "remaining-block"
@@ -85,14 +135,17 @@ export function planMojoCall(
     ]), Object.freeze({ kind: "tuple", elements: Object.freeze([]) }));
   }
   if (selection.kind === "raw-pointer") {
-    registerMojoModuleImport(context, Object.freeze(["tsonic_runtime"]));
     if (selection.operation === "bind") {
       const identity = planValue(selection.identityExpression, context, selection.identityType);
       return identity === undefined
         ? undefined
         : withMojoValue(identity.before, Object.freeze({
             kind: "call",
-            callee: Object.freeze({ kind: "path", path: "tsonic_runtime.raw_pointer_from_arc" }),
+            callee: mojoModuleMemberExpression(
+              context,
+              ["tsonic_runtime"],
+              "raw_pointer_from_arc",
+            ),
             arguments: Object.freeze([Object.freeze({
               value: Object.freeze({ kind: "member", receiver: identity.value, name: "_state" }),
             })]),
@@ -108,7 +161,11 @@ export function planMojoCall(
       ], context);
       return withMojoValue(ordered.before, Object.freeze({
         kind: "call",
-        callee: Object.freeze({ kind: "path", path: "tsonic_runtime.equal_raw_pointer" }),
+        callee: mojoModuleMemberExpression(
+          context,
+          ["tsonic_runtime"],
+          "equal_raw_pointer",
+        ),
         arguments: Object.freeze(ordered.values.map((value) => Object.freeze({ value }))),
       }));
     }
@@ -117,7 +174,11 @@ export function planMojoCall(
       ? undefined
       : withMojoValue(pointer.before, Object.freeze({
           kind: "call",
-          callee: Object.freeze({ kind: "path", path: "tsonic_runtime.hash_raw_pointer" }),
+          callee: mojoModuleMemberExpression(
+            context,
+            ["tsonic_runtime"],
+            "hash_raw_pointer",
+          ),
           arguments: Object.freeze([Object.freeze({ value: pointer.value })]),
         }));
   }
@@ -203,10 +264,11 @@ export function planMojoCall(
         before = ordered.before;
         call = {
           kind: "call",
-          callee: {
-            kind: "path",
-            path: mojoQualifiedModuleMember(context, selection.target.modulePath, selection.target.name),
-          },
+          callee: mojoModuleMemberExpression(
+            context,
+            selection.target.modulePath,
+            selection.target.name,
+          ),
           ...(selection.genericArguments.length === 0 ? {} : { genericArguments: selection.genericArguments }),
           arguments: ordered.arguments,
         };
@@ -245,7 +307,7 @@ export function planMojoCall(
         before = ordered.before;
         call = {
           kind: "method-call",
-          receiver: { kind: "path", path: requiredMojoTypeName(selection.target.owner, context) },
+          receiver: { kind: "type-value", type: selection.target.owner },
           name: selection.target.name,
           ...(selection.genericArguments.length === 0 ? {} : { genericArguments: selection.genericArguments }),
           arguments: ordered.arguments,
@@ -265,6 +327,30 @@ export function planMojoCall(
   }
   if (selection.kind === "callable") {
     if (selection.optionalChain) return unsupportedOptionalCall(node, context);
+    const callableDisposition = context.program.representations.callable(selection.callee);
+    if (callableDisposition !== undefined && callableDisposition.kind !== "erased") {
+      const callee = planValue(selection.callee, context);
+      const arguments_ = selection.argumentSlots.map((slot) =>
+        planCallableArgumentSlot(slot, context, planValue));
+      if (callee === undefined || arguments_.some((argument) => argument === undefined)) {
+        return undefined;
+      }
+      const ordered = orderCallArguments(
+        arguments_ as PlannedMojoCallArgument[],
+        context,
+        Object.freeze({ plan: callee, type: selection.callableType, role: "callable_value" }),
+      );
+      const call: MojoExpression = Object.freeze({
+        kind: "call",
+        callee: ordered.receiver!,
+        arguments: ordered.arguments,
+      });
+      return convertMojoValue(
+        withMojoValue(ordered.before, call),
+        selection.resultConversion,
+        context,
+      );
+    }
     const callee = planValue(selection.callee, context);
     const arguments_ = selection.argumentSlots.map((slot) =>
       planCallableArgumentSlot(slot, context, planValue));
@@ -313,7 +399,6 @@ export function planMojoCall(
   let before: readonly MojoStatement[];
   if (target.kind === "function-call") {
     if (selection.optionalChain) return unsupportedOptionalCall(node, context);
-    registerMojoModuleImport(context, target.modulePath);
     let receiver: ReturnType<typeof prepareMojoReceiver>;
     let convertedReceiver: MojoValuePlan | undefined;
     if (target.receiver !== undefined) {
@@ -353,7 +438,11 @@ export function planMojoCall(
     before = ordered.before;
     call = {
       kind: "call",
-      callee: { kind: "path", path: [...target.modulePath, ...(target.ownerPath ?? []), target.name].join(".") },
+      callee: mojoModulePathExpression(
+        context,
+        target.modulePath,
+        Object.freeze([...(target.ownerPath ?? []), target.name]),
+      ),
       ...(selection.operation.genericArguments.length === 0
         ? {}
         : { genericArguments: selection.operation.genericArguments }),
@@ -361,9 +450,12 @@ export function planMojoCall(
         ? ordered.arguments
         : Object.freeze([
             Object.freeze({
-              value: target.receiver === "var" || target.receiver === "deinit"
-                ? Object.freeze({ kind: "consume" as const, expression: ordered.receiver! })
-                : ordered.receiver!,
+              value: applyArgumentDisposition(
+                ordered.receiver!,
+                selection.receiverDisposition,
+                selection.operation.receiverType!,
+                context,
+              ),
             }),
             ...ordered.arguments,
           ]),
@@ -392,9 +484,12 @@ export function planMojoCall(
     before = ordered.before;
     call = {
       kind: "method-call",
-      receiver: target.receiver === "var" || target.receiver === "deinit"
-        ? { kind: "consume", expression: ordered.receiver! }
-        : ordered.receiver!,
+      receiver: applyArgumentDisposition(
+        ordered.receiver!,
+        selection.receiverDisposition,
+        selection.operation.receiverType,
+        context,
+      ),
       name: target.name,
       ...(selection.operation.genericArguments.length === 0
         ? {}
@@ -406,6 +501,19 @@ export function planMojoCall(
     return finishOptionalMojoOperation(node, preparedReceiver, converted, context);
   }
   return convertMojoValue(withMojoValue(before, call), selection.resultConversion, context);
+}
+
+function applyArgumentDisposition(
+  expression: MojoExpression,
+  disposition: import("../../../analysis/representations/model.js").MojoArgumentDisposition | undefined,
+  type: import("../../../target-model/types/model.js").MojoTargetTypeRef,
+  context: MojoPlanningContext,
+): MojoExpression {
+  switch (disposition?.kind ?? "plain") {
+    case "plain": return expression;
+    case "copy": return Object.freeze({ kind: "copy", expression });
+    case "transfer": return consumeMojoValue(expression, type, context.program.lifecycle);
+  }
 }
 
 function planCallableArgumentSlot(
@@ -525,10 +633,11 @@ function planSpreadCallableRestSlot(
       )]),
     }));
   }
-  const nativeList: MojoExpression = Object.freeze({
-    kind: "consume",
-    expression: Object.freeze({ kind: "path", path: listName }),
-  });
+  const nativeList = consumeMojoValue(
+    Object.freeze({ kind: "path", path: listName }),
+    listType,
+    context.program.lifecycle,
+  );
   const result = slot.type.kind === "list"
     ? nativeList
     : slot.type.kind === "target-named" && slot.type.id === "tsonic.mojo.js.JsArray"

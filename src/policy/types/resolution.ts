@@ -2,13 +2,16 @@ import {
   pointerFactKey,
   providerVirtualDeclarationFactKey,
   rawPointerFactKey,
+  sourceMarkerFactKey,
   sourcePrimitiveFactKey,
 } from "@tsonic/tsts";
 import type { AstReader, Node, Type } from "@tsonic/tsts";
 import { tsonicFixedArrayFactKey } from "@tsonic/source-core/facts";
 import type { SourceFileSemantics } from "@tsonic/target-api/source";
+import { sourceNodeIdentity } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import type {
+  MojoTargetGenericArgument,
   MojoTargetTypeRef,
 } from "../../target-model/types/model.js";
 import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
@@ -35,8 +38,34 @@ import {
   mojoNativeErrorType,
   mojoSourceErrorType,
 } from "../../target-model/types/error-domains.js";
+import {
+  mojoSourceOriginTypeContract,
+  resolveMojoSourceOrigin,
+} from "./origins.js";
+import { resolveMojoNonTypeGenericArguments } from "./generic-arguments.js";
+import {
+  classifyMojoSourceGenericParameter,
+  mojoSourceGenericParameterOwner,
+} from "./source-generic-parameters.js";
+import {
+  aggregateMojoLifecycleContract,
+  fixedMojoLifecycleContract,
+  mojoExplicitLifecycleCapabilities,
+  mojoImplicitHeapLifecycleCapabilities,
+} from "../../target-model/lifecycle/index.js";
 
 export { providerOwnerMatches } from "./resolution-helpers.js";
+
+const implicitHeapLifecycle = fixedMojoLifecycleContract(
+  mojoImplicitHeapLifecycleCapabilities,
+);
+const explicitLifecycle = fixedMojoLifecycleContract(
+  mojoExplicitLifecycleCapabilities,
+);
+const nativeSetLifecycle = aggregateMojoLifecycleContract([0], {
+  implicitCopyWhenPossible: false,
+  explicitDestruction: true,
+});
 
 export interface MojoTypeResolutionContext {
   readonly ast: AstReader;
@@ -70,10 +99,60 @@ function resolveMojoTargetTypeWithState(
   if (selectedType === undefined) {
     return { kind: "unsupported", reason: "the TypeScript checker supplied no selected type" };
   }
+  if (authoredTypeNode !== undefined) {
+    const originContract = mojoSourceOriginTypeContract(selectedType, authoredTypeNode, context);
+    if (originContract?.kind === "reference" || originContract?.kind === "mutable-reference") {
+      const selectedValue = context.semantics.types.authoredType(originContract.valueTypeNode);
+      const value = resolveMojoTargetTypeWithState(
+        selectedValue,
+        originContract.valueTypeNode,
+        context,
+        resolving,
+      );
+      const origin = resolveMojoSourceOrigin(originContract.originTypeNode, context);
+      return value.kind === "unsupported"
+        ? value
+        : origin === undefined
+          ? { kind: "unsupported", reason: "the authored Mojo reference has no exact origin" }
+          : {
+              kind: "resolved",
+              type: Object.freeze({
+                kind: "reference",
+                origin,
+                mutable: originContract.kind === "mutable-reference",
+                value: value.type,
+              }),
+            };
+    }
+    if (originContract !== undefined) {
+      return {
+        kind: "unsupported",
+        reason: "a Mojo origin marker can appear only as an origin generic argument or constraint",
+      };
+    }
+  }
   if (resolving.has(selectedType)) {
     return { kind: "unsupported", reason: "the selected TypeScript type is recursively self-referential" };
   }
   const subjects = typeSubjects(selectedType, authoredTypeNode, context);
+  const sourceMarker = uniqueFact(
+    subjects.map((subject) => context.sourceFacts.getFact(subject, sourceMarkerFactKey)),
+  );
+  if (sourceMarker.kind === "conflict") {
+    return { kind: "unsupported", reason: "selected source marker facts conflict" };
+  }
+  if (sourceMarker.value?.marker === "js-string") {
+    return {
+      kind: "resolved",
+      type: namedType(
+        "tsonic.mojo.js.JsString",
+        ["tsonic_js"],
+        "JsString",
+        [],
+        implicitHeapLifecycle,
+      ),
+    };
+  }
   const rawPointer = uniqueFact(
     subjects.map((subject) => context.sourceFacts.getFact(subject, rawPointerFactKey)),
   );
@@ -89,6 +168,7 @@ function resolveMojoTargetTypeWithState(
             id: "tsonic.mojo.runtime.RawPointer",
             modulePath: Object.freeze(["tsonic_runtime"]),
             name: "RawPointer",
+            lifecycle: explicitLifecycle,
           }),
         }
       : { kind: "unsupported", reason: "selected raw-pointer representation is not opaque identity" };
@@ -117,6 +197,7 @@ function resolveMojoTargetTypeWithState(
             modulePath: Object.freeze(["tsonic_runtime"]),
             name: "Location",
             genericArguments: Object.freeze([Object.freeze({ kind: "type", type: pointee.type })]),
+            lifecycle: implicitHeapLifecycle,
           }),
         };
   }
@@ -218,12 +299,7 @@ function resolveMojoTargetTypeWithState(
       return { kind: "resolved", type: { kind: "source-primitive", name: "float64" } };
     }
     if (sourceProfile?.name === "String") {
-      return context.jsEnabled
-        ? {
-            kind: "resolved",
-            type: namedType("tsonic.mojo.js.JsString", ["tsonic_js"], "JsString"),
-          }
-        : { kind: "resolved", type: { kind: "native-string" } };
+      return { kind: "resolved", type: { kind: "native-string" } };
     }
     if (sourceProfile?.name === "Error") {
       return { kind: "resolved", type: mojoSourceErrorType() };
@@ -273,6 +349,7 @@ function resolveMojoTargetTypeWithState(
               ["tsonic_js"],
               "JsMap",
               arguments_.types,
+              implicitHeapLifecycle,
             ),
           }
         : {
@@ -301,6 +378,7 @@ function resolveMojoTargetTypeWithState(
               ["tsonic_js"],
               "JsSet",
               arguments_.types,
+              implicitHeapLifecycle,
             ),
           }
         : {
@@ -310,6 +388,7 @@ function resolveMojoTargetTypeWithState(
               ["std", "collections"],
               "Set",
               arguments_.types,
+              nativeSetLifecycle,
             ),
           };
     }
@@ -330,6 +409,7 @@ function resolveMojoTargetTypeWithState(
               ["tsonic_js"],
               "JsArray",
               [arguments_.types[0]!],
+              implicitHeapLifecycle,
             ),
           }
         : { kind: "resolved", type: { kind: "list", element: arguments_.types[0]! } };
@@ -343,7 +423,13 @@ function resolveMojoTargetTypeWithState(
       return sourceProfile.profile === "js"
         ? {
             kind: "resolved",
-            type: namedType("tsonic.mojo.js.JsDate", ["tsonic_js"], "JsDate"),
+            type: namedType(
+              "tsonic.mojo.js.JsDate",
+              ["tsonic_js"],
+              "JsDate",
+              [],
+              implicitHeapLifecycle,
+            ),
           }
         : {
             kind: "unsupported",
@@ -359,10 +445,135 @@ function resolveMojoTargetTypeWithState(
       };
     }
     const typeParameter = resolveTypeParameter(symbol, context);
-    if (typeParameter !== undefined) return { kind: "resolved", type: typeParameter };
+    if (typeParameter !== undefined) {
+      const owner = mojoSourceGenericParameterOwner(typeParameter, context);
+      const classified = owner === undefined
+        ? undefined
+        : classifyMojoSourceGenericParameter(owner, typeParameter, context);
+      if (classified === undefined || classified.kind === "unsupported") {
+        return {
+          kind: "unsupported",
+          reason: classified?.reason ?? "source generic parameter has no exact owning declaration",
+        };
+      }
+      if (classified.parameter.kind === "origin") {
+        return {
+          kind: "unsupported",
+          reason: `origin parameter '${classified.parameter.name}' cannot be used as a runtime value carrier`,
+        };
+      }
+      if (classified.parameter.kind === "type") {
+        const lifecycleRequirements = new Set<import("../../target-model/lifecycle/model.js").MojoLifecycleTraitRole>([
+          "movable",
+          "deinitializable",
+        ]);
+        const constraintNode = context.ast.as.AsTypeParameterDeclaration(typeParameter)?.Constraint;
+        if (constraintNode !== undefined) {
+          const constraintType = context.semantics.types.authoredType(constraintNode);
+          const constraint = resolveMojoTargetTypeWithState(
+            constraintType,
+            constraintNode,
+            context,
+            resolving,
+          );
+          if (constraint.kind === "unsupported") return constraint;
+          if (constraint.type.kind === "target-named" &&
+            constraint.type.lifecycleRequirement !== undefined) {
+            lifecycleRequirements.add(constraint.type.lifecycleRequirement);
+          }
+        }
+        const identity = sourceNodeIdentity(context.ast, typeParameter);
+        if (identity === undefined) {
+          return {
+            kind: "unsupported",
+            reason: `source type parameter '${classified.parameter.name}' has no stable declaration identity`,
+          };
+        }
+        return {
+          kind: "resolved",
+          type: Object.freeze({
+            kind: "type-parameter",
+            name: classified.parameter.name,
+            identity,
+            lifecycleRequirements: Object.freeze([...lifecycleRequirements]),
+          }),
+        };
+      }
+      const constraintNode = context.ast.as.AsTypeParameterDeclaration(typeParameter)?.Constraint;
+      const constraintType = constraintNode === undefined
+        ? undefined
+        : context.semantics.types.authoredType(constraintNode);
+      if (constraintType === undefined) {
+        return {
+          kind: "unsupported",
+          reason: `compile-time value parameter '${classified.parameter.name}' has no exact value carrier constraint`,
+        };
+      }
+      return resolveMojoTargetTypeWithState(constraintType, constraintNode, context, resolving);
+    }
 
     const sourceArguments = types.effectiveTypeArguments(selectedType) ?? types.typeArguments(selectedType);
     const authoredArguments = authoredTypeArguments(authoredTypeNode, context.ast);
+    const projectDefinition = context.projectTypes.definitionForSymbol(
+      symbol,
+      context.semantics.declarations.symbolDeclarations,
+    );
+    if (projectDefinition !== undefined) {
+      if (sourceArguments.length !== projectDefinition.typeParameters.length) {
+        return {
+          kind: "unsupported",
+          reason: `project type '${projectDefinition.sourceName}' has ${sourceArguments.length} source arguments for ${projectDefinition.typeParameters.length} parameters`,
+        };
+      }
+      const targetArguments: MojoTargetGenericArgument[] = [];
+      for (const [index, parameter] of projectDefinition.typeParameters.entries()) {
+        const sourceArgument = sourceArguments[index]!;
+        const authoredArgument = authoredArguments.length === sourceArguments.length
+          ? authoredArguments[index]
+          : undefined;
+        if (parameter.kind === "type") {
+          const argument = resolveMojoTargetTypeWithState(
+            sourceArgument,
+            authoredArgument,
+            context,
+            resolving,
+          );
+          if (argument.kind === "unsupported") return argument;
+          targetArguments.push(Object.freeze({ kind: "type", type: argument.type }));
+          continue;
+        }
+        if (authoredArgument === undefined) {
+          return {
+            kind: "unsupported",
+            reason: `project ${parameter.kind} parameter '${parameter.name}' has no exact authored argument`,
+          };
+        }
+        const argument = resolveMojoNonTypeGenericArguments({
+          kind: parameter.kind,
+          name: parameter.name,
+          position: "positional-or-keyword",
+          variadic: false,
+          constraints: Object.freeze([]),
+        }, authoredArgument, context);
+        const targetArgument = argument?.length === 1 ? argument[0] : undefined;
+        if (targetArgument === undefined ||
+          !genericArgumentMatchesKind(targetArgument, parameter.kind)) {
+          return {
+            kind: "unsupported",
+            reason: `project ${parameter.kind} parameter '${parameter.name}' has no exact closed target argument`,
+          };
+        }
+        targetArguments.push(targetArgument);
+      }
+      const projectType = context.projectTypes.targetTypeForDefinition(projectDefinition, targetArguments);
+      return projectType === undefined
+        ? {
+            kind: "unsupported",
+            reason: `project type '${projectDefinition.sourceName}' has incompatible target generic arguments`,
+          }
+        : { kind: "resolved", type: projectType };
+    }
+
     const targetArguments: MojoTargetTypeRef[] = [];
     for (const [index, sourceArgument] of sourceArguments.entries()) {
       const argument = resolveMojoTargetTypeWithState(
@@ -373,19 +584,6 @@ function resolveMojoTargetTypeWithState(
       );
       if (argument.kind === "unsupported") return argument;
       targetArguments.push(argument.type);
-    }
-    const projectDefinition = context.projectTypes.definitionForSymbol(
-      symbol,
-      context.semantics.declarations.symbolDeclarations,
-    );
-    if (projectDefinition !== undefined) {
-      const projectType = context.projectTypes.targetTypeForDefinition(projectDefinition, targetArguments);
-      return projectType === undefined
-        ? {
-            kind: "unsupported",
-            reason: `project type '${projectDefinition.sourceName}' has ${targetArguments.length} target arguments for ${projectDefinition.typeParameterNames.length} parameters`,
-          }
-        : { kind: "resolved", type: projectType };
     }
 
     const callable = types.callable(selectedType);
@@ -482,12 +680,7 @@ function resolveMojoTargetTypeWithState(
       return { kind: "resolved", type: { kind: "source-primitive", name: "bool" } };
     }
     if (types.isStringLike(selectedType)) {
-      return context.jsEnabled
-        ? {
-            kind: "resolved",
-            type: namedType("tsonic.mojo.js.JsString", ["tsonic_js"], "JsString"),
-          }
-        : { kind: "resolved", type: { kind: "native-string" } };
+      return { kind: "resolved", type: { kind: "native-string" } };
     }
     if (types.isNumberLike(selectedType)) {
       return { kind: "resolved", type: { kind: "source-primitive", name: "float64" } };
@@ -508,6 +701,7 @@ function resolveMojoTargetTypeWithState(
               ["tsonic_js"],
               "JsArray",
               [targetArguments[0]!],
+              implicitHeapLifecycle,
             ),
           }
         : { kind: "resolved", type: { kind: "list", element: targetArguments[0]! } };
@@ -533,4 +727,13 @@ function resolveMojoTargetTypeWithState(
   } finally {
     resolving.delete(selectedType);
   }
+}
+
+function genericArgumentMatchesKind(
+  argument: MojoTargetGenericArgument,
+  kind: "type" | "value" | "origin",
+): boolean {
+  if (kind === "type") return argument.kind === "type";
+  if (kind === "origin") return argument.kind === "origin";
+  return argument.kind !== "type" && argument.kind !== "origin" && argument.kind !== "unbound";
 }

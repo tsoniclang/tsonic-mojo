@@ -6,7 +6,7 @@ import {
 import type { MojoPlanningContext } from "../program/context.js";
 import { mojoModuleBindingRead, mojoModuleBindingWrite } from "../bindings/module-bindings.js";
 import { mojoTargetTypeEquals } from "../../../target-model/types/equality.js";
-import { mojoTypeName, registerMojoTypeImports } from "../types/render.js";
+import { registerMojoTypeImports } from "../types/imports.js";
 import {
   convertMojoValue,
   finishOptionalMojoOperation,
@@ -71,10 +71,11 @@ export function planMojoProperty(
       return undefined;
     }
     registerMojoTypeImports(selection.owner, context);
-    const owner = mojoTypeName(selection.owner, context.module.modulePath);
-    return owner === undefined
-      ? undefined
-      : mojoValue(Object.freeze({ kind: "path", path: `${owner}.${selection.name}` }));
+    return mojoValue(Object.freeze({
+      kind: "member",
+      receiver: Object.freeze({ kind: "type-value", type: selection.owner }),
+      name: selection.name,
+    }));
   }
   if (selection.kind === "project-static-field") {
     if (selection.optionalChain) {

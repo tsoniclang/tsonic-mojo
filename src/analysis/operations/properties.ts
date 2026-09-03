@@ -2,6 +2,7 @@ import type { Node, ResolvedSourcePropertyAccessInfo, Type } from "@tsonic/tsts"
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
+import { classifyMojoRefinedValueConversion } from "../refinements/value.js";
 import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
 import type { MojoPropertySelection } from "../program/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
@@ -30,6 +31,7 @@ export interface MojoProviderPropertyAnalysisContext {
   readonly providerSemantics: MojoProviderSemantics;
   readonly sourceProfiles: MojoSourceProfileRegistry;
   readonly conversions: MojoConversionIndex;
+  readonly valueRefinements: WeakMap<Node, import("../program/model.js").MojoValueRefinementSelection>;
   readonly resolveType: (type: Type) => MojoTargetTypeRef | undefined;
 }
 
@@ -152,7 +154,11 @@ export function analyzeMojoProviderProperty(
       reason: "Selected provider property read and write require different receiver carriers.",
     };
   }
-  const receiverConversion = classifyMojoValueConversion(receiverType, receiverTarget);
+  const receiverConversion = classifyMojoRefinedValueConversion(
+    receiverType,
+    receiverTarget,
+    context.valueRefinements.get(source.receiver.expression),
+  );
   if (receiverConversion.kind === "unsupported") {
     return {
       kind: "unsupported",
@@ -220,9 +226,7 @@ export function analyzeMojoProviderProperty(
       receiverConversion: receiverConversion.conversion,
       ...(readResultConversion === undefined ? {} : { readResultConversion }),
       ...(selectedWrite === undefined ? {} : { sourceWriteType: selectedWrite }),
-      ...(writeValueConversion?.kind !== "resolved"
-        ? {}
-        : { writeValueConversion: writeValueConversion.conversion }),
+      ...(writeParameterType === undefined ? {} : { targetWriteType: writeParameterType }),
       optionalChain: source.optionalChain,
     }),
   };
@@ -305,7 +309,11 @@ function analyzeSourceProfileProperty(
       reason: `The source-profile property '${owner}.${member}' has no exact receiver carrier.`,
     };
   }
-  const receiverConversion = classifyMojoValueConversion(receiverType, receiverType);
+  const receiverConversion = classifyMojoRefinedValueConversion(
+    receiverType,
+    receiverType,
+    context.valueRefinements.get(source.receiver.expression),
+  );
   if (receiverConversion.kind === "unsupported") {
     return { kind: "unsupported", code: "MOJO_SOURCE_PROFILE_PROPERTY_RECEIVER_CONFLICT", reason: receiverConversion.reason };
   }
@@ -387,9 +395,7 @@ function analyzeSourceProfileProperty(
       receiverConversion: receiverConversion.conversion,
       ...(readResultConversion?.kind !== "resolved" ? {} : { readResultConversion: readResultConversion.conversion }),
       ...(writeType === undefined ? {} : { sourceWriteType: writeType }),
-      ...(writeValueConversion?.kind !== "resolved"
-        ? {}
-        : { writeValueConversion: writeValueConversion.conversion }),
+      ...(writeStorageType === undefined ? {} : { targetWriteType: writeStorageType }),
       optionalChain: source.optionalChain,
     }),
   };

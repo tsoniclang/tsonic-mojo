@@ -23,6 +23,7 @@ import type { MojoStatement } from "../../target-ast/index.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import { appendMojoPlanningDiagnostic, withMojoErrorType } from "../program/context.js";
 import { planMojoAssignment, planMojoValue, planMojoUpdate } from "../expressions/value.js";
+import { consumeMojoValue } from "../expressions/value-plan.js";
 import { planDiscardedMojoExpression } from "./discarded-expression.js";
 import { planForIncrement } from "./for-increment.js";
 import { planMojoResourceScope } from "./resources.js";
@@ -38,6 +39,11 @@ import {
   planVariableDeclarationList,
   resourceDeclarationList,
 } from "./variable-statements.js";
+import {
+  isMojoCompileTimeCondition,
+  isMojoCompileTimeIteration,
+  planMojoCompileTimeCondition,
+} from "../compile-time/values.js";
 
 export function planMojoFunctionStatements(
   function_: MojoAnalyzedFunction,
@@ -161,7 +167,7 @@ function planStatement(
     const returnedExpression = expression === undefined
       ? undefined
       : context.program.queries.returnValueTransfer(sourceExpression!)
-        ? Object.freeze({ kind: "consume" as const, expression: expression.value })
+        ? consumeMojoValue(expression.value, scope.resultType, context.program.lifecycle)
         : expression.value;
     return Object.freeze([
       ...(expression?.before ?? []),
@@ -202,9 +208,13 @@ function planStatement(
     const conditionNode = Node_Expression(ast, node);
     const thenNode = ast.as.AsIfStatement(node)?.ThenStatement;
     const elseNode = ast.as.AsIfStatement(node)?.ElseStatement;
+    const compileTime = conditionNode !== undefined &&
+      isMojoCompileTimeCondition(conditionNode, context);
     const condition = conditionNode === undefined
       ? undefined
-      : planMojoValue(conditionNode, context, { kind: "source-primitive", name: "bool" });
+      : compileTime
+        ? planMojoCompileTimeCondition(conditionNode, context, planMojoValue)
+        : planMojoValue(conditionNode, context, { kind: "source-primitive", name: "bool" });
     const thenStatements = thenNode === undefined ? undefined : planStatementBody(thenNode, scope, context, flow);
     const elseStatements = elseNode === undefined ? undefined : planStatementBody(elseNode, scope, context, flow);
     if (condition === undefined) {
@@ -222,6 +232,7 @@ function planStatement(
       condition: condition.value,
       thenStatements,
       ...(elseStatements === undefined ? {} : { elseStatements }),
+      ...(compileTime ? { compileTime: true } : {}),
     }]);
   }
   if (ast.is.IsWhileStatement(node)) {
@@ -340,9 +351,16 @@ function planStatement(
         statements = planMojoResourceScope(selection.bindingDeclaration, statements, context);
       }
     }
+    const compileTime = isMojoCompileTimeIteration(selection.iterable, context);
     return statements === undefined
       ? undefined
-      : Object.freeze([...sourceIterable.before, { kind: "for", binding: selection.bindingName, iterable, statements }]);
+      : Object.freeze([...sourceIterable.before, {
+          kind: "for",
+          binding: selection.bindingName,
+          iterable,
+          statements,
+          ...(compileTime ? { compileTime: true } : {}),
+        }]);
   }
   if (ast.is.IsSwitchStatement(node)) {
     return planMojoSwitchStatement(node, scope, context, flow, planStatementNodes);

@@ -8,21 +8,20 @@ import type {
 import { ArrayTypeNode_ElementType } from "@tsonic/target-api/source";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import type { MojoNamedLifecycleContract } from "../../target-model/lifecycle/model.js";
 import type { MojoTypeResolution, MojoTypeResolutionContext } from "./resolution.js";
 
 export function resolveTypeParameter(
   symbol: ReturnType<MojoTypeResolutionContext["semantics"]["declarations"]["typeSymbol"]>,
   context: MojoTypeResolutionContext,
-): MojoTargetTypeRef | undefined {
+): Node | undefined {
   if (symbol === undefined) return undefined;
   const declarations = context.semantics.declarations.symbolDeclarations(symbol);
   if (declarations.length !== 1 || !context.ast.is.IsTypeParameterDeclaration(declarations[0])) {
     return undefined;
   }
   const name = context.ast.name(declarations[0]!);
-  return name === undefined || !context.ast.is.IsIdentifier(name)
-    ? undefined
-    : Object.freeze({ kind: "type-parameter", name: context.ast.text(name) });
+  return name === undefined || !context.ast.is.IsIdentifier(name) ? undefined : declarations[0];
 }
 
 export function resolveUnion(
@@ -62,12 +61,14 @@ export function namedType(
   modulePath: readonly string[],
   name: string,
   genericArguments: readonly MojoTargetTypeRef[] = [],
+  lifecycle?: MojoNamedLifecycleContract,
 ): MojoTargetTypeRef {
   return Object.freeze({
     kind: "target-named",
     id,
     modulePath: Object.freeze([...modulePath]),
     name,
+    ...(lifecycle === undefined ? {} : { lifecycle }),
     ...(genericArguments.length === 0
       ? {}
       : {
@@ -89,7 +90,7 @@ export function providerOwnerMatches(
 export function typeSubjects(
   type: Type,
   authoredTypeNode: Node | undefined,
-  context: MojoTypeResolutionContext,
+  context: Pick<MojoTypeResolutionContext, "ast" | "semantics">,
 ): readonly ExtensionFactSubject[] {
   const subjects: ExtensionFactSubject[] = [];
   if (authoredTypeNode !== undefined) {

@@ -133,9 +133,9 @@ export function analyzeStaticProviderProperty(
       ...(writeOperation === undefined ? {} : { writeOperation }),
       ...(readResultConversion === undefined ? {} : { readResultConversion }),
       ...(selectedWrite === undefined ? {} : { sourceWriteType: selectedWrite }),
-      ...(writeValueConversion?.kind !== "resolved"
+      ...(writeRow?.parameterTypes?.[0] === undefined
         ? {}
-        : { writeValueConversion: writeValueConversion.conversion }),
+        : { targetWriteType: writeRow.parameterTypes[0] }),
     }),
   };
 }

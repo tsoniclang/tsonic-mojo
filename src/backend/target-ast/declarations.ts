@@ -15,6 +15,11 @@ export interface MojoParameter {
   readonly variadic?: boolean;
 }
 
+export type MojoDecorator = "fieldwise-init" | "static-method";
+
+export const mojoFieldwiseInitDecorators = Object.freeze(["fieldwise-init"] as const);
+export const mojoStaticMethodDecorators = Object.freeze(["static-method"] as const);
+
 export interface MojoFunctionDeclaration {
   readonly kind: "function";
   readonly name: string;
@@ -25,7 +30,7 @@ export interface MojoFunctionDeclaration {
   readonly raises: boolean;
   readonly errorType?: MojoTargetTypeRef;
   readonly statements?: readonly MojoStatement[];
-  readonly decorators?: readonly string[];
+  readonly decorators?: readonly MojoDecorator[];
   readonly self?: "self" | "mut self" | "out self" | "owned self";
 }
 
@@ -43,7 +48,7 @@ export interface MojoStructDeclaration {
   readonly conformances: readonly MojoTargetTypeRef[];
   readonly fields: readonly MojoFieldDeclaration[];
   readonly methods: readonly MojoFunctionDeclaration[];
-  readonly decorators?: readonly string[];
+  readonly decorators?: readonly MojoDecorator[];
 }
 
 export interface MojoTraitDeclaration {
@@ -58,6 +63,7 @@ export interface MojoTypeAliasDeclaration {
   readonly name: string;
   readonly genericParameters: readonly MojoProviderTargetGenericParameter[];
   readonly value: MojoTargetTypeRef;
+  readonly aliasedTypeKey?: string;
 }
 
 export interface MojoComptimeDeclaration {

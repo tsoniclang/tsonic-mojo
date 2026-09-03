@@ -1,7 +1,7 @@
 import type { Node, ResolvedSourceCallInfo, Type } from "@tsonic/tsts";
 import type { MojoTargetGenericArgument, MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
-import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
+import { classifyMojoRefinedValueConversion } from "../refinements/value.js";
 import { selectMojoSourceProfileCallRow } from "../../policy/operations/source-profile-selection.js";
 import type {
   MojoSourceProfileCallRow,
@@ -135,6 +135,9 @@ export function analyzeSourceProfileCall(
     targetArguments,
     resolve,
     context.expressionTypes,
+    context.valueRefinements,
+    context.lifecycle,
+    context.valueOwnership,
     callback?.conversion === undefined
       ? undefined
       : new Map([[callback.parameterIndex, callback.conversion]]),
@@ -189,7 +192,13 @@ export function analyzeSourceProfileCall(
       };
     }
     receiver = sourceReceiver.expression;
-    const conversion = classifyMojoValueConversion(sourceReceiverType, sourceReceiverType);
+    const conversion = classifyMojoRefinedValueConversion(
+      sourceReceiverType,
+      sourceReceiverType,
+      sourceCall.sourceReceiver === undefined
+        ? undefined
+        : context.valueRefinements.get(sourceCall.sourceReceiver.expression),
+    );
     if (conversion.kind === "unsupported") return {
       kind: "unsupported",
       code: "MOJO_SOURCE_PROFILE_RECEIVER_CONVERSION_UNPROVEN",

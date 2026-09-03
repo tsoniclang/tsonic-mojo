@@ -9,9 +9,10 @@ import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import { appendMojoPlanningDiagnostic } from "../program/context.js";
 import { planMojoAssignment, planMojoValue, planMojoUpdate } from "../expressions/value.js";
-import { registerMojoTypeImports } from "../types/render.js";
+import { registerMojoTypeImports } from "../types/imports.js";
 import { planMojoBindingPattern } from "../bindings/patterns.js";
 import { planMojoResourceScope } from "./resources.js";
+import { planMojoCompileTimeInitializer } from "../compile-time/values.js";
 
 export function resourceDeclarationList(
   statement: Node,
@@ -90,9 +91,12 @@ function planVariableDeclaration(
     );
     return undefined;
   }
+  const compileTimeInitializer = sourceInitializer === undefined
+    ? undefined
+    : planMojoCompileTimeInitializer(sourceInitializer, context, planMojoValue);
   const initializer = sourceInitializer === undefined
     ? undefined
-    : planMojoValue(sourceInitializer, context, type);
+    : compileTimeInitializer ?? planMojoValue(sourceInitializer, context, type);
   if (sourceInitializer !== undefined && initializer === undefined) {
     appendMojoPlanningDiagnostic(
       context,
@@ -114,6 +118,7 @@ function planVariableDeclaration(
         kind: "variable",
         name,
         type,
+        ...(compileTimeInitializer === undefined ? {} : { compileTime: true }),
         ...(initializer === undefined && defaultValue === undefined
           ? {}
           : { initializer: initializer?.value ?? defaultValue! }),

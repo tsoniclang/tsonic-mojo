@@ -6,7 +6,7 @@ import {
   TryStatement_FinallyBlock,
 } from "@tsonic/target-api/source";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
-import { mojoParameterAbi } from "../../policy/callables/parameter-abi.js";
+import { analyzeMojoParameterDisposition } from "../representations/index.js";
 import { analyzeMojoNullishCoalescing } from "../operations/nullish-coalescing.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import type { MojoBindingPatternSelection } from "./model.js";
@@ -56,7 +56,8 @@ export function selectReturnValueTransfer(
   const expressionType = input.expressionTypes.get(expression);
   if (!ast.is.IsIdentifier(expression) || input.returnType === undefined ||
     expressionType === undefined || input.valueRefinements.has(expression) ||
-    !mojoTargetTypeEquals(expressionType, input.returnType)) {
+    !mojoTargetTypeEquals(expressionType, input.returnType) ||
+    input.lifecycle.capabilities(expressionType).registerPassing === "trivial") {
     return false;
   }
   const reference = input.source.navigation.sourceReferenceFor(expression);
@@ -67,7 +68,7 @@ export function selectReturnValueTransfer(
   }
   if (ast.is.IsParameterDeclaration(declaration)) {
     const mode = input.source.sourceFacts.getFact(declaration, argumentPassingFactKey)?.mode;
-    return mojoParameterAbi(mode).convention === "var";
+    return analyzeMojoParameterDisposition(mode, false).kind === "owned";
   }
   if (ast.is.IsBindingElement(declaration)) {
     return sourceNodeIsWithin(declaration, input.root, ast) &&

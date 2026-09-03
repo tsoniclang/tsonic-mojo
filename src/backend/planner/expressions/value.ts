@@ -10,7 +10,7 @@ import {
   allocateMojoSyntheticName,
   appendMojoPlanningDiagnostic,
   mojoBindingPlanOverride,
-  registerMojoModuleImport,
+  mojoModuleMemberExpression,
   withMojoErrorType,
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
@@ -19,14 +19,17 @@ import {
 } from "./calls.js";
 import { planMojoElement } from "./elements.js";
 import { planMojoProperty, planMojoProviderPropertyMethodWrite } from "./properties.js";
-import { planMojoLeafExpression } from "./leaves.js";
+import {
+  canConstructMojoNumericLiteralDirectly,
+  planMojoLeafExpression,
+} from "./leaves.js";
 import {
   convertMojoValue,
   orderMojoValues,
   planProviderConstant,
   requiredConversion,
 } from "./support.js";
-import { registerMojoTypeImports } from "../types/render.js";
+import { registerMojoTypeImports } from "../types/imports.js";
 import { mojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { planMojoCallableExpression } from "./callables.js";
@@ -114,10 +117,10 @@ export function planMojoUpdate(
     : undefined;
   const providerElement = element?.kind === "provider" ? element : undefined;
   const sourceWriteType = providerProperty?.sourceWriteType ?? providerElement?.sourceWriteType;
-  const writeValueConversion = providerProperty?.writeValueConversion ?? providerElement?.writeValueConversion;
+  const targetWriteType = providerProperty?.targetWriteType ?? providerElement?.targetWriteType;
   const providerWriteOperation = providerProperty?.writeOperation ?? providerElement?.writeOperation;
   if (providerWriteOperation !== undefined &&
-    (sourceWriteType === undefined || writeValueConversion === undefined)) {
+    (sourceWriteType === undefined || targetWriteType === undefined)) {
     appendMojoPlanningDiagnostic(
       context,
       "MOJO_UPDATE_WRITE_CONVERSION_MISSING",
@@ -127,7 +130,8 @@ export function planMojoUpdate(
     return undefined;
   }
   const type = sourceWriteType ?? element?.writeType ?? context.program.queries.expressionType(operand);
-  if (writeValueConversion !== undefined && writeValueConversion.kind !== "identity") {
+  if (sourceWriteType !== undefined && targetWriteType !== undefined &&
+    !mojoTargetTypeEquals(sourceWriteType, targetWriteType)) {
     appendMojoPlanningDiagnostic(
       context,
       "MOJO_UPDATE_WRITE_CONVERSION_UNSUPPORTED",
@@ -174,17 +178,16 @@ export function planMojoAssignment(
   const property = context.program.queries.propertySelection(leftNode);
   const element = context.program.queries.elementSelection(leftNode);
   const targetWriteType = property?.kind === "provider" || property?.kind === "provider-static"
-    ? property.writeOperation?.parameterTypes[0]
-    : element?.writeType;
+    ? property.targetWriteType
+    : element?.kind === "provider" ? element.targetWriteType : element?.writeType;
   const providerProperty = property?.kind === "provider" || property?.kind === "provider-static"
     ? property
     : undefined;
   const providerElement = element?.kind === "provider" ? element : undefined;
   const sourceWriteType = providerProperty?.sourceWriteType ?? providerElement?.sourceWriteType;
-  const writeValueConversion = providerProperty?.writeValueConversion ?? providerElement?.writeValueConversion;
   const providerWriteOperation = providerProperty?.writeOperation ?? providerElement?.writeOperation;
   if (providerWriteOperation !== undefined &&
-    (sourceWriteType === undefined || writeValueConversion === undefined)) {
+    (sourceWriteType === undefined || targetWriteType === undefined)) {
     appendMojoPlanningDiagnostic(
       context,
       "MOJO_PROVIDER_PROPERTY_WRITE_CONVERSION_MISSING",
@@ -193,7 +196,8 @@ export function planMojoAssignment(
     );
     return undefined;
   }
-  if (operator !== "=" && writeValueConversion !== undefined && writeValueConversion.kind !== "identity") {
+  if (operator !== "=" && sourceWriteType !== undefined && targetWriteType !== undefined &&
+    !mojoTargetTypeEquals(sourceWriteType, targetWriteType)) {
     appendMojoPlanningDiagnostic(
       context,
       "MOJO_PROVIDER_COMPOUND_WRITE_CONVERSION_UNSUPPORTED",
@@ -202,13 +206,7 @@ export function planMojoAssignment(
     );
     return undefined;
   }
-  const rightSourceType = sourceWriteType ?? targetWriteType ?? leftType;
-  const sourceRight = planMojoValue(rightNode, context, rightSourceType);
-  const right = sourceRight === undefined
-    ? undefined
-    : writeValueConversion === undefined
-      ? sourceRight
-      : convertMojoValue(sourceRight, writeValueConversion, context);
+  const right = planMojoValue(rightNode, context, targetWriteType ?? leftType);
   if (right === undefined) return undefined;
   const targetType = targetWriteType ?? leftType;
   if (property?.kind === "provider" &&
@@ -234,7 +232,6 @@ export function planMojoAssignment(
       );
       return undefined;
     }
-    registerMojoModuleImport(context, write.target.modulePath);
     let value = right.value;
     const before: MojoStatement[] = [];
     if (operator !== "=") {
@@ -270,10 +267,11 @@ export function planMojoAssignment(
         kind: "expression",
         expression: Object.freeze({
           kind: "call",
-          callee: Object.freeze({
-            kind: "path",
-            path: [...write.target.modulePath, write.target.name].join("."),
-          }),
+          callee: mojoModuleMemberExpression(
+            context,
+            write.target.modulePath,
+            write.target.name,
+          ),
           arguments: Object.freeze([Object.freeze({
             value,
             ...(write.target.value.position === "keyword"
@@ -447,12 +445,21 @@ export function planMojoValue(
         evaluationContext,
       );
     } else {
-      const expression = planMojoLeafExpression(node, evaluationContext);
+      const directNumericTarget = ast.is.IsNumericLiteral(node) &&
+          expectedType !== undefined && conversion?.kind === "primitive-cast" &&
+          canConstructMojoNumericLiteralDirectly(ast.text(node), expectedType)
+        ? expectedType
+        : undefined;
+      const expression = planMojoLeafExpression(node, evaluationContext, directNumericTarget);
       plan = expression === undefined ? undefined : mojoValue(expression);
     }
   }
   if (plan === undefined) return undefined;
-  const converted = expectedType === undefined || actualType === undefined || inlineCallableAdaptation
+  const directNumericConversion = ast.is.IsNumericLiteral(node) &&
+    expectedType !== undefined && conversion?.kind === "primitive-cast" &&
+    canConstructMojoNumericLiteralDirectly(ast.text(node), expectedType);
+  const converted = expectedType === undefined || actualType === undefined ||
+      inlineCallableAdaptation || directNumericConversion
     ? plan
     : conversion === undefined
       ? undefined

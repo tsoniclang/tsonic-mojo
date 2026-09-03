@@ -1,4 +1,5 @@
 import type { MojoCallArgumentConvention, MojoCallArgumentPosition } from "../../../target-model/types/model.js";
+import type { MojoLifecycleTraitRole } from "../../../target-model/lifecycle/model.js";
 
 export const mojoCompilerProviderProtocolVersion = 2;
 
@@ -49,7 +50,12 @@ export interface MojoCompilerNamedPath {
 
 export type MojoCompilerConformanceCondition =
   | { readonly kind: "boolean"; readonly value: boolean }
-  | { readonly kind: "conforms-to"; readonly subject: string; readonly traitNames: readonly string[] }
+  | {
+      readonly kind: "conforms-to";
+      readonly subject: string;
+      readonly traitNames: readonly string[];
+      readonly lifecycleRoles?: readonly MojoLifecycleTraitRole[];
+    }
   | { readonly kind: "predicate"; readonly value: MojoCompilerConditionValue }
   | {
       readonly kind: "equals";

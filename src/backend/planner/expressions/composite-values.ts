@@ -13,7 +13,7 @@ import {
   appendMojoPlanningDiagnostic,
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
-import { registerMojoTypeImports } from "../types/render.js";
+import { registerMojoTypeImports } from "../types/imports.js";
 import {
   planMojoProjectObjectLiteral,
   planMojoProviderRecordLiteral,

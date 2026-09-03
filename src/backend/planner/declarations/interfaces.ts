@@ -7,8 +7,9 @@ import type {
   MojoStatement,
   MojoStructDeclaration,
 } from "../../target-ast/index.js";
+import { mojoFieldwiseInitDecorators } from "../../target-ast/index.js";
 import type { MojoPlanningContext } from "../program/context.js";
-import { registerMojoTypeImports } from "../types/render.js";
+import { registerMojoTypeImports } from "../types/imports.js";
 import {
   mojoReferenceIdentityEqualityMethod,
 } from "./reference-wrapper.js";
@@ -66,7 +67,7 @@ export function planMojoInterface(
       })),
     ]),
     methods: Object.freeze([]),
-    decorators: Object.freeze(["fieldwise_init"]),
+    decorators: mojoFieldwiseInitDecorators,
   });
   const stateConstruction = Object.freeze({
     kind: "construct" as const,

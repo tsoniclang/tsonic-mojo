@@ -18,16 +18,17 @@ import type {
 import {
   allocateMojoSyntheticName,
   appendMojoPlanningDiagnostic,
-  registerMojoModuleImport,
+  mojoModuleMemberExpression,
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
-import { mojoTypeName, registerMojoTypeImports } from "../types/render.js";
-import { mojoValue, withMojoValue } from "./value-plan.js";
+import { registerMojoTypeImports } from "../types/imports.js";
+import { consumeMojoValue, mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { planMojoCallableExpression } from "./callables.js";
 import { adaptMojoRaisingCallableError } from "./callable-error-adapter.js";
 import {
   convertMojoCollection,
+  convertMojoNarrowedUnion,
   convertMojoOptional,
   convertMojoOptionalToUnion,
   convertMojoTruthiness,
@@ -71,18 +72,15 @@ export function planProviderConstant(
   context: MojoPlanningContext,
 ): MojoValuePlan | undefined {
   if (operation.target.kind !== "constant" && operation.target.kind !== "function-read") return undefined;
-  registerMojoModuleImport(context, operation.target.modulePath);
   const selected: MojoExpression = operation.target.kind === "constant"
-    ? {
-        kind: "path",
-        path: [...operation.target.modulePath, operation.target.name].join("."),
-      }
+    ? mojoModuleMemberExpression(context, operation.target.modulePath, operation.target.name)
     : {
         kind: "call",
-        callee: Object.freeze({
-          kind: "path",
-          path: [...operation.target.modulePath, operation.target.name].join("."),
-        }),
+        callee: mojoModuleMemberExpression(
+          context,
+          operation.target.modulePath,
+          operation.target.name,
+        ),
         arguments: Object.freeze([]),
       };
   return convertMojoValue(mojoValue(selected), resultConversion, context);
@@ -113,9 +111,16 @@ export function planSelectedArgument(
     ? expression
     : convertMojoValue(expression, argument.conversion, context);
   if (converted === undefined) return undefined;
-  const value: MojoExpression = argument.passing === "consume"
-    ? { kind: "consume", expression: converted.value }
-    : converted.value;
+  const value: MojoExpression = argument.disposition.kind === "transfer"
+    ? consumeMojoValue(converted.value, argument.parameterType, context.program.lifecycle)
+    : argument.disposition.kind === "copy"
+      ? {
+          kind: "method-call",
+          receiver: converted.value,
+          name: "copy",
+          arguments: Object.freeze([]),
+        }
+      : converted.value;
   return Object.freeze({
     plan: withMojoValue(converted.before, value),
     type: argument.parameterType,
@@ -200,7 +205,9 @@ export function orderMojoValues(
 
 function isStableMojoLocation(expression: MojoExpression): boolean {
   switch (expression.kind) {
-    case "path": return true;
+    case "path":
+    case "qualified-path":
+    case "type-value": return true;
     case "member": return isStableMojoLocation(expression.receiver);
     case "element": return isStableMojoLocation(expression.receiver);
     case "postfix-deref": return true;
@@ -261,6 +268,9 @@ export function convertMojoValue(
   }
   if (conversion.kind === "union-map") {
     return convertMojoUnion(plan, conversion, context, convertMojoValue);
+  }
+  if (conversion.kind === "narrowed-union-map") {
+    return convertMojoNarrowedUnion(plan, conversion, context, convertMojoValue);
   }
   const converted = applyMojoConversion(plan.value, conversion, context);
   return converted === undefined ? undefined : withMojoValue(plan.before, converted);
@@ -397,7 +407,6 @@ export function applyMojoConversion(
   switch (conversion.kind) {
     case "identity": return expression;
     case "callable-adapt": {
-      registerMojoModuleImport(context, ["tsonic_runtime"]);
       registerMojoTypeImports(conversion.targetType, context);
       if (conversion.targetType.kind !== "callable") return undefined;
       const argumentTuple = Object.freeze({
@@ -424,12 +433,13 @@ export function applyMojoConversion(
         const sourceError = conversion.sourceErrorType ?? targetError;
         adapted = Object.freeze({
           kind: "call",
-          callee: Object.freeze({
-            kind: "path",
-            path: sourceRaises
-              ? "tsonic_runtime.adapt_raising_callable_never_result"
-              : "tsonic_runtime.adapt_callable_never_result",
-          }),
+          callee: mojoModuleMemberExpression(
+            context,
+            ["tsonic_runtime"],
+            sourceRaises
+              ? "adapt_raising_callable_never_result"
+              : "adapt_callable_never_result",
+          ),
           genericArguments: Object.freeze([
             Object.freeze({ kind: "type" as const, type: argumentTuple }),
             Object.freeze({ kind: "type" as const, type: resultType }),
@@ -459,7 +469,7 @@ export function applyMojoConversion(
         }
         return Object.freeze({
           kind: "call",
-          callee: Object.freeze({ kind: "path", path: "tsonic_runtime.widen_callable" }),
+          callee: mojoModuleMemberExpression(context, ["tsonic_runtime"], "widen_callable"),
           genericArguments: Object.freeze([
             Object.freeze({ kind: "type" as const, type: argumentTuple }),
             Object.freeze({ kind: "type" as const, type: resultType }),
@@ -471,7 +481,7 @@ export function applyMojoConversion(
       if (conversion.error === "erase") {
         return Object.freeze({
           kind: "call",
-          callee: Object.freeze({ kind: "path", path: "tsonic_runtime.erase_callable_error" }),
+          callee: mojoModuleMemberExpression(context, ["tsonic_runtime"], "erase_callable_error"),
           arguments: Object.freeze([{ value: adapted }]),
         });
       }
@@ -480,42 +490,43 @@ export function applyMojoConversion(
     case "js-truthiness":
       return planMojoTruthiness(expression, conversion.conversion, context);
     case "js-callback-truthiness": {
-      registerMojoModuleImport(context, ["tsonic_js"]);
       registerMojoTypeImports(conversion.targetType, context);
       const callable = conversion.widenRaises
         ? Object.freeze({
             kind: "call" as const,
-            callee: Object.freeze({ kind: "path" as const, path: "tsonic_runtime.widen_callable" }),
+            callee: mojoModuleMemberExpression(context, ["tsonic_runtime"], "widen_callable"),
             arguments: Object.freeze([{ value: expression }]),
           })
         : expression;
-      if (conversion.widenRaises) registerMojoModuleImport(context, ["tsonic_runtime"]);
       return Object.freeze({
         kind: "call",
-        callee: Object.freeze({
-          kind: "path",
-          path: `tsonic_js.adapt_truthy_${conversion.source.replace(/-/gu, "_")}_callback`,
-        }),
+        callee: mojoModuleMemberExpression(
+          context,
+          ["tsonic_js"],
+          `adapt_truthy_${conversion.source.replace(/-/gu, "_")}_callback`,
+        ),
         arguments: Object.freeze([{ value: callable }]),
       });
     }
     case "js-to-native-string":
-      registerMojoModuleImport(context, ["tsonic_js"]);
       return { kind: "method-call", receiver: expression, name: "to_native_strict", arguments: Object.freeze([]) };
     case "native-to-js-string":
-      registerMojoModuleImport(context, ["tsonic_js"]);
       return { kind: "construct", type: conversion.targetType, arguments: Object.freeze([{ value: expression }]) };
     case "collection-map":
     case "optional-map":
     case "optional-to-union":
     case "union-to-optional":
     case "union-map":
+    case "narrowed-union-map":
       return undefined;
     case "js-box":
-      registerMojoModuleImport(context, ["tsonic_js"]);
       return {
         kind: "call",
-        callee: { kind: "path", path: `tsonic_js.js_value_from_${conversion.source}` },
+        callee: mojoModuleMemberExpression(
+          context,
+          ["tsonic_js"],
+          `js_value_from_${conversion.source}`,
+        ),
         arguments: conversion.source === "null" || conversion.source === "undefined"
           ? Object.freeze([])
           : Object.freeze([{ value: expression }]),
@@ -564,13 +575,4 @@ export function jsArrayElement(type: MojoTargetTypeRef): MojoTargetTypeRef | und
   if (!isJsArray(type) || type.kind !== "target-named") return undefined;
   const argument = type.genericArguments?.[0];
   return argument?.kind === "type" ? argument.type : undefined;
-}
-
-export function requiredMojoTypeName(
-  type: MojoTargetTypeRef,
-  context: MojoPlanningContext,
-): string {
-  const name = mojoTypeName(type, context.module.modulePath);
-  if (name === undefined) throw new Error("A Mojo unit type cannot own a static method.");
-  return name;
 }

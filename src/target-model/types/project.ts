@@ -3,9 +3,15 @@ import type {
   SourceFile,
   Symbol,
 } from "@tsonic/tsts";
-import type { MojoTargetTypeRef } from "./model.js";
+import type { MojoTargetGenericArgument, MojoTargetTypeRef } from "./model.js";
 
 export type MojoProjectTypeKind = "class" | "interface" | "enum";
+
+export interface MojoProjectTypeParameterDefinition {
+  readonly declaration: Node;
+  readonly name: string;
+  readonly kind: "type" | "value" | "origin";
+}
 
 export interface MojoProjectTypeDefinition {
   readonly id: string;
@@ -15,7 +21,7 @@ export interface MojoProjectTypeDefinition {
   readonly targetName: string;
   readonly modulePath: readonly string[];
   readonly kind: MojoProjectTypeKind;
-  readonly typeParameterNames: readonly string[];
+  readonly typeParameters: readonly MojoProjectTypeParameterDefinition[];
 }
 
 export interface MojoProjectTypeIssue {
@@ -35,6 +41,6 @@ export interface MojoProjectTypeCatalog {
   ): MojoProjectTypeDefinition | undefined;
   targetTypeForDefinition(
     definition: MojoProjectTypeDefinition,
-    arguments_: readonly MojoTargetTypeRef[],
+    arguments_: readonly MojoTargetGenericArgument[],
   ): MojoTargetTypeRef | undefined;
 }

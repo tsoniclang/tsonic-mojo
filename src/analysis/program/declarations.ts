@@ -9,6 +9,7 @@ import { analyzeMojoFunctionSignature } from "../callables/signatures.js";
 import { analyzeMojoClass } from "../declarations/classes.js";
 import { analyzeMojoEnum } from "../declarations/enums.js";
 import { analyzeMojoInterface } from "../declarations/interfaces.js";
+import { analyzeMojoTypeAlias } from "../declarations/type-aliases.js";
 import { allocateMojoLocalBindings } from "./local-bindings.js";
 import type { MojoDeclarationDrafts } from "./declaration-drafts.js";
 import type {
@@ -17,14 +18,18 @@ import type {
   MojoAnalyzedFunction,
   MojoAnalyzedInterface,
   MojoAnalyzedProjectProperty,
+  MojoAnalyzedTypeAlias,
 } from "./model.js";
 import { closeMojoProjectStateStorage } from "./reference-storage.js";
+import type { MojoLifecycleResolver } from "../lifecycle/model.js";
+import type { MojoSourceModuleCatalog } from "../source-modules/model.js";
 
 export interface MojoProjectDeclarationAnalysis {
   readonly functions: MojoAnalyzedFunction[];
   readonly classes: MojoAnalyzedClass[];
   readonly interfaces: MojoAnalyzedInterface[];
   readonly enums: MojoAnalyzedEnum[];
+  readonly typeAliases: MojoAnalyzedTypeAlias[];
   readonly functionByDeclaration: WeakMap<Node, MojoAnalyzedFunction>;
   readonly classByDeclaration: WeakMap<Node, MojoAnalyzedClass>;
   readonly classByTypeId: Map<string, MojoAnalyzedClass>;
@@ -35,6 +40,8 @@ export function analyzeMojoProjectDeclarations(input: {
   readonly source: TargetSourceProgram;
   readonly providerSemantics: MojoProviderSemantics;
   readonly projectTypes: MojoProjectTypeCatalog;
+  readonly modules: MojoSourceModuleCatalog;
+  readonly lifecycle: MojoLifecycleResolver;
   readonly sourceProfiles: MojoSourceProfileRegistry;
   readonly jsEnabled: boolean;
   readonly sourceCallableErrorType?: MojoTargetTypeRef;
@@ -43,7 +50,9 @@ export function analyzeMojoProjectDeclarations(input: {
   readonly bindingSourceFiles: WeakMap<Node, SourceFile>;
   readonly bindingTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly fieldByDeclaration: WeakMap<Node, MojoAnalyzedProjectProperty>;
-  readonly createNameAllocator: () => (name: string) => string;
+  readonly createNameAllocator: (
+    role?: "value" | "type" | "constant",
+  ) => (name: string) => string;
   readonly diagnostics: TargetDiagnostic[];
 }): MojoProjectDeclarationAnalysis {
   const { ast } = input.source;
@@ -51,21 +60,44 @@ export function analyzeMojoProjectDeclarations(input: {
   const classes: MojoAnalyzedClass[] = [];
   const interfaces: MojoAnalyzedInterface[] = [];
   const enums: MojoAnalyzedEnum[] = [];
+  const typeAliases: MojoAnalyzedTypeAlias[] = [];
   const functionByDeclaration = new WeakMap<Node, MojoAnalyzedFunction>();
   const classByDeclaration = new WeakMap<Node, MojoAnalyzedClass>();
   const classByTypeId = new Map<string, MojoAnalyzedClass>();
   const interfaceByTypeId = new Map<string, MojoAnalyzedInterface>();
+
+  for (const draft of input.drafts.typeAliases) {
+    const module = input.modules.forSourceFile(draft.sourceFile);
+    const analyzed = analyzeMojoTypeAlias({
+      source: input.source,
+      providerSemantics: input.providerSemantics,
+      projectTypes: input.projectTypes,
+      lifecycle: input.lifecycle,
+      sourceProfiles: input.sourceProfiles,
+      jsEnabled: input.jsEnabled,
+      ...(input.sourceCallableErrorType === undefined
+        ? {}
+        : { sourceCallableErrorType: input.sourceCallableErrorType }),
+      declaration: draft.declaration,
+      sourceFile: draft.sourceFile,
+      name: draft.name,
+      exported: module?.exports.some((exported) =>
+        exported.declaration === draft.declaration) === true,
+      diagnostics: input.diagnostics,
+    });
+    if (analyzed === undefined) continue;
+    typeAliases.push(analyzed);
+    input.bindingTypes.set(draft.declaration, analyzed.value);
+  }
 
   for (const draft of input.drafts.functions) {
     const function_ = analyzeMojoFunctionSignature({
       source: input.source,
       providerSemantics: input.providerSemantics,
       projectTypes: input.projectTypes,
+      lifecycle: input.lifecycle,
       sourceProfiles: input.sourceProfiles,
       jsEnabled: input.jsEnabled,
-      ...(input.sourceCallableErrorType === undefined
-        ? {}
-        : { sourceCallableErrorType: input.sourceCallableErrorType }),
       ...(input.sourceCallableErrorType === undefined
         ? {}
         : { sourceCallableErrorType: input.sourceCallableErrorType }),
@@ -99,6 +131,7 @@ export function analyzeMojoProjectDeclarations(input: {
       source: input.source,
       providerSemantics: input.providerSemantics,
       projectTypes: input.projectTypes,
+      lifecycle: input.lifecycle,
       sourceProfiles: input.sourceProfiles,
       jsEnabled: input.jsEnabled,
       ...(input.sourceCallableErrorType === undefined
@@ -134,6 +167,7 @@ export function analyzeMojoProjectDeclarations(input: {
       source: input.source,
       providerSemantics: input.providerSemantics,
       projectTypes: input.projectTypes,
+      lifecycle: input.lifecycle,
       sourceProfiles: input.sourceProfiles,
       jsEnabled: input.jsEnabled,
       declaration: draft.declaration,
@@ -182,7 +216,7 @@ export function analyzeMojoProjectDeclarations(input: {
       declaration: draft.declaration,
       sourceFile: draft.sourceFile,
       name: draft.name,
-      allocateMemberName: input.createNameAllocator(),
+      allocateMemberName: input.createNameAllocator("constant"),
       bindName(declaration, name) {
         input.bindingNames.set(declaration, name);
         input.bindingSourceFiles.set(declaration, draft.sourceFile);
@@ -218,6 +252,7 @@ export function analyzeMojoProjectDeclarations(input: {
     classes: [...closed.classes],
     interfaces: [...closed.interfaces],
     enums,
+    typeAliases,
     functionByDeclaration,
     classByDeclaration: closedClassByDeclaration,
     classByTypeId: closedClassByTypeId,

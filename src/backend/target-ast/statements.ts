@@ -13,6 +13,7 @@ export type MojoStatement =
       readonly name: string;
       readonly type?: MojoTargetTypeRef;
       readonly initializer?: MojoExpression;
+      readonly compileTime?: boolean;
     }
   | {
       readonly kind: "tuple-variable";
@@ -32,6 +33,7 @@ export type MojoStatement =
       readonly condition: MojoExpression;
       readonly thenStatements: readonly MojoStatement[];
       readonly elseStatements?: readonly MojoStatement[];
+      readonly compileTime?: boolean;
     }
   | {
       readonly kind: "while";
@@ -43,6 +45,7 @@ export type MojoStatement =
       readonly binding: string;
       readonly iterable: MojoExpression;
       readonly statements: readonly MojoStatement[];
+      readonly compileTime?: boolean;
     }
   | { readonly kind: "break" }
   | { readonly kind: "continue" }

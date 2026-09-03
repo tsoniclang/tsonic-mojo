@@ -1,3 +1,5 @@
+import type { MojoLifecycleResolver } from "../../../analysis/lifecycle/model.js";
+import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 
 export interface MojoValuePlan {
@@ -14,6 +16,16 @@ export function withMojoValue(
   value: MojoExpression,
 ): MojoValuePlan {
   return Object.freeze({ before: Object.freeze([...before]), value });
+}
+
+export function consumeMojoValue(
+  value: MojoExpression,
+  type: MojoTargetTypeRef,
+  lifecycle: MojoLifecycleResolver,
+): MojoExpression {
+  return lifecycle.capabilities(type).registerPassing === "trivial"
+    ? value
+    : Object.freeze({ kind: "consume", expression: value });
 }
 
 export function mapMojoValue(

@@ -19,6 +19,7 @@ import type { MojoAnalyzedProjectProperty } from "../program/model.js";
 import type { MojoValueRefinementSelection } from "../program/model.js";
 import { instantiateProjectIndexSignature } from "./project-fields.js";
 import { classifyMojoValueRefinement } from "../refinements/value.js";
+import { classifyMojoRefinedValueConversion } from "../refinements/value.js";
 import { mojoPrimitiveTargetType } from "../../target-model/types/constructors.js";
 
 export type MojoElementAnalysis =
@@ -37,6 +38,7 @@ export interface MojoElementAnalysisContext {
   readonly resolveType: (type: Type) => MojoTargetTypeRef | undefined;
   readonly conversions: MojoConversionIndex;
   readonly expressionTypes: WeakMap<import("@tsonic/tsts").Node, MojoTargetTypeRef>;
+  readonly valueRefinements: WeakMap<Node, MojoValueRefinementSelection>;
   readonly projectPropertyByDeclaration: WeakMap<Node, MojoAnalyzedProjectProperty>;
 }
 
@@ -254,7 +256,11 @@ function analyzeSourceProfileElement(
         genericParameters: Object.freeze([]),
         raises: false,
       });
-  const receiverConversion = classifyMojoValueConversion(receiver, receiver);
+  const receiverConversion = classifyMojoRefinedValueConversion(
+    receiver,
+    receiver,
+    context.valueRefinements.get(source.receiver.expression),
+  );
   const indexConversion = context.conversions.record(source.argument.expression, index, targetIndex);
   if (receiverConversion.kind === "unsupported") {
     return unsupported("MOJO_SOURCE_PROFILE_ELEMENT_RECEIVER_CONFLICT", receiverConversion.reason);
@@ -282,9 +288,7 @@ function analyzeSourceProfileElement(
       ...(readOperation === undefined ? {} : { readOperation, readType: sourceRead }),
       ...(writeOperation === undefined ? {} : { writeOperation, writeType: sourceWrite }),
       ...(sourceWrite === undefined ? {} : { sourceWriteType: sourceWrite }),
-      ...(writeValueConversion?.kind !== "resolved"
-        ? {}
-        : { writeValueConversion: writeValueConversion.conversion }),
+      ...(sourceWrite === undefined ? {} : { targetWriteType: sourceWrite }),
       receiverConversion: receiverConversion.conversion,
       sourceReceiverType: receiver,
       indexConversion: indexConversion.conversion,
@@ -445,7 +449,11 @@ function analyzeProviderElement(
       "Selected provider element read and write require different receiver or index carriers.",
     );
   }
-  const receiverConversion = classifyMojoValueConversion(receiver, receiverTarget);
+  const receiverConversion = classifyMojoRefinedValueConversion(
+    receiver,
+    receiverTarget,
+    context.valueRefinements.get(source.receiver.expression),
+  );
   const indexConversion = context.conversions.record(source.argument.expression, index, indexTarget);
   if (receiverConversion.kind === "unsupported") {
     return unsupported("MOJO_PROVIDER_ELEMENT_RECEIVER_CONVERSION_UNPROVEN", receiverConversion.reason);
@@ -493,9 +501,7 @@ function analyzeProviderElement(
       ...(readOperation === undefined ? {} : { readOperation, readType: readOperation.resultType }),
       ...(writeOperation === undefined ? {} : { writeOperation, writeType }),
       ...(sourceWrite === undefined ? {} : { sourceWriteType: sourceWrite }),
-      ...(writeValueConversion?.kind !== "resolved"
-        ? {}
-        : { writeValueConversion: writeValueConversion.conversion }),
+      ...(writeType === undefined ? {} : { targetWriteType: writeType }),
       receiverConversion: receiverConversion.conversion,
       sourceReceiverType: receiver,
       indexConversion: indexConversion.conversion,

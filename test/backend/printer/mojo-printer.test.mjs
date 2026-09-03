@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { printMojoModule } from "../../../dist/print/source/index.js";
+import { mojoTargetTypeKey } from "../../../dist/target-model/types/key.js";
 
 test("printer emits assignment as a statement and keeps expressions structured", () => {
   const module = {
+    modulePath: [],
     imports: [],
+    typeAliases: [],
     declarations: [{
       kind: "function",
       name: "increment",
@@ -43,7 +46,9 @@ test("printer emits explicit JS string construction", () => {
     name: "JsString",
   };
   const module = {
+    modulePath: [],
     imports: [{ kind: "module", modulePath: ["tsonic_js"] }],
+    typeAliases: [],
     declarations: [{
       kind: "function",
       name: "message",
@@ -68,11 +73,13 @@ test("printer emits explicit JS string construction", () => {
 test("printer emits typed declarations and structured control flow", () => {
   const int32 = { kind: "source-primitive", name: "int32" };
   const module = {
+    modulePath: [],
     imports: [{
       kind: "symbols",
       modulePath: ["std", "collections"],
       symbols: [{ name: "List" }, { name: "Optional", alias: "Maybe" }],
     }],
+    typeAliases: [],
     declarations: [{
       kind: "struct",
       name: "Counter",
@@ -119,6 +126,7 @@ test("printer renders generated generic values from typed syntax", () => {
   const module = {
     modulePath: ["fixture"],
     imports: [{ kind: "module", modulePath: ["tsonic_runtime"] }],
+    typeAliases: [],
     declarations: [{
       kind: "comptime",
       name: "stateCell",
@@ -144,7 +152,10 @@ test("printer renders generated generic values from typed syntax", () => {
     [
       "import tsonic_runtime",
       "",
-      'comptime stateCell = tsonic_runtime.GlobalCell["module.😀", fixture.createState]()',
+      "comptime stateCell = tsonic_runtime.GlobalCell[",
+      '    "module.😀",',
+      "    fixture.createState,",
+      "]()",
       "",
     ].join("\n"),
   );
@@ -160,6 +171,7 @@ test("printer emits closed numeric enums as native compile-time value families",
   const module = {
     modulePath: ["fixture"],
     imports: [],
+    typeAliases: [],
     declarations: [{
       kind: "struct",
       name: "Mode",
@@ -197,7 +209,7 @@ test("printer emits closed numeric enums as native compile-time value families",
         },
       ],
       methods: [],
-      decorators: ["fieldwise_init"],
+      decorators: ["fieldwise-init"],
     }],
   };
   assert.equal(
@@ -211,4 +223,36 @@ test("printer emits closed numeric enums as native compile-time value families",
       "",
     ].join("\n"),
   );
+});
+
+test("printer uses one selected alias application for a complex carrier", () => {
+  const typeParameter = { kind: "type-parameter", name: "T", identity: "type:T" };
+  const tuple = { kind: "tuple", elements: [typeParameter, typeParameter, typeParameter, typeParameter] };
+  const module = {
+    modulePath: ["fixture"],
+    imports: [],
+    typeAliases: [{
+      typeKey: mojoTargetTypeKey(tuple),
+      name: "Quad",
+      genericArguments: [{ kind: "type", type: typeParameter }],
+    }],
+    declarations: [{
+      kind: "function",
+      name: "preserve",
+      genericParameters: [{
+        kind: "type",
+        name: "T",
+        position: "positional-or-keyword",
+        variadic: false,
+        constraints: [],
+      }],
+      parameters: [{ name: "value", type: tuple }],
+      resultType: tuple,
+      asynchronous: false,
+      raises: false,
+      statements: [{ kind: "return", expression: { kind: "path", path: "value" } }],
+    }],
+  };
+  const generated = printMojoModule(module);
+  assert.match(generated, /def preserve\[T: AnyType\]\(value: Quad\[T\]\) -> Quad\[T\]:/u);
 });

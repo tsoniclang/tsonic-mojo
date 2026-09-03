@@ -36,6 +36,7 @@ export function mojoConversionRaises(conversion: MojoValueConversion): boolean {
     case "union-to-optional":
       return conversion.presentMembers.some((member) => mojoConversionRaises(member.conversion));
     case "union-map":
+    case "narrowed-union-map":
       return conversion.members.some((member) => mojoConversionRaises(member.conversion));
     default: return false;
   }

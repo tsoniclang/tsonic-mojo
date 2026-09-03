@@ -30,12 +30,15 @@ export function analyzeCall(
     source: input.source,
     providerSemantics: input.providerSemantics,
     projectTypes: input.projectTypes,
+    lifecycle: input.lifecycle,
+    valueOwnership: input.valueOwnership,
     sourceProfiles: input.sourceProfiles,
     jsEnabled: input.jsEnabled,
     ...(input.sourceCallableErrorType === undefined
       ? {}
       : { sourceCallableErrorType: input.sourceCallableErrorType }),
     expressionTypes: input.expressionTypes,
+    valueRefinements: input.valueRefinements,
     conversions: input.conversions,
     functionByDeclaration: input.functionByDeclaration,
     classByDeclaration: input.classByDeclaration,
@@ -98,6 +101,7 @@ export function analyzeProperty(
         providerSemantics: input.providerSemantics,
         sourceProfiles: input.sourceProfiles,
         conversions: input.conversions,
+        valueRefinements: input.valueRefinements,
         resolveType: resolve,
       })
     : project;
@@ -129,6 +133,7 @@ export function analyzeElement(
     sourceProfiles: input.sourceProfiles,
     conversions: input.conversions,
     expressionTypes: input.expressionTypes,
+    valueRefinements: input.valueRefinements,
     projectPropertyByDeclaration: input.fieldByDeclaration,
     resolveType(type) {
       return resolveType(type, undefined, input, semantics);

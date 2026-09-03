@@ -3,7 +3,10 @@ import { classifyMojoValueConversion } from "../../policy/conversions/selection.
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoNullishCoalescingSelection } from "../program/model.js";
-import { classifyMojoValueRefinement } from "../refinements/value.js";
+import {
+  classifyMojoRefinedValueConversion,
+  classifyMojoValueRefinement,
+} from "../refinements/value.js";
 
 export type MojoNullishCoalescingAnalysis =
   | {
@@ -54,7 +57,14 @@ export function analyzeMojoNullishCoalescing(
   if (resultType === undefined) {
     return unsupported("The present left value and fallback have no single exact Mojo result carrier.");
   }
-  const presentConversion = classifyMojoValueConversion(present, resultType);
+  const presentRefinement = leftType.kind === "union"
+    ? classifyMojoValueRefinement(leftType, present)
+    : undefined;
+  const presentConversion = classifyMojoRefinedValueConversion(
+    present,
+    resultType,
+    presentRefinement,
+  );
   const rightConversion = classifyMojoValueConversion(rightType, resultType);
   if (presentConversion.kind === "unsupported") return unsupported(presentConversion.reason);
   if (rightConversion.kind === "unsupported") return unsupported(rightConversion.reason);
@@ -73,7 +83,6 @@ export function analyzeMojoNullishCoalescing(
   if (leftType.kind !== "union") {
     return unsupported("A nullable left carrier must be Optional[T] or a closed union.");
   }
-  const presentRefinement = classifyMojoValueRefinement(leftType, present);
   if (presentRefinement === undefined) {
     return unsupported("The closed nullable union has no exact non-nullish projection.");
   }

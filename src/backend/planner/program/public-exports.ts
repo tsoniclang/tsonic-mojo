@@ -21,13 +21,12 @@ import type {
 } from "../../target-ast/index.js";
 import { mojoModuleBindingRead } from "../bindings/module-bindings.js";
 import { adaptMojoValueErrorDomain } from "../expressions/error-domains.js";
-import { mojoValue } from "../expressions/value-plan.js";
+import { consumeMojoValue, mojoValue } from "../expressions/value-plan.js";
 import {
   appendMojoPlanningDiagnostic,
-  registerMojoModuleImport,
 } from "./context.js";
 import type { MojoPlanningContext } from "./context.js";
-import { registerMojoTypeImports } from "../types/render.js";
+import { registerMojoTypeImports } from "../types/imports.js";
 
 const unitType: MojoTargetTypeRef = Object.freeze({ kind: "unit" });
 
@@ -41,7 +40,8 @@ export function planMojoPublicModuleExports(
   for (const exported of program.modules.entryPoint.exports) {
     if (program.modules.forSourceFile(exported.sourceFile)?.id !== definition.id) continue;
     const binding = program.queries.moduleBinding(exported.declaration);
-    if (binding?.storage === "cell") bindings.set(binding.declaration, binding);
+    if (binding?.disposition.kind === "immutable-runtime" ||
+      binding?.disposition.kind === "live-cell") bindings.set(binding.declaration, binding);
   }
   if (bindings.size === 0) return Object.freeze([]);
   if (module.asynchronous) {
@@ -217,7 +217,7 @@ function publicCallableArgument(
     : path;
   if (value === undefined) return undefined;
   if (parameter.passing === "consume") {
-    value = Object.freeze({ kind: "consume", expression: value });
+    value = consumeMojoValue(value, parameter.type, context.program.lifecycle);
   }
   return value;
 }
@@ -238,7 +238,6 @@ function materializeRestArgument(
   if (type.kind !== "target-named" || type.id !== "tsonic.mojo.js.JsArray") return undefined;
   const element = collectionElement(type);
   if (element === undefined) return undefined;
-  registerMojoModuleImport(context, Object.freeze(["tsonic_js"]));
   const listType: MojoTargetTypeRef = Object.freeze({ kind: "list", element });
   registerMojoTypeImports(listType, context);
   registerMojoTypeImports(type, context);

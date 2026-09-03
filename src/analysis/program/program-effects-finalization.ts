@@ -393,7 +393,7 @@ export function finalizeMojoProgramEffects(
     const selection = callSelections.get(callNode);
     if (selection === undefined || selection.kind === "explicit-safety" ||
       selection.kind === "native-pointer" || selection.kind === "raw-pointer" ||
-      selection.kind === "typed-location") continue;
+      selection.kind === "typed-location" || selection.kind === "source-intrinsic") continue;
     const replacements = new Map<MojoAnalyzedCallArgument, MojoAnalyzedCallArgument>();
     const arguments_ = selection.arguments.map((argument) => {
       const finalized = finalizeCallableArgument(argument);

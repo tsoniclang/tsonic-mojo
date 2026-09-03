@@ -6,6 +6,8 @@ import type { MojoParameter } from "./declarations.js";
 
 export type MojoExpression =
   | { readonly kind: "path"; readonly path: string }
+  | { readonly kind: "qualified-path"; readonly segments: readonly string[] }
+  | { readonly kind: "type-value"; readonly type: MojoTargetTypeRef }
   | { readonly kind: "string-literal"; readonly value: string }
   | { readonly kind: "number-literal"; readonly text: string }
   | { readonly kind: "bool-literal"; readonly value: boolean }
@@ -59,6 +61,10 @@ export type MojoExpression =
       readonly genericArguments?: readonly MojoTargetGenericArgument[];
       readonly arguments: readonly MojoCallArgument[];
     }
+  | { readonly kind: "forced-comptime"; readonly expression: MojoExpression }
+  | { readonly kind: "generic-argument-value"; readonly value: MojoTargetGenericArgument }
+  | { readonly kind: "copy"; readonly expression: MojoExpression }
+  | { readonly kind: "materialize"; readonly expression: MojoExpression }
   | { readonly kind: "consume"; readonly expression: MojoExpression }
   | { readonly kind: "postfix-deref"; readonly expression: MojoExpression }
   | { readonly kind: "await"; readonly expression: MojoExpression }
@@ -74,7 +80,8 @@ export type MojoExpression =
 
 export interface MojoLambdaCapture {
   readonly name: string;
-  readonly convention: "imm" | "mut";
+  readonly convention: "imm" | "mut" | "var" | "ref";
+  readonly transfer?: boolean;
 }
 
 export interface MojoDictionaryEntry {

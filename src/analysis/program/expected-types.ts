@@ -83,6 +83,9 @@ export function callArgumentExpectedType(
   expression: Node,
 ): MojoTargetTypeRef | undefined {
   if (selection === undefined) return undefined;
+  if (selection.kind === "source-intrinsic") {
+    return selection.operand === expression ? selection.resultType : undefined;
+  }
   if (selection.kind === "project" || selection.kind === "provider" || selection.kind === "callable") {
     return selection.arguments.find((argument) => argument.expression === expression)?.parameterType;
   }

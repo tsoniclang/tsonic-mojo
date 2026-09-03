@@ -242,7 +242,12 @@ function instantiateIndexSignatures(
     if (argument?.kind !== "type") return undefined;
     types.set(parameter.name, argument.type);
   }
-  const substitutions = { types, values: new Map<string, never>(), packs: new Map<string, never>() };
+  const substitutions = {
+    types,
+    values: new Map<string, never>(),
+    origins: new Map<string, never>(),
+    packs: new Map<string, never>(),
+  };
   return Object.freeze(interface_.indexSignatures.map((indexSignature) => Object.freeze({
     indexSignature,
     keyType: substituteMojoTargetType(indexSignature.keyType, substitutions),
@@ -306,7 +311,12 @@ function instantiateFields(
   }
   return Object.freeze(interface_.fields.map((field) => Object.freeze({
     field,
-    fieldType: substituteMojoTargetType(field.type, { types, values: new Map(), packs: new Map() }),
+    fieldType: substituteMojoTargetType(field.type, {
+      types,
+      values: new Map(),
+      origins: new Map(),
+      packs: new Map(),
+    }),
   })));
 }
 

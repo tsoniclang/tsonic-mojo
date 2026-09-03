@@ -4,12 +4,18 @@ import type {
   MojoTargetGenericArgument,
   MojoTargetTypeRef,
 } from "./model.js";
+import { mojoOriginEquals } from "../origins/identity.js";
+import {
+  fixedMojoLifecycleContract,
+  mojoImplicitHeapLifecycleCapabilities,
+} from "../lifecycle/contracts.js";
 
 const nativeErrorType: MojoTargetTypeRef = Object.freeze({
   kind: "target-named",
   id: "mojo.builtin.Error",
   modulePath: Object.freeze([]),
   name: "Error",
+  lifecycle: fixedMojoLifecycleContract(mojoImplicitHeapLifecycleCapabilities),
 });
 
 export function mojoTargetTypeEquals(
@@ -31,12 +37,13 @@ export function mojoTargetTypeEquals(
     case "dynamic":
       return right.kind === "dynamic" && left.domain === right.domain;
     case "type-parameter":
-      return right.kind === "type-parameter" && left.name === right.name;
+      return right.kind === "type-parameter" && left.name === right.name &&
+        left.identity === right.identity;
     case "target-named":
       return right.kind === "target-named" && left.id === right.id &&
         left.name === right.name &&
         arrayEquals(left.modulePath, right.modulePath, (a, b) => a === b) &&
-        genericArgumentsEqual(left.genericArguments ?? [], right.genericArguments ?? []);
+        mojoTargetGenericArgumentsEqual(left.genericArguments ?? [], right.genericArguments ?? []);
     case "list":
       return right.kind === "list" && mojoTargetTypeEquals(left.element, right.element);
     case "fixed-array":
@@ -63,11 +70,12 @@ export function mojoTargetTypeEquals(
       return right.kind === "associated" &&
         mojoTargetTypeEquals(left.owner, right.owner) &&
         arrayEquals(left.memberPath, right.memberPath, (a, b) => a === b) &&
-        genericArgumentsEqual(left.genericArguments, right.genericArguments);
+        mojoTargetGenericArgumentsEqual(left.genericArguments, right.genericArguments);
     case "compiler-expression":
       return right.kind === "compiler-expression" && left.expression === right.expression;
     case "reference":
-      return right.kind === "reference" && left.origin === right.origin &&
+      return right.kind === "reference" && left.mutable === right.mutable &&
+        mojoOriginEquals(left.origin, right.origin) &&
         mojoTargetTypeEquals(left.value, right.value);
     case "callable":
       return right.kind === "callable" && left.raises === right.raises &&
@@ -108,13 +116,13 @@ function genericParametersEqual(
   return left.kind === right.kind && left.name === right.name &&
     left.position === right.position && left.variadic === right.variadic &&
     arrayEquals(left.constraints, right.constraints, mojoTargetTypeEquals) &&
-    genericArgumentsEqual(
+    mojoTargetGenericArgumentsEqual(
       left.defaultArgument === undefined ? [] : [left.defaultArgument],
       right.defaultArgument === undefined ? [] : [right.defaultArgument],
     );
 }
 
-function genericArgumentsEqual(
+export function mojoTargetGenericArgumentsEqual(
   left: readonly MojoTargetGenericArgument[],
   right: readonly MojoTargetGenericArgument[],
 ): boolean {
@@ -136,6 +144,8 @@ function genericArgumentsEqual(
       case "value-reference":
         return other.kind === "value-reference" &&
           arrayEquals(argument.path, other.path, (left, right) => left === right);
+      case "origin":
+        return other.kind === "origin" && mojoOriginEquals(argument.origin, other.origin);
       case "unbound":
         return true;
     }

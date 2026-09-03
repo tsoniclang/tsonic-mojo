@@ -1,6 +1,13 @@
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
-import type { MojoValueRefinementSelection } from "../program/model.js";
+import {
+  classifyMojoValueConversion,
+} from "../../policy/conversions/selection.js";
+import type {
+  MojoConversionClassification,
+} from "../../policy/conversions/selection.js";
+import type { MojoValueConversionNarrowing } from "../../target-model/conversions/model.js";
+import type { MojoValueRefinementSelection } from "./model.js";
 
 export function classifyMojoValueRefinement(
   sourceType: MojoTargetTypeRef,
@@ -20,4 +27,27 @@ export function classifyMojoValueRefinement(
     return Object.freeze({ kind: "union-subset", sourceType, resultType });
   }
   return undefined;
+}
+
+export function mojoValueConversionNarrowing(
+  refinement: MojoValueRefinementSelection | undefined,
+): MojoValueConversionNarrowing | undefined {
+  return refinement?.kind === "union-subset"
+    ? Object.freeze({
+        sourceType: refinement.sourceType,
+        selectedType: refinement.resultType,
+      })
+    : undefined;
+}
+
+export function classifyMojoRefinedValueConversion(
+  actual: MojoTargetTypeRef,
+  expected: MojoTargetTypeRef,
+  refinement: MojoValueRefinementSelection | undefined,
+): MojoConversionClassification {
+  return classifyMojoValueConversion(
+    actual,
+    expected,
+    mojoValueConversionNarrowing(refinement),
+  );
 }

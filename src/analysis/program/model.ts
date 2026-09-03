@@ -20,6 +20,12 @@ import type {
 } from "../../target-model/conversions/model.js";
 import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
 import type { MojoSourceModuleCatalog } from "../source-modules/model.js";
+import type { MojoValueRefinementSelection } from "../refinements/model.js";
+export type { MojoValueRefinementSelection } from "../refinements/model.js";
+import type { MojoRepresentationCatalog } from "../representations/model.js";
+import type { MojoLifecycleCatalog } from "../lifecycle/model.js";
+import type { MojoParameterDisposition } from "../representations/model.js";
+import type { MojoBindingDisposition } from "../representations/model.js";
 import type { MojoCallSelection } from "./call-model.js";
 import type {
   MojoCallableExpressionSelection,
@@ -57,16 +63,20 @@ export interface MojoAnalyzedParameter {
   readonly type: MojoTargetTypeRef;
   readonly bodyType: MojoTargetTypeRef;
   readonly callType: MojoTargetTypeRef;
-  readonly convention: "imm" | "mut" | "var" | "ref" | "out";
-  readonly passing: "plain" | "consume";
+  readonly disposition: MojoParameterDisposition;
   readonly omissionKind: "required" | "undefined" | "initializer" | "rest";
   readonly initializer?: Node;
 }
 
 export interface MojoAnalyzedTypeParameter {
   readonly declaration: Node;
+  readonly identity: string;
+  readonly kind: "type" | "value" | "origin";
   readonly name: string;
+  readonly position: "positional" | "positional-or-keyword" | "keyword" | "inferred";
+  readonly variadic: boolean;
   readonly constraints: readonly MojoTargetTypeRef[];
+  readonly defaultArgument?: import("../../target-model/types/model.js").MojoTargetGenericArgument;
 }
 
 export interface MojoAnalyzedClassOwner {
@@ -92,6 +102,10 @@ export interface MojoAnalyzedFunction {
   readonly owner?: MojoAnalyzedClassOwner;
 }
 
+export type MojoAnalyzedTopLevelFunction = MojoAnalyzedFunction & {
+  readonly kind: "function";
+};
+
 export interface MojoAnalyzedClassField {
   readonly kind: "instance-field";
   readonly declaration: Node;
@@ -99,7 +113,7 @@ export interface MojoAnalyzedClassField {
   readonly name: string;
   readonly type: MojoTargetTypeRef;
   readonly ownerType: MojoTargetTypeRef;
-  readonly ownerTypeParameters: readonly string[];
+  readonly ownerTypeParameters: readonly import("../../target-model/types/project.js").MojoProjectTypeParameterDefinition[];
   readonly initializer?: Node;
   readonly visibility: "public" | "private";
 }
@@ -111,7 +125,7 @@ export interface MojoAnalyzedInterfaceField {
   readonly name: string;
   readonly type: MojoTargetTypeRef;
   readonly ownerType: MojoTargetTypeRef;
-  readonly ownerTypeParameters: readonly string[];
+  readonly ownerTypeParameters: readonly import("../../target-model/types/project.js").MojoProjectTypeParameterDefinition[];
   readonly optional: boolean;
 }
 
@@ -122,7 +136,7 @@ export interface MojoAnalyzedInterfaceIndexSignature {
   readonly keyType: MojoTargetTypeRef;
   readonly valueType: MojoTargetTypeRef;
   readonly ownerType: MojoTargetTypeRef;
-  readonly ownerTypeParameters: readonly string[];
+  readonly ownerTypeParameters: readonly import("../../target-model/types/project.js").MojoProjectTypeParameterDefinition[];
   readonly readonly: boolean;
 }
 
@@ -187,6 +201,17 @@ export interface MojoAnalyzedEnum {
   readonly members: readonly MojoAnalyzedEnumMember[];
 }
 
+export interface MojoAnalyzedTypeAlias {
+  readonly kind: "type-alias";
+  readonly id: string;
+  readonly declaration: Node;
+  readonly sourceFile: SourceFile;
+  readonly name: string;
+  readonly typeParameters: readonly MojoAnalyzedTypeParameter[];
+  readonly value: MojoTargetTypeRef;
+  readonly exported: boolean;
+}
+
 export type MojoAnalyzedProjectProperty =
   | MojoAnalyzedProjectField
   | MojoAnalyzedInterfaceField
@@ -194,10 +219,11 @@ export type MojoAnalyzedProjectProperty =
   | MojoAnalyzedEnumMember;
 
 export type MojoAnalyzedDeclaration =
-  | MojoAnalyzedFunction
+  | MojoAnalyzedTopLevelFunction
   | MojoAnalyzedClass
   | MojoAnalyzedInterface
-  | MojoAnalyzedEnum;
+  | MojoAnalyzedEnum
+  | MojoAnalyzedTypeAlias;
 
 export interface MojoAnalyzedModuleBinding {
   readonly kind: "module-binding" | "class-static-field";
@@ -206,7 +232,7 @@ export interface MojoAnalyzedModuleBinding {
   readonly sourceName: string;
   readonly name: string;
   readonly declarationKind: "const" | "let" | "var" | "using" | "await using";
-  readonly storage: "comptime" | "cell";
+  readonly disposition: MojoBindingDisposition;
   readonly type: MojoTargetTypeRef;
   readonly initializer: Node;
 }
@@ -241,6 +267,7 @@ export interface MojoAnalyzedModule {
   readonly asynchronous: boolean;
   readonly raises: boolean;
   readonly errorType?: MojoTargetTypeRef;
+  readonly initializationStateRequired: boolean;
   readonly runtimeInitializationRequired: boolean;
 }
 
@@ -309,7 +336,7 @@ export type MojoPropertySelection =
       readonly receiverConversion?: MojoValueConversion;
       readonly readResultConversion?: MojoValueConversion;
       readonly sourceWriteType?: MojoTargetTypeRef;
-      readonly writeValueConversion?: MojoValueConversion;
+      readonly targetWriteType?: MojoTargetTypeRef;
       readonly optionalChain: boolean;
     }
   | {
@@ -323,7 +350,7 @@ export type MojoPropertySelection =
       readonly writeOperation?: MojoSelectedProviderOperation;
       readonly readResultConversion?: MojoValueConversion;
       readonly sourceWriteType?: MojoTargetTypeRef;
-      readonly writeValueConversion?: MojoValueConversion;
+      readonly targetWriteType?: MojoTargetTypeRef;
     };
 
 export interface MojoValueSelection {
@@ -331,23 +358,6 @@ export interface MojoValueSelection {
   readonly operation: MojoSelectedProviderOperation;
   readonly resultConversion: MojoValueConversion;
 }
-
-export type MojoValueRefinementSelection =
-  | {
-      readonly kind: "optional-present";
-      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "optional" }>;
-      readonly resultType: MojoTargetTypeRef;
-    }
-  | {
-      readonly kind: "union-member";
-      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
-      readonly resultType: MojoTargetTypeRef;
-    }
-  | {
-      readonly kind: "union-subset";
-      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
-      readonly resultType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
-    };
 
 export type MojoTypeTestSelection =
   | {
@@ -454,7 +464,7 @@ export type MojoElementSelection = {
   readonly readType?: MojoTargetTypeRef;
   readonly writeType?: MojoTargetTypeRef;
   readonly sourceWriteType?: MojoTargetTypeRef;
-  readonly writeValueConversion?: MojoValueConversion;
+  readonly targetWriteType?: MojoTargetTypeRef;
   readonly readResultConversion?: MojoValueConversion;
   readonly optionalChain: boolean;
 };
@@ -519,7 +529,6 @@ export interface MojoProgramQueries {
   callSelection(call: Node): MojoCallSelection | undefined;
   propertySelection(access: Node): MojoPropertySelection | undefined;
   valueSelection(expression: Node): MojoValueSelection | undefined;
-  valueRefinement(expression: Node): MojoValueRefinementSelection | undefined;
   typeTestSelection(expression: Node): MojoTypeTestSelection | undefined;
   nullishCoalescingSelection(expression: Node): MojoNullishCoalescingSelection | undefined;
   elementSelection(access: Node): MojoElementSelection | undefined;
@@ -531,7 +540,6 @@ export interface MojoProgramQueries {
   bindingPatternSelection(declaration: Node): MojoBindingPatternSelection | undefined;
   returnValueTransfer(expression: Node): boolean;
   catchErrorType(catchClause: Node): MojoTargetTypeRef | undefined;
-  ownedTemporaryPassing(type: MojoTargetTypeRef): "plain" | "consume";
   moduleForSourceFile(sourceFile: SourceFile): MojoAnalyzedModule | undefined;
   moduleForId(id: string): MojoAnalyzedModule | undefined;
   moduleBinding(referenceOrDeclaration: Node): MojoAnalyzedModuleBinding | undefined;
@@ -568,6 +576,8 @@ export interface MojoTargetProgram {
   readonly modules: MojoSourceModuleCatalog;
   readonly analyzedModules: readonly MojoAnalyzedModule[];
   readonly declarations: readonly MojoAnalyzedDeclaration[];
+  readonly representations: MojoRepresentationCatalog;
+  readonly lifecycle: MojoLifecycleCatalog;
   readonly queries: MojoProgramQueries;
   readonly runtimePackages: readonly MojoRuntimePackagePlan[];
   readonly binaryEpilogues: readonly MojoProviderBinaryEpilogue[];

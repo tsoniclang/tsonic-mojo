@@ -4,6 +4,11 @@ import type { MojoValueConversion } from "../../target-model/conversions/model.j
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoAnalyzedCallArgument } from "../program/model.js";
+import type { MojoValueRefinementSelection } from "../refinements/model.js";
+import { classifyMojoRefinedValueConversion } from "../refinements/value.js";
+import type { MojoArgumentDisposition } from "../representations/model.js";
+import type { MojoLifecycleResolver } from "../lifecycle/model.js";
+import type { MojoValueOwnership } from "../../target-model/lifecycle/model.js";
 
 export interface MojoCallArgumentTarget {
   readonly convention: "imm" | "mut" | "var" | "ref" | "out" | "deinit";
@@ -31,6 +36,9 @@ export function analyzeArguments(
   targetArguments: readonly MojoCallArgumentTarget[],
   resolve: (type: Type) => MojoTargetTypeRef | undefined,
   expressionTypes: WeakMap<Node, MojoTargetTypeRef>,
+  valueRefinements: WeakMap<Node, MojoValueRefinementSelection>,
+  lifecycle: MojoLifecycleResolver,
+  valueOwnership: (expression: Node) => MojoValueOwnership,
   conversionOverrides?: ReadonlyMap<number, MojoValueConversion>,
   contextualAggregate?: (expression: Node, targetType: MojoTargetTypeRef) => boolean,
 ): { readonly kind: "resolved"; readonly arguments: readonly MojoAnalyzedCallArgument[] } |
@@ -91,7 +99,11 @@ export function analyzeArguments(
     }
     const overriddenConversion = conversionOverrides?.get(parameterIndex);
     const conversion = overriddenConversion === undefined
-      ? classifyMojoValueConversion(sourceType, parameterType)
+      ? classifyMojoRefinedValueConversion(
+          sourceType,
+          parameterType,
+          valueRefinements.get(sourceArgument.expression),
+        )
       : { kind: "resolved" as const, conversion: overriddenConversion };
     if (conversion.kind === "unsupported") {
       return {
@@ -100,13 +112,21 @@ export function analyzeArguments(
         reason: conversion.reason,
       };
     }
+    const disposition = analyzeMojoArgumentDisposition(
+      sourceArgument.expression,
+      parameterType,
+      target,
+      conversion.conversion,
+      lifecycle,
+      valueOwnership,
+    );
+    if (disposition.kind === "unsupported") return disposition;
     arguments_.push(Object.freeze({
       expression: sourceArgument.expression,
       sourceType,
       parameterType,
       conversion: conversion.conversion,
-      passing: target.passing ??
-        (target.convention === "var" || target.convention === "deinit" ? "consume" : "plain"),
+      disposition: disposition.disposition,
       spread,
       position: target.position,
       parameterIndex,
@@ -116,6 +136,51 @@ export function analyzeArguments(
     }));
   }
   return { kind: "resolved", arguments: Object.freeze(arguments_) };
+}
+
+export function analyzeMojoArgumentDisposition(
+  expression: Node,
+  type: MojoTargetTypeRef,
+  target: MojoCallArgumentTarget,
+  conversion: MojoValueConversion,
+  lifecycle: MojoLifecycleResolver,
+  valueOwnership: (expression: Node) => MojoValueOwnership,
+): { readonly kind: "resolved"; readonly disposition: MojoArgumentDisposition } |
+  { readonly kind: "unsupported"; readonly code: string; readonly reason: string } {
+  const owned = target.passing === "consume" || target.convention === "var" ||
+    target.convention === "deinit";
+  if (!owned) {
+    return Object.freeze({ kind: "resolved", disposition: Object.freeze({ kind: "plain" }) });
+  }
+  const capabilities = lifecycle.capabilities(type);
+  const ownership = conversion.kind === "identity" ? valueOwnership(expression) : "fresh";
+  if (ownership === "borrowed") {
+    return Object.freeze({
+      kind: "unsupported",
+      code: "MOJO_OWNED_ARGUMENT_BORROWED",
+      reason: "An owned Mojo parameter cannot consume a borrowed result; request an exact copy or materialization explicitly.",
+    });
+  }
+  if (ownership === "fresh") {
+    if (!capabilities.movable && capabilities.copy === "unavailable") {
+      return Object.freeze({
+        kind: "unsupported",
+        code: "MOJO_FRESH_ARGUMENT_NOT_MOVABLE",
+        reason: "A fresh Mojo value cannot initialize an owned parameter because its exact carrier is neither movable nor copyable.",
+      });
+    }
+    return Object.freeze({ kind: "resolved", disposition: Object.freeze({ kind: "plain" }) });
+  }
+  if (capabilities.copy === "implicit") {
+    return Object.freeze({ kind: "resolved", disposition: Object.freeze({ kind: "plain" }) });
+  }
+  return Object.freeze({
+    kind: "unsupported",
+    code: "MOJO_OWNED_ARGUMENT_TRANSFER_NOT_PROVEN",
+    reason: capabilities.copy === "explicit"
+      ? "An owned Mojo parameter requires copy(...) or move(...) because its stable source carrier is only explicitly copyable."
+      : "An owned Mojo parameter requires move(...) because its stable source carrier is not copyable.",
+  });
 }
 
 export function closeResultConversion(

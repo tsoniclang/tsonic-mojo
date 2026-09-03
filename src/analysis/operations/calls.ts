@@ -6,7 +6,7 @@ import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js
 import type { MojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
 import { resolveMojoTargetType } from "../../policy/types/resolution.js";
 import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
-import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
+import { classifyMojoRefinedValueConversion } from "../refinements/value.js";
 import { resolveMojoNonTypeGenericArguments } from "../../policy/types/generic-arguments.js";
 import { selectMojoProviderCall } from "../../policy/operations/provider-selection.js";
 import { instantiateMojoProviderOperation } from "../../policy/operations/provider-instantiation.js";
@@ -21,6 +21,7 @@ import type {
 } from "../program/model.js";
 import {
   analyzeArguments,
+  analyzeMojoArgumentDisposition,
   closeResultConversion,
   restCallableElementType,
 } from "./call-arguments.js";
@@ -31,6 +32,9 @@ import {
   locationBackedMutableArgument,
 } from "./project-calls.js";
 import { analyzeSourceProfileCall } from "./source-profile-calls.js";
+import { analyzeMojoSourceIntrinsic } from "./source-intrinsics.js";
+import type { MojoLifecycleResolver } from "../lifecycle/model.js";
+import type { MojoValueOwnership } from "../../target-model/lifecycle/model.js";
 
 export type MojoCallAnalysis =
   | { readonly kind: "resolved"; readonly selection: MojoCallSelection; readonly dependency?: Node }
@@ -40,10 +44,13 @@ export interface MojoCallAnalysisContext {
   readonly source: TargetSourceProgram;
   readonly providerSemantics: MojoProviderSemantics;
   readonly projectTypes: MojoProjectTypeCatalog;
+  readonly lifecycle: MojoLifecycleResolver;
+  readonly valueOwnership: (expression: Node) => MojoValueOwnership;
   readonly sourceProfiles: MojoSourceProfileRegistry;
   readonly jsEnabled: boolean;
   readonly sourceCallableErrorType?: MojoTargetTypeRef;
   readonly expressionTypes: WeakMap<Node, MojoTargetTypeRef>;
+  readonly valueRefinements: WeakMap<Node, import("../program/model.js").MojoValueRefinementSelection>;
   readonly conversions: MojoConversionIndex;
   readonly functionByDeclaration: WeakMap<Node, MojoAnalyzedFunction>;
   readonly classByDeclaration: WeakMap<Node, MojoAnalyzedClass>;
@@ -78,6 +85,18 @@ export function analyzeMojoCall(
   const selectedSignatureDeclaration = semantics.declarations.signatureDeclaration(
     sourceCall.selectedSignature,
   );
+  const sourceIntrinsic = analyzeMojoSourceIntrinsic({
+    call: callNode,
+    sourceCall,
+    source: context.source,
+    lifecycle: context.lifecycle,
+    expressionTypes: context.expressionTypes,
+    resolveType: resolve,
+  });
+  if (sourceIntrinsic.kind === "unsupported") return sourceIntrinsic;
+  if (sourceIntrinsic.kind === "resolved") {
+    return { kind: "resolved", selection: sourceIntrinsic.selection };
+  }
   const explicitSafety = analyzeMojoExplicitSafety(
     callNode,
     sourceCall,
@@ -175,7 +194,18 @@ export function analyzeMojoCall(
     (parameter, explicitTypeNode) => resolveMojoNonTypeGenericArguments(
       parameter,
       explicitTypeNode,
-      context.source.ast,
+      {
+        ast: context.source.ast,
+        semantics,
+        sourceFacts: context.source.sourceFacts,
+        providerSemantics: context.providerSemantics,
+        projectTypes: context.projectTypes,
+        sourceProfiles: context.sourceProfiles,
+        jsEnabled: context.jsEnabled,
+        ...(context.sourceCallableErrorType === undefined
+          ? {}
+          : { sourceCallableErrorType: context.sourceCallableErrorType }),
+      },
     ),
   );
   if (instantiated.kind === "unsupported") {
@@ -195,6 +225,9 @@ export function analyzeMojoCall(
     target.arguments,
     resolve,
     context.expressionTypes,
+    context.valueRefinements,
+    context.lifecycle,
+    context.valueOwnership,
     undefined,
     (expression) => context.source.ast.is.IsObjectLiteralExpression(expression),
   );
@@ -212,6 +245,7 @@ export function analyzeMojoCall(
   );
   if (result.kind === "unsupported") return result;
   let receiverConversion;
+  let receiverDisposition;
   let sourceReceiverType;
   if (instantiated.operation.receiverType !== undefined) {
     const receiver = sourceCall.sourceReceiver;
@@ -230,12 +264,29 @@ export function analyzeMojoCall(
         reason: "Selected provider operation requires a receiver whose exact Mojo carrier is unavailable.",
       };
     }
-    const conversion = classifyMojoValueConversion(actual, instantiated.operation.receiverType);
+    const conversion = classifyMojoRefinedValueConversion(
+      actual,
+      instantiated.operation.receiverType,
+      context.valueRefinements.get(receiver.expression),
+    );
     if (conversion.kind === "unsupported") {
       return { kind: "unsupported", code: "MOJO_PROVIDER_RECEIVER_CONVERSION_UNPROVEN", reason: conversion.reason };
     }
     receiverConversion = conversion.conversion;
     sourceReceiverType = actual;
+    const disposition = analyzeMojoArgumentDisposition(
+      receiver.expression,
+      instantiated.operation.receiverType,
+      Object.freeze({
+        convention: target.receiver ?? "imm",
+        position: "positional-or-keyword",
+      }),
+      conversion.conversion,
+      context.lifecycle,
+      context.valueOwnership,
+    );
+    if (disposition.kind === "unsupported") return disposition;
+    receiverDisposition = disposition.disposition;
   }
   return {
     kind: "resolved",
@@ -248,6 +299,7 @@ export function analyzeMojoCall(
         : { receiver: sourceCall.sourceReceiver!.expression }),
       ...(sourceReceiverType === undefined ? {} : { sourceReceiverType }),
       ...(receiverConversion === undefined ? {} : { receiverConversion }),
+      ...(receiverDisposition === undefined ? {} : { receiverDisposition }),
       resultConversion: result.conversion,
       optionalChain: sourceCall.optionalChain,
     }),
@@ -306,6 +358,9 @@ function analyzeCallableValueCall(
     })),
     resolve,
     context.expressionTypes,
+    context.valueRefinements,
+    context.lifecycle,
+    context.valueOwnership,
     undefined,
     (expression) => context.source.ast.is.IsObjectLiteralExpression(expression),
   );

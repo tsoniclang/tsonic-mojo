@@ -10,8 +10,11 @@ import type {
 import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import type { MojoExpression } from "../../target-ast/index.js";
 import type { MojoPlanningContext } from "../program/context.js";
-import { appendMojoPlanningDiagnostic, registerMojoModuleImport } from "../program/context.js";
-import { registerMojoTypeImports } from "../types/render.js";
+import {
+  appendMojoPlanningDiagnostic,
+  mojoModuleMemberExpression,
+} from "../program/context.js";
+import { registerMojoTypeImports } from "../types/imports.js";
 import { orderMojoValues } from "./support.js";
 import type { MojoValuePlanner } from "./support.js";
 import { withMojoValue } from "./value-plan.js";
@@ -199,10 +202,9 @@ function jsStringCall(
   value: MojoExpression,
   context: MojoPlanningContext,
 ): MojoExpression {
-  registerMojoModuleImport(context, ["tsonic_js"]);
   return Object.freeze({
     kind: "call",
-    callee: Object.freeze({ kind: "path", path: `tsonic_js.${name}` }),
+    callee: mojoModuleMemberExpression(context, ["tsonic_js"], name),
     arguments: Object.freeze([{ value }]),
   });
 }
