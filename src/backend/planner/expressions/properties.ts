@@ -336,18 +336,38 @@ export function planMojoProperty(
     const ordered = orderMojoValues([
       Object.freeze({ plan: receiver.plan, type: selection.receiverType, role: "index_property_receiver" }),
     ], context, stabilizeReceiver);
-    const operation = withMojoValue(ordered.before, Object.freeze({
-      kind: "element",
-      receiver: Object.freeze({
-        kind: "member",
-        receiver: Object.freeze({
-          kind: "postfix-deref",
-          expression: Object.freeze({ kind: "member", receiver: ordered.values[0]!, name: "_state" }),
-        }),
-        name: selection.storageName,
-      }),
-      index: key,
-    }));
+    const dispatchView = context.program.projectDispatch.viewForType(selection.receiverType);
+    const dispatch = dispatchView === undefined
+      ? undefined
+      : context.program.projectDispatch.indexFor(selection.receiverType, selection.declaration);
+    if (dispatchView !== undefined && dispatch === undefined) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROJECT_INDEX_PROPERTY_DISPATCH_NOT_SEALED",
+        "A polymorphic project index property has no exact sealed dispatch slot.",
+        node,
+      );
+      return undefined;
+    }
+    const operation = withMojoValue(ordered.before, dispatch === undefined
+      ? Object.freeze({
+          kind: "element" as const,
+          receiver: Object.freeze({
+            kind: "member" as const,
+            receiver: Object.freeze({
+              kind: "postfix-deref" as const,
+              expression: Object.freeze({ kind: "member" as const, receiver: ordered.values[0]!, name: "_state" }),
+            }),
+            name: selection.storageName,
+          }),
+          index: key,
+        })
+      : Object.freeze({
+          kind: "method-call" as const,
+          receiver: ordered.values[0]!,
+          name: dispatch.read.name,
+          arguments: Object.freeze([Object.freeze({ value: key })]),
+        }));
     return finishOptionalMojoOperation(node, receiver, operation, context);
   }
   const operation = mode === "read" ? selection.readOperation : selection.writeOperation;
@@ -414,6 +434,9 @@ export function projectPropertyUsesMethodWrite(
     mojoTargetTypeEquals(context.initializingState.referenceType, selection.receiverType)) return false;
   if (selection?.kind === "project-accessor") return true;
   if (selection?.kind === "project-method") return true;
+  if (selection?.kind === "project-index-property") {
+    return context.program.projectDispatch.viewForType(selection.receiverType) !== undefined;
+  }
   return selection?.kind === "project-field" &&
     context.program.projectDispatch.viewForType(selection.receiverType) !== undefined;
 }
@@ -427,7 +450,9 @@ export function planMojoProjectPropertyWrite(
 ): { readonly before: readonly MojoStatement[]; readonly statement: MojoStatement } | undefined {
   const selection = context.program.queries.propertySelection(node);
   if (selection?.kind !== "project-method" && selection?.kind !== "project-accessor" &&
-    selection?.kind !== "project-field") return undefined;
+    selection?.kind !== "project-field" && selection?.kind !== "project-index-property") {
+    return undefined;
+  }
   const variant = selection.kind === "project-method"
     ? context.program.projectDispatch.callableFor(
         selection.receiverType,
@@ -440,27 +465,40 @@ export function planMojoProjectPropertyWrite(
     : selection.kind === "project-accessor"
       ? selection.declarations
       : [];
-  const dispatch = selection.kind === "project-method"
+  const dispatch = selection.kind === "project-method" || selection.kind === "project-index-property"
     ? undefined
     : selectedDispatchField(selection.receiverType, declarations, context);
+  const indexDispatch = selection.kind === "project-index-property"
+    ? context.program.projectDispatch.indexFor(selection.receiverType, selection.declaration)
+    : undefined;
   const writeName = selection.kind === "project-method"
     ? variant?.property?.write?.name
+    : selection.kind === "project-index-property"
+      ? indexDispatch?.write?.name
     : dispatch?.write?.name ??
       (selection.kind === "project-accessor" ? selection.writeName : undefined);
   const writeType = selection.kind === "project-method"
     ? selection.callableType
+    : selection.kind === "project-index-property"
+      ? indexDispatch?.valueType
     : dispatch?.write?.valueType ??
       (selection.kind === "project-accessor" ? selection.writeType : selection.fieldType);
   const writeDisposition = selection.kind === "project-method"
     ? undefined
+    : selection.kind === "project-index-property"
+      ? undefined
     : dispatch?.write?.disposition ??
       (selection.kind === "project-accessor" ? selection.writeDisposition : undefined);
   const readName = selection.kind === "project-method"
     ? variant?.property?.read?.name
+    : selection.kind === "project-index-property"
+      ? indexDispatch?.read.name
     : dispatch?.read?.name ??
       (selection.kind === "project-accessor" ? selection.readName : undefined);
   const readType = selection.kind === "project-method"
     ? selection.callableType
+    : selection.kind === "project-index-property"
+      ? indexDispatch?.valueType
     : dispatch?.read?.valueType ??
       (selection.kind === "project-accessor" ? selection.readType : selection.fieldType);
   if (writeName === undefined || writeType === undefined) return undefined;
@@ -485,6 +523,10 @@ export function planMojoProjectPropertyWrite(
     Object.freeze({ plan: receiver.plan, type: selection.receiverType, role: "accessor_write_receiver" }),
     Object.freeze({ plan: value, type: writeType, role: "property_write_value" }),
   ], context, true);
+  const key = selection.kind === "project-index-property"
+    ? planDictionaryKey(selection.key, selection.keyType, context)
+    : undefined;
+  if (selection.kind === "project-index-property" && key === undefined) return undefined;
   let assigned = ordered.values[1]!;
   if (operator !== "=") {
     if (selection.kind === "project-method") {
@@ -513,7 +555,9 @@ export function planMojoProjectPropertyWrite(
         kind: "method-call",
         receiver: ordered.values[0]!,
         name: readName,
-        arguments: Object.freeze([]),
+        arguments: Object.freeze(key === undefined
+          ? []
+          : [Object.freeze({ value: key })]),
       }),
       right: assigned,
     });
@@ -529,7 +573,10 @@ export function planMojoProjectPropertyWrite(
         kind: "method-call",
         receiver: ordered.values[0]!,
         name: writeName,
-        arguments: Object.freeze([Object.freeze({ value: argument })]),
+        arguments: Object.freeze([
+          ...(key === undefined ? [] : [Object.freeze({ value: key })]),
+          Object.freeze({ value: argument }),
+        ]),
       }),
     }),
   });

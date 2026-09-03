@@ -1,9 +1,11 @@
 import type {
   MojoProjectDispatchCallableVariant,
   MojoProjectDispatchField,
+  MojoProjectDispatchIndex,
   MojoProjectDispatchView,
 } from "../../../../analysis/program/model.js";
 import { mojoParameterConvention } from "../../../../analysis/representations/index.js";
+import type { MojoTargetTypeRef } from "../../../../target-model/types/model.js";
 import type {
   MojoCallArgument,
   MojoExpression,
@@ -53,6 +55,17 @@ export function mojoProjectViewFields(
   }
   for (const field of view.fields) {
     for (const access of [field.read, field.write]) {
+      if (access === undefined) continue;
+      registerMojoTypeImports(access.slotType, context);
+      fields.push(Object.freeze({
+        name: access.slotName,
+        type: access.slotType,
+        compileTime: false,
+      }));
+    }
+  }
+  for (const index of view.indexes) {
+    for (const access of [index.read, index.write, index.copy]) {
       if (access === undefined) continue;
       registerMojoTypeImports(access.slotType, context);
       fields.push(Object.freeze({
@@ -124,6 +137,11 @@ export function planMojoProjectViewForwarders(
     if (field.read !== undefined) methods.push(planFieldRead(field));
     if (field.write !== undefined) methods.push(planFieldWrite(field, context));
   }
+  for (const index of view.indexes) {
+    methods.push(planIndexRead(index));
+    if (index.write !== undefined) methods.push(planIndexWrite(index));
+    methods.push(planIndexCopy(index));
+  }
   for (const conversion of view.conversions) {
     methods.push(Object.freeze({
       kind: "function",
@@ -155,6 +173,8 @@ export function planMojoProjectViewInitializer(
           : [Object.freeze({ name: access.slotName, type: access.slotType })]),
     ]),
     ...view.fields.flatMap((field) => [field.read, field.write].flatMap((entry) =>
+      entry === undefined ? [] : [Object.freeze({ name: entry.slotName, type: entry.slotType })])),
+    ...view.indexes.flatMap((index) => [index.read, index.write, index.copy].flatMap((entry) =>
       entry === undefined ? [] : [Object.freeze({ name: entry.slotName, type: entry.slotType })])),
     ...view.conversions.map((entry) => Object.freeze({ name: entry.slotName, type: entry.slotType })),
   ];
@@ -274,6 +294,76 @@ function planFieldWrite(
     ...(write.slotType.errorType === undefined ? {} : { errorType: write.slotType.errorType }),
     self: "self",
     statements: Object.freeze([Object.freeze({ kind: "expression", expression: call })]),
+  });
+}
+
+function planIndexRead(index: MojoProjectDispatchIndex): MojoFunctionDeclaration {
+  return Object.freeze({
+    kind: "function",
+    name: index.read.name,
+    genericParameters: Object.freeze([]),
+    parameters: Object.freeze([Object.freeze({ name: "key", type: index.keyType })]),
+    resultType: index.valueType,
+    asynchronous: false,
+    raises: false,
+    self: "self",
+    statements: Object.freeze([Object.freeze({
+      kind: "return",
+      expression: slotCall(index.read.slotName, Object.freeze([Object.freeze({
+        value: Object.freeze({ kind: "path", path: "key" }),
+      })])),
+    })]),
+  });
+}
+
+function planIndexWrite(index: MojoProjectDispatchIndex): MojoFunctionDeclaration {
+  return Object.freeze({
+    kind: "function",
+    name: index.write!.name,
+    genericParameters: Object.freeze([]),
+    parameters: Object.freeze([
+      Object.freeze({ name: "key", type: index.keyType }),
+      Object.freeze({ name: "value", type: index.valueType }),
+    ]),
+    resultType: Object.freeze({ kind: "unit" }),
+    asynchronous: false,
+    raises: false,
+    self: "self",
+    statements: Object.freeze([Object.freeze({
+      kind: "expression",
+      expression: slotCall(index.write!.slotName, Object.freeze([
+        Object.freeze({ value: Object.freeze({ kind: "path", path: "key" }) }),
+        Object.freeze({ value: Object.freeze({ kind: "path", path: "value" }) }),
+      ])),
+    })]),
+  });
+}
+
+function planIndexCopy(index: MojoProjectDispatchIndex): MojoFunctionDeclaration {
+  const destinationType: MojoTargetTypeRef = Object.freeze({
+    kind: "dictionary",
+    key: index.keyType,
+    value: index.valueType,
+  });
+  return Object.freeze({
+    kind: "function",
+    name: index.copy.name,
+    genericParameters: Object.freeze([]),
+    parameters: Object.freeze([Object.freeze({
+      name: "destination",
+      type: destinationType,
+      convention: "mut",
+    })]),
+    resultType: Object.freeze({ kind: "unit" }),
+    asynchronous: false,
+    raises: false,
+    self: "self",
+    statements: Object.freeze([Object.freeze({
+      kind: "expression",
+      expression: slotCall(index.copy.slotName, Object.freeze([Object.freeze({
+        value: Object.freeze({ kind: "path", path: "destination" }),
+      })])),
+    })]),
   });
 }
 

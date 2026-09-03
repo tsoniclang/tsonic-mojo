@@ -149,6 +149,7 @@ function analyzeProjectIndex(
     expressionType: instantiated.valueType,
     selection: Object.freeze({
       kind: "project-index",
+      declaration: selected.declaration,
       receiver: source.receiver.expression,
       index: source.argument.expression,
       accessMode,

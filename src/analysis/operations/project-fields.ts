@@ -126,6 +126,7 @@ export function analyzeMojoProjectProperty(
       expressionType: optionalAccessResult(instantiated.valueType, source.optionalChain),
       selection: Object.freeze({
         kind: "project-index-property",
+        declaration: field.declaration,
         receiver: source.receiver.expression,
         receiverType,
         storageName: field.storageName,

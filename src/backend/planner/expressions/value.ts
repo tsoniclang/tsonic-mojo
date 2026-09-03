@@ -17,7 +17,11 @@ import type { MojoPlanningContext } from "../program/context.js";
 import {
   planMojoCall,
 } from "./calls.js";
-import { planMojoElement } from "./elements.js";
+import {
+  planMojoElement,
+  planMojoProjectElementWrite,
+  projectElementUsesMethodWrite,
+} from "./elements.js";
 import {
   planMojoProjectPropertyWrite,
   projectPropertyUsesMethodWrite,
@@ -134,6 +138,26 @@ export function planMojoUpdate(
       planMojoValue,
     );
   }
+  if (projectElementUsesMethodWrite(element, context)) {
+    const type = element?.writeType ?? element?.readType;
+    if (type === undefined || type.kind !== "source-primitive" ||
+      type.name === "bool" || type.name === "char") {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_UPDATE_TARGET_UNSUPPORTED",
+        "Increment and decrement require one exact mutable numeric Mojo location.",
+        node,
+      );
+      return undefined;
+    }
+    return planMojoProjectElementWrite(
+      operand,
+      mojoValue(Object.freeze({ kind: "number-literal", text: "1" })),
+      operator,
+      context,
+      planMojoValue,
+    );
+  }
   const left = ast.is.IsPropertyAccessExpression(operand)
     ? planMojoProperty(operand, context, planMojoValue, "write", false)
     : ast.is.IsElementAccessExpression(operand)
@@ -240,6 +264,15 @@ export function planMojoAssignment(
   const targetType = targetWriteType ?? leftType;
   if (projectPropertyUsesMethodWrite(property, context)) {
     return planMojoProjectPropertyWrite(
+      leftNode,
+      right,
+      operator,
+      context,
+      planMojoValue,
+    );
+  }
+  if (projectElementUsesMethodWrite(element, context)) {
+    return planMojoProjectElementWrite(
       leftNode,
       right,
       operator,

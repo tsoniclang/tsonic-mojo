@@ -62,6 +62,7 @@ export function planMojoPolymorphicClassState(
     }),
   }));
   for (const entry of methodStorage) registerMojoTypeImports(entry.type, context);
+  for (const storage of dispatch.indexStorages) registerMojoTypeImports(storage.type, context);
   const sourceConstructor = class_.constructors[0];
   const stateContext = withMojoErrorType(
     withMojoStateInitialization(
@@ -129,6 +130,16 @@ export function planMojoPolymorphicClassState(
         }),
         right: Object.freeze({ kind: "none-literal" }),
       })),
+      ...dispatch.indexStorages.map((storage): MojoStatement => Object.freeze({
+        kind: "assignment",
+        operator: "=",
+        left: Object.freeze({
+          kind: "member",
+          receiver: Object.freeze({ kind: "path", path: "self" }),
+          name: storage.name,
+        }),
+        right: Object.freeze({ kind: "dictionary", entries: Object.freeze([]) }),
+      })),
       ...baseInitialization.statements,
       ...fieldInitialization,
       ...constructorBody,
@@ -151,6 +162,11 @@ export function planMojoPolymorphicClassState(
       ...methodStorage.map(({ storage, type }) => Object.freeze({
         name: storage.name,
         type,
+        compileTime: false,
+      })),
+      ...dispatch.indexStorages.map((storage) => Object.freeze({
+        name: storage.name,
+        type: storage.type,
         compileTime: false,
       })),
     ]),

@@ -270,11 +270,36 @@ export interface MojoProjectDispatchField {
   readonly write?: MojoProjectDispatchFieldAccess;
 }
 
+export interface MojoProjectDispatchIndexAccess {
+  readonly name: string;
+  readonly slotName: string;
+  readonly slotType: Extract<MojoTargetTypeRef, { readonly kind: "function" }>;
+}
+
+export interface MojoProjectDispatchIndex {
+  readonly indexSignature: MojoAnalyzedInterfaceIndexSignature;
+  readonly keyType: MojoTargetTypeRef;
+  readonly valueType: MojoTargetTypeRef;
+  readonly read: MojoProjectDispatchIndexAccess;
+  readonly write?: MojoProjectDispatchIndexAccess;
+  readonly copy: MojoProjectDispatchIndexAccess;
+}
+
+export interface MojoProjectDispatchIndexAdapter {
+  readonly index: MojoProjectDispatchIndex;
+  readonly storageName: string;
+  readonly storageType: Extract<MojoTargetTypeRef, { readonly kind: "dictionary" }>;
+  readonly readAdapterName: string;
+  readonly writeAdapterName?: string;
+  readonly copyAdapterName: string;
+}
+
 export interface MojoProjectDispatchView {
   readonly definition: import("../../target-model/types/project.js").MojoProjectTypeDefinition;
   readonly type: MojoTargetTypeRef;
   readonly callables: readonly MojoProjectDispatchCallableVariant[];
   readonly fields: readonly MojoProjectDispatchField[];
+  readonly indexes: readonly MojoProjectDispatchIndex[];
   readonly conversions: readonly {
     readonly target: import("../../target-model/types/project.js").MojoProjectTypeDefinition;
     readonly targetType: MojoTargetTypeRef;
@@ -338,12 +363,17 @@ export interface MojoProjectConcreteViewDispatch {
   readonly conversionAdapterName: string;
   readonly callableAdapters: readonly MojoProjectDispatchCallableAdapter[];
   readonly fieldAdapters: readonly MojoProjectDispatchFieldAdapter[];
+  readonly indexAdapters: readonly MojoProjectDispatchIndexAdapter[];
 }
 
 export interface MojoProjectConcreteDispatch {
   readonly concrete: MojoAnalyzedClass;
   readonly views: readonly MojoProjectConcreteViewDispatch[];
   readonly methodStorages: readonly MojoProjectMethodStorage[];
+  readonly indexStorages: readonly {
+    readonly name: string;
+    readonly type: Extract<MojoTargetTypeRef, { readonly kind: "dictionary" }>;
+  }[];
 }
 
 export interface MojoProjectObjectLiteralCallableAdapter {
@@ -406,6 +436,7 @@ export interface MojoProjectObjectLiteralViewDispatch {
   readonly factoryName: string;
   readonly callableAdapters: readonly MojoProjectObjectLiteralCallableAdapter[];
   readonly fieldAdapters: readonly MojoProjectObjectLiteralFieldAdapter[];
+  readonly indexAdapters: readonly MojoProjectDispatchIndexAdapter[];
 }
 
 export interface MojoProjectObjectLiteralDispatch {
@@ -436,6 +467,10 @@ export interface MojoProjectDispatchPlan {
     receiverType: MojoTargetTypeRef,
     declaration: Node,
   ): MojoProjectDispatchField | undefined;
+  indexFor(
+    receiverType: MojoTargetTypeRef,
+    declaration: Node,
+  ): MojoProjectDispatchIndex | undefined;
   conversionFor(
     sourceType: MojoTargetTypeRef,
     targetType: MojoTargetTypeRef,
@@ -562,6 +597,7 @@ export type MojoPropertySelection =
     }
   | {
       readonly kind: "project-index-property";
+      readonly declaration: Node;
       readonly receiver: Node;
       readonly receiverType: MojoTargetTypeRef;
       readonly storageName: string;
@@ -732,6 +768,7 @@ export type MojoElementSelection = {
   readonly optionalChain: boolean;
 } | {
   readonly kind: "project-index";
+  readonly declaration: Node;
   readonly receiver: Node;
   readonly index: Node;
   readonly accessMode: "read" | "write" | "read-write";

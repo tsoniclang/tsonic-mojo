@@ -63,6 +63,7 @@ import {
   mojoProjectObjectType,
   mojoProjectStaticMember,
 } from "./types.js";
+import { planMojoIndexAdapterMethods } from "./index-adapters.js";
 
 export function planMojoPolymorphicObjectLiteral(
   node: Node,
@@ -200,14 +201,29 @@ export function planMojoPolymorphicObjectLiteral(
     }
     for (const entry of contribution.indexSignatures) {
       const destination = indexStorage.get(entry.indexSignature.declaration);
-      if (destination === undefined) return undefined;
-      appendMojoPlanningDiagnostic(
-        context,
-        "MOJO_POLYMORPHIC_INDEX_SPREAD_NOT_SEALED",
-        "A polymorphic object spread requires an exact index-signature dispatch plan.",
-        contribution.element,
-      );
-      return undefined;
+      const sourceIndex = sourceView.indexAdapters.find((candidate) =>
+        candidate.index.indexSignature.declaration === entry.indexSignature.declaration);
+      if (destination === undefined || sourceIndex === undefined ||
+        !mojoTargetTypeEquals(destination.type, sourceIndex.storageType)) {
+        appendMojoPlanningDiagnostic(
+          context,
+          "MOJO_POLYMORPHIC_INDEX_SPREAD_NOT_SEALED",
+          "A polymorphic object spread has no exact index-signature copy dispatch plan.",
+          contribution.element,
+        );
+        return undefined;
+      }
+      before.push(Object.freeze({
+        kind: "expression",
+        expression: Object.freeze({
+          kind: "method-call",
+          receiver: spread,
+          name: sourceIndex.index.copy.name,
+          arguments: Object.freeze([Object.freeze({
+            value: Object.freeze({ kind: "path", path: destination.name }),
+          })]),
+        }),
+      }));
     }
   }
 
@@ -414,6 +430,11 @@ function planObjectStateDeclarations(
       if (planned === undefined) return undefined;
       methods.push(...planned);
     }
+    for (const adapter of view.indexAdapters) {
+      const planned = planMojoIndexAdapterMethods(adapter, stateType, "_object", context);
+      if (planned === undefined) return undefined;
+      methods.push(...planned);
+    }
   }
   return Object.freeze({
     kind: "struct",
@@ -552,6 +573,25 @@ function planObjectViewFactory(
         value: mojoProjectStaticMember(stateType, adapter.writeAdapterName),
       }));
     }
+  }
+  for (const index of view.view.indexes) {
+    const adapter = view.indexAdapters.find((candidate) => candidate.index === index);
+    if (adapter === undefined) return undefined;
+    arguments_.push(Object.freeze({
+      name: index.read.slotName,
+      value: mojoProjectStaticMember(stateType, adapter.readAdapterName),
+    }));
+    if (index.write !== undefined) {
+      if (adapter.writeAdapterName === undefined) return undefined;
+      arguments_.push(Object.freeze({
+        name: index.write.slotName,
+        value: mojoProjectStaticMember(stateType, adapter.writeAdapterName),
+      }));
+    }
+    arguments_.push(Object.freeze({
+      name: index.copy.slotName,
+      value: mojoProjectStaticMember(stateType, adapter.copyAdapterName),
+    }));
   }
   for (const conversion of view.view.conversions) {
     const target = dispatch.views.find((candidate) =>

@@ -13,6 +13,8 @@ import type {
   MojoProjectDispatchCallableVariant,
   MojoProjectDispatchField,
   MojoProjectDispatchFieldAdapter,
+  MojoProjectDispatchIndex,
+  MojoProjectDispatchIndexAdapter,
   MojoProjectDispatchMethodProperty,
   MojoProjectDispatchPlan,
   MojoProjectDispatchView,
@@ -94,6 +96,7 @@ export function createMojoProjectDispatchPlan(input: {
     const usedNames = new Set<string>();
     const callables: MojoProjectDispatchCallableVariant[] = [];
     const fields: MojoProjectDispatchField[] = [];
+    const indexes: MojoProjectDispatchIndex[] = [];
     const related = relatedDefinitions(analyzed.definition, input.relationships)
       .map((definition) => analyzedByDefinition.get(definition))
       .filter((value): value is MojoAnalyzedClass | MojoAnalyzedInterface => value !== undefined);
@@ -170,6 +173,28 @@ export function createMojoProjectDispatchPlan(input: {
         fields.push(field);
         entryCount += 1;
       }
+      if (owner.kind === "interface") {
+        for (const indexSignature of owner.indexSignatures) {
+          if (indexes.some((index) =>
+            index.indexSignature.declaration === indexSignature.declaration)) continue;
+          const index = createDispatchIndex(
+            analyzed.targetType,
+            indexSignature,
+            usedNames,
+            input.relationships,
+          );
+          if (index === undefined) {
+            issues.push(Object.freeze({
+              node: indexSignature.declaration,
+              code: "MOJO_PROJECT_DISPATCH_INDEX_UNCLOSED",
+              message: "A project dispatch index signature does not close through its exact receiver relationship.",
+            }));
+            continue;
+          }
+          indexes.push(index);
+          entryCount += index.write === undefined ? 2 : 3;
+        }
+      }
     }
 
     const conversions = related
@@ -200,6 +225,7 @@ export function createMojoProjectDispatchPlan(input: {
       type: analyzed.targetType,
       callables: Object.freeze(callables),
       fields: Object.freeze(fields),
+      indexes: Object.freeze(indexes),
       conversions: Object.freeze(conversions),
     }));
   }
@@ -232,6 +258,10 @@ export function createMojoProjectDispatchPlan(input: {
     const concreteViews: MojoProjectConcreteViewDispatch[] = [];
     const adapterNames = generatedNames.usedByClass.get(concrete.definition) ?? new Set<string>();
     const methodStoragesByImplementation = new Map<Node, MojoProjectMethodStorage>();
+    const indexStoragesByDeclaration = new Map<Node, {
+      readonly name: string;
+      readonly type: Extract<MojoTargetTypeRef, { readonly kind: "dictionary" }>;
+    }>();
     for (const view of views) {
       const relationship = input.relationships.relationship(concrete.targetType, view.definition);
       if (relationship.kind !== "related") continue;
@@ -484,6 +514,41 @@ export function createMojoProjectDispatchPlan(input: {
           message: `Concrete class '${concrete.name}' does not close every field contract for '${view.definition.sourceName}'.`,
         }));
       }
+      const indexAdapters = view.indexes.map((index): MojoProjectDispatchIndexAdapter | undefined => {
+        const keyType = input.relationships.instantiateType(
+          view.definition,
+          relationship.targetType,
+          index.keyType,
+        );
+        const valueType = input.relationships.instantiateType(
+          view.definition,
+          relationship.targetType,
+          index.valueType,
+        );
+        if (keyType === undefined || valueType === undefined) return undefined;
+        const storageType = Object.freeze({
+          kind: "dictionary" as const,
+          key: keyType,
+          value: valueType,
+        });
+        let storage = indexStoragesByDeclaration.get(index.indexSignature.declaration);
+        if (storage === undefined) {
+          storage = Object.freeze({
+            name: allocateName(adapterNames, index.indexSignature.storageName),
+            type: storageType,
+          });
+          indexStoragesByDeclaration.set(index.indexSignature.declaration, storage);
+        }
+        if (!mojoTargetTypeEquals(storage.type, storageType)) return undefined;
+        return createIndexAdapter(index, storage.name, storageType, adapterNames);
+      });
+      if (indexAdapters.some((adapter) => adapter === undefined)) {
+        issues.push(Object.freeze({
+          node: view.definition.declaration,
+          code: "MOJO_PROJECT_INDEX_DISPATCH_IMPLEMENTATION_UNRESOLVED",
+          message: `Concrete class '${concrete.name}' does not close every index contract for '${view.definition.sourceName}'.`,
+        }));
+      }
       concreteViews.push(Object.freeze({
         view,
         viewType: relationship.targetType,
@@ -492,12 +557,16 @@ export function createMojoProjectDispatchPlan(input: {
         fieldAdapters: Object.freeze(fieldAdapters.filter(
           (adapter): adapter is MojoProjectDispatchFieldAdapter => adapter !== undefined,
         )),
+        indexAdapters: Object.freeze(indexAdapters.filter(
+          (adapter): adapter is MojoProjectDispatchIndexAdapter => adapter !== undefined,
+        )),
       }));
     }
     concreteDispatch.set(concrete.definition, Object.freeze({
       concrete,
       views: Object.freeze(concreteViews),
       methodStorages: Object.freeze([...methodStoragesByImplementation.values()]),
+      indexStorages: Object.freeze([...indexStoragesByDeclaration.values()]),
     }));
   }
 
@@ -524,6 +593,12 @@ export function createMojoProjectDispatchPlan(input: {
     fieldFor(receiverType, declaration) {
       const view = viewForType(receiverType);
       const matches = view?.fields.filter((field) => propertyDeclarations(field.property).includes(declaration)) ?? [];
+      return matches.length === 1 ? matches[0] : undefined;
+    },
+    indexFor(receiverType, declaration) {
+      const view = viewForType(receiverType);
+      const matches = view?.indexes.filter((index) =>
+        index.indexSignature.declaration === declaration) ?? [];
       return matches.length === 1 ? matches[0] : undefined;
     },
     conversionFor(sourceType, targetType) {
@@ -900,6 +975,43 @@ function createObjectLiteralDispatchPlans(input: {
         }));
         valid = false;
       }
+      const indexAdapters = view.indexes.map((index) => {
+        const selected = selection.indexSignatures.find(({ indexSignature }) =>
+          indexSignature.declaration === index.indexSignature.declaration);
+        if (selected === undefined) return undefined;
+        const storageType = Object.freeze({
+          kind: "dictionary" as const,
+          key: selected.keyType,
+          value: selected.valueType,
+        });
+        const keyType = input.relationships.instantiateType(
+          view.definition,
+          relationship.targetType,
+          index.keyType,
+        );
+        const valueType = input.relationships.instantiateType(
+          view.definition,
+          relationship.targetType,
+          index.valueType,
+        );
+        if (keyType === undefined || valueType === undefined ||
+          !mojoTargetTypeEquals(keyType, storageType.key) ||
+          !mojoTargetTypeEquals(valueType, storageType.value)) return undefined;
+        return createIndexAdapter(
+          index,
+          selected.indexSignature.storageName,
+          storageType,
+          usedNames,
+        );
+      });
+      if (indexAdapters.some((adapter) => adapter === undefined)) {
+        input.issues.push(Object.freeze({
+          node: expression,
+          code: "MOJO_OBJECT_INDEX_DISPATCH_ABI_UNCLOSED",
+          message: "A polymorphic object literal does not close every selected interface index ABI.",
+        }));
+        valid = false;
+      }
       objectViews.push(Object.freeze({
         view,
         viewType: relationship.targetType,
@@ -907,6 +1019,9 @@ function createObjectLiteralDispatchPlans(input: {
         callableAdapters: Object.freeze(callableAdapters),
         fieldAdapters: Object.freeze(fieldAdapters.filter(
           (field): field is NonNullable<typeof field> => field !== undefined,
+        )),
+        indexAdapters: Object.freeze(indexAdapters.filter(
+          (adapter): adapter is MojoProjectDispatchIndexAdapter => adapter !== undefined,
         )),
       }));
     }
@@ -1462,6 +1577,83 @@ function createDispatchField(
   });
 }
 
+function createDispatchIndex(
+  receiverType: MojoTargetTypeRef,
+  indexSignature: import("../program/model.js").MojoAnalyzedInterfaceIndexSignature,
+  usedNames: Set<string>,
+  relationships: MojoProjectTypeRelationships,
+): MojoProjectDispatchIndex | undefined {
+  const keyType = relationships.instantiateMemberType(
+    indexSignature.declaration,
+    receiverType,
+    indexSignature.keyType,
+  );
+  const valueType = relationships.instantiateMemberType(
+    indexSignature.declaration,
+    receiverType,
+    indexSignature.valueType,
+  );
+  if (keyType === undefined || valueType === undefined) return undefined;
+  const storageType = Object.freeze({
+    kind: "dictionary" as const,
+    key: keyType,
+    value: valueType,
+  });
+  const read: MojoProjectDispatchIndex["read"] = Object.freeze({
+    name: allocateName(usedNames, "get_index"),
+    slotName: allocateName(usedNames, "_index_read_dispatch"),
+    slotType: functionType([
+      { type: projectObjectType, convention: "imm", passing: "plain" },
+      { type: keyType, convention: "imm", passing: "plain" },
+    ], valueType, false, false),
+  });
+  const write: MojoProjectDispatchIndex["write"] = indexSignature.readonly
+    ? undefined
+    : Object.freeze({
+        name: allocateName(usedNames, "set_index"),
+        slotName: allocateName(usedNames, "_index_write_dispatch"),
+        slotType: functionType([
+          { type: projectObjectType, convention: "imm", passing: "plain" },
+          { type: keyType, convention: "imm", passing: "plain" },
+          { type: valueType, convention: "imm", passing: "plain" },
+        ], { kind: "unit" }, false, false),
+      });
+  return Object.freeze({
+    indexSignature,
+    keyType,
+    valueType,
+    read,
+    ...(write === undefined ? {} : { write }),
+    copy: Object.freeze({
+      name: allocateName(usedNames, "copy_index_into"),
+      slotName: allocateName(usedNames, "_index_copy_dispatch"),
+      slotType: functionType([
+        { type: projectObjectType, convention: "imm", passing: "plain" },
+        { type: storageType, convention: "mut", passing: "plain" },
+      ], { kind: "unit" }, false, false),
+    }),
+  });
+}
+
+function createIndexAdapter(
+  index: MojoProjectDispatchIndex,
+  storageName: string,
+  storageType: Extract<MojoTargetTypeRef, { readonly kind: "dictionary" }>,
+  usedNames: Set<string>,
+): MojoProjectDispatchIndexAdapter {
+  const baseName = index.indexSignature.storageName;
+  return Object.freeze({
+    index,
+    storageName,
+    storageType,
+    readAdapterName: allocateName(usedNames, `${baseName}_read_adapter`),
+    ...(index.write === undefined
+      ? {}
+      : { writeAdapterName: allocateName(usedNames, `${baseName}_write_adapter`) }),
+    copyAdapterName: allocateName(usedNames, `${baseName}_copy_adapter`),
+  });
+}
+
 function createFieldAdapter(
   field: MojoProjectDispatchField,
   concrete: MojoAnalyzedClass,
@@ -1670,6 +1862,11 @@ function createImplementationNames(
       for (const field of view.fields) {
         if (field.read !== undefined) used.add(field.read.name);
         if (field.write !== undefined) used.add(field.write.name);
+      }
+      for (const index of view.indexes) {
+        used.add(index.read.name);
+        if (index.write !== undefined) used.add(index.write.name);
+        used.add(index.copy.name);
       }
       for (const conversion of view.conversions) used.add(conversion.name);
     }

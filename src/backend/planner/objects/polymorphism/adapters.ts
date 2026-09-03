@@ -26,6 +26,7 @@ import {
   mojoProjectStateType,
   mojoProjectStaticMember,
 } from "./types.js";
+import { planMojoIndexAdapterMethods } from "./index-adapters.js";
 
 export function planMojoConcreteDispatchMethods(
   dispatch: MojoProjectConcreteDispatch,
@@ -46,6 +47,14 @@ export function planMojoConcreteDispatchMethods(
     }
     for (const adapter of view.fieldAdapters) {
       const planned = planFieldAdapterMethods(dispatch, adapter, context);
+      if (planned === undefined) return undefined;
+      methods.push(...planned);
+    }
+    for (const adapter of view.indexAdapters) {
+      const stateType = mojoProjectStateType(dispatch.concrete);
+      const planned = stateType === undefined
+        ? undefined
+        : planMojoIndexAdapterMethods(adapter, stateType, "object", context);
       if (planned === undefined) return undefined;
       methods.push(...planned);
     }
@@ -107,6 +116,25 @@ export function mojoConcreteViewConstruction(
         value: mojoProjectStaticMember(dispatch.concrete.targetType, adapter.writeAdapterName),
       }));
     }
+  }
+  for (const index of view.view.indexes) {
+    const adapter = view.indexAdapters.find((candidate) => candidate.index === index);
+    if (adapter === undefined) return undefined;
+    arguments_.push(Object.freeze({
+      name: index.read.slotName,
+      value: mojoProjectStaticMember(dispatch.concrete.targetType, adapter.readAdapterName),
+    }));
+    if (index.write !== undefined) {
+      if (adapter.writeAdapterName === undefined) return undefined;
+      arguments_.push(Object.freeze({
+        name: index.write.slotName,
+        value: mojoProjectStaticMember(dispatch.concrete.targetType, adapter.writeAdapterName),
+      }));
+    }
+    arguments_.push(Object.freeze({
+      name: index.copy.slotName,
+      value: mojoProjectStaticMember(dispatch.concrete.targetType, adapter.copyAdapterName),
+    }));
   }
   for (const conversion of view.view.conversions) {
     const targetView = dispatch.views.find((candidate) =>
