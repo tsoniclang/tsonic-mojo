@@ -1,10 +1,11 @@
-import type { AstReader, Node, ResolvedSourcePropertyAccessInfo } from "@tsonic/tsts";
+import type { AstReader, Node, ResolvedSourcePropertyAccessInfo, Type } from "@tsonic/tsts";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import { substituteMojoTargetType } from "../../target-model/types/substitution.js";
 import type {
   MojoAnalyzedInterfaceIndexSignature,
+  MojoAnalyzedProjectCallable,
   MojoAnalyzedProjectProperty,
   MojoPropertySelection,
 } from "../program/model.js";
@@ -21,10 +22,12 @@ export type MojoProjectFieldAnalysis =
 export function analyzeMojoProjectProperty(
   source: ResolvedSourcePropertyAccessInfo,
   fieldByDeclaration: WeakMap<Node, MojoAnalyzedProjectProperty>,
+  callableByDeclaration: WeakMap<Node, MojoAnalyzedProjectCallable>,
   receiverType: MojoTargetTypeRef | undefined,
   selectedSubjects: readonly object[],
   ast: AstReader,
   projectRelationships: MojoProjectTypeRelationships,
+  resolveType: (type: Type) => MojoTargetTypeRef | undefined,
 ): MojoProjectFieldAnalysis {
   if (source.accessMode === "delete") {
     return {
@@ -33,17 +36,27 @@ export function analyzeMojoProjectProperty(
       reason: "Deleting a statically declared project field has no Mojo storage operation.",
     };
   }
-  const candidates = [
+  if (source.callCallee) return { kind: "not-project-field" };
+  const selectedDeclarations = [
     source.selectedDeclaration,
     source.selectedReadDeclaration,
     source.selectedWriteDeclaration,
     ...selectedSubjects,
-  ].map((declaration) => declaration === undefined
+  ];
+  const candidates = selectedDeclarations.map((declaration) => declaration === undefined
     ? undefined
     : fieldByDeclaration.get(declaration as Node))
     .filter((field): field is MojoAnalyzedProjectProperty => field !== undefined);
   const unique = [...new Set(candidates)];
-  if (unique.length === 0) return { kind: "not-project-field" };
+  if (unique.length === 0) {
+    return analyzeProjectMethodProperty(
+      source,
+      selectedDeclarations,
+      callableByDeclaration,
+      receiverType,
+      resolveType,
+    );
+  }
   if (unique.length !== 1) {
     return analyzeProjectUnionProperty(
       source,
@@ -200,6 +213,121 @@ export function analyzeMojoProjectProperty(
       fieldName: field.name,
       fieldType,
       receiverType,
+      accessMode: source.accessMode,
+      optionalChain: source.optionalChain,
+    }),
+  };
+}
+
+function analyzeProjectMethodProperty(
+  source: ResolvedSourcePropertyAccessInfo,
+  selectedDeclarations: readonly (object | undefined)[],
+  callableByDeclaration: WeakMap<Node, MojoAnalyzedProjectCallable>,
+  receiverType: MojoTargetTypeRef | undefined,
+  resolveType: (type: Type) => MojoTargetTypeRef | undefined,
+): MojoProjectFieldAnalysis {
+  if (source.accessMode === "delete") {
+    return {
+      kind: "unsupported",
+      code: "MOJO_PROJECT_METHOD_DELETE_UNSUPPORTED",
+      reason: "Deleting a statically selected project method has no closed Mojo operation.",
+    };
+  }
+  const candidates = [...new Set(selectedDeclarations.flatMap((declaration) => {
+    const callable = declaration === undefined
+      ? undefined
+      : callableByDeclaration.get(declaration as Node);
+    return callable === undefined ? [] : [callable];
+  }))];
+  if (candidates.length === 0) return { kind: "not-project-field" };
+  if (candidates.length !== 1) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_PROJECT_METHOD_PROPERTY_IDENTITY_CONFLICT",
+      reason: "A project method value requires one exact checker-selected callable declaration.",
+    };
+  }
+  const callable = candidates[0]!;
+  if (callable.contract.kind !== "method") {
+    return {
+      kind: "unsupported",
+      code: "MOJO_PROJECT_NON_METHOD_CALLABLE_PROPERTY_UNSUPPORTED",
+      reason: "Only an exact project instance method can be selected as a property value.",
+    };
+  }
+  if (callable.contract.static === true) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_STATIC_METHOD_PROPERTY_UNSUPPORTED",
+      reason: "A static project method value requires a distinct sealed static-callable representation.",
+    };
+  }
+  if (callable.contract.typeParameters.length !== 0) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_PROJECT_METHOD_CALLABLE_NOT_CLOSED",
+      reason: "A generic project method value has no exact closed callable specialization.",
+    };
+  }
+  if (receiverType === undefined) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_PROJECT_METHOD_RECEIVER_NOT_CLOSED",
+      reason: "A project method value has no exact non-null Mojo receiver carrier.",
+    };
+  }
+  if (source.optionalChain && source.accessMode !== "read") {
+    return {
+      kind: "unsupported",
+      code: "MOJO_PROJECT_OPTIONAL_METHOD_WRITE_UNSUPPORTED",
+      reason: "An optional project method access cannot be selected as a writable location.",
+    };
+  }
+  const readType = source.sourceReadType === undefined
+    ? undefined
+    : resolveType(source.sourceReadType);
+  const writeType = source.sourceWriteType === undefined
+    ? undefined
+    : resolveType(source.sourceWriteType);
+  if ((source.accessMode === "read" || source.accessMode === "read-write") &&
+      readType?.kind !== "callable" ||
+    (source.accessMode === "write" || source.accessMode === "read-write") &&
+      writeType?.kind !== "callable") {
+    return {
+      kind: "unsupported",
+      code: "MOJO_PROJECT_METHOD_CALLABLE_NOT_CLOSED",
+      reason: "A project method property requires one exact closed callable read/write carrier.",
+    };
+  }
+  if (readType !== undefined && writeType !== undefined &&
+    !mojoTargetTypeEquals(readType, writeType)) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_PROJECT_METHOD_CALLABLE_ABI_CONFLICT",
+      reason: "A project method property's exact read and write callable carriers disagree.",
+    };
+  }
+  const callableType = readType?.kind === "callable"
+    ? readType
+    : writeType?.kind === "callable"
+      ? writeType
+      : undefined;
+  if (callableType === undefined) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_PROJECT_METHOD_CALLABLE_NOT_CLOSED",
+      reason: "A project method property has no exact closed callable carrier.",
+    };
+  }
+  return {
+    kind: "resolved",
+    expressionType: optionalAccessResult(callableType, source.optionalChain),
+    selection: Object.freeze({
+      kind: "project-method",
+      declaration: callable.contract.declaration,
+      receiver: source.receiver.expression,
+      receiverType,
+      callableType,
       accessMode: source.accessMode,
       optionalChain: source.optionalChain,
     }),

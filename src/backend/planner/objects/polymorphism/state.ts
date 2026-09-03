@@ -43,7 +43,8 @@ export function planMojoPolymorphicClassState(
   context: MojoPlanningContext,
 ): MojoStructDeclaration | undefined {
   const stateType = mojoProjectStateType(class_);
-  if (stateType === undefined) return undefined;
+  const dispatch = context.program.projectDispatch.concreteFor(class_.definition);
+  if (stateType === undefined || dispatch === undefined) return undefined;
   const base = directBase(class_, context);
   if (base === null) return undefined;
   const baseStateType = base === undefined
@@ -53,6 +54,14 @@ export function planMojoPolymorphicClassState(
   registerMojoTypeImports(stateType, context);
   if (baseStateType !== undefined) registerMojoTypeImports(baseStateType, context);
   for (const field of class_.fields) registerMojoTypeImports(field.type, context);
+  const methodStorage = dispatch.methodStorages.map((storage) => Object.freeze({
+    storage,
+    type: Object.freeze({
+      kind: "optional" as const,
+      value: storage.callableType,
+    }),
+  }));
+  for (const entry of methodStorage) registerMojoTypeImports(entry.type, context);
   const sourceConstructor = class_.constructors[0];
   const stateContext = withMojoErrorType(
     withMojoStateInitialization(
@@ -110,6 +119,16 @@ export function planMojoPolymorphicClassState(
     self: "out self",
     statements: Object.freeze([
       ...parameterPrelude,
+      ...methodStorage.map(({ storage }): MojoStatement => Object.freeze({
+        kind: "assignment",
+        operator: "=",
+        left: Object.freeze({
+          kind: "member",
+          receiver: Object.freeze({ kind: "path", path: "self" }),
+          name: storage.name,
+        }),
+        right: Object.freeze({ kind: "none-literal" }),
+      })),
       ...baseInitialization.statements,
       ...fieldInitialization,
       ...constructorBody,
@@ -127,6 +146,11 @@ export function planMojoPolymorphicClassState(
       ...class_.fields.map((field) => Object.freeze({
         name: field.name,
         type: field.type,
+        compileTime: false,
+      })),
+      ...methodStorage.map(({ storage, type }) => Object.freeze({
+        name: storage.name,
+        type,
         compileTime: false,
       })),
     ]),

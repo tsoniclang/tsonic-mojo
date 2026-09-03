@@ -152,7 +152,8 @@ export function planMojoProperty(
     }
     return withMojoValue(ordered.before, expression);
   }
-  const sourceReceiverType = selection.kind === "project-field" ||
+  const sourceReceiverType = selection.kind === "project-method" ||
+    selection.kind === "project-field" ||
     selection.kind === "project-index-property" || selection.kind === "project-accessor" ||
     selection.kind === "structural-field"
     ? selection.receiverType
@@ -165,6 +166,45 @@ export function planMojoProperty(
     planValue,
   );
   if (receiver === undefined) return undefined;
+  if (selection.kind === "project-method") {
+    if (mode !== "read") {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROJECT_METHOD_WRITE_REQUIRES_VALUE",
+        "A project method replacement must be planned with its exact callable value.",
+        node,
+      );
+      return undefined;
+    }
+    const variant = context.program.projectDispatch.callableFor(
+      selection.receiverType,
+      selection.declaration,
+      Object.freeze([]),
+    );
+    if (variant?.property?.read === undefined) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROJECT_METHOD_READ_DISPATCH_NOT_SEALED",
+        "A project method value read has no exact sealed bound-callable dispatch slot.",
+        node,
+      );
+      return undefined;
+    }
+    const ordered = orderMojoValues([
+      Object.freeze({
+        plan: receiver.plan,
+        type: selection.receiverType,
+        role: "method_value_receiver",
+      }),
+    ], context, stabilizeReceiver);
+    const operation = withMojoValue(ordered.before, Object.freeze({
+      kind: "method-call",
+      receiver: ordered.values[0]!,
+      name: variant.property.read.name,
+      arguments: Object.freeze([]),
+    }));
+    return finishOptionalMojoOperation(node, receiver, operation, context);
+  }
   if (selection.kind === "project-field") {
     const directState = context.initializingState !== undefined &&
       context.program.source.ast.kindName(selection.receiver) === "KindThisKeyword" &&
@@ -373,6 +413,7 @@ export function projectPropertyUsesMethodWrite(
     context.program.source.ast.kindName(selection.receiver) === "KindThisKeyword" &&
     mojoTargetTypeEquals(context.initializingState.referenceType, selection.receiverType)) return false;
   if (selection?.kind === "project-accessor") return true;
+  if (selection?.kind === "project-method") return true;
   return selection?.kind === "project-field" &&
     context.program.projectDispatch.viewForType(selection.receiverType) !== undefined;
 }
@@ -385,21 +426,43 @@ export function planMojoProjectPropertyWrite(
   planValue: MojoValuePlanner,
 ): { readonly before: readonly MojoStatement[]; readonly statement: MojoStatement } | undefined {
   const selection = context.program.queries.propertySelection(node);
-  if (selection?.kind !== "project-accessor" && selection?.kind !== "project-field") return undefined;
+  if (selection?.kind !== "project-method" && selection?.kind !== "project-accessor" &&
+    selection?.kind !== "project-field") return undefined;
+  const variant = selection.kind === "project-method"
+    ? context.program.projectDispatch.callableFor(
+        selection.receiverType,
+        selection.declaration,
+        Object.freeze([]),
+      )
+    : undefined;
   const declarations = selection.kind === "project-field"
     ? [selection.declaration]
-    : selection.declarations;
-  const dispatch = selectedDispatchField(selection.receiverType, declarations, context);
-  const writeName = dispatch?.write?.name ??
-    (selection.kind === "project-accessor" ? selection.writeName : undefined);
-  const writeType = dispatch?.write?.valueType ??
-    (selection.kind === "project-accessor" ? selection.writeType : selection.fieldType);
-  const writeDisposition = dispatch?.write?.disposition ??
-    (selection.kind === "project-accessor" ? selection.writeDisposition : undefined);
-  const readName = dispatch?.read?.name ??
-    (selection.kind === "project-accessor" ? selection.readName : undefined);
-  const readType = dispatch?.read?.valueType ??
-    (selection.kind === "project-accessor" ? selection.readType : selection.fieldType);
+    : selection.kind === "project-accessor"
+      ? selection.declarations
+      : [];
+  const dispatch = selection.kind === "project-method"
+    ? undefined
+    : selectedDispatchField(selection.receiverType, declarations, context);
+  const writeName = selection.kind === "project-method"
+    ? variant?.property?.write?.name
+    : dispatch?.write?.name ??
+      (selection.kind === "project-accessor" ? selection.writeName : undefined);
+  const writeType = selection.kind === "project-method"
+    ? selection.callableType
+    : dispatch?.write?.valueType ??
+      (selection.kind === "project-accessor" ? selection.writeType : selection.fieldType);
+  const writeDisposition = selection.kind === "project-method"
+    ? undefined
+    : dispatch?.write?.disposition ??
+      (selection.kind === "project-accessor" ? selection.writeDisposition : undefined);
+  const readName = selection.kind === "project-method"
+    ? variant?.property?.read?.name
+    : dispatch?.read?.name ??
+      (selection.kind === "project-accessor" ? selection.readName : undefined);
+  const readType = selection.kind === "project-method"
+    ? selection.callableType
+    : dispatch?.read?.valueType ??
+      (selection.kind === "project-accessor" ? selection.readType : selection.fieldType);
   if (writeName === undefined || writeType === undefined) return undefined;
   if (selection.optionalChain) {
     appendMojoPlanningDiagnostic(
@@ -424,6 +487,15 @@ export function planMojoProjectPropertyWrite(
   ], context, true);
   let assigned = ordered.values[1]!;
   if (operator !== "=") {
+    if (selection.kind === "project-method") {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROJECT_METHOD_COMPOUND_WRITE_UNSUPPORTED",
+        "A project method replacement supports only exact callable assignment.",
+        node,
+      );
+      return undefined;
+    }
     if (readName === undefined || readType === undefined ||
       !mojoTargetTypeEquals(readType, writeType)) {
       appendMojoPlanningDiagnostic(

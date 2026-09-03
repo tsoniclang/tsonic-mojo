@@ -83,7 +83,8 @@ export function analyzeMojoObjectLiteral(
   }
   const fieldTypes = new Map(instantiatedFields.map((field) => [field.field.declaration, field] as const));
   const instantiatedIndexSignatures = instantiatedClosure?.indexSignatures;
-  if (instantiatedIndexSignatures === undefined) {
+  const instantiatedMethods = instantiatedClosure?.methods;
+  if (instantiatedIndexSignatures === undefined || instantiatedMethods === undefined) {
     reject(input, "MOJO_OBJECT_INDEX_INSTANTIATION_UNRESOLVED", "Object literal interface arguments do not exactly instantiate its declared index signatures.", expression);
     return undefined;
   }
@@ -170,6 +171,7 @@ export function analyzeMojoObjectLiteral(
         value,
         sourceType,
         fields: Object.freeze(instantiatedFields),
+        methods: instantiatedMethods,
         indexSignatures: instantiatedIndexSignatures,
       }));
       for (const field of instantiatedFields) assigned.add(field.field.declaration);
@@ -530,6 +532,9 @@ function instantiateInterfaceClosure(
     readonly keyType: MojoTargetTypeRef;
     readonly valueType: MojoTargetTypeRef;
   }[];
+  readonly methods: readonly {
+    readonly method: import("../program/model.js").MojoAnalyzedCallableSignature;
+  }[];
 } | undefined {
   const related = [...input.interfaceByTypeId.values()].flatMap((interface_) => {
     const relationship = input.projectRelationships.relationship(
@@ -549,6 +554,7 @@ function instantiateInterfaceClosure(
     readonly keyType: MojoTargetTypeRef;
     readonly valueType: MojoTargetTypeRef;
   }[] = [];
+  const methods: { readonly method: import("../program/model.js").MojoAnalyzedCallableSignature }[] = [];
   for (const entry of related) {
     const instantiatedFields = instantiateFields(entry.interface_, entry.type);
     const instantiatedIndexes = instantiateIndexSignatures(entry.interface_, entry.type);
@@ -564,10 +570,16 @@ function instantiateInterfaceClosure(
         indexSignatures.push(indexSignature);
       }
     }
+    for (const method of entry.interface_.methods) {
+      if (!methods.some((candidate) => candidate.method.declaration === method.declaration)) {
+        methods.push(Object.freeze({ method }));
+      }
+    }
   }
   return Object.freeze({
     fields: Object.freeze(fields),
     indexSignatures: Object.freeze(indexSignatures),
+    methods: Object.freeze(methods),
   });
 }
 

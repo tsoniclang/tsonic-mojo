@@ -41,6 +41,15 @@ export function mojoProjectViewFields(
       type: callable.slotType,
       compileTime: false,
     }));
+    for (const access of [callable.property?.read, callable.property?.write]) {
+      if (access === undefined) continue;
+      registerMojoTypeImports(access.slotType, context);
+      fields.push(Object.freeze({
+        name: access.slotName,
+        type: access.slotType,
+        compileTime: false,
+      }));
+    }
   }
   for (const field of view.fields) {
     for (const access of [field.read, field.write]) {
@@ -73,6 +82,43 @@ export function planMojoProjectViewForwarders(
     const planned = planCallableForwarder(callable, context);
     if (planned === undefined) return undefined;
     methods.push(planned);
+    if (callable.property?.read !== undefined) {
+      methods.push(Object.freeze({
+        kind: "function",
+        name: callable.property.read.name,
+        genericParameters: Object.freeze([]),
+        parameters: Object.freeze([]),
+        resultType: callable.property.callableType,
+        asynchronous: false,
+        raises: false,
+        self: "self",
+        statements: Object.freeze([Object.freeze({
+          kind: "return",
+          expression: slotCall(callable.property.read.slotName, Object.freeze([])),
+        })]),
+      }));
+    }
+    if (callable.property?.write !== undefined) {
+      methods.push(Object.freeze({
+        kind: "function",
+        name: callable.property.write.name,
+        genericParameters: Object.freeze([]),
+        parameters: Object.freeze([Object.freeze({
+          name: "value",
+          type: callable.property.callableType,
+        })]),
+        resultType: Object.freeze({ kind: "unit" }),
+        asynchronous: false,
+        raises: false,
+        self: "self",
+        statements: Object.freeze([Object.freeze({
+          kind: "expression",
+          expression: slotCall(callable.property.write.slotName, Object.freeze([
+            Object.freeze({ value: Object.freeze({ kind: "path", path: "value" }) }),
+          ])),
+        })]),
+      }));
+    }
   }
   for (const field of view.fields) {
     if (field.read !== undefined) methods.push(planFieldRead(field));
@@ -101,7 +147,13 @@ export function planMojoProjectViewInitializer(
   view: MojoProjectDispatchView,
 ): MojoFunctionDeclaration {
   const slotFields = [
-    ...view.callables.map((entry) => Object.freeze({ name: entry.slotName, type: entry.slotType })),
+    ...view.callables.flatMap((entry) => [
+      Object.freeze({ name: entry.slotName, type: entry.slotType }),
+      ...[entry.property?.read, entry.property?.write].flatMap((access) =>
+        access === undefined
+          ? []
+          : [Object.freeze({ name: access.slotName, type: access.slotType })]),
+    ]),
     ...view.fields.flatMap((field) => [field.read, field.write].flatMap((entry) =>
       entry === undefined ? [] : [Object.freeze({ name: entry.slotName, type: entry.slotType })])),
     ...view.conversions.map((entry) => Object.freeze({ name: entry.slotName, type: entry.slotType })),

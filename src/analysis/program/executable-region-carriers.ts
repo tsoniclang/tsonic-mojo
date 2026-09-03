@@ -64,6 +64,7 @@ export function selectedOperationReceiverType(
 
 function propertyReceiver(selection: MojoPropertySelection): Node | undefined {
   switch (selection.kind) {
+    case "project-method":
     case "project-field":
     case "project-index-property":
     case "project-accessor":
@@ -81,6 +82,7 @@ function propertyReceiver(selection: MojoPropertySelection): Node | undefined {
 
 function propertyReceiverType(selection: MojoPropertySelection): MojoTargetTypeRef | undefined {
   switch (selection.kind) {
+    case "project-method":
     case "project-field":
     case "project-index-property":
     case "project-accessor":

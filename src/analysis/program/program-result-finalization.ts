@@ -108,6 +108,7 @@ export function finalizeMojoProgramResult(
     conversions,
     callSelections,
     propertySelections,
+    propertyNodes,
     valueSelections,
     typeTestSelections,
     nullishCoalescingSelections,
@@ -121,6 +122,22 @@ export function finalizeMojoProgramResult(
     locationStorageNames,
   } = environment;
   const { ast } = checkedSource;
+  const methodPropertyOwners = new Set<import("../../target-model/types/project.js").MojoProjectTypeDefinition>();
+  for (const propertyNode of propertyNodes) {
+    const selection = propertySelections.get(propertyNode);
+    if (selection?.kind !== "project-method") continue;
+    const finalizedType = expressionTypes.get(propertyNode);
+    if (finalizedType?.kind === "callable") {
+      propertySelections.set(propertyNode, Object.freeze({
+        ...selection,
+        callableType: finalizedType,
+      }));
+    }
+    const owner = environment.projectRelationships.definitionContainingDeclaration(
+      selection.declaration,
+    );
+    if (owner?.kind === "class") methodPropertyOwners.add(owner);
+  }
   const finalizedFunctions = functions.map((function_) => {
     const errorType = closeMojoErrorType(errorTypesByDeclaration.get(function_.declaration) ?? []);
     return Object.freeze({
@@ -149,6 +166,7 @@ export function finalizeMojoProgramResult(
         finalizedByDeclaration.get(accessor.declaration) ?? accessor)),
       constructors: Object.freeze(class_.constructors.map((constructor) =>
         finalizedByDeclaration.get(constructor.declaration) ?? constructor)),
+      polymorphic: class_.polymorphic || methodPropertyOwners.has(class_.definition),
       ...(initializationErrorType === undefined ? {} : { initializationErrorType }),
       ...(typedError ? { errorRole: "typed" as const } : {}),
     });
@@ -281,6 +299,8 @@ export function finalizeMojoProgramResult(
     relationships: environment.projectRelationships,
     callNodes: environment.callNodes,
     callSelections,
+    propertyNodes,
+    propertySelections,
     implementations: finalizedByDeclaration,
     objectLiteralNodes,
     objectLiteralSelections,

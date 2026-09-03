@@ -35,6 +35,7 @@ import type {
   MojoCallableExpressionSelection,
   MojoTemplateExpressionSelection,
   MojoBindingPatternSelection,
+  MojoObjectLiteralContribution,
   MojoObjectLiteralSelection,
 } from "./binding-and-object-model.js";
 export type {
@@ -234,6 +235,25 @@ export interface MojoProjectDispatchCallableVariant {
   readonly parameters: readonly MojoAnalyzedParameter[];
   readonly resultType: MojoTargetTypeRef;
   readonly errorType?: MojoTargetTypeRef;
+  readonly property?: MojoProjectDispatchMethodProperty;
+}
+
+export interface MojoProjectDispatchMethodProperty {
+  readonly callableType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
+  readonly read?: MojoProjectDispatchMethodPropertyAccess;
+  readonly write?: MojoProjectDispatchMethodPropertyAccess;
+}
+
+export interface MojoProjectDispatchMethodPropertyAccess {
+  readonly name: string;
+  readonly slotName: string;
+  readonly slotType: Extract<MojoTargetTypeRef, { readonly kind: "function" }>;
+}
+
+export interface MojoProjectMethodStorage {
+  readonly declarations: readonly Node[];
+  readonly name: string;
+  readonly callableType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
 }
 
 export interface MojoProjectDispatchFieldAccess {
@@ -277,6 +297,11 @@ export interface MojoProjectDispatchCallableAdapter {
   readonly implementationParameters: readonly MojoAnalyzedParameter[];
   readonly argumentConversions: readonly MojoValueConversion[];
   readonly resultConversion: MojoValueConversion;
+  readonly methodStorage?: MojoProjectMethodStorage;
+  readonly methodCallAdapterName?: string;
+  readonly methodBindAdapterName?: string;
+  readonly methodReadAdapterName?: string;
+  readonly methodWriteAdapterName?: string;
 }
 
 export type MojoProjectDispatchFieldAdapter =
@@ -318,11 +343,12 @@ export interface MojoProjectConcreteViewDispatch {
 export interface MojoProjectConcreteDispatch {
   readonly concrete: MojoAnalyzedClass;
   readonly views: readonly MojoProjectConcreteViewDispatch[];
+  readonly methodStorages: readonly MojoProjectMethodStorage[];
 }
 
 export interface MojoProjectObjectLiteralCallableAdapter {
   readonly variant: MojoProjectDispatchCallableVariant;
-  readonly implementation: MojoCallableExpressionSelection;
+  readonly implementation?: MojoCallableExpressionSelection;
   readonly genericArguments: readonly import("../../target-model/types/model.js").MojoTargetGenericArgument[];
   readonly parameters: readonly MojoAnalyzedParameter[];
   readonly resultType: MojoTargetTypeRef;
@@ -331,6 +357,21 @@ export interface MojoProjectObjectLiteralCallableAdapter {
   readonly argumentConversions: readonly MojoValueConversion[];
   readonly resultConversion: MojoValueConversion;
   readonly adapterName: string;
+  readonly methodStorage?: MojoProjectObjectLiteralMethodStorage;
+  readonly methodCallAdapterName?: string;
+  readonly methodBindAdapterName?: string;
+  readonly methodReadAdapterName?: string;
+  readonly methodWriteAdapterName?: string;
+}
+
+export interface MojoProjectObjectLiteralMethodStorage extends MojoProjectMethodStorage {
+  readonly initialization:
+    | { readonly kind: "default" }
+    | {
+        readonly kind: "spread";
+        readonly contribution: Extract<MojoObjectLiteralContribution, { readonly kind: "spread" }>;
+        readonly declaration: Node;
+      };
 }
 
 export type MojoProjectObjectLiteralFieldAdapter =
@@ -376,6 +417,7 @@ export interface MojoProjectObjectLiteralDispatch {
     readonly storageType: MojoTargetTypeRef;
   }[];
   readonly views: readonly MojoProjectObjectLiteralViewDispatch[];
+  readonly methodStorages: readonly MojoProjectObjectLiteralMethodStorage[];
 }
 
 export interface MojoProjectDispatchPlan {
@@ -499,6 +541,15 @@ export interface MojoAnalyzedModule {
 }
 
 export type MojoPropertySelection =
+  | {
+      readonly kind: "project-method";
+      readonly declaration: Node;
+      readonly receiver: Node;
+      readonly receiverType: MojoTargetTypeRef;
+      readonly callableType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
+      readonly accessMode: "read" | "write" | "read-write";
+      readonly optionalChain: boolean;
+    }
   | {
       readonly kind: "project-field";
       readonly declaration: Node;

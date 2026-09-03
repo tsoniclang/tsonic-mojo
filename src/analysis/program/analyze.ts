@@ -94,6 +94,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
   const callNodes = new Set<Node>();
   const callDependencies = new WeakMap<Node, Node>();
   const propertySelections = new WeakMap<Node, MojoPropertySelection>();
+  const propertyNodes = new Set<Node>();
   const elementSelections = new WeakMap<Node, MojoElementSelection>();
   const iterationSelections = new WeakMap<Node, MojoIterationSelection>();
   const resourceManagementSelections = new WeakMap<Node, MojoResourceManagementSelection>();
@@ -353,6 +354,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     callNodes,
     callDependencies,
     propertySelections,
+    propertyNodes,
     elementSelections,
     iterationSelections,
     resourceManagementSelections,

@@ -206,6 +206,7 @@ export function planMojoAssignment(
   const element = context.program.queries.elementSelection(leftNode);
   const targetWriteType = property?.kind === "provider" || property?.kind === "provider-static"
     ? property.targetWriteType
+    : property?.kind === "project-method" ? property.callableType
     : property?.kind === "project-accessor" ? property.writeType
     : element?.kind === "provider" ? element.targetWriteType : element?.writeType;
   const providerProperty = property?.kind === "provider" || property?.kind === "provider-static"

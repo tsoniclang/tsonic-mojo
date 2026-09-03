@@ -98,6 +98,7 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly callNodes: Set<Node>;
   readonly callDependencies: WeakMap<Node, Node>;
   readonly propertySelections: WeakMap<Node, MojoPropertySelection>;
+  readonly propertyNodes: Set<Node>;
   readonly elementSelections: WeakMap<Node, MojoElementSelection>;
   readonly iterationSelections: WeakMap<Node, MojoIterationSelection>;
   readonly resourceManagementSelections: WeakMap<Node, MojoResourceManagementSelection>;

@@ -143,6 +143,9 @@ export type MojoObjectLiteralContribution =
         readonly field: MojoAnalyzedInterfaceField;
         readonly fieldType: MojoTargetTypeRef;
       }[];
+      readonly methods: readonly {
+        readonly method: import("./model.js").MojoAnalyzedCallableSignature;
+      }[];
       readonly indexSignatures: readonly {
         readonly indexSignature: MojoAnalyzedInterfaceIndexSignature;
         readonly keyType: MojoTargetTypeRef;

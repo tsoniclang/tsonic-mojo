@@ -13,13 +13,16 @@ import type {
   MojoProjectDispatchCallableVariant,
   MojoProjectDispatchField,
   MojoProjectDispatchFieldAdapter,
+  MojoProjectDispatchMethodProperty,
   MojoProjectDispatchPlan,
   MojoProjectDispatchView,
+  MojoProjectMethodStorage,
   MojoProjectObjectLiteralDispatch,
   MojoObjectLiteralSelection,
   MojoObjectLiteralContribution,
   MojoCallableExpressionSelection,
   MojoCallSelection,
+  MojoPropertySelection,
 } from "../program/model.js";
 import type {
   MojoProjectTypeDefinition,
@@ -51,6 +54,8 @@ export function createMojoProjectDispatchPlan(input: {
   readonly relationships: MojoProjectTypeRelationships;
   readonly callNodes: ReadonlySet<Node>;
   readonly callSelections: WeakMap<Node, MojoCallSelection>;
+  readonly propertyNodes: ReadonlySet<Node>;
+  readonly propertySelections: WeakMap<Node, MojoPropertySelection>;
   readonly implementations: WeakMap<Node, MojoAnalyzedFunction>;
   readonly objectLiteralNodes: ReadonlySet<Node>;
   readonly objectLiteralSelections: WeakMap<Node, MojoObjectLiteralSelection>;
@@ -69,6 +74,17 @@ export function createMojoProjectDispatchPlan(input: {
     input.callNodes,
     input.callSelections,
   );
+  const methodPropertyUsages = collectMethodPropertyUsages(
+    input.propertyNodes,
+    input.propertySelections,
+    input.objectLiteralNodes,
+    input.objectLiteralSelections,
+  );
+  const implementationMethodPropertyUsages = collectImplementationMethodPropertyUsages(
+    methodPropertyUsages,
+    input.classes,
+    input.relationships,
+  );
   const propertiesByDeclaration = createPropertyIndex(input.classes, input.interfaces);
   const views: MojoProjectDispatchView[] = [];
   let entryCount = 0;
@@ -85,6 +101,15 @@ export function createMojoProjectDispatchPlan(input: {
     for (const owner of related) {
       for (const contract of callableContracts(owner)) {
         if (contract.static === true || contract.kind === "constructor") continue;
+        const propertyUsage = methodPropertyUsages.get(contract.declaration);
+        if (propertyUsage !== undefined && contract.asynchronous) {
+          issues.push(Object.freeze({
+            node: contract.declaration,
+            code: "MOJO_ASYNC_PROJECT_METHOD_PROPERTY_NATIVE_LIMIT",
+            message: "The pinned Mojo callable ABI cannot retain an asynchronous bound project method value.",
+          }));
+          continue;
+        }
         const selected = contract.typeParameters.length === 0
           ? [Object.freeze([] as MojoTargetGenericArgument[])]
           : selectedGenericArguments.get(contract.declaration) ?? [];
@@ -112,6 +137,7 @@ export function createMojoProjectDispatchPlan(input: {
             usedNames,
             selected.length,
             input.relationships,
+            propertyUsage,
           );
           if (variant === undefined) {
             issues.push(Object.freeze({
@@ -205,6 +231,7 @@ export function createMojoProjectDispatchPlan(input: {
     if (!concrete.polymorphic) continue;
     const concreteViews: MojoProjectConcreteViewDispatch[] = [];
     const adapterNames = generatedNames.usedByClass.get(concrete.definition) ?? new Set<string>();
+    const methodStoragesByImplementation = new Map<Node, MojoProjectMethodStorage>();
     for (const view of views) {
       const relationship = input.relationships.relationship(concrete.targetType, view.definition);
       if (relationship.kind !== "related") continue;
@@ -362,19 +389,81 @@ export function createMojoProjectDispatchPlan(input: {
           }));
           continue;
         }
+        const implementationUsage = implementationMethodPropertyUsages.get(
+          selected.implementation.declaration,
+        );
+        let methodStorage: MojoProjectMethodStorage | undefined;
+        if (implementationUsage?.writable === true) {
+          const callableType = dispatchCallableType(
+            variant.contract,
+            closedConcreteParameters,
+            concreteResult,
+            concreteError,
+          );
+          if (callableType === undefined) {
+            issues.push(Object.freeze({
+              node: variant.contract.declaration,
+              code: "MOJO_PROJECT_METHOD_PROPERTY_ABI_UNSUPPORTED",
+              message: "A mutable project method requires one synchronous closed callable ABI.",
+            }));
+            continue;
+          }
+          const existingStorage = methodStoragesByImplementation.get(
+            selected.implementation.declaration,
+          );
+          if (existingStorage !== undefined &&
+            !mojoTargetTypeEquals(existingStorage.callableType, callableType)) {
+            issues.push(Object.freeze({
+              node: variant.contract.declaration,
+              code: "MOJO_PROJECT_METHOD_PROPERTY_ABI_CONFLICT",
+              message: "One mutable project method implementation is exposed through incompatible callable ABIs.",
+            }));
+            continue;
+          }
+          methodStorage = existingStorage ?? Object.freeze({
+            declarations: Object.freeze([selected.implementation.declaration]),
+            name: allocateName(adapterNames, `_method_${implementation.name}`),
+            callableType,
+          });
+          methodStoragesByImplementation.set(
+            selected.implementation.declaration,
+            methodStorage,
+          );
+        }
+        const adapterName = allocateName(
+          adapterNames,
+          `_dispatch_${view.definition.targetName}_${variant.name}`,
+        );
+        const methodCallAdapterName = methodStorage === undefined
+          ? undefined
+          : allocateName(adapterNames, `${adapterName}_current`);
+        const methodBindAdapterName = variant.property?.read === undefined
+          ? undefined
+          : allocateName(adapterNames, `${adapterName}_bound`);
+        const methodReadAdapterName = variant.property?.read === undefined
+          ? undefined
+          : allocateName(adapterNames, `${adapterName}_read`);
+        const methodWriteAdapterName = variant.property?.write === undefined
+          ? undefined
+          : allocateName(adapterNames, `${adapterName}_write`);
         callableAdapters.push(Object.freeze({
           variant,
           genericArguments: concreteGenericArguments,
           parameters: Object.freeze(closedConcreteParameters),
           resultType: concreteResult,
           ...(concreteError === undefined ? {} : { errorType: concreteError }),
-          adapterName: allocateName(adapterNames, `_dispatch_${view.definition.targetName}_${variant.name}`),
+          adapterName,
           implementationName,
           implementation,
           implementationOwnerType: implementationRelation.targetType,
           implementationParameters: Object.freeze(closedImplementationParameters),
           argumentConversions: Object.freeze(argumentConversions as readonly import("../../target-model/conversions/model.js").MojoValueConversion[]),
           resultConversion: resultConversion.conversion,
+          ...(methodStorage === undefined ? {} : { methodStorage }),
+          ...(methodCallAdapterName === undefined ? {} : { methodCallAdapterName }),
+          ...(methodBindAdapterName === undefined ? {} : { methodBindAdapterName }),
+          ...(methodReadAdapterName === undefined ? {} : { methodReadAdapterName }),
+          ...(methodWriteAdapterName === undefined ? {} : { methodWriteAdapterName }),
         }));
       }
       const fieldAdapters = view.fields.map((field): MojoProjectDispatchFieldAdapter | undefined =>
@@ -408,6 +497,7 @@ export function createMojoProjectDispatchPlan(input: {
     concreteDispatch.set(concrete.definition, Object.freeze({
       concrete,
       views: Object.freeze(concreteViews),
+      methodStorages: Object.freeze([...methodStoragesByImplementation.values()]),
     }));
   }
 
@@ -418,6 +508,7 @@ export function createMojoProjectDispatchPlan(input: {
     relationships: input.relationships,
     views,
     issues,
+    methodPropertyUsages,
   });
 
   const plan: MojoProjectDispatchPlan = {
@@ -478,6 +569,7 @@ function createObjectLiteralDispatchPlans(input: {
   readonly relationships: MojoProjectTypeRelationships;
   readonly views: readonly MojoProjectDispatchView[];
   readonly issues: { readonly node: Node; readonly code: string; readonly message: string }[];
+  readonly methodPropertyUsages: ReadonlyMap<Node, MethodPropertyUsage>;
 }): WeakMap<Node, MojoProjectObjectLiteralDispatch> {
   const result = new WeakMap<Node, MojoProjectObjectLiteralDispatch>();
   for (const expression of input.nodes) {
@@ -537,8 +629,48 @@ function createObjectLiteralDispatchPlans(input: {
     }
     if (!valid) continue;
 
+    type FinalMethodContribution =
+      | {
+          readonly kind: "authored";
+          readonly contribution: Extract<MojoObjectLiteralContribution, { readonly kind: "method" }>;
+          readonly implementation: MojoCallableExpressionSelection;
+        }
+      | {
+          readonly kind: "spread";
+          readonly contribution: Extract<MojoObjectLiteralContribution, { readonly kind: "spread" }>;
+          readonly sourceDeclaration: Node;
+        };
+    const finalMethods = new Map<Node, FinalMethodContribution>();
+    for (const contribution of selection.contributions) {
+      if (contribution.kind === "method") {
+        const implementation = input.callables.get(contribution.element);
+        if (implementation === undefined) continue;
+        for (const declaration of contribution.contractDeclarations) {
+          finalMethods.set(declaration, Object.freeze({
+            kind: "authored",
+            contribution,
+            implementation,
+          }));
+        }
+      } else if (contribution.kind === "spread") {
+        for (const { method } of contribution.methods) {
+          finalMethods.set(method.declaration, Object.freeze({
+            kind: "spread",
+            contribution,
+            sourceDeclaration: method.declaration,
+          }));
+        }
+      }
+    }
+
     const objectViews: import("../program/model.js").MojoProjectObjectLiteralViewDispatch[] = [];
     const storedFields = new Map<Node, { readonly name: string; readonly type: MojoTargetTypeRef }>();
+    const methodStorageBuilders: {
+      readonly identity: Node;
+      readonly sourceDeclaration?: Node;
+      readonly declarations: Node[];
+      readonly storage: import("../program/model.js").MojoProjectObjectLiteralMethodStorage;
+    }[] = [];
     for (const view of input.views) {
       const relationship = input.relationships.relationship(
         selection.constructionType,
@@ -547,12 +679,10 @@ function createObjectLiteralDispatchPlans(input: {
       if (relationship.kind !== "related") continue;
       const callableAdapters: import("../program/model.js").MojoProjectObjectLiteralCallableAdapter[] = [];
       for (const variant of view.callables) {
-        const contributions = methods.filter((contribution) =>
-          contribution.contractDeclarations.includes(variant.contract.declaration));
-        const contribution = contributions.length === 1 ? contributions[0] : undefined;
-        const implementation = contribution === undefined
-          ? undefined
-          : input.callables.get(contribution.element);
+        const selectedMethod = finalMethods.get(variant.contract.declaration);
+        const implementation = selectedMethod?.kind === "authored"
+          ? selectedMethod.implementation
+          : undefined;
         const genericArguments = input.relationships.instantiateGenericArguments(
           view.definition,
           relationship.targetType,
@@ -577,31 +707,41 @@ function createObjectLiteralDispatchPlans(input: {
               relationship.targetType,
               variant.errorType,
             );
-        const substitutions = implementation === undefined || genericArguments === undefined
+        const substitutions = selectedMethod?.kind !== "authored" ||
+            implementation === undefined || genericArguments === undefined
           ? undefined
           : callableSubstitutions(implementation, genericArguments);
-        const implementationParameters = substitutions === undefined || implementation === undefined
-          ? undefined
-          : implementation.parameters.map((parameter) => substituteParameter(parameter, substitutions));
-        const implementationResult = substitutions === undefined || implementation === undefined
-          ? undefined
-          : substituteMojoTargetType(implementation.resultType, substitutions);
-        const implementationError = substitutions === undefined || implementation?.errorType === undefined
-          ? undefined
-          : substituteMojoTargetType(implementation.errorType, substitutions);
-        if (implementation === undefined || genericArguments === undefined ||
+        const implementationParameters = selectedMethod?.kind === "spread"
+          ? parameters
+          : substitutions === undefined || implementation === undefined
+            ? undefined
+            : implementation.parameters.map((parameter) => substituteParameter(parameter, substitutions));
+        const implementationResult = selectedMethod?.kind === "spread"
+          ? resultType
+          : substitutions === undefined || implementation === undefined
+            ? undefined
+            : substituteMojoTargetType(implementation.resultType, substitutions);
+        const implementationError = selectedMethod?.kind === "spread"
+          ? errorType
+          : substitutions === undefined || implementation?.errorType === undefined
+            ? undefined
+            : substituteMojoTargetType(implementation.errorType, substitutions);
+        if (selectedMethod === undefined || genericArguments === undefined ||
           parameters.some((parameter) => parameter === undefined) || resultType === undefined ||
           (variant.errorType !== undefined && errorType === undefined) ||
           implementationParameters === undefined || implementationResult === undefined ||
           implementationParameters.length !== parameters.length ||
-          implementation.asynchronous !== variant.contract.asynchronous ||
-          implementation.raises && !variant.contract.raises ||
-          implementation.raises && (
+          selectedMethod.kind === "authored" && (
+            implementation === undefined ||
+            implementation.asynchronous !== variant.contract.asynchronous ||
+            implementation.raises && !variant.contract.raises ||
+            implementation.raises && (
             implementationError === undefined || errorType === undefined ||
             !mojoTargetTypeEquals(implementationError, errorType)
+            )
           )) {
           input.issues.push(Object.freeze({
-            node: contribution?.element ?? variant.contract.declaration,
+            node: selectedMethod?.contribution.element ?? variant.contract.declaration,
             code: "MOJO_OBJECT_METHOD_DISPATCH_ABI_UNCLOSED",
             message: "An object-literal method does not close one exact selected interface dispatch ABI.",
           }));
@@ -609,8 +749,9 @@ function createObjectLiteralDispatchPlans(input: {
           continue;
         }
         const closedParameters = parameters as readonly MojoAnalyzedParameter[];
+        const closedImplementationParameters = implementationParameters as readonly MojoAnalyzedParameter[];
         const argumentConversions = closedParameters.map((parameter, index) => {
-          const target = implementationParameters[index]!;
+          const target = closedImplementationParameters[index]!;
           if (mojoParameterConvention(parameter.disposition) !==
             mojoParameterConvention(target.disposition)) return undefined;
           const conversion = classifyMojoValueConversion(
@@ -630,24 +771,113 @@ function createObjectLiteralDispatchPlans(input: {
         if (argumentConversions.some((conversion) => conversion === undefined) ||
           resultConversion.kind === "unsupported") {
           input.issues.push(Object.freeze({
-            node: contribution?.element ?? variant.contract.declaration,
+            node: selectedMethod.contribution.element,
             code: "MOJO_OBJECT_METHOD_DISPATCH_CONVERSION_UNPROVEN",
             message: "An object-literal method cannot exactly adapt its selected interface argument or result carriers.",
           }));
           valid = false;
           continue;
         }
+        const methodCallableType = dispatchCallableType(
+          variant.contract,
+          closedParameters,
+          resultType,
+          errorType,
+        );
+        const writable = (selectedMethod.kind === "authored"
+          ? selectedMethod.contribution.contractDeclarations
+          : [selectedMethod.sourceDeclaration])
+          .some((declaration) => input.methodPropertyUsages.get(declaration)?.writable === true);
+        const requiresStorage = selectedMethod.kind === "spread" || writable;
+        if ((requiresStorage && methodCallableType === undefined) ||
+          (variant.property !== undefined && methodCallableType !== undefined &&
+            !mojoTargetTypeEquals(variant.property.callableType, methodCallableType)) ||
+          (selectedMethod.kind === "spread" && variant.property?.read === undefined)) {
+          input.issues.push(Object.freeze({
+            node: selectedMethod.contribution.element,
+            code: "MOJO_OBJECT_METHOD_PROPERTY_ABI_UNCLOSED",
+            message: "An object-literal method property does not close one exact synchronous callable storage ABI.",
+          }));
+          valid = false;
+          continue;
+        }
+        let methodStorage: import("../program/model.js").MojoProjectObjectLiteralMethodStorage | undefined;
+        if (requiresStorage && methodCallableType !== undefined) {
+          const sourceDeclaration = selectedMethod.kind === "spread"
+            ? selectedMethod.sourceDeclaration
+            : undefined;
+          let builder = methodStorageBuilders.find((candidate) =>
+            candidate.identity === selectedMethod.contribution.element &&
+            candidate.sourceDeclaration === sourceDeclaration);
+          if (builder !== undefined &&
+            !mojoTargetTypeEquals(builder.storage.callableType, methodCallableType)) {
+            input.issues.push(Object.freeze({
+              node: selectedMethod.contribution.element,
+              code: "MOJO_OBJECT_METHOD_PROPERTY_ABI_CONFLICT",
+              message: "One object-literal method property is exposed through incompatible callable storage ABIs.",
+            }));
+            valid = false;
+            continue;
+          }
+          if (builder === undefined) {
+            const declarations: Node[] = [];
+            const storage = Object.freeze({
+              declarations,
+              name: allocateName(usedNames, `_method_${variant.name}`),
+              callableType: methodCallableType,
+              initialization: selectedMethod.kind === "spread"
+                ? Object.freeze({
+                    kind: "spread" as const,
+                    contribution: selectedMethod.contribution,
+                    declaration: selectedMethod.sourceDeclaration,
+                  })
+                : Object.freeze({ kind: "default" as const }),
+            });
+            builder = Object.freeze({
+              identity: selectedMethod.contribution.element,
+              ...(sourceDeclaration === undefined ? {} : { sourceDeclaration }),
+              declarations,
+              storage,
+            });
+            methodStorageBuilders.push(builder);
+          }
+          if (!builder.declarations.includes(variant.contract.declaration)) {
+            builder.declarations.push(variant.contract.declaration);
+          }
+          methodStorage = builder.storage;
+        }
+        const adapterName = allocateName(
+          usedNames,
+          `_dispatch_${view.definition.targetName}_${variant.name}`,
+        );
+        const methodCallAdapterName = methodStorage === undefined
+          ? undefined
+          : allocateName(usedNames, `${adapterName}_current`);
+        const methodBindAdapterName = variant.property?.read === undefined
+          ? undefined
+          : allocateName(usedNames, `${adapterName}_bound`);
+        const methodReadAdapterName = variant.property?.read === undefined
+          ? undefined
+          : allocateName(usedNames, `${adapterName}_read`);
+        const methodWriteAdapterName = variant.property?.write === undefined
+          ? undefined
+          : allocateName(usedNames, `${adapterName}_write`);
         callableAdapters.push(Object.freeze({
           variant,
-          implementation,
+          ...(implementation === undefined ? {} : { implementation }),
           genericArguments,
           parameters: Object.freeze(closedParameters),
           resultType,
           ...(errorType === undefined ? {} : { errorType }),
-          implementationParameters: Object.freeze(implementationParameters),
+          implementationParameters: Object.freeze(closedImplementationParameters),
           argumentConversions: Object.freeze(argumentConversions as readonly import("../../target-model/conversions/model.js").MojoValueConversion[]),
           resultConversion: resultConversion.conversion,
-          adapterName: allocateName(usedNames, `_dispatch_${view.definition.targetName}_${variant.name}`),
+          adapterName,
+          ...(methodStorage === undefined ? {} : { methodStorage }),
+          ...(methodCallAdapterName === undefined ? {} : { methodCallAdapterName }),
+          ...(methodBindAdapterName === undefined ? {} : { methodBindAdapterName }),
+          ...(methodReadAdapterName === undefined ? {} : { methodReadAdapterName }),
+          ...(methodWriteAdapterName === undefined ? {} : { methodWriteAdapterName }),
         }));
       }
       const fieldAdapters = view.fields.map((field) => createObjectLiteralFieldAdapter(
@@ -682,11 +912,13 @@ function createObjectLiteralDispatchPlans(input: {
     }
     if (!valid || !objectViews.some((view) =>
       mojoTargetTypeEquals(view.viewType, selection.constructionType))) continue;
+    for (const builder of methodStorageBuilders) Object.freeze(builder.declarations);
     result.set(expression, Object.freeze({
       expression,
       selection,
       captures: Object.freeze([...capturesByDeclaration.values()]),
       views: Object.freeze(objectViews),
+      methodStorages: Object.freeze(methodStorageBuilders.map(({ storage }) => storage)),
     }));
   }
   return result;
@@ -821,6 +1053,147 @@ function mojoLocationType(value: MojoTargetTypeRef): MojoTargetTypeRef {
   });
 }
 
+interface MethodPropertyUsage {
+  readonly declaration: Node;
+  readonly readable: boolean;
+  readonly writable: boolean;
+}
+
+function collectMethodPropertyUsages(
+  nodes: ReadonlySet<Node>,
+  selections: WeakMap<Node, MojoPropertySelection>,
+  objectLiteralNodes: ReadonlySet<Node>,
+  objectLiteralSelections: WeakMap<Node, MojoObjectLiteralSelection>,
+): ReadonlyMap<Node, MethodPropertyUsage> {
+  const pending = new Map<Node, { readable: boolean; writable: boolean }>();
+  const merge = (declaration: Node, readable: boolean, writable: boolean): void => {
+    const usage = pending.get(declaration) ?? {
+      readable: false,
+      writable: false,
+    };
+    usage.readable ||= readable;
+    usage.writable ||= writable;
+    pending.set(declaration, usage);
+  };
+  for (const node of nodes) {
+    const selection = selections.get(node);
+    if (selection?.kind !== "project-method") continue;
+    merge(
+      selection.declaration,
+      selection.accessMode === "read" || selection.accessMode === "read-write",
+      selection.accessMode === "write" || selection.accessMode === "read-write",
+    );
+  }
+  for (const node of objectLiteralNodes) {
+    const selection = objectLiteralSelections.get(node);
+    if (selection?.kind !== "interface") continue;
+    for (const contribution of selection.contributions) {
+      if (contribution.kind !== "spread") continue;
+      for (const { method } of contribution.methods) merge(method.declaration, true, false);
+    }
+  }
+  return new Map([...pending].map(([declaration, usage]) => [declaration, Object.freeze({
+    declaration,
+    ...usage,
+  })] as const));
+}
+
+function collectImplementationMethodPropertyUsages(
+  usages: ReadonlyMap<Node, MethodPropertyUsage>,
+  classes: readonly MojoAnalyzedClass[],
+  relationships: MojoProjectTypeRelationships,
+): ReadonlyMap<Node, MethodPropertyUsage> {
+  const result = new Map<Node, { declaration: Node; readable: boolean; writable: boolean }>();
+  const merge = (declaration: Node, usage: MethodPropertyUsage): void => {
+    const current = result.get(declaration) ?? {
+      declaration,
+      readable: false,
+      writable: false,
+    };
+    current.readable ||= usage.readable;
+    current.writable ||= usage.writable;
+    result.set(declaration, current);
+  };
+  for (const usage of usages.values()) {
+    merge(usage.declaration, usage);
+    for (const class_ of classes) {
+      const selected = relationships.memberImplementation(
+        class_.definition,
+        usage.declaration,
+      );
+      if (selected.kind === "resolved") {
+        merge(selected.implementation.declaration, usage);
+      }
+    }
+  }
+  return new Map([...result].map(([declaration, usage]) => [declaration, Object.freeze(usage)]));
+}
+
+function createMethodProperty(
+  callableType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
+  usage: MethodPropertyUsage,
+  methodName: string,
+  usedNames: Set<string>,
+): MojoProjectDispatchMethodProperty {
+  const readName = usage.readable
+    ? allocateName(usedNames, `_read_${methodName}_method`)
+    : undefined;
+  const writeName = usage.writable
+    ? allocateName(usedNames, `_write_${methodName}_method`)
+    : undefined;
+  return Object.freeze({
+    callableType,
+    ...(readName === undefined
+      ? {}
+      : {
+          read: Object.freeze({
+            name: readName,
+            slotName: allocateName(usedNames, `_${readName}_dispatch`),
+            slotType: functionType(
+              [{ type: projectObjectType, convention: "imm", passing: "plain" }],
+              callableType,
+              false,
+              false,
+            ),
+          }),
+        }),
+    ...(writeName === undefined
+      ? {}
+      : {
+          write: Object.freeze({
+            name: writeName,
+            slotName: allocateName(usedNames, `_${writeName}_dispatch`),
+            slotType: functionType([
+              { type: projectObjectType, convention: "imm", passing: "plain" },
+              { type: callableType, convention: "imm", passing: "plain" },
+            ], Object.freeze({ kind: "unit" }), false, false),
+          }),
+        }),
+  });
+}
+
+function dispatchCallableType(
+  contract: MojoAnalyzedCallableSignature,
+  parameters: readonly MojoAnalyzedParameter[],
+  resultType: MojoTargetTypeRef,
+  errorType: MojoTargetTypeRef | undefined,
+): Extract<MojoTargetTypeRef, { readonly kind: "callable" }> | undefined {
+  if (contract.asynchronous || contract.typeParameters.length !== 0) return undefined;
+  return Object.freeze({
+    kind: "callable",
+    parameters: Object.freeze(parameters.map((parameter) => Object.freeze({
+      name: parameter.name,
+      convention: mojoParameterConvention(parameter.disposition),
+      passing: parameter.disposition.kind === "owned" ? "consume" as const : "plain" as const,
+      type: parameter.callType,
+      omissionKind: parameter.omissionKind,
+    }))),
+    result: resultType,
+    raises: contract.raises,
+    ...(errorType === undefined ? {} : { errorType }),
+  });
+}
+
 function collectSelectedGenericArguments(
   nodes: ReadonlySet<Node>,
   selections: WeakMap<Node, MojoCallSelection>,
@@ -876,6 +1249,7 @@ function createCallableVariant(
   usedNames: Set<string>,
   specializationCount: number,
   relationships: MojoProjectTypeRelationships,
+  propertyUsage: MethodPropertyUsage | undefined,
 ): MojoProjectDispatchCallableVariant | undefined {
   const substitutions = callableSubstitutions(contract, genericArguments);
   if (substitutions === undefined) return undefined;
@@ -907,6 +1281,18 @@ function createCallableVariant(
     specializationCount <= 1 ? contract.name : `${contract.name}_specialization`,
   );
   const slotName = allocateName(usedNames, `_${name}_dispatch`);
+  const callableType = propertyUsage === undefined
+    ? undefined
+    : dispatchCallableType(contract, closedParameters, resultType, errorType);
+  if (propertyUsage !== undefined && callableType === undefined) return undefined;
+  const property = callableType === undefined || propertyUsage === undefined
+    ? undefined
+    : createMethodProperty(
+        callableType,
+        propertyUsage,
+        name,
+        usedNames,
+      );
   return Object.freeze({
     contract,
     genericArguments: Object.freeze([...genericArguments]),
@@ -923,6 +1309,7 @@ function createCallableVariant(
     parameters: closedParameters,
     resultType,
     ...(errorType === undefined ? {} : { errorType }),
+    ...(property === undefined ? {} : { property }),
   });
 }
 

@@ -89,9 +89,10 @@ export function analyzeProperty(
     semantics,
   });
   const project = structural.kind === "not-structural-field"
-    ? analyzeMojoProjectProperty(
+      ? analyzeMojoProjectProperty(
         selected,
         input.fieldByDeclaration,
+        input.callableByDeclaration,
         projectReceiverType,
         Object.freeze([
           ...semantics.facts.selectedSubjects(selected.selectedSymbol, selected.selectedDeclaration),
@@ -99,6 +100,7 @@ export function analyzeProperty(
         ]),
         input.source.ast,
         input.projectRelationships,
+        resolve,
       )
     : structural;
   const property = project.kind === "not-project-field"
@@ -115,6 +117,7 @@ export function analyzeProperty(
     input.diagnostics.push(diagnostic(property.code, property.reason, node));
   } else if (property.kind === "resolved") {
     input.propertySelections.set(node, property.selection);
+    input.propertyNodes.add(node);
     input.expressionTypes.set(node, property.expressionType);
   }
 }
