@@ -74,6 +74,9 @@ function moduleState(
   module: MojoAnalyzedModule,
   modulePath: readonly string[],
 ): MojoExpression {
+  if (context.initializingModuleState?.moduleId === module.id) {
+    return context.initializingModuleState.value;
+  }
   return Object.freeze({
     kind: "postfix-deref",
     expression: moduleStatePointer(context, module, modulePath),
@@ -85,6 +88,9 @@ function moduleStatePointer(
   module: MojoAnalyzedModule,
   modulePath: readonly string[],
 ): MojoExpression {
+  if (context.initializingModuleState?.moduleId === module.id) {
+    return context.initializingModuleState.pointer;
+  }
   const cell = mojoModuleMemberExpression(context, modulePath, module.cellName);
   return Object.freeze({
     kind: "method-call",

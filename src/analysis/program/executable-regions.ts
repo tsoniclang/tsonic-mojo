@@ -36,7 +36,7 @@ import type {
   MojoValueRefinementSelection,
   MojoValueSelection,
 } from "./model.js";
-import { walkSourceTree, walkSourceTreePostOrder } from "./traversal.js";
+import { walkSourceTree, walkSourceTreePostOrder } from "../../source/syntax/traversal.js";
 import type { MojoSourceModuleCatalog } from "../source-modules/model.js";
 import {
   analyzeExecutableRegionProviderValues,

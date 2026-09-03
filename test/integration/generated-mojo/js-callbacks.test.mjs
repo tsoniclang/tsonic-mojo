@@ -24,11 +24,12 @@ test("JavaScript array callbacks retain exact authored arities", () => {
       ].join("\n"),
     },
   }));
-  assert.match(source, /tsonic_js\.array_map_zero\[Float64\]/u);
-  assert.match(source, /tsonic_js\.array_map_value\[Float64\]/u);
-  assert.match(source, /tsonic_js\.array_map_with_index\[Float64\]/u);
-  assert.match(source, /tsonic_js\.array_map_with_array\[Float64\]/u);
-  assert.equal((source.match(/tsonic_runtime\.RaisingCallable/gu) ?? []).length, 4);
+  assert.match(source, /array_map_zero\[Float64\]\(values, _callable\)/u);
+  assert.match(source, /array_map_value\[Float64\]\(values, _callable_2\)/u);
+  assert.match(source, /array_map_with_index\[Float64\]\(values, _callable_3\)/u);
+  assert.match(source, /array_map_with_array\[Float64\]\(values, _callable_4\)/u);
+  assert.match(source, /def _callable_4\(\n    value: Float64,\n    index: Float64,\n    array: JsArray\[Float64\],/u);
+  assert.doesNotMatch(source, /RaisingCallable|GlobalCell/u);
 });
 
 test("JavaScript callback operations retain the callback's exact error domain", () => {
@@ -49,10 +50,10 @@ test("JavaScript callback operations retain the callback's exact error domain", 
       ].join("\n"),
     },
   }));
-  assert.match(source, /tsonic_js\.array_map_value\[Float64\]/u);
-  assert.match(source, /RaisingCallable\[Tuple\[Float64\], Float64, CallbackFailure\]/u);
+  assert.match(source, /array_map_value\[/u);
+  assert.match(source, /def _callable\(value: Float64\) raises CallbackFailure -> Float64/u);
   assert.match(source, /def tsonic_main\(\) raises CallbackFailure/u);
-  assert.doesNotMatch(source, /array_map_value[^\n]*Variant\[/u);
+  assert.doesNotMatch(source, /RaisingCallable|array_map_value[^\n]*Variant\[/u);
 });
 
 test("JavaScript callbacks calling pure project functions retain an admitted helper domain", () => {
@@ -67,7 +68,8 @@ test("JavaScript callbacks calling pure project functions retain an admitted hel
       ].join("\n"),
     },
   }));
-  assert.match(source, /tsonic_js\.array_sort_compare/u);
+  assert.match(source, /from tsonic_js import array_sort_compare, JsArray/u);
+  assert.match(source, /array_sort_compare\(/u);
   assert.match(source, /def tsonic_main\(\) raises Error/u);
 });
 
@@ -108,7 +110,7 @@ test("JavaScript callback families select one sealed runtime operation", () => {
     "map_for_each_with_map",
     "set_for_each_with_set",
   ]) {
-    assert.match(source, new RegExp(`tsonic_js\\.${operation}`, "u"));
+    assert.match(source, new RegExp(`\\b${operation}\\b`, "u"));
   }
 });
 
@@ -125,8 +127,9 @@ test("JavaScript predicate callbacks retain exact truthiness adapters", () => {
       ].join("\n"),
     },
   }));
-  assert.match(source, /tsonic_js\.adapt_truthy_number_callback/u);
-  assert.match(source, /tsonic_js\.adapt_truthy_string_callback/u);
+  assert.match(source, /adapt_truthy_number_callback\(widen_callable\(_callable\)\)/u);
+  assert.match(source, /adapt_truthy_native_string_callback\(widen_callable\(_callable_2\)\)/u);
+  assert.doesNotMatch(source, /adapt_truthy_string_callback/u);
 });
 
 test("JavaScript core collection date and math operations use sealed runtime rows", () => {
@@ -189,7 +192,7 @@ test("JavaScript core collection date and math operations use sealed runtime row
     "number_to_string_radix",
     "boolean_to_string", "boolean_value_of", "console_log", "console_info",
     "console_warn", "console_error", "console_debug",
-  ]) assert.match(source, new RegExp(`tsonic_js\\.${operation}`, "u"));
+  ]) assert.match(source, new RegExp(`\\b${operation}\\b`, "u"));
   for (const method of [
     "set", "get", "has", "keys", "values", "entries", "delete", "clear", "add",
     "union", "intersection", "difference", "symmetric_difference", "is_subset_of",
@@ -251,7 +254,7 @@ test("JavaScript string and array operations retain exact source-profile selecti
     "trim_start", "trim_end", "substring", "substr", "replace", "replace_all",
     "concat", "value_of",
   ]) assert.match(source, new RegExp(`\\.${method}\\(`, "u"));
-  assert.match(source, /tsonic_js\.string_split/u);
-  assert.match(source, /tsonic_js\.string_from_char_code/u);
-  assert.match(source, /tsonic_js\.string_from_code_point/u);
+  assert.match(source, /\bstring_split\b/u);
+  assert.match(source, /\bstring_from_char_code\b/u);
+  assert.match(source, /\bstring_from_code_point\b/u);
 });

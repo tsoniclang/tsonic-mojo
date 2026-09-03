@@ -25,10 +25,9 @@ import {
   planNullishCoalescing,
 } from "./conditional-values.js";
 import {
-  isJsArray,
-  jsArrayElement,
   orderMojoValues,
 } from "./support.js";
+import { isJsArray, jsArrayElement } from "./js-carriers.js";
 import type { OrderedMojoValue } from "./support.js";
 import { withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";

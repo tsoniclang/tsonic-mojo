@@ -15,7 +15,7 @@ import type {
   MojoCallableExpressionSelection,
   MojoRecursiveCallableBinding,
 } from "../program/model.js";
-import { walkSourceTree } from "../program/traversal.js";
+import { walkSourceTree } from "../../source/syntax/traversal.js";
 import {
   analyzeMojoExecutableRegion,
 } from "../program/executable-regions.js";

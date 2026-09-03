@@ -34,11 +34,11 @@ function valueOperationDeclaration(
     id: exportName,
     name: exportName,
     kind: "function",
-    signatures: Object.freeze([Object.freeze({
+    signatures: [Object.freeze({
       id: signatureId,
-      typeParameters: Object.freeze([Object.freeze({ name: "T" })]),
-      parameters: Object.freeze([Object.freeze({ name: "value", type: typeParameter })]),
+      typeParameters: [Object.freeze({ name: "T" })],
+      parameters: [Object.freeze({ name: "value", type: typeParameter })],
       returnType: typeParameter,
-    })]),
+    })],
   });
 }

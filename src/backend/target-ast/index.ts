@@ -4,6 +4,7 @@ export type {
   MojoDeclaration,
   MojoFieldDeclaration,
   MojoFunctionDeclaration,
+  MojoGenericParameterDeclaration,
   MojoParameter,
   MojoStructDeclaration,
   MojoTraitDeclaration,

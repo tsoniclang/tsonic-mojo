@@ -12,7 +12,7 @@ import {
   mojoTypesModule,
 } from "../../source/semantics/identity.js";
 import type { MojoTypeResolutionContext } from "./resolution.js";
-import type { MojoSourceGenericParameterContext } from "./source-generic-parameters.js";
+import type { MojoSourceGenericParameterContext } from "../../source/semantics/generic-parameters.js";
 import {
   typeSubjects,
   uniqueProviderIdentity,

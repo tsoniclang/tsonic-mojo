@@ -56,7 +56,7 @@ export function planMojoProjectFunction(
     true,
   );
   if (parameterPrelude === undefined) return undefined;
-  const bodyStatements = planMojoFunctionStatements(function_, functionContext);
+  const bodyStatements = planMojoFunctionBody(function_, functionContext);
   if (bodyStatements === undefined) return undefined;
   const statements = Object.freeze([
     ...parameterPrelude,
@@ -76,6 +76,23 @@ export function planMojoProjectFunction(
     statements,
     ...(self === undefined ? {} : { self }),
   });
+}
+
+export function planMojoFunctionBody(
+  function_: MojoAnalyzedFunction,
+  context: MojoPlanningContext,
+): readonly MojoStatement[] | undefined {
+  if (context.program.source.ast.is.IsBlock(function_.body)) {
+    return planMojoFunctionStatements(function_, context);
+  }
+  const body = planMojoValue(function_.body, context, function_.resultType);
+  if (body === undefined) return undefined;
+  return Object.freeze([
+    ...body.before,
+    function_.resultType.kind === "unit"
+      ? Object.freeze({ kind: "expression" as const, expression: body.value })
+      : Object.freeze({ kind: "return" as const, expression: body.value }),
+  ]);
 }
 
 export function planMojoProjectClass(
@@ -355,6 +372,7 @@ export function planMojoGenericParameters(
   return Object.freeze(declaration.typeParameters.map((parameter) => Object.freeze({
     kind: parameter.kind,
     name: parameter.name,
+    identity: parameter.identity,
     position: parameter.position,
     variadic: parameter.variadic,
     constraints: parameter.constraints,

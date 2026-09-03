@@ -15,7 +15,7 @@ import {
   mojoOperationErrorTypes,
   providerCallRequiresRaisingConversion,
 } from "./effects.js";
-import { walkSourceTree } from "./traversal.js";
+import { walkSourceTree } from "../../source/syntax/traversal.js";
 
 export function descendWithinExecutableRegion(
   node: Node,
@@ -34,6 +34,7 @@ export function resolveExecutableRegionType(
 ): MojoTargetTypeRef | undefined {
   const resolved = resolveMojoTargetType(type, authoredTypeNode, {
     ast: input.source.ast,
+    navigation: input.source.navigation,
     semantics,
     sourceFacts: input.source.sourceFacts,
     providerSemantics: input.providerSemantics,

@@ -1,4 +1,7 @@
 import type {
+  MojoGenericParameterDeclaration,
+} from "../../backend/target-ast/index.js";
+import type {
   MojoProviderTargetGenericParameter,
   MojoTargetCallableParameter,
   MojoTargetConstArgument,
@@ -41,7 +44,11 @@ export function printMojoTypeDocument(
       : importedTypeName(context, ["tsonic_runtime"], "TsValue"));
     case "bigint": return text(importedTypeName(context, ["tsonic_runtime"], "BigInt"));
     case "symbol": return text(importedTypeName(context, ["tsonic_js"], "JsSymbol"));
-    case "type-parameter": return text(type.name);
+    case "type-parameter": return text(
+      type.identity !== undefined && context.structTypeParameterIdentities?.has(type.identity)
+        ? `Self.${type.name}`
+        : type.name,
+    );
     case "source-primitive": return printSourcePrimitive(type.name);
     case "target-named": {
       const base = sameModulePath(type.modulePath, context.modulePath)
@@ -155,7 +162,7 @@ export function requiredMojoTypeDocument(
 }
 
 export function printMojoGenericParametersDocument(
-  parameters: readonly MojoProviderTargetGenericParameter[],
+  parameters: readonly (MojoProviderTargetGenericParameter | MojoGenericParameterDeclaration)[],
   context: MojoPrintContext,
 ): MojoDocument {
   if (parameters.length === 0) return emptyDocument;

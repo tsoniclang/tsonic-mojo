@@ -128,6 +128,7 @@ export function analyzeMojoModuleBindings(
             authoredTypeNode,
             {
               ast,
+              navigation: input.source.navigation,
               semantics,
               sourceFacts: input.source.sourceFacts,
               providerSemantics: input.providerSemantics,
@@ -193,6 +194,7 @@ export function analyzeMojoModuleBindings(
           undefined,
           {
             ast,
+            navigation: input.source.navigation,
             semantics,
             sourceFacts: input.source.sourceFacts,
             providerSemantics: input.providerSemantics,
@@ -286,6 +288,7 @@ export function analyzeMojoModuleBindings(
               semantics.types.expressionType(initializer);
             const resolved = resolveMojoTargetType(selectedType, authoredTypeNode, {
               ast,
+              navigation: input.source.navigation,
               semantics,
               sourceFacts: input.source.sourceFacts,
               providerSemantics: input.providerSemantics,

@@ -26,7 +26,7 @@ import {
 import type { MojoExecutableRegionAnalysisEnvironment } from "./executable-regions.js";
 import type { MojoAnalyzedClass, MojoAnalyzedFunction, MojoAnalyzedModule } from "./model.js";
 import type { MojoAnalyzedModuleRegionFacts } from "./module-effects.js";
-import { walkSourceTree } from "./traversal.js";
+import { walkSourceTree } from "../../source/syntax/traversal.js";
 
 export interface MojoProgramEffectsFinalizationInput {
   readonly sourceFiles: readonly SourceFile[];

@@ -5,4 +5,5 @@ export interface MojoPrintContext {
   readonly aliasesByTypeKey: ReadonlyMap<string, MojoTypeAliasUse>;
   readonly importedSymbols: ReadonlyMap<string, string>;
   readonly expandedAliasKey?: string;
+  readonly structTypeParameterIdentities?: ReadonlySet<string>;
 }

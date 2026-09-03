@@ -6,7 +6,7 @@ import {
   appendMojoPlanningDiagnostic,
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
-import { orderMojoValues } from "../expressions/support.js";
+import { isTriviallyPureMojoValue, orderMojoValues } from "../expressions/support.js";
 import type { MojoValuePlanner } from "../expressions/support.js";
 import { registerMojoTypeImports } from "../types/imports.js";
 import { applyMojoConversion } from "../expressions/support.js";
@@ -229,6 +229,7 @@ function stabilize(
   context: MojoPlanningContext,
 ): MojoExpression {
   registerMojoTypeImports(type, context);
+  if (isTriviallyPureMojoValue(value)) return value;
   const name = allocateMojoSyntheticName(context, role);
   before.push(Object.freeze({ kind: "variable", name, type, initializer: value }));
   return Object.freeze({ kind: "path", path: name });

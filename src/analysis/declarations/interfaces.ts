@@ -112,6 +112,7 @@ export function analyzeMojoInterface(
     const selected = declaredType(member, semantics, ast);
     const resolved = resolveMojoTargetType(selected, ast.typeNode(member), {
       ast,
+      navigation: source.navigation,
       semantics,
       sourceFacts: source.sourceFacts,
       providerSemantics: input.providerSemantics,
@@ -180,6 +181,7 @@ function resolveInterfaceType(
 ): MojoTargetTypeRef | undefined {
   const resolved = resolveMojoTargetType(type, authoredTypeNode, {
     ast: input.source.ast,
+    navigation: input.source.navigation,
     semantics: input.source.semantics.forFile(input.sourceFile),
     sourceFacts: input.source.sourceFacts,
     providerSemantics: input.providerSemantics,

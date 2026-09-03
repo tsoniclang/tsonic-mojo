@@ -48,7 +48,7 @@ export function createMojoSourceSemanticsExtension(
           virtualDirectory: "mojo-source",
           modules: mojoSourceSemanticsModules(),
           exportsForModule(module): readonly ProviderExportDeclaration[] {
-            return Object.freeze([
+            return [
               ...providerExportDeclarationsForSemanticsModule(module),
               ...(module.moduleSpecifier === mojoLangModule
                 ? mojoSourceOperationDeclarations()
@@ -56,7 +56,7 @@ export function createMojoSourceSemanticsExtension(
               ...(module.moduleSpecifier === mojoTypesModule
                 ? mojoSourceOriginDeclarations()
                 : []),
-            ]);
+            ];
           },
           evidenceMessage:
             "Mojo target supplies source alias semantics as a complete virtual module.",

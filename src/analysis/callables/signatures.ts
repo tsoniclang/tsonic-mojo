@@ -21,12 +21,13 @@ import {
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 import {
   classifyMojoSourceGenericParameter,
-} from "../../policy/types/source-generic-parameters.js";
+} from "../../source/semantics/generic-parameters.js";
 import {
   resolveMojoValueGenericArgument,
 } from "../../policy/types/generic-arguments.js";
 import { resolveMojoSourceOrigin } from "../../policy/types/origins.js";
 import { mojoLifecycleTraitTargetType } from "../../target-model/lifecycle/index.js";
+import { mojoSourceGenericLifecycleRequirements } from "../../policy/types/generic-lifecycle.js";
 
 export interface MojoTypeParameterAnalysisInput {
   readonly source: TargetSourceProgram;
@@ -207,11 +208,22 @@ export function analyzeMojoTypeParameters(
       append(input, "MOJO_GENERIC_PARAMETER_KIND_UNRESOLVED", classified.reason, parameter);
       return undefined;
     }
+    const parameterType = input.source.semantics.forFile(input.sourceFile)
+      .declarations.declaredType(parameter);
+    if (parameterType === undefined) {
+      append(
+        input,
+        "MOJO_TYPE_PARAMETER_SEMANTIC_TYPE_MISSING",
+        "A generic parameter requires one exact checker-owned semantic type.",
+        parameter,
+      );
+      return undefined;
+    }
     const constraints: MojoTargetTypeRef[] = classified.parameter.kind === "type"
-      ? [
-          mojoLifecycleTraitTargetType("movable"),
-          mojoLifecycleTraitTargetType("deinitializable"),
-        ]
+      ? mojoSourceGenericLifecycleRequirements(input.declaration, parameterType, {
+          source: input.source,
+          semantics: input.source.semantics.forFile(input.sourceFile),
+        }).map(mojoLifecycleTraitTargetType)
       : classified.parameter.kind === "origin"
         ? [Object.freeze({
             kind: "target-named",
@@ -287,6 +299,7 @@ function resolveGenericDefault(
 function typeResolutionContext(input: MojoTypeParameterAnalysisInput) {
   return {
     ast: input.source.ast,
+    navigation: input.source.navigation,
     semantics: input.source.semantics.forFile(input.sourceFile),
     sourceFacts: input.source.sourceFacts,
     providerSemantics: input.providerSemantics,

@@ -20,6 +20,7 @@ import { validateMojoFunctionSyntax } from "./syntax-validation.js";
 import { createMojoProgramQueries } from "./queries.js";
 import { finalizeMojoModuleBindingTypes } from "./module-bindings.js";
 import { finalizeMojoModuleEffects } from "./module-effects.js";
+import { diagnoseMojoRuntimeModuleCycles } from "./module-cycles.js";
 import {
   createMojoRepresentationCatalog,
   mojoRepresentationParameters,
@@ -153,6 +154,7 @@ export function finalizeMojoProgramResult(
     moduleRegionFacts,
     errorTypesByDeclaration,
   ), bindingTypes);
+  diagnostics.push(...diagnoseMojoRuntimeModuleCycles(finalizedModules, modules));
   for (const module of finalizedModules) {
     for (const binding of module.bindings) {
       moduleBindingByDeclaration.set(binding.declaration, binding);

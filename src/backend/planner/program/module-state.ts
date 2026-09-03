@@ -23,6 +23,7 @@ import {
   mojoModuleMemberExpression,
   registerMojoSymbolImport,
   withMojoErrorType,
+  withMojoModuleStateInitialization,
 } from "./context.js";
 import {
   planMojoAssignment,
@@ -95,7 +96,7 @@ export function planMojoModuleState(
     registerMojoSymbolImport(context, ["std", "collections"], "Optional");
     declarations.push(moduleStateStruct(module, cellBindings, lockType));
     declarations.push(moduleStateFactory(module, stateType, cellBindings, lockType));
-    declarations.push(moduleStateCell(module, definition.id));
+    declarations.push(moduleStateCell(module, definition.id, context));
   }
   const diagnosticCount = context.diagnostics.length;
   const initializer = planModuleInitializer(program, definition, module, scopedLockType, context);
@@ -173,6 +174,7 @@ function moduleStateFactory(
 function moduleStateCell(
   module: MojoAnalyzedModule,
   identity: string,
+  context: MojoPlanningContext,
 ): MojoComptimeDeclaration {
   const cellType: MojoTargetTypeRef = Object.freeze({
     kind: "target-named",
@@ -184,6 +186,7 @@ function moduleStateCell(
       Object.freeze({ kind: "value-reference", path: Object.freeze([module.createStateName]) }),
     ]),
   });
+  registerMojoTypeImports(cellType, context);
   return Object.freeze({
     kind: "comptime",
     name: module.cellName,
@@ -222,7 +225,7 @@ function planModuleInitializer(
     });
   }
   if (scopedLockType === undefined) return undefined;
-  const stateName = allocateMojoSyntheticName(context, "module_state");
+  const stateName = allocateMojoSyntheticName(context, "state");
   const statePointer = mojoModuleStatePointerExpression(module, context);
   if (statePointer === undefined) {
     appendPlanningFailure(
@@ -238,8 +241,14 @@ function planModuleInitializer(
     kind: "postfix-deref" as const,
     expression: Object.freeze({ kind: "path" as const, path: stateName }),
   });
+  const initializingContext = withMojoModuleStateInitialization(
+    moduleContext,
+    module.id,
+    Object.freeze({ kind: "path", path: stateName }),
+    state,
+  );
   const initialization: MojoStatement[] = [...dependencyInitialization];
-  const sourceInitialization = planModuleInitializationSteps(module, moduleContext, 0);
+  const sourceInitialization = planModuleInitializationSteps(module, initializingContext, 0);
   if (sourceInitialization === undefined) return undefined;
   initialization.push(...sourceInitialization);
   initialization.push(Object.freeze({

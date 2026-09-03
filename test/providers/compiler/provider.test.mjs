@@ -750,7 +750,7 @@ test("runtime package artifacts retain the exact analyzed Mojo sources", () => {
     },
     sources: [{
       path: "src/main.mojo",
-      module: { modulePath: [], imports: [], declarations: [] },
+      module: { modulePath: [], imports: [], typeAliases: [], declarations: [] },
     }],
     runtimePackages: [packagePlan],
   });

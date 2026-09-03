@@ -17,7 +17,7 @@ import { resolveMojoValueGenericArgument } from "../../policy/types/generic-argu
 import {
   classifyMojoSourceGenericParameter,
   mojoSourceGenericParameterOwner,
-} from "../../policy/types/source-generic-parameters.js";
+} from "../../source/semantics/generic-parameters.js";
 import type { MojoCallSelection } from "../program/call-model.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 

@@ -14,6 +14,7 @@ import {
   mojoReferenceIdentityEqualityMethod,
 } from "./reference-wrapper.js";
 import { mojoStateStorageType } from "./state-storage.js";
+import { consumeMojoValue } from "../expressions/value-plan.js";
 
 export function planMojoInterface(
   interface_: MojoAnalyzedInterface,
@@ -22,13 +23,18 @@ export function planMojoInterface(
   const genericParameters = Object.freeze(interface_.typeParameters.map((parameter) => Object.freeze({
     kind: "type" as const,
     name: parameter.name,
+    identity: parameter.identity,
     position: "positional-or-keyword" as const,
     variadic: false,
     constraints: parameter.constraints,
   })));
   const genericArguments = interface_.typeParameters.map((parameter) => Object.freeze({
     kind: "type" as const,
-    type: Object.freeze({ kind: "type-parameter" as const, name: parameter.name }),
+    type: Object.freeze({
+      kind: "type-parameter" as const,
+      name: parameter.name,
+      identity: parameter.identity,
+    }),
   }));
   const stateType: MojoTargetTypeRef = Object.freeze({
     kind: "target-named",
@@ -74,10 +80,18 @@ export function planMojoInterface(
     type: stateType,
     arguments: Object.freeze([
       ...interface_.fields.map((field) => Object.freeze({
-        value: Object.freeze({ kind: "path" as const, path: field.name }),
+        value: consumeMojoValue(
+          Object.freeze({ kind: "path" as const, path: field.name }),
+          field.type,
+          context.program.lifecycle,
+        ),
       })),
-      ...indexStorage.map(({ indexSignature }) => Object.freeze({
-        value: Object.freeze({ kind: "path" as const, path: indexSignature.storageName }),
+      ...indexStorage.map(({ indexSignature, type }) => Object.freeze({
+        value: consumeMojoValue(
+          Object.freeze({ kind: "path" as const, path: indexSignature.storageName }),
+          type,
+          context.program.lifecycle,
+        ),
       })),
     ]),
   });
@@ -103,7 +117,7 @@ export function planMojoInterface(
       ...interface_.fields.map((field) => Object.freeze({
         name: field.name,
         type: field.type,
-        convention: "imm" as const,
+        convention: "var" as const,
       })),
       ...indexStorage.map(({ indexSignature, type }) => Object.freeze({
         name: indexSignature.storageName,

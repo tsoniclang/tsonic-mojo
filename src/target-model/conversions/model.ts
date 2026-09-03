@@ -35,7 +35,7 @@ export type MojoValueConversion =
   | {
       readonly kind: "js-callback-truthiness";
       readonly targetType: MojoTargetTypeRef;
-      readonly source: "number" | "string" | "dynamic" | "always-true" | "always-false";
+      readonly source: "number" | "string" | "native-string" | "dynamic" | "always-true" | "always-false";
       readonly widenRaises: boolean;
     }
   | { readonly kind: "primitive-cast"; readonly targetType: MojoTargetTypeRef }
@@ -43,7 +43,7 @@ export type MojoValueConversion =
   | {
       readonly kind: "js-box";
       readonly targetType: MojoTargetTypeRef;
-      readonly source: "bool" | "number" | "string" | "null" | "undefined";
+      readonly source: "bool" | "number" | "string" | "native-string" | "null" | "undefined";
     }
   | { readonly kind: "native-to-js-string"; readonly targetType: MojoTargetTypeRef }
   | { readonly kind: "js-to-native-string" }

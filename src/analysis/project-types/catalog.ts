@@ -12,7 +12,7 @@ import type {
   MojoProjectTypeIssue,
   MojoProjectTypeKind,
 } from "../../target-model/types/project.js";
-import { classifyMojoSourceGenericParameter } from "../../policy/types/source-generic-parameters.js";
+import { classifyMojoSourceGenericParameter } from "../../source/semantics/generic-parameters.js";
 
 export function createMojoProjectTypeCatalog(
   source: TargetSourceProgram,
@@ -69,7 +69,17 @@ export function createMojoProjectTypeCatalog(
           parameterFailure = true;
           break;
         }
-        typeParameters.push(classified.parameter);
+        const identity = sourceNodeIdentity(ast, parameter);
+        if (identity === undefined) {
+          issues.push(Object.freeze({
+            node: parameter,
+            code: "MOJO_PROJECT_TYPE_PARAMETER_IDENTITY_UNRESOLVED",
+            message: "A project type parameter requires one stable source declaration identity.",
+          }));
+          parameterFailure = true;
+          break;
+        }
+        typeParameters.push(Object.freeze({ ...classified.parameter, identity }));
       }
       if (parameterFailure) continue;
       const sourceName = ast.text(nameNode);

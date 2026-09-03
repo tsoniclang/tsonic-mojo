@@ -21,10 +21,10 @@ export function mojoSourceOriginDeclarations(): readonly ProviderExportDeclarati
   const value = typeParameter("T");
   const originParameter: ProviderTypeParameterDeclaration = Object.freeze({
     name: "O",
-    constraints: Object.freeze([origin]),
+    constraints: [origin],
     defaultType: inferredOrigin,
   });
-  return Object.freeze([
+  return [
     alias(mojoSourceOriginTypeIds.origin, { kind: "unknown" }),
     alias(mojoSourceOriginTypeIds.staticOrigin, origin),
     alias(mojoSourceOriginTypeIds.inferredOrigin, origin),
@@ -40,7 +40,7 @@ export function mojoSourceOriginDeclarations(): readonly ProviderExportDeclarati
       [Object.freeze({ name: "T" }), originParameter],
       value,
     ),
-  ]);
+  ];
 }
 
 function typeParameter(name: string): ProviderTypeExpression {

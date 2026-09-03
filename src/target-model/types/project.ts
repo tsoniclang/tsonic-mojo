@@ -9,6 +9,7 @@ export type MojoProjectTypeKind = "class" | "interface" | "enum";
 
 export interface MojoProjectTypeParameterDefinition {
   readonly declaration: Node;
+  readonly identity: string;
   readonly name: string;
   readonly kind: "type" | "value" | "origin";
 }

@@ -9,8 +9,18 @@ const lifecycleRoleByCompilerPath: ReadonlyMap<string, MojoLifecycleTraitRole> =
   ["/std/builtin/value/TrivialRegisterPassable", "trivial-register-passable"],
 ]);
 
+const implicitConformancePaths = new Set([
+  "/std/traits/anytype/AnyType",
+  "/std/traits/deinitable/Deinitable",
+  "/std/traits/movable/Movable",
+]);
+
 export function mojoLifecycleRoleForCompilerPath(
   path: string | undefined,
 ): MojoLifecycleTraitRole | undefined {
   return path === undefined ? undefined : lifecycleRoleByCompilerPath.get(path);
+}
+
+export function isImplicitMojoConformancePath(path: string | undefined): boolean {
+  return path !== undefined && implicitConformancePaths.has(path);
 }

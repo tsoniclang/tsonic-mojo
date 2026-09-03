@@ -75,11 +75,15 @@ export function analyzeProperty(
   }
   const resolve = (type: Type): MojoTargetTypeRef | undefined => resolveType(type, undefined, input, semantics);
   const selectedReceiverType = resolve(selected.receiver.type);
-  const structuralReceiverType = input.expressionTypes.get(selected.receiver.expression) ??
+  const exactReceiverType = input.expressionTypes.get(selected.receiver.expression) ??
     selectedReceiverType;
+  const projectReceiverType = reconcileProjectReceiverType(
+    exactReceiverType,
+    selectedReceiverType,
+  );
   const structural = analyzeMojoStructuralProperty({
     source: selected,
-    receiverType: structuralReceiverType,
+    receiverType: exactReceiverType,
     structuralObjects: input.structuralObjects,
     semantics,
   });
@@ -87,7 +91,7 @@ export function analyzeProperty(
     ? analyzeMojoProjectProperty(
         selected,
         input.fieldByDeclaration,
-        selectedReceiverType,
+        projectReceiverType,
         Object.freeze([
           ...semantics.facts.selectedSubjects(selected.selectedSymbol, selected.selectedDeclaration),
           ...semantics.facts.selectedSubjects(selected.sourceSymbol, selected.sourceDeclaration),
@@ -111,6 +115,15 @@ export function analyzeProperty(
     input.propertySelections.set(node, property.selection);
     input.expressionTypes.set(node, property.expressionType);
   }
+}
+
+function reconcileProjectReceiverType(
+  exactType: MojoTargetTypeRef | undefined,
+  selectedType: MojoTargetTypeRef | undefined,
+): MojoTargetTypeRef | undefined {
+  if (exactType?.kind === "target-named" && selectedType?.kind === "target-named" &&
+    exactType.id === selectedType.id) return exactType;
+  return selectedType ?? exactType;
 }
 
 export function analyzeElement(

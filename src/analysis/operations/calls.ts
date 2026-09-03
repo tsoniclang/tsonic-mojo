@@ -68,6 +68,7 @@ export function analyzeMojoCall(
   const resolve = (type: Type, authoredTypeNode?: Node): MojoTargetTypeRef | undefined => {
     const result = resolveMojoTargetType(type, authoredTypeNode, {
       ast: context.source.ast,
+      navigation: context.source.navigation,
       semantics,
       sourceFacts: context.source.sourceFacts,
       providerSemantics: context.providerSemantics,
@@ -196,6 +197,7 @@ export function analyzeMojoCall(
       explicitTypeNode,
       {
         ast: context.source.ast,
+        navigation: context.source.navigation,
         semantics,
         sourceFacts: context.source.sourceFacts,
         providerSemantics: context.providerSemantics,

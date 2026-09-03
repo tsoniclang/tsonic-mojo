@@ -4,13 +4,6 @@ import type {
   TargetDiagnostic,
   TargetStageResult,
 } from "@tsonic/target-api/artifacts";
-import { createMojoNameAllocator } from "../names/allocator.js";
-import {
-  normalizeMojoConstantIdentifier,
-  normalizeMojoIdentifier,
-  normalizeMojoPackageDeclarationIdentifier,
-  normalizeMojoTypeIdentifier,
-} from "../../target-model/names/identifiers.js";
 import { analyzeAndSealMojoCallableExpression } from "../callables/expressions.js";
 import { createMojoConversionIndex } from "../../policy/conversions/selection.js";
 import { mojoValueConversionNarrowing } from "../refinements/value.js";
@@ -52,6 +45,7 @@ import {
   createMojoLifecycleResolver,
   createMojoValueOwnershipResolver,
 } from "../lifecycle/index.js";
+import { createMojoProgramNameEnvironment } from "./name-environment.js";
 
 export function analyzeMojoTargetProgram(
   request: MojoTargetAnalysisRequest,
@@ -134,49 +128,19 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     input.source,
   );
   const locationStorageNames = new WeakMap<Node, string>();
-  const reservedNames = new Set<string>();
-  type NameRole = "value" | "type" | "constant";
-  const normalizer = (role: NameRole): ((name: string) => string) =>
-    role === "type"
-      ? normalizeMojoTypeIdentifier
-      : role === "constant"
-        ? normalizeMojoConstantIdentifier
-        : normalizeMojoIdentifier;
-  const createNameAllocator = (role: NameRole = "value"): ((name: string) => string) =>
-    createMojoNameAllocator([], (name) => reservedNames.add(name), normalizer(role));
-  const globalNamesBySourceFile = new WeakMap<SourceFile, (
-    name: string,
-    role?: NameRole,
-  ) => string>();
-  const createGlobalNameAllocator = (): ((name: string, role?: NameRole) => string) => {
-    const used = new Set<string>();
-    return (name, role = "value") => {
-      const normalized = role === "value"
-        ? normalizeMojoPackageDeclarationIdentifier(name)
-        : normalizer(role)(name);
-      let candidate = normalized;
-      let suffix = 2;
-      while (used.has(candidate)) candidate = `${normalized}_${suffix++}`;
-      used.add(candidate);
-      reservedNames.add(candidate);
-      return candidate;
-    };
-  };
-  const unownedGlobalNames = createGlobalNameAllocator();
-  const globalNames = (sourceFile: SourceFile): ((name: string, role?: NameRole) => string) => {
-    const existing = globalNamesBySourceFile.get(sourceFile);
-    if (existing !== undefined) return existing;
-    const created = createGlobalNameAllocator();
-    globalNamesBySourceFile.set(sourceFile, created);
-    return created;
-  };
+  const {
+    reservedNames,
+    createNameAllocator,
+    globalNames,
+    unownedGlobalNames,
+  } = createMojoProgramNameEnvironment();
   const globalNameByDeclaration = new WeakMap<Node, string>();
   for (const sourceFile of sourceFiles) {
     for (const statement of ast.statements(sourceFile)) {
       if (statement === undefined) continue;
       const nameNode = ast.name(statement);
       if (nameNode !== undefined && ast.is.IsIdentifier(nameNode)) {
-        const role: NameRole = ast.is.IsClassDeclaration(statement) ||
+        const role = ast.is.IsClassDeclaration(statement) ||
             ast.is.IsInterfaceDeclaration(statement) || ast.is.IsEnumDeclaration(statement) ||
             ast.is.IsTypeAliasDeclaration(statement)
           ? "type"
@@ -370,6 +334,15 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     indexedSourceUseDeclarations,
   };
 
+  for (const module of analyzedModules) {
+    for (const binding of module.bindings) {
+      if (binding.disposition.kind === "direct-function") {
+        expressionTypes.set(binding.disposition.expression, binding.type);
+        analyzeCallableExpression(binding.disposition.expression, binding.sourceFile, undefined);
+      }
+    }
+  }
+
   for (const class_ of classes) {
     const roots: Node[] = [];
     for (const field of class_.fields) {
@@ -469,7 +442,10 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
         ));
         continue;
       }
-      const conversion = conversions.record(step.binding.initializer, actual, step.binding.type);
+      const inferredBinding = ast.typeNode(step.binding.declaration) === undefined;
+      const bindingType = inferredBinding ? actual : step.binding.type;
+      if (inferredBinding) bindingTypes.set(step.binding.declaration, actual);
+      const conversion = conversions.record(step.binding.initializer, actual, bindingType);
       if (conversion.kind === "unsupported") {
         diagnostics.push(diagnostic(
           "MOJO_VALUE_CONVERSION_UNPROVEN",

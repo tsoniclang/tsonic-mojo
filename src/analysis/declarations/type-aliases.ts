@@ -43,6 +43,7 @@ export function analyzeMojoTypeAlias(input: {
     semantics.declarations.declaredType(input.declaration);
   const resolved = resolveMojoTargetType(selectedType, typeNode, {
     ast,
+    navigation: input.source.navigation,
     semantics,
     sourceFacts: input.source.sourceFacts,
     providerSemantics: input.providerSemantics,

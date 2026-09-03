@@ -45,13 +45,19 @@ export function mojoSymbolTargetType(): MojoTargetTypeRef {
 }
 
 export function mojoGenericParameterReference(
-  parameter: Pick<MojoProjectTypeParameterDefinition, "kind" | "name">,
+  parameter: Pick<MojoProjectTypeParameterDefinition, "kind" | "name"> & {
+    readonly identity?: string;
+  },
 ): MojoTargetGenericArgument {
   switch (parameter.kind) {
     case "type":
       return Object.freeze({
         kind: "type",
-        type: Object.freeze({ kind: "type-parameter", name: parameter.name }),
+        type: Object.freeze({
+          kind: "type-parameter",
+          name: parameter.name,
+          ...(parameter.identity === undefined ? {} : { identity: parameter.identity }),
+        }),
       });
     case "value":
       return Object.freeze({ kind: "value-reference", path: Object.freeze([parameter.name]) });

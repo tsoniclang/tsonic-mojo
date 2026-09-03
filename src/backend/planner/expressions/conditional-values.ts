@@ -17,7 +17,8 @@ import {
 import type { MojoPlanningContext } from "../program/context.js";
 import { registerMojoTypeImports } from "../types/imports.js";
 import { applyValueRefinement } from "./leaves.js";
-import { convertMojoValue, isJsString } from "./support.js";
+import { convertMojoValue } from "./support.js";
+import { isJsString } from "./js-carriers.js";
 import { orderMojoValues } from "./support.js";
 import type { MojoValuePlanner } from "./support.js";
 import { withMojoValue } from "./value-plan.js";

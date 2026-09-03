@@ -30,6 +30,11 @@ export interface MojoPlanningContext {
     readonly referenceType: MojoTargetTypeRef;
     readonly stateType: MojoTargetTypeRef;
   };
+  readonly initializingModuleState?: {
+    readonly moduleId: string;
+    readonly pointer: MojoExpression;
+    readonly value: MojoExpression;
+  };
 }
 
 export interface MojoBindingPlanOverride {
@@ -49,6 +54,14 @@ export function createMojoPlanningContext(
 ): MojoPlanningContext {
   const analyzedModule = program.queries.moduleForId(module.id);
   const importNames = new Set(analyzedModule?.bindings.map((binding) => binding.name) ?? []);
+  if (analyzedModule?.initializationStateRequired === true) {
+    importNames.add(analyzedModule.stateName);
+    importNames.add(analyzedModule.createStateName);
+    importNames.add(analyzedModule.cellName);
+  }
+  if (analyzedModule?.runtimeInitializationRequired === true) {
+    importNames.add(analyzedModule.initializeName);
+  }
   for (const declaration of program.declarations) {
     if (program.modules.forSourceFile(declaration.sourceFile)?.id === module.id) {
       importNames.add(declaration.name);
@@ -94,6 +107,18 @@ export function withMojoStateInitialization(
   return Object.freeze({
     ...context,
     initializingState: Object.freeze({ referenceType, stateType }),
+  });
+}
+
+export function withMojoModuleStateInitialization(
+  context: MojoPlanningContext,
+  moduleId: string,
+  pointer: MojoExpression,
+  value: MojoExpression,
+): MojoPlanningContext {
+  return Object.freeze({
+    ...context,
+    initializingModuleState: Object.freeze({ moduleId, pointer, value }),
   });
 }
 

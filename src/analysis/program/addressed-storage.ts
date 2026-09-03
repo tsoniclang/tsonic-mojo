@@ -1,7 +1,7 @@
 import { pointerOperationFactKey } from "@tsonic/tsts";
 import type { AstReader, Node, SourceFile } from "@tsonic/tsts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
-import { walkSourceTree } from "./traversal.js";
+import { walkSourceTree } from "../../source/syntax/traversal.js";
 
 export function collectMojoAddressedStorageDeclarations(
   sourceFiles: readonly SourceFile[],

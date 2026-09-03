@@ -544,6 +544,7 @@ function jsValueSourceKind(
     if (type.name === "bool") return "bool";
     if (type.name === "float64") return "number";
   }
+  if (type.kind === "native-string") return "native-string";
   if (isJsString(type)) return "string";
   if (type.kind === "null") return "null";
   if (type.kind === "undefined") return "undefined";

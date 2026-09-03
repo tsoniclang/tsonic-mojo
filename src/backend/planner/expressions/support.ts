@@ -26,6 +26,7 @@ import { consumeMojoValue, mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { planMojoCallableExpression } from "./callables.js";
 import { adaptMojoRaisingCallableError } from "./callable-error-adapter.js";
+import { mojoNumericLiteralCanInitialize } from "../../../target-model/types/numeric-literals.js";
 import {
   convertMojoCollection,
   convertMojoNarrowedUnion,
@@ -36,6 +37,7 @@ import {
   convertMojoUnionToOptional,
   planMojoTruthiness,
 } from "./conversion-support.js";
+import { boxNativeStringAsJsValue, isJsArray } from "./js-carriers.js";
 
 export type MojoValuePlanner = (
   node: Node,
@@ -95,8 +97,25 @@ export function planSelectedArgument(
     argument.conversion.error !== "erase" &&
     (context.program.source.ast.is.IsArrowFunction(argument.expression) ||
       context.program.source.ast.is.IsFunctionExpression(argument.expression));
-  const expression = directCallableAdaptation
-    ? planMojoCallableExpression(
+  const directNumericConversion = context.program.source.ast.is.IsNumericLiteral(argument.expression) &&
+    argument.conversion.kind === "primitive-cast" &&
+    mojoNumericLiteralCanInitialize(
+      context.program.source.ast.text(argument.expression),
+      argument.conversion.targetType,
+    );
+  const expression = directNumericConversion && argument.conversion.kind === "primitive-cast"
+    ? mojoValue(Object.freeze({
+        kind: "construct",
+        type: argument.conversion.targetType,
+        arguments: Object.freeze([Object.freeze({
+          value: Object.freeze({
+            kind: "number-literal",
+            text: context.program.source.ast.text(argument.expression),
+          }),
+        })]),
+      }))
+    : directCallableAdaptation
+      ? planMojoCallableExpression(
         argument.expression,
         context,
         planValue,
@@ -105,9 +124,9 @@ export function planSelectedArgument(
           ? argument.conversion.targetType
           : undefined,
       )
-    : planValue(argument.expression, context);
+      : planValue(argument.expression, context);
   if (expression === undefined) return undefined;
-  const converted = directCallableAdaptation
+  const converted = directCallableAdaptation || directNumericConversion
     ? expression
     : convertMojoValue(expression, argument.conversion, context);
   if (converted === undefined) return undefined;
@@ -183,7 +202,8 @@ export function orderMojoValues(
   for (const [index, value] of values.entries()) {
     before.push(...value.plan.before);
     if ((value.stabilize === true || stabilizeAll || index < finalPreludeIndex) &&
-      !isStableMojoLocation(value.plan.value)) {
+      !isStableMojoLocation(value.plan.value) &&
+      !isTriviallyPureMojoValue(value.plan.value)) {
       registerMojoTypeImports(value.type, context);
       const name = allocateMojoSyntheticName(context, value.role);
       before.push(Object.freeze({
@@ -201,6 +221,20 @@ export function orderMojoValues(
     before: Object.freeze(before),
     values: Object.freeze(expressions),
   });
+}
+
+export function isTriviallyPureMojoValue(expression: MojoExpression): boolean {
+  switch (expression.kind) {
+    case "number-literal":
+    case "bool-literal":
+    case "none-literal":
+    case "string-literal":
+    case "type-value": return true;
+    case "construct": return expression.type.kind === "source-primitive" &&
+      expression.arguments.every((argument) => argument.name === undefined &&
+        argument.spread !== true && isTriviallyPureMojoValue(argument.value));
+    default: return false;
+  }
 }
 
 function isStableMojoLocation(expression: MojoExpression): boolean {
@@ -511,6 +545,7 @@ export function applyMojoConversion(
     case "js-to-native-string":
       return { kind: "method-call", receiver: expression, name: "to_native_strict", arguments: Object.freeze([]) };
     case "native-to-js-string":
+      registerMojoTypeImports(conversion.targetType, context);
       return { kind: "construct", type: conversion.targetType, arguments: Object.freeze([{ value: expression }]) };
     case "collection-map":
     case "optional-map":
@@ -520,6 +555,7 @@ export function applyMojoConversion(
     case "narrowed-union-map":
       return undefined;
     case "js-box":
+      if (conversion.source === "native-string") return boxNativeStringAsJsValue(expression, context);
       return {
         kind: "call",
         callee: mojoModuleMemberExpression(
@@ -560,19 +596,4 @@ export function applyMojoConversion(
       return { kind: "construct", type: conversion.targetType, arguments: Object.freeze([{ value }]) };
     }
   }
-}
-
-
-export function isJsString(type: MojoTargetTypeRef): boolean {
-  return type.kind === "target-named" && type.id === "tsonic.mojo.js.JsString";
-}
-
-export function isJsArray(type: MojoTargetTypeRef): boolean {
-  return type.kind === "target-named" && type.id === "tsonic.mojo.js.JsArray";
-}
-
-export function jsArrayElement(type: MojoTargetTypeRef): MojoTargetTypeRef | undefined {
-  if (!isJsArray(type) || type.kind !== "target-named") return undefined;
-  const argument = type.genericArguments?.[0];
-  return argument?.kind === "type" ? argument.type : undefined;
 }

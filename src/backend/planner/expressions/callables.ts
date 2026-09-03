@@ -27,14 +27,13 @@ import type {
 } from "../program/context.js";
 import type { MojoValuePlanner } from "./support.js";
 import { registerMojoTypeImports } from "../types/imports.js";
-import { planMojoFunctionStatements } from "../statements/structured.js";
 import { consumeMojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { planMojoParameterPrelude } from "../declarations/parameters.js";
 import { planMojoParameterDeclaration } from "../declarations/parameters.js";
 import { mojoParameterConvention } from "../../../analysis/representations/index.js";
 import type { MojoCallableDisposition } from "../../../analysis/representations/model.js";
-import { planMojoProjectFunction } from "../declarations/project.js";
+import { planMojoFunctionBody, planMojoProjectFunction } from "../declarations/project.js";
 import { mojoModuleBindingRead } from "../bindings/module-bindings.js";
 
 const runtimeModule = Object.freeze(["tsonic_runtime"]);
@@ -382,7 +381,7 @@ function planCallableEnvironment(
     false,
   );
   if (parameterPrelude === undefined) return undefined;
-  const body = planCallableBody(selection, callableContext, planValue);
+  const body = planCallableBody(selection, callableContext);
   if (body === undefined) return undefined;
   const invoke: MojoFunctionDeclaration = Object.freeze({
     kind: "function",
@@ -459,31 +458,20 @@ function planCallableEnvironment(
 function planCallableBody(
   selection: MojoCallableExpressionSelection,
   context: MojoPlanningContext,
-  planValue: MojoValuePlanner,
 ): readonly MojoStatement[] | undefined {
-  if (context.program.source.ast.is.IsBlock(selection.body)) {
-    return planMojoFunctionStatements(Object.freeze({
-      kind: "function",
-      declaration: selection.expression,
-      sourceFile: context.module.sourceFile,
-      name: "invoke",
-      typeParameters: Object.freeze([]),
-      parameters: selection.parameters,
-      resultType: selection.resultType,
-      body: selection.body,
-      asynchronous: false,
-      raises: selection.raises,
-      ...(selection.errorType === undefined ? {} : { errorType: selection.errorType }),
-    }), context);
-  }
-  const body = planValue(selection.body, context, selection.resultType);
-  if (body === undefined) return undefined;
-  return Object.freeze([
-    ...body.before,
-    selection.resultType.kind === "unit"
-      ? Object.freeze({ kind: "expression" as const, expression: body.value })
-      : Object.freeze({ kind: "return" as const, expression: body.value }),
-  ]);
+  return planMojoFunctionBody(Object.freeze({
+    kind: "function",
+    declaration: selection.expression,
+    sourceFile: context.module.sourceFile,
+    name: "invoke",
+    typeParameters: Object.freeze([]),
+    parameters: selection.parameters,
+    resultType: selection.resultType,
+    body: selection.body,
+    asynchronous: false,
+    raises: selection.raises,
+    ...(selection.errorType === undefined ? {} : { errorType: selection.errorType }),
+  }), context);
 }
 
 function localNamedType(

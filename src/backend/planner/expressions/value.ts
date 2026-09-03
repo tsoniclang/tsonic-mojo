@@ -19,10 +19,8 @@ import {
 } from "./calls.js";
 import { planMojoElement } from "./elements.js";
 import { planMojoProperty, planMojoProviderPropertyMethodWrite } from "./properties.js";
-import {
-  canConstructMojoNumericLiteralDirectly,
-  planMojoLeafExpression,
-} from "./leaves.js";
+import { planMojoLeafExpression } from "./leaves.js";
+import { mojoNumericLiteralCanInitialize } from "../../../target-model/types/numeric-literals.js";
 import {
   convertMojoValue,
   orderMojoValues,
@@ -447,7 +445,7 @@ export function planMojoValue(
     } else {
       const directNumericTarget = ast.is.IsNumericLiteral(node) &&
           expectedType !== undefined && conversion?.kind === "primitive-cast" &&
-          canConstructMojoNumericLiteralDirectly(ast.text(node), expectedType)
+          mojoNumericLiteralCanInitialize(ast.text(node), expectedType)
         ? expectedType
         : undefined;
       const expression = planMojoLeafExpression(node, evaluationContext, directNumericTarget);
@@ -457,7 +455,7 @@ export function planMojoValue(
   if (plan === undefined) return undefined;
   const directNumericConversion = ast.is.IsNumericLiteral(node) &&
     expectedType !== undefined && conversion?.kind === "primitive-cast" &&
-    canConstructMojoNumericLiteralDirectly(ast.text(node), expectedType);
+    mojoNumericLiteralCanInitialize(ast.text(node), expectedType);
   const converted = expectedType === undefined || actualType === undefined ||
       inlineCallableAdaptation || directNumericConversion
     ? plan

@@ -124,3 +124,87 @@ test("explicit moves of trivial register values emit no meaningless transfer", (
   assert.match(source.text, /return value/u);
   assert.doesNotMatch(source.text, /return \(?value\^/u);
 });
+
+test("ordinary generic returns require exactly implicit-copyable inputs", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        "function identity<T>(value: T): T { return value; }",
+        "export function main(): void {}",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("def identity"));
+  assert.ok(source);
+  assert.match(source.text, /def identity\[T: ImplicitlyCopyable & Deinitable\]\(value: T\) -> T:/u);
+  assert.match(source.text, /return value/u);
+  assert.doesNotMatch(source.text, /var value|value\^/u);
+});
+
+test("unused generic inputs retain the weaker movable lifecycle", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        "function ignore<T>(_value: T): void {}",
+        "export function main(): void {}",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("def ignore"));
+  assert.ok(source);
+  assert.match(source.text, /def ignore\[T: Movable & Deinitable\]\(_value: T\):/u);
+  assert.doesNotMatch(source.text, /ImplicitlyCopyable/u);
+});
+
+test("project generic fields retain their exact physical carrier", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        "interface Pair<T> { left: T; right: T; }",
+        "function first(pair: Pair<i32>): i32 { return pair.left; }",
+        "export function main(): void {}",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("def first"));
+  assert.ok(source);
+  assert.match(source.text, /def first\(pair: Pair\[Int32\]\) -> Int32:/u);
+  assert.match(source.text, /return pair\._state\[\]\.left/u);
+  assert.doesNotMatch(source.text, /return Int32\(/u);
+});
+
+test("module initializers use collision-safe imports and one local state reference", () => {
+  const result = compileMojo({
+    files: {
+      "settings.ts": [
+        'import type { int32 } from "@tsonic/core/types.js";',
+        "let calls: int32 = 0;",
+        "export function load(): int32 { calls += 1; return 41; }",
+      ].join("\n"),
+      "index.ts": [
+        'import { load } from "./settings.js";',
+        "const selected = load();",
+        "export function main(): void { if (selected !== 41) return; }",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const sources = artifactTexts(result);
+  const settings = sources.find(({ path }) => path.endsWith("settings.mojo"));
+  const entry = sources.find(({ text }) => text.includes("settings_initialize_module"));
+  assert.ok(settings);
+  assert.ok(entry);
+  assert.match(
+    entry.text,
+    /from .*settings import[\s\S]*_initialize_module as settings_initialize_module/u,
+  );
+  assert.match(entry.text, /def _initialize_module\(\):[\s\S]*settings_initialize_module\(\)/u);
+  assert.doesNotMatch(entry.text, /def _initialize_module\(\):\n\s+_initialize_module\(\)/u);
+  assert.match(settings.text, /var _state = _module_state\.get\(\)/u);
+  assert.match(settings.text, /_state\[\]\.calls = Optional\[Int32\]/u);
+  assert.equal((settings.text.match(/_module_state\.get\(\)/gu) ?? []).length, 2);
+});

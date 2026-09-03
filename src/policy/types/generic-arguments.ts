@@ -8,7 +8,7 @@ import { resolveMojoSourceOrigin } from "./origins.js";
 import {
   classifyMojoSourceGenericParameter,
   mojoSourceGenericParameterOwner,
-} from "./source-generic-parameters.js";
+} from "../../source/semantics/generic-parameters.js";
 
 type MojoValueGenericArgumentContext = Pick<
   MojoTypeResolutionContext,

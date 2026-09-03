@@ -13,7 +13,7 @@ import type { MojoSourceModuleCatalog } from "../source-modules/model.js";
 import type { TargetPlanningSourceNavigation } from "@tsonic/target-api/analysis";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { SourceProgramNavigation } from "@tsonic/target-api/source";
-import { walkSourceTree } from "../program/traversal.js";
+import { walkSourceTree } from "../../source/syntax/traversal.js";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 import { createMojoNarrowingView } from "./narrowing.js";

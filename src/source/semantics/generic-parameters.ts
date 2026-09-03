@@ -6,8 +6,8 @@ import type {
   Type,
 } from "@tsonic/tsts";
 import type { SourceFileSemantics } from "@tsonic/target-api/source";
-import { walkSourceTree } from "../../analysis/program/traversal.js";
-import { mojoSourceOriginTypeContract } from "./origins.js";
+import { mojoSourceOriginTypeContract } from "../../policy/types/origins.js";
+import { walkSourceTree } from "../syntax/traversal.js";
 
 export interface MojoSourceGenericParameterContext {
   readonly ast: AstReader;

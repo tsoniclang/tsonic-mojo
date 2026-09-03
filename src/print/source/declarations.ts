@@ -59,13 +59,25 @@ function printFunctionDocument(
   function_: MojoFunctionDeclaration,
   context: MojoPrintContext,
 ): MojoDocument {
+  const ownTypeParameterIdentities = new Set(function_.genericParameters.flatMap((parameter) =>
+    parameter.identity === undefined ? [] : [parameter.identity]));
+  const functionContext = context.structTypeParameterIdentities === undefined ||
+      ownTypeParameterIdentities.size === 0
+    ? context
+    : Object.freeze({
+        ...context,
+        structTypeParameterIdentities: new Set(
+          [...context.structTypeParameterIdentities].filter((identity) =>
+            !ownTypeParameterIdentities.has(identity)),
+        ),
+      });
   const decorators = (function_.decorators ?? []).map((decorator) =>
     text(printMojoDecorator(decorator)));
-  const parameters = printFunctionParameters(function_, context);
-  const result = printMojoTypeDocument(function_.resultType, context);
+  const parameters = printFunctionParameters(function_, functionContext);
+  const result = printMojoTypeDocument(function_.resultType, functionContext);
   const error = function_.errorType === undefined
     ? emptyDocument
-    : concat(text(" "), requiredMojoTypeDocument(function_.errorType, context));
+    : concat(text(" "), requiredMojoTypeDocument(function_.errorType, functionContext));
   const signature = group(concat(
     text(function_.asynchronous ? `async def ${function_.name}` : `def ${function_.name}`),
     printMojoGenericParametersDocument(function_.genericParameters, context),
@@ -77,7 +89,7 @@ function printFunctionDocument(
     signature,
     function_.statements === undefined
       ? text("...")
-      : printMojoBodyDocument(function_.statements, context),
+      : printMojoBodyDocument(function_.statements, functionContext),
   );
   return decorators.length === 0
     ? declaration
@@ -107,6 +119,11 @@ function printStructDocument(
   declaration: MojoStructDeclaration,
   context: MojoPrintContext,
 ): MojoDocument {
+  const structTypeParameterIdentities = new Set(declaration.genericParameters.flatMap((parameter) =>
+    parameter.identity === undefined ? [] : [parameter.identity]));
+  const memberContext = structTypeParameterIdentities.size === 0
+    ? context
+    : Object.freeze({ ...context, structTypeParameterIdentities });
   const decorators = (declaration.decorators ?? []).map((decorator) =>
     text(printMojoDecorator(decorator)));
   const conformances = declaration.conformances.length === 0
@@ -123,24 +140,28 @@ function printStructDocument(
   ));
   const members: MojoDocument[] = declaration.fields.map((field) => group(concat(
     text(`${field.compileTime ? "comptime" : "var"} ${field.name}: `),
-    requiredMojoTypeDocument(field.type, context),
+    requiredMojoTypeDocument(field.type, memberContext),
     field.initializer === undefined
       ? emptyDocument
-      : concat(text(" = "), printMojoExpressionDocument(field.initializer, context)),
+      : concat(text(" = "), printMojoExpressionDocument(field.initializer, memberContext)),
   )));
   for (const method of declaration.methods) {
-    members.push(printFunctionDocument(method, context));
+    members.push(printFunctionDocument(method, memberContext));
   }
-  const body = members.length === 0
+  const fields = members.slice(0, declaration.fields.length);
+  const methods = members.slice(declaration.fields.length);
+  const body = fields.length === 0 && methods.length === 0
     ? text("pass")
-    : declaration.fields.length === 0 || declaration.methods.length === 0
-      ? join(hardLine, members)
-      : concat(
-          join(hardLine, members.slice(0, declaration.fields.length)),
-          hardLine,
-          hardLine,
-          join(hardLine, members.slice(declaration.fields.length)),
-        );
+    : fields.length === 0
+      ? join(concat(hardLine, hardLine), methods)
+      : methods.length === 0
+        ? join(hardLine, fields)
+        : concat(
+            join(hardLine, fields),
+            hardLine,
+            hardLine,
+            join(concat(hardLine, hardLine), methods),
+          );
   const result = block(header, body);
   return decorators.length === 0
     ? result
