@@ -58,6 +58,11 @@ export function planMojoConcreteDispatchMethods(
       if (planned === undefined) return undefined;
       methods.push(...planned);
     }
+    for (const adapter of view.downcastAdapters) {
+      const planned = planDowncastAdapter(dispatch, adapter, context);
+      if (planned === undefined) return undefined;
+      methods.push(planned);
+    }
   }
   return Object.freeze(methods);
 }
@@ -134,6 +139,14 @@ export function mojoConcreteViewConstruction(
     arguments_.push(Object.freeze({
       name: index.copy.slotName,
       value: mojoProjectStaticMember(dispatch.concrete.targetType, adapter.copyAdapterName),
+    }));
+  }
+  for (const downcast of view.view.downcasts) {
+    const adapter = view.downcastAdapters.find((candidate) => candidate.route === downcast);
+    if (adapter === undefined) return undefined;
+    arguments_.push(Object.freeze({
+      name: downcast.slotName,
+      value: mojoProjectStaticMember(dispatch.concrete.targetType, adapter.adapterName),
     }));
   }
   for (const conversion of view.view.conversions) {
@@ -682,6 +695,54 @@ function planStoredFieldAdapters(
     }));
   }
   return Object.freeze(methods);
+}
+
+function planDowncastAdapter(
+  dispatch: MojoProjectConcreteDispatch,
+  adapter: MojoProjectConcreteViewDispatch["downcastAdapters"][number],
+  context: MojoPlanningContext,
+): MojoFunctionDeclaration | undefined {
+  const resultType: MojoTargetTypeRef = Object.freeze({
+    kind: "optional",
+    value: adapter.route.targetType,
+  });
+  registerMojoTypeImports(resultType, context);
+  const targetView = adapter.available
+    ? dispatch.views.find((view) => view.view.definition === adapter.route.target)
+    : undefined;
+  if (adapter.available && targetView === undefined) return undefined;
+  const value: MojoExpression = targetView === undefined
+    ? Object.freeze({ kind: "construct", type: resultType, arguments: Object.freeze([]) })
+    : Object.freeze({
+        kind: "construct",
+        type: resultType,
+        arguments: Object.freeze([Object.freeze({
+          value: Object.freeze({
+            kind: "call",
+            callee: mojoProjectStaticMember(
+              dispatch.concrete.targetType,
+              targetView.conversionAdapterName,
+            ),
+            arguments: Object.freeze([Object.freeze({
+              value: Object.freeze({ kind: "path", path: "object" }),
+            })]),
+          }),
+        })]),
+      });
+  return Object.freeze({
+    kind: "function",
+    name: adapter.adapterName,
+    genericParameters: Object.freeze([]),
+    parameters: Object.freeze([Object.freeze({
+      name: "object",
+      type: mojoProjectObjectType,
+    })]),
+    resultType,
+    asynchronous: false,
+    raises: false,
+    decorators: mojoStaticMethodDecorators,
+    statements: Object.freeze([Object.freeze({ kind: "return", expression: value })]),
+  });
 }
 
 function implementationParameter(parameter: MojoAnalyzedParameter): MojoParameter {

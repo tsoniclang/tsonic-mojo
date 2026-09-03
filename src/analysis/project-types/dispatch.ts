@@ -9,6 +9,8 @@ import type {
   MojoAnalyzedParameter,
   MojoProjectConcreteDispatch,
   MojoProjectConcreteViewDispatch,
+  MojoProjectDowncastAdapter,
+  MojoProjectDowncastRoute,
   MojoProjectDispatchCallableAdapter,
   MojoProjectDispatchCallableVariant,
   MojoProjectDispatchField,
@@ -54,6 +56,7 @@ export function createMojoProjectDispatchPlan(input: {
   readonly classes: readonly MojoAnalyzedClass[];
   readonly interfaces: readonly MojoAnalyzedInterface[];
   readonly relationships: MojoProjectTypeRelationships;
+  readonly modules: import("../source-modules/model.js").MojoSourceModuleCatalog;
   readonly callNodes: ReadonlySet<Node>;
   readonly callSelections: WeakMap<Node, MojoCallSelection>;
   readonly propertyNodes: ReadonlySet<Node>;
@@ -197,6 +200,39 @@ export function createMojoProjectDispatchPlan(input: {
       }
     }
 
+    const sourceComponent = input.modules.forSourceFile(analyzed.sourceFile)?.componentId;
+    const downcasts: MojoProjectDowncastRoute[] = sourceComponent === undefined
+      ? []
+      : input.classes
+          .filter((target) => target.definition !== analyzed.definition &&
+            target.definition.typeParameters.length === 0 &&
+            input.modules.forSourceFile(target.sourceFile)?.componentId === sourceComponent)
+          .filter((target) => input.relationships.relationship(
+            input.relationships.openType(target.definition),
+            analyzed.definition,
+          ).kind === "related")
+          .sort((left, right) => left.definition.id.localeCompare(right.definition.id, "en"))
+          .map((target) => {
+            const targetType = input.relationships.openType(target.definition);
+            const optionalTarget: MojoTargetTypeRef = Object.freeze({
+              kind: "optional",
+              value: targetType,
+            });
+            return Object.freeze({
+              source: analyzed.definition,
+              target: target.definition,
+              targetType,
+              name: allocateName(usedNames, `try_as_${target.name}`),
+              slotName: allocateName(usedNames, `_downcast_${target.name}_dispatch`),
+              slotType: functionType(
+                [{ type: projectObjectType, convention: "imm", passing: "plain" }],
+                optionalTarget,
+                false,
+                false,
+              ),
+            });
+          });
+    entryCount += downcasts.length;
     const conversions = related
       .filter((target) => target.definition !== analyzed.definition)
       .map((target) => {
@@ -226,6 +262,7 @@ export function createMojoProjectDispatchPlan(input: {
       callables: Object.freeze(callables),
       fields: Object.freeze(fields),
       indexes: Object.freeze(indexes),
+      downcasts: Object.freeze(downcasts),
       conversions: Object.freeze(conversions),
     }));
   }
@@ -549,6 +586,21 @@ export function createMojoProjectDispatchPlan(input: {
           message: `Concrete class '${concrete.name}' does not close every index contract for '${view.definition.sourceName}'.`,
         }));
       }
+      const downcastAdapters: MojoProjectDowncastAdapter[] = view.downcasts.map((route) => {
+        const targetRelationship = input.relationships.relationship(
+          concrete.targetType,
+          route.target,
+        );
+        return Object.freeze({
+          route,
+          adapterName: allocateName(
+            adapterNames,
+            `_dispatch_${view.definition.targetName}_${route.name}`,
+          ),
+          available: targetRelationship.kind === "related" &&
+            mojoTargetTypeEquals(targetRelationship.targetType, route.targetType),
+        });
+      });
       concreteViews.push(Object.freeze({
         view,
         viewType: relationship.targetType,
@@ -560,6 +612,7 @@ export function createMojoProjectDispatchPlan(input: {
         indexAdapters: Object.freeze(indexAdapters.filter(
           (adapter): adapter is MojoProjectDispatchIndexAdapter => adapter !== undefined,
         )),
+        downcastAdapters: Object.freeze(downcastAdapters),
       }));
     }
     concreteDispatch.set(concrete.definition, Object.freeze({
@@ -599,6 +652,15 @@ export function createMojoProjectDispatchPlan(input: {
       const view = viewForType(receiverType);
       const matches = view?.indexes.filter((index) =>
         index.indexSignature.declaration === declaration) ?? [];
+      return matches.length === 1 ? matches[0] : undefined;
+    },
+    downcastFor(sourceType, targetType) {
+      const view = viewForType(sourceType);
+      const target = input.relationships.definitionForType(targetType);
+      const matches = target === undefined
+        ? []
+        : view?.downcasts.filter((route) => route.target === target &&
+          mojoTargetTypeEquals(route.targetType, targetType)) ?? [];
       return matches.length === 1 ? matches[0] : undefined;
     },
     conversionFor(sourceType, targetType) {
@@ -1012,6 +1074,15 @@ function createObjectLiteralDispatchPlans(input: {
         }));
         valid = false;
       }
+      const downcastAdapters: MojoProjectDowncastAdapter[] = view.downcasts.map((route) =>
+        Object.freeze({
+          route,
+          adapterName: allocateName(
+            usedNames,
+            `_dispatch_${view.definition.targetName}_${route.name}`,
+          ),
+          available: false,
+        }));
       objectViews.push(Object.freeze({
         view,
         viewType: relationship.targetType,
@@ -1023,6 +1094,7 @@ function createObjectLiteralDispatchPlans(input: {
         indexAdapters: Object.freeze(indexAdapters.filter(
           (adapter): adapter is MojoProjectDispatchIndexAdapter => adapter !== undefined,
         )),
+        downcastAdapters: Object.freeze(downcastAdapters),
       }));
     }
     if (!valid || !objectViews.some((view) =>
@@ -1868,6 +1940,7 @@ function createImplementationNames(
         if (index.write !== undefined) used.add(index.write.name);
         used.add(index.copy.name);
       }
+      for (const downcast of view.downcasts) used.add(downcast.name);
       for (const conversion of view.conversions) used.add(conversion.name);
     }
     for (const implementation of [...class_.methods, ...class_.accessors]) {

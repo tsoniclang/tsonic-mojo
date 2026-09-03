@@ -294,12 +294,28 @@ export interface MojoProjectDispatchIndexAdapter {
   readonly copyAdapterName: string;
 }
 
+export interface MojoProjectDowncastRoute {
+  readonly source: import("../../target-model/types/project.js").MojoProjectTypeDefinition;
+  readonly target: import("../../target-model/types/project.js").MojoProjectTypeDefinition;
+  readonly targetType: MojoTargetTypeRef;
+  readonly name: string;
+  readonly slotName: string;
+  readonly slotType: Extract<MojoTargetTypeRef, { readonly kind: "function" }>;
+}
+
+export interface MojoProjectDowncastAdapter {
+  readonly route: MojoProjectDowncastRoute;
+  readonly adapterName: string;
+  readonly available: boolean;
+}
+
 export interface MojoProjectDispatchView {
   readonly definition: import("../../target-model/types/project.js").MojoProjectTypeDefinition;
   readonly type: MojoTargetTypeRef;
   readonly callables: readonly MojoProjectDispatchCallableVariant[];
   readonly fields: readonly MojoProjectDispatchField[];
   readonly indexes: readonly MojoProjectDispatchIndex[];
+  readonly downcasts: readonly MojoProjectDowncastRoute[];
   readonly conversions: readonly {
     readonly target: import("../../target-model/types/project.js").MojoProjectTypeDefinition;
     readonly targetType: MojoTargetTypeRef;
@@ -364,6 +380,7 @@ export interface MojoProjectConcreteViewDispatch {
   readonly callableAdapters: readonly MojoProjectDispatchCallableAdapter[];
   readonly fieldAdapters: readonly MojoProjectDispatchFieldAdapter[];
   readonly indexAdapters: readonly MojoProjectDispatchIndexAdapter[];
+  readonly downcastAdapters: readonly MojoProjectDowncastAdapter[];
 }
 
 export interface MojoProjectConcreteDispatch {
@@ -437,6 +454,7 @@ export interface MojoProjectObjectLiteralViewDispatch {
   readonly callableAdapters: readonly MojoProjectObjectLiteralCallableAdapter[];
   readonly fieldAdapters: readonly MojoProjectObjectLiteralFieldAdapter[];
   readonly indexAdapters: readonly MojoProjectDispatchIndexAdapter[];
+  readonly downcastAdapters: readonly MojoProjectDowncastAdapter[];
 }
 
 export interface MojoProjectObjectLiteralDispatch {
@@ -471,6 +489,10 @@ export interface MojoProjectDispatchPlan {
     receiverType: MojoTargetTypeRef,
     declaration: Node,
   ): MojoProjectDispatchIndex | undefined;
+  downcastFor(
+    sourceType: MojoTargetTypeRef,
+    targetType: MojoTargetTypeRef,
+  ): MojoProjectDowncastRoute | undefined;
   conversionFor(
     sourceType: MojoTargetTypeRef,
     targetType: MojoTargetTypeRef,
@@ -722,6 +744,13 @@ export type MojoTypeTestSelection =
       readonly kind: "union-member";
       readonly operand: Node;
       readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
+      readonly testedType: MojoTargetTypeRef;
+    }
+  | {
+      readonly kind: "project-dispatch";
+      readonly operand: Node;
+      readonly sourceType: MojoTargetTypeRef;
+      readonly dispatchType: MojoTargetTypeRef;
       readonly testedType: MojoTargetTypeRef;
     };
 

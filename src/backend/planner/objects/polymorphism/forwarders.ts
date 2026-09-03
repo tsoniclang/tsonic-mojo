@@ -75,6 +75,14 @@ export function mojoProjectViewFields(
       }));
     }
   }
+  for (const downcast of view.downcasts) {
+    registerMojoTypeImports(downcast.slotType, context);
+    fields.push(Object.freeze({
+      name: downcast.slotName,
+      type: downcast.slotType,
+      compileTime: false,
+    }));
+  }
   for (const conversion of view.conversions) {
     registerMojoTypeImports(conversion.slotType, context);
     fields.push(Object.freeze({
@@ -142,6 +150,22 @@ export function planMojoProjectViewForwarders(
     if (index.write !== undefined) methods.push(planIndexWrite(index));
     methods.push(planIndexCopy(index));
   }
+  for (const downcast of view.downcasts) {
+    methods.push(Object.freeze({
+      kind: "function",
+      name: downcast.name,
+      genericParameters: Object.freeze([]),
+      parameters: Object.freeze([]),
+      resultType: Object.freeze({ kind: "optional", value: downcast.targetType }),
+      asynchronous: false,
+      raises: false,
+      self: "self",
+      statements: Object.freeze([Object.freeze({
+        kind: "return",
+        expression: slotCall(downcast.slotName, Object.freeze([])),
+      })]),
+    }));
+  }
   for (const conversion of view.conversions) {
     methods.push(Object.freeze({
       kind: "function",
@@ -176,6 +200,7 @@ export function planMojoProjectViewInitializer(
       entry === undefined ? [] : [Object.freeze({ name: entry.slotName, type: entry.slotType })])),
     ...view.indexes.flatMap((index) => [index.read, index.write, index.copy].flatMap((entry) =>
       entry === undefined ? [] : [Object.freeze({ name: entry.slotName, type: entry.slotType })])),
+    ...view.downcasts.map((entry) => Object.freeze({ name: entry.slotName, type: entry.slotType })),
     ...view.conversions.map((entry) => Object.freeze({ name: entry.slotName, type: entry.slotType })),
   ];
   return Object.freeze({

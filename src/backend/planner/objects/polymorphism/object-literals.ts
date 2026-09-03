@@ -435,6 +435,9 @@ function planObjectStateDeclarations(
       if (planned === undefined) return undefined;
       methods.push(...planned);
     }
+    for (const adapter of view.downcastAdapters) {
+      methods.push(planObjectDowncastAdapter(adapter, context));
+    }
   }
   return Object.freeze({
     kind: "struct",
@@ -591,6 +594,14 @@ function planObjectViewFactory(
     arguments_.push(Object.freeze({
       name: index.copy.slotName,
       value: mojoProjectStaticMember(stateType, adapter.copyAdapterName),
+    }));
+  }
+  for (const downcast of view.view.downcasts) {
+    const adapter = view.downcastAdapters.find((candidate) => candidate.route === downcast);
+    if (adapter === undefined) return undefined;
+    arguments_.push(Object.freeze({
+      name: downcast.slotName,
+      value: mojoProjectStaticMember(stateType, adapter.adapterName),
     }));
   }
   for (const conversion of view.view.conversions) {
@@ -1146,6 +1157,38 @@ function staticFieldAdapter(
     raises: false,
     decorators: mojoStaticMethodDecorators,
     statements: Object.freeze([statement]),
+  });
+}
+
+function planObjectDowncastAdapter(
+  adapter: MojoProjectObjectLiteralViewDispatch["downcastAdapters"][number],
+  context: MojoPlanningContext,
+): MojoFunctionDeclaration {
+  const resultType: MojoTargetTypeRef = Object.freeze({
+    kind: "optional",
+    value: adapter.route.targetType,
+  });
+  registerMojoTypeImports(resultType, context);
+  return Object.freeze({
+    kind: "function",
+    name: adapter.adapterName,
+    genericParameters: Object.freeze([]),
+    parameters: Object.freeze([Object.freeze({
+      name: "_object",
+      type: mojoProjectObjectType,
+    })]),
+    resultType,
+    asynchronous: false,
+    raises: false,
+    decorators: mojoStaticMethodDecorators,
+    statements: Object.freeze([Object.freeze({
+      kind: "return",
+      expression: Object.freeze({
+        kind: "construct",
+        type: resultType,
+        arguments: Object.freeze([]),
+      }),
+    })]),
   });
 }
 

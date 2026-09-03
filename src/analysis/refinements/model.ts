@@ -15,4 +15,10 @@ export type MojoValueRefinementSelection =
       readonly kind: "union-subset";
       readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
       readonly resultType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
+    }
+  | {
+      readonly kind: "project-downcast";
+      readonly sourceType: MojoTargetTypeRef;
+      readonly dispatchType: MojoTargetTypeRef;
+      readonly resultType: MojoTargetTypeRef;
     };

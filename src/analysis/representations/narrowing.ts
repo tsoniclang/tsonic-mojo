@@ -29,6 +29,14 @@ export function createMojoNarrowingView(
       member: alternative(refinement.resultType, carriers),
     });
   }
+  if (refinement.kind === "project-downcast") {
+    return Object.freeze({
+      kind: "project-downcast",
+      carrier: sourceCarrier,
+      dispatchType: refinement.dispatchType,
+      target: alternative(refinement.resultType, carriers),
+    });
+  }
   return Object.freeze({
     kind: "union-subset",
     carrier: sourceCarrier,

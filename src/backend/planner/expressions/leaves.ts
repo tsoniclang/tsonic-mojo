@@ -126,10 +126,36 @@ export function applyValueRefinement(
   expression: MojoExpression,
   refinement: MojoNarrowingView | undefined,
   context: MojoPlanningContext,
-): MojoExpression {
+): MojoExpression | undefined {
   if (refinement === undefined) return expression;
   const sourceCarrier = context.program.representations.carrier(refinement.carrier);
   if (sourceCarrier !== undefined) registerMojoTypeImports(sourceCarrier.type, context);
+  if (refinement.kind === "project-downcast") {
+    const route = context.program.projectDispatch.downcastFor(
+      refinement.dispatchType,
+      refinement.target.type,
+    );
+    if (route === undefined) return undefined;
+    const source = sourceCarrier?.type.kind === "optional"
+      ? Object.freeze({
+          kind: "method-call" as const,
+          receiver: expression,
+          name: "value",
+          arguments: Object.freeze([]),
+        })
+      : expression;
+    return Object.freeze({
+      kind: "method-call",
+      receiver: Object.freeze({
+        kind: "method-call",
+        receiver: source,
+        name: route.name,
+        arguments: Object.freeze([]),
+      }),
+      name: "value",
+      arguments: Object.freeze([]),
+    });
+  }
   return refinement.kind === "optional-present"
     ? Object.freeze({
         kind: "method-call",

@@ -169,13 +169,15 @@ export function planMojoElement(
   if (operationPlan === undefined) return undefined;
   const finished = finishOptionalMojoOperation(node, preparedReceiver, operationPlan, context);
   if (finished === undefined) return undefined;
+  const refined = applyValueRefinement(
+    finished.value,
+    context.program.representations.narrowing(node),
+    context,
+  );
+  if (refined === undefined) return undefined;
   return withMojoValue(
     finished.before,
-    applyValueRefinement(
-      finished.value,
-      context.program.representations.narrowing(node),
-      context,
-    ),
+    refined,
   );
 }
 

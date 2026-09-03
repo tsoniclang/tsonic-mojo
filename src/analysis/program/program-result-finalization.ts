@@ -297,6 +297,7 @@ export function finalizeMojoProgramResult(
     classes: finalizedClasses,
     interfaces,
     relationships: environment.projectRelationships,
+    modules,
     callNodes: environment.callNodes,
     callSelections,
     propertyNodes,

@@ -83,6 +83,7 @@ export function planNullishCoalescing(
           : context.program.representations.narrowingFor(selection.presentRefinement),
         context,
       );
+  if (presentValue === undefined) return undefined;
   const convertedPresent = convertMojoValue(
     withMojoValue(Object.freeze([]), presentValue),
     selection.presentConversion,
@@ -259,9 +260,9 @@ export function planErasedExpression(
     context,
     refinement === undefined ? context.program.queries.expressionType(node) : undefined,
   );
-  return plan === undefined
-    ? undefined
-    : withMojoValue(plan.before, applyValueRefinement(plan.value, refinement, context));
+  if (plan === undefined) return undefined;
+  const value = applyValueRefinement(plan.value, refinement, context);
+  return value === undefined ? undefined : withMojoValue(plan.before, value);
 }
 
 export function planMojoTypeTest(
@@ -354,6 +355,63 @@ export function planMojoTypeTest(
         }),
       ]),
       Object.freeze({ kind: "bool-literal", value: selection.value }),
+    );
+  }
+  if (selection.kind === "project-dispatch") {
+    const route = context.program.projectDispatch.downcastFor(
+      selection.dispatchType,
+      selection.testedType,
+    );
+    if (route === undefined) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROJECT_TYPE_TEST_ROUTE_MISSING",
+        "A checked project type test has no exact sealed downcast route.",
+        selection.operand,
+      );
+      return undefined;
+    }
+    registerMojoTypeImports(selection.sourceType, context);
+    registerMojoTypeImports(selection.testedType, context);
+    const ordered = orderMojoValues(Object.freeze([Object.freeze({
+      plan: operand,
+      type: selection.sourceType,
+      role: "project_type_test_operand",
+      stabilize: true,
+    })]), context, true);
+    const source = selection.sourceType.kind === "optional"
+      ? Object.freeze({
+          kind: "method-call" as const,
+          receiver: ordered.values[0]!,
+          name: "value",
+          arguments: Object.freeze([]),
+        })
+      : ordered.values[0]!;
+    const downcast: MojoExpression = Object.freeze({
+      kind: "method-call",
+      receiver: source,
+      name: route.name,
+      arguments: Object.freeze([]),
+    });
+    const available: MojoExpression = Object.freeze({
+      kind: "construct",
+      type: Object.freeze({ kind: "source-primitive", name: "bool" }),
+      arguments: Object.freeze([{ value: downcast }]),
+    });
+    return withMojoValue(
+      ordered.before,
+      selection.sourceType.kind === "optional"
+        ? Object.freeze({
+            kind: "binary",
+            operator: "and",
+            left: Object.freeze({
+              kind: "construct",
+              type: Object.freeze({ kind: "source-primitive", name: "bool" }),
+              arguments: Object.freeze([{ value: ordered.values[0]! }]),
+            }),
+            right: available,
+          })
+        : available,
     );
   }
   registerMojoTypeImports(selection.sourceType, context);

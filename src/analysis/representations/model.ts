@@ -52,6 +52,12 @@ export type MojoNarrowingView =
       readonly kind: "union-subset";
       readonly carrier: MojoPhysicalTypeId;
       readonly allowedAlternatives: readonly MojoNarrowingAlternative[];
+    }
+  | {
+      readonly kind: "project-downcast";
+      readonly carrier: MojoPhysicalTypeId;
+      readonly dispatchType: MojoTargetTypeRef;
+      readonly target: MojoNarrowingAlternative;
     };
 
 export interface MojoRepresentationCatalog {
