@@ -27,6 +27,7 @@ export interface MojoPlanningContext {
   readonly bindingOverrides: ReadonlyMap<Node, MojoBindingPlanOverride>;
   readonly errorType?: MojoTargetTypeRef;
   readonly selfType?: MojoTargetTypeRef;
+  readonly selfExpression?: MojoExpression;
   readonly initializingState?: {
     readonly definition: import("../../../target-model/types/project.js").MojoProjectTypeDefinition;
     readonly referenceType: MojoTargetTypeRef;
@@ -135,8 +136,19 @@ export function withMojoErrorType(
 export function withMojoSelfType(
   context: MojoPlanningContext,
   selfType: MojoTargetTypeRef | undefined,
+  selfExpression?: MojoExpression,
 ): MojoPlanningContext {
-  return selfType === undefined ? context : Object.freeze({ ...context, selfType });
+  return selfType === undefined
+    ? context
+    : Object.freeze({
+        ...context,
+        selfType,
+        ...(selfExpression === undefined ? {} : { selfExpression }),
+      });
+}
+
+export function mojoSelfExpression(context: MojoPlanningContext): MojoExpression {
+  return context.selfExpression ?? Object.freeze({ kind: "path", path: "self" });
 }
 
 export function mojoBindingPlanOverride(

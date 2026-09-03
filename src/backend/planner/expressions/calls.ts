@@ -4,6 +4,7 @@ import {
   appendMojoPlanningDiagnostic,
   mojoModuleMemberExpression,
   mojoModulePathExpression,
+  mojoSelfExpression,
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import {
@@ -285,12 +286,12 @@ export function planMojoCall(
         const exactReceiver = exactDispatch && context.selfType !== undefined
           ? exactConversion === undefined &&
               mojoTargetTypeEquals(context.selfType, selection.target.receiverType)
-            ? mojoValue(Object.freeze({ kind: "path", path: "self" }))
+            ? mojoValue(mojoSelfExpression(context))
             : exactConversion === undefined
               ? undefined
               : mojoValue(Object.freeze({
                   kind: "method-call",
-                  receiver: Object.freeze({ kind: "path", path: "self" }),
+                  receiver: mojoSelfExpression(context),
                   name: exactConversion.name,
                   arguments: Object.freeze([]),
                 }))

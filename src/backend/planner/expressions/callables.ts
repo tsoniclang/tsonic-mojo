@@ -227,15 +227,15 @@ function planNativeCallableExpression(
   if (existingName === undefined) {
     context.callableArtifactNames.set(selection.expression, name);
     const declaration = planMojoProjectFunction(Object.freeze({
-      kind: "function" as const,
+      kind: selection.kind,
       declaration: selection.expression,
-      sourceFile: context.module.sourceFile,
+      sourceFile: selection.sourceFile,
       name,
-      typeParameters: Object.freeze([]),
+      typeParameters: selection.typeParameters,
       parameters: selection.parameters,
       resultType: selection.resultType,
       body: selection.body,
-      asynchronous: false,
+      asynchronous: selection.asynchronous,
       raises: selection.raises,
       ...(selection.errorType === undefined ? {} : { errorType: selection.errorType }),
     }), context);
@@ -460,15 +460,15 @@ function planCallableBody(
   context: MojoPlanningContext,
 ): readonly MojoStatement[] | undefined {
   return planMojoFunctionBody(Object.freeze({
-    kind: "function",
+    kind: selection.kind,
     declaration: selection.expression,
-    sourceFile: context.module.sourceFile,
+    sourceFile: selection.sourceFile,
     name: "invoke",
-    typeParameters: Object.freeze([]),
+    typeParameters: selection.typeParameters,
     parameters: selection.parameters,
     resultType: selection.resultType,
     body: selection.body,
-    asynchronous: false,
+    asynchronous: selection.asynchronous,
     raises: selection.raises,
     ...(selection.errorType === undefined ? {} : { errorType: selection.errorType }),
   }), context);

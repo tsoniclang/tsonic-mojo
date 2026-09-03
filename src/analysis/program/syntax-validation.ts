@@ -169,7 +169,23 @@ export function validateMojoFunctionSyntax(
             if (contribution.kind === "index-entry" && contribution.key.kind === "expression") {
               validateExpression(contribution.key.expression);
             }
-            validateExpression(contribution.value);
+            if (contribution.kind === "field" || contribution.kind === "index-entry" ||
+              contribution.kind === "spread") {
+              validateExpression(contribution.value);
+              continue;
+            }
+            const callable = callableExpressions.get(contribution.element);
+            if (callable === undefined) {
+              diagnostics.push(diagnostic(
+                "MOJO_OBJECT_CALLABLE_SELECTION_UNRESOLVED",
+                "Object-literal callable member has no sealed Mojo implementation selection.",
+                contribution.element,
+              ));
+              continue;
+            }
+            for (const parameter of callable.parameters) validateExpression(parameter.initializer);
+            if (ast.is.IsBlock(callable.body)) validateStatement(callable.body);
+            else validateExpression(callable.body);
           }
         } else {
           for (const field of selected.fields) validateExpression(field.value);

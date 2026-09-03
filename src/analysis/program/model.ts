@@ -31,6 +31,7 @@ import type { MojoParameterDisposition } from "../representations/model.js";
 import type { MojoBindingDisposition } from "../representations/model.js";
 import type { MojoCallSelection } from "./call-model.js";
 import type {
+  MojoCallableCapture,
   MojoCallableExpressionSelection,
   MojoTemplateExpressionSelection,
   MojoBindingPatternSelection,
@@ -319,6 +320,64 @@ export interface MojoProjectConcreteDispatch {
   readonly views: readonly MojoProjectConcreteViewDispatch[];
 }
 
+export interface MojoProjectObjectLiteralCallableAdapter {
+  readonly variant: MojoProjectDispatchCallableVariant;
+  readonly implementation: MojoCallableExpressionSelection;
+  readonly genericArguments: readonly import("../../target-model/types/model.js").MojoTargetGenericArgument[];
+  readonly parameters: readonly MojoAnalyzedParameter[];
+  readonly resultType: MojoTargetTypeRef;
+  readonly errorType?: MojoTargetTypeRef;
+  readonly implementationParameters: readonly MojoAnalyzedParameter[];
+  readonly argumentConversions: readonly MojoValueConversion[];
+  readonly resultConversion: MojoValueConversion;
+  readonly adapterName: string;
+}
+
+export type MojoProjectObjectLiteralFieldAdapter =
+  | {
+      readonly kind: "stored";
+      readonly field: MojoProjectDispatchField;
+      readonly stateName: string;
+      readonly storageType: MojoTargetTypeRef;
+      readonly readType?: MojoTargetTypeRef;
+      readonly writeType?: MojoTargetTypeRef;
+      readonly readResultConversion?: MojoValueConversion;
+      readonly writeValueConversion?: MojoValueConversion;
+      readonly readAdapterName?: string;
+      readonly writeAdapterName?: string;
+    }
+  | {
+      readonly kind: "accessor";
+      readonly field: MojoProjectDispatchField;
+      readonly readImplementation?: MojoCallableExpressionSelection;
+      readonly writeImplementation?: MojoCallableExpressionSelection;
+      readonly readType?: MojoTargetTypeRef;
+      readonly writeType?: MojoTargetTypeRef;
+      readonly readResultConversion?: MojoValueConversion;
+      readonly writeValueConversion?: MojoValueConversion;
+      readonly readAdapterName?: string;
+      readonly writeAdapterName?: string;
+    };
+
+export interface MojoProjectObjectLiteralViewDispatch {
+  readonly view: MojoProjectDispatchView;
+  readonly viewType: MojoTargetTypeRef;
+  readonly factoryName: string;
+  readonly callableAdapters: readonly MojoProjectObjectLiteralCallableAdapter[];
+  readonly fieldAdapters: readonly MojoProjectObjectLiteralFieldAdapter[];
+}
+
+export interface MojoProjectObjectLiteralDispatch {
+  readonly expression: Node;
+  readonly selection: Extract<MojoObjectLiteralSelection, { readonly kind: "interface" }>;
+  readonly captures: readonly {
+    readonly capture: MojoCallableCapture;
+    readonly stateName: string;
+    readonly storageType: MojoTargetTypeRef;
+  }[];
+  readonly views: readonly MojoProjectObjectLiteralViewDispatch[];
+}
+
 export interface MojoProjectDispatchPlan {
   readonly issues: readonly {
     readonly node: Node;
@@ -342,6 +401,7 @@ export interface MojoProjectDispatchPlan {
   concreteFor(
     definition: import("../../target-model/types/project.js").MojoProjectTypeDefinition,
   ): MojoProjectConcreteDispatch | undefined;
+  objectLiteralFor(expression: Node): MojoProjectObjectLiteralDispatch | undefined;
   statePath(
     definition: import("../../target-model/types/project.js").MojoProjectTypeDefinition,
     declaration: Node,

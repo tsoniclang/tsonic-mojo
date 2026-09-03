@@ -29,6 +29,7 @@ import type {
   MojoAnalyzedFunction,
   MojoAnalyzedProjectProperty,
   MojoCallSelection,
+  MojoCallableExpressionSelection,
   MojoElementSelection,
   MojoIterationSelection,
   MojoNullishCoalescingSelection,
@@ -106,6 +107,7 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly typeTestSelections: WeakMap<Node, MojoTypeTestSelection>;
   readonly nullishCoalescingSelections: WeakMap<Node, MojoNullishCoalescingSelection>;
   readonly objectLiteralSelections: WeakMap<Node, MojoObjectLiteralSelection>;
+  readonly objectLiteralNodes: Set<Node>;
   readonly templateExpressionNodes: Set<Node>;
   readonly bindingPatternSelections: WeakMap<Node, MojoBindingPatternSelection>;
   readonly returnValueTransfers: WeakSet<Node>;
@@ -124,7 +126,14 @@ export interface MojoExecutableRegionAnalysisInput {
     expression: Node,
     sourceFile: SourceFile,
     owner: MojoAnalyzedClassOwner | undefined,
-  ) => void;
+    options?: {
+      readonly selectedType?: import("@tsonic/tsts").Type;
+      readonly kind?: import("./model.js").MojoAnalyzedCallableKind;
+      readonly name?: string;
+      readonly allowAsynchronous?: boolean;
+      readonly captureSelf?: boolean;
+    },
+  ) => MojoCallableExpressionSelection | undefined;
 }
 
 export type MojoExecutableRegionAnalysisEnvironment = Omit<
@@ -341,7 +350,23 @@ export function analyzeMojoExecutableRegion(
             expressionTypes: input.expressionTypes,
             ...(expectedType === undefined ? {} : { expectedType }),
             interfaceByTypeId: input.interfaceByTypeId,
+            projectRelationships: input.projectRelationships,
             fieldByDeclaration: input.fieldByDeclaration,
+            callableByDeclaration: input.callableByDeclaration,
+            analyzeCallable(element, selectedType, kind, name, owner) {
+              return input.analyzeCallableExpression(
+                element,
+                sourceFile,
+                owner,
+                {
+                  selectedType,
+                  kind,
+                  name,
+                  allowAsynchronous: true,
+                  captureSelf: false,
+                },
+              );
+            },
             resolveType(type) {
               return resolveType(type, undefined, input, semantics);
             },
@@ -363,6 +388,7 @@ export function analyzeMojoExecutableRegion(
       pendingObjects.delete(node);
       if (selection !== undefined) {
         input.objectLiteralSelections.set(node, selection);
+        input.objectLiteralNodes.add(node);
         progressed = true;
       }
     }

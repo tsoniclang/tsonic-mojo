@@ -23,13 +23,18 @@ export interface MojoRecursiveCallableBinding {
 
 export interface MojoCallableExpressionSelection {
   readonly expression: Node;
+  readonly sourceFile: import("@tsonic/tsts").SourceFile;
+  readonly kind: import("./model.js").MojoAnalyzedCallableKind;
+  readonly typeParameters: readonly import("./model.js").MojoAnalyzedTypeParameter[];
   readonly parameters: readonly MojoAnalyzedParameter[];
   readonly captures: readonly MojoCallableCapture[];
   readonly recursiveBinding?: MojoRecursiveCallableBinding;
   readonly resultType: MojoTargetTypeRef;
   readonly body: Node;
+  readonly asynchronous: boolean;
   readonly raises: boolean;
   readonly errorType?: MojoTargetTypeRef;
+  readonly owner?: import("./model.js").MojoAnalyzedClassOwner;
   readonly callableType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
 }
 
@@ -126,7 +131,7 @@ export type MojoObjectLiteralContribution =
       readonly kind: "field";
       readonly element: Node;
       readonly value: Node;
-      readonly field: MojoAnalyzedInterfaceField;
+      readonly field: MojoAnalyzedInterfaceField | import("./model.js").MojoAnalyzedAccessorProperty;
       readonly fieldType: MojoTargetTypeRef;
     }
   | {
@@ -154,6 +159,21 @@ export type MojoObjectLiteralContribution =
       readonly indexSignature: MojoAnalyzedInterfaceIndexSignature;
       readonly keyType: MojoTargetTypeRef;
       readonly valueType: MojoTargetTypeRef;
+    }
+  | {
+      readonly kind: "method";
+      readonly element: Node;
+      readonly contractDeclarations: readonly Node[];
+    }
+  | {
+      readonly kind: "getter";
+      readonly element: Node;
+      readonly contractDeclarations: readonly Node[];
+    }
+  | {
+      readonly kind: "setter";
+      readonly element: Node;
+      readonly contractDeclarations: readonly Node[];
     };
 
 export type MojoObjectLiteralSelection =

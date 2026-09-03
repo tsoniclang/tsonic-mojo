@@ -2,18 +2,23 @@ import type { Node, SourceFile } from "@tsonic/tsts";
 import {
   ObjectLiteralProperty_Value,
   SpreadAssignment_Expression,
+  selectSourceObjectLiteralAccessors,
 } from "@tsonic/target-api/source";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { substituteMojoTargetType } from "../../target-model/types/substitution.js";
+import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
 import type {
   MojoAnalyzedInterface,
   MojoAnalyzedInterfaceField,
   MojoAnalyzedInterfaceIndexSignature,
+  MojoAnalyzedClassOwner,
+  MojoAnalyzedProjectCallable,
+  MojoCallableExpressionSelection,
   MojoAnalyzedProjectProperty,
   MojoObjectLiteralContribution,
   MojoObjectLiteralSelection,
@@ -26,7 +31,16 @@ export interface MojoObjectLiteralAnalysisInput {
   readonly expressionTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly expectedType?: MojoTargetTypeRef;
   readonly interfaceByTypeId: ReadonlyMap<string, MojoAnalyzedInterface>;
+  readonly projectRelationships: MojoProjectTypeRelationships;
   readonly fieldByDeclaration: WeakMap<Node, MojoAnalyzedProjectProperty>;
+  readonly callableByDeclaration: WeakMap<Node, MojoAnalyzedProjectCallable>;
+  readonly analyzeCallable: (
+    element: Node,
+    selectedType: import("@tsonic/tsts").Type,
+    kind: "method" | "getter" | "setter",
+    name: string,
+    owner: MojoAnalyzedClassOwner,
+  ) => MojoCallableExpressionSelection | undefined;
   readonly resolveType: (type: import("@tsonic/tsts").Type | undefined) => MojoTargetTypeRef | undefined;
   readonly diagnostics: TargetDiagnostic[];
 }
@@ -61,20 +75,83 @@ export function analyzeMojoObjectLiteral(
     reject(input, "MOJO_OBJECT_RESULT_CONVERSION_UNPROVEN", resultConversion.reason, expression);
     return undefined;
   }
-  const instantiatedFields = instantiateFields(interface_, constructionType);
+  const instantiatedClosure = instantiateInterfaceClosure(constructionType, input);
+  const instantiatedFields = instantiatedClosure?.fields;
   if (instantiatedFields === undefined) {
     reject(input, "MOJO_OBJECT_INTERFACE_INSTANTIATION_UNRESOLVED", "Object literal interface arguments do not exactly instantiate its declared fields.", expression);
     return undefined;
   }
   const fieldTypes = new Map(instantiatedFields.map((field) => [field.field.declaration, field] as const));
-  const instantiatedIndexSignatures = instantiateIndexSignatures(interface_, constructionType);
+  const instantiatedIndexSignatures = instantiatedClosure?.indexSignatures;
   if (instantiatedIndexSignatures === undefined) {
     reject(input, "MOJO_OBJECT_INDEX_INSTANTIATION_UNRESOLVED", "Object literal interface arguments do not exactly instantiate its declared index signatures.", expression);
     return undefined;
   }
   const indexTypes = new Map(instantiatedIndexSignatures.map((entry) => [entry.indexSignature.declaration, entry] as const));
+  const owner = Object.freeze({
+    name: interface_.name,
+    stateName: interface_.stateName,
+    type: constructionType,
+  });
+  const accessorSelection = selectSourceObjectLiteralAccessors(ast, semantics, expression);
+  if (accessorSelection.kind === "rejected") {
+    reject(
+      input,
+      "MOJO_OBJECT_ACCESSOR_SELECTION_UNRESOLVED",
+      accessorSelection.reason,
+      accessorSelection.element,
+    );
+    return undefined;
+  }
+  const accessors = new Map<Node, {
+    readonly kind: "getter" | "setter";
+    readonly selectedType: import("@tsonic/tsts").Type;
+    readonly contractDeclarations: readonly Node[];
+    readonly name: string;
+  }>();
+  const accessorAssignments = new Set<Node>();
+  if (accessorSelection.kind === "resolved") {
+    for (const member of accessorSelection.members) {
+      const properties = uniqueAccessorProperties(
+        member.sourceSelectedDeclarations,
+        input.fieldByDeclaration,
+      );
+      const property = properties.length === 1 ? properties[0] : undefined;
+      if (property === undefined) {
+        reject(
+          input,
+          "MOJO_OBJECT_ACCESSOR_CONTRACT_UNRESOLVED",
+          "Object-literal accessor requires one exact checker-selected project-interface property.",
+          member.getter?.element ?? member.setter?.element ?? expression,
+        );
+        return undefined;
+      }
+      const declarations = Object.freeze([...member.sourceSelectedDeclarations]);
+      for (const declaration of declarations) accessorAssignments.add(declaration);
+      if (member.getter !== undefined) {
+        accessors.set(member.getter.element, Object.freeze({
+          kind: "getter",
+          selectedType: member.getter.sourceElementType,
+          contractDeclarations: declarations,
+          name: property.kind === "accessor-property"
+            ? property.read?.name ?? `_get_${member.sourceName}`
+            : `_get_${member.sourceName}`,
+        }));
+      }
+      if (member.setter !== undefined) {
+        accessors.set(member.setter.element, Object.freeze({
+          kind: "setter",
+          selectedType: member.setter.sourceElementType,
+          contractDeclarations: declarations,
+          name: property.kind === "accessor-property"
+            ? property.write?.name ?? `_set_${member.sourceName}`
+            : `_set_${member.sourceName}`,
+        }));
+      }
+    }
+  }
   const contributions: MojoObjectLiteralContribution[] = [];
-  const assigned = new Set<Node>();
+  const assigned = new Set<Node>(accessorAssignments);
   for (const element of ast.properties(expression)) {
     if (element === undefined) {
       reject(input, "MOJO_OBJECT_ELEMENT_EVIDENCE_INCOMPLETE", "Object literal contains an undefined source element.", expression);
@@ -98,6 +175,70 @@ export function analyzeMojoObjectLiteral(
       for (const field of instantiatedFields) assigned.add(field.field.declaration);
       continue;
     }
+    if (ast.is.IsMethodDeclaration(element)) {
+      const selected = semantics.operations.objectLiteralElement(element);
+      const contracts = selected === undefined
+        ? []
+        : uniqueCallableContracts(
+            [selected.sourceSelectedDeclaration, ...selected.sourceSelectedDeclarations],
+            input.callableByDeclaration,
+          );
+      const contractDeclarations = Object.freeze(contracts.map((contract) =>
+        contract.contract.declaration));
+      const implementation = selected === undefined || selected.objectLiteral !== expression ||
+          selected.element !== element || selected.elementKind !== "method" ||
+          contracts.length === 0
+        ? undefined
+        : input.analyzeCallable(
+            element,
+            selected.sourceElementType,
+            "method",
+            contracts[0]!.contract.name,
+            owner,
+          );
+      if (implementation === undefined) {
+        reject(
+          input,
+          "MOJO_OBJECT_METHOD_SELECTION_UNRESOLVED",
+          "Object-literal method requires exact checker-selected interface contracts and one closed implementation body.",
+          element,
+        );
+        return undefined;
+      }
+      contributions.push(Object.freeze({
+        kind: "method",
+        element,
+        contractDeclarations,
+      }));
+      continue;
+    }
+    if (ast.is.IsGetAccessorDeclaration(element) || ast.is.IsSetAccessorDeclaration(element)) {
+      const accessor = accessors.get(element);
+      const implementation = accessor === undefined
+        ? undefined
+        : input.analyzeCallable(
+            element,
+            accessor.selectedType,
+            accessor.kind,
+            accessor.name,
+            owner,
+          );
+      if (accessor === undefined || implementation === undefined) {
+        reject(
+          input,
+          "MOJO_OBJECT_ACCESSOR_IMPLEMENTATION_UNRESOLVED",
+          "Object-literal accessor requires one exact checker-selected interface contract and closed implementation body.",
+          element,
+        );
+        return undefined;
+      }
+      contributions.push(Object.freeze({
+        kind: accessor.kind,
+        element,
+        contractDeclarations: accessor.contractDeclarations,
+      }));
+      continue;
+    }
     if (!ast.is.IsPropertyAssignment(element) && !ast.is.IsShorthandPropertyAssignment(element)) {
       return undefined;
     }
@@ -119,13 +260,16 @@ export function analyzeMojoObjectLiteral(
     const instantiated = selectedField?.kind === "interface-field"
       ? fieldTypes.get(selectedField.declaration)
       : undefined;
+    const instantiatedAccessor = selectedField?.kind === "accessor-property"
+      ? instantiateAccessorProperty(selectedField, constructionType, input.projectRelationships)
+      : undefined;
     const instantiatedIndex = selectedField?.kind === "interface-index-signature"
       ? indexTypes.get(selectedField.declaration)
       : undefined;
     const expectedKind = ast.is.IsPropertyAssignment(element) ? "property" : "shorthand";
     if (selected === undefined || selected.objectLiteral !== expression || selected.element !== element ||
       selected.elementKind !== expectedKind || value === undefined ||
-      (instantiated === undefined && instantiatedIndex === undefined)) {
+      (instantiated === undefined && instantiatedAccessor === undefined && instantiatedIndex === undefined)) {
       reject(input, "MOJO_OBJECT_FIELD_SELECTION_UNRESOLVED", "Object property requires one exact checker-selected project-interface field.", element);
       return undefined;
     }
@@ -146,7 +290,7 @@ export function analyzeMojoObjectLiteral(
       }));
       continue;
     }
-    if (instantiated === undefined) {
+    if (instantiated === undefined && instantiatedAccessor === undefined) {
       reject(input, "MOJO_OBJECT_FIELD_SELECTION_UNRESOLVED", "Object property has no exact instantiated project-interface field.", element);
       return undefined;
     }
@@ -154,10 +298,12 @@ export function analyzeMojoObjectLiteral(
       kind: "field",
       element,
       value,
-      field: instantiated.field,
-      fieldType: instantiated.fieldType,
+      field: instantiated?.field ?? instantiatedAccessor!.property,
+      fieldType: instantiated?.fieldType ?? instantiatedAccessor!.fieldType,
     }));
-    assigned.add(instantiated.field.declaration);
+    for (const declaration of instantiated === undefined
+      ? instantiatedAccessor!.property.declarations
+      : [instantiated.field.declaration]) assigned.add(declaration);
   }
   const missing = instantiatedFields.find(({ field }) => !field.optional && !assigned.has(field.declaration));
   if (missing !== undefined) {
@@ -175,6 +321,57 @@ export function analyzeMojoObjectLiteral(
     indexSignatures: instantiatedIndexSignatures,
     contributions: Object.freeze(contributions),
   });
+}
+
+function uniqueCallableContracts(
+  declarations: readonly (Node | undefined)[],
+  index: WeakMap<Node, MojoAnalyzedProjectCallable>,
+): readonly MojoAnalyzedProjectCallable[] {
+  return [...new Set(declarations.flatMap((declaration) => {
+    const callable = declaration === undefined ? undefined : index.get(declaration);
+    return callable === undefined ? [] : [callable];
+  }))];
+}
+
+function uniqueAccessorProperties(
+  declarations: readonly Node[],
+  index: WeakMap<Node, MojoAnalyzedProjectProperty>,
+): readonly Extract<MojoAnalyzedProjectProperty, {
+  readonly kind: "accessor-property" | "interface-field";
+}>[] {
+  return [...new Set(declarations.flatMap((declaration) => {
+    const property = index.get(declaration);
+    return property?.kind === "accessor-property" || property?.kind === "interface-field"
+      ? [property]
+      : [];
+  }))];
+}
+
+function instantiateAccessorProperty(
+  property: Extract<MojoAnalyzedProjectProperty, { readonly kind: "accessor-property" }>,
+  receiverType: MojoTargetTypeRef,
+  relationships: MojoProjectTypeRelationships,
+): { readonly property: typeof property; readonly fieldType: MojoTargetTypeRef } | undefined {
+  const readType = property.read === undefined
+    ? undefined
+    : relationships.instantiateMemberType(
+        property.read.declaration,
+        receiverType,
+        property.read.resultType,
+      );
+  const writeParameter = property.write?.parameters[0];
+  const writeType = writeParameter === undefined
+    ? undefined
+    : relationships.instantiateMemberType(
+        property.write!.declaration,
+        receiverType,
+        writeParameter.callType,
+      );
+  const fieldType = readType ?? writeType;
+  if (fieldType === undefined ||
+    (readType !== undefined && writeType !== undefined &&
+      !mojoTargetTypeEquals(readType, writeType))) return undefined;
+  return Object.freeze({ property, fieldType });
 }
 
 function selectConstructionType(
@@ -318,6 +515,60 @@ function instantiateFields(
       packs: new Map(),
     }),
   })));
+}
+
+function instantiateInterfaceClosure(
+  constructionType: MojoTargetTypeRef,
+  input: MojoObjectLiteralAnalysisInput,
+): {
+  readonly fields: readonly {
+    readonly field: MojoAnalyzedInterfaceField;
+    readonly fieldType: MojoTargetTypeRef;
+  }[];
+  readonly indexSignatures: readonly {
+    readonly indexSignature: MojoAnalyzedInterfaceIndexSignature;
+    readonly keyType: MojoTargetTypeRef;
+    readonly valueType: MojoTargetTypeRef;
+  }[];
+} | undefined {
+  const related = [...input.interfaceByTypeId.values()].flatMap((interface_) => {
+    const relationship = input.projectRelationships.relationship(
+      constructionType,
+      interface_.definition,
+    );
+    return relationship.kind === "related"
+      ? [Object.freeze({ interface_, type: relationship.targetType })]
+      : [];
+  });
+  const fields: {
+    readonly field: MojoAnalyzedInterfaceField;
+    readonly fieldType: MojoTargetTypeRef;
+  }[] = [];
+  const indexSignatures: {
+    readonly indexSignature: MojoAnalyzedInterfaceIndexSignature;
+    readonly keyType: MojoTargetTypeRef;
+    readonly valueType: MojoTargetTypeRef;
+  }[] = [];
+  for (const entry of related) {
+    const instantiatedFields = instantiateFields(entry.interface_, entry.type);
+    const instantiatedIndexes = instantiateIndexSignatures(entry.interface_, entry.type);
+    if (instantiatedFields === undefined || instantiatedIndexes === undefined) return undefined;
+    for (const field of instantiatedFields) {
+      if (!fields.some((candidate) => candidate.field.declaration === field.field.declaration)) {
+        fields.push(field);
+      }
+    }
+    for (const indexSignature of instantiatedIndexes) {
+      if (!indexSignatures.some((candidate) =>
+        candidate.indexSignature.declaration === indexSignature.indexSignature.declaration)) {
+        indexSignatures.push(indexSignature);
+      }
+    }
+  }
+  return Object.freeze({
+    fields: Object.freeze(fields),
+    indexSignatures: Object.freeze(indexSignatures),
+  });
 }
 
 function reject(

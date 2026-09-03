@@ -4,6 +4,7 @@ import {
   appendMojoPlanningDiagnostic,
   mojoBindingPlanOverride,
   mojoModuleMemberExpression,
+  mojoSelfExpression,
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import { isJsString } from "./js-carriers.js";
@@ -23,6 +24,8 @@ export function planMojoLeafExpression(
   if (actualType?.kind === "null" || actualType?.kind === "undefined") {
     registerMojoTypeImports(actualType, context);
     planned = { kind: "construct", type: actualType, arguments: Object.freeze([]) };
+  } else if (ast.kindName(node) === "KindThisKeyword" && context.selfType !== undefined) {
+    planned = mojoSelfExpression(context);
   } else if (ast.is.IsIdentifier(node) || ast.kindName(node) === "KindThisKeyword") {
     const override = mojoBindingPlanOverride(node, context);
     if (override !== undefined) {

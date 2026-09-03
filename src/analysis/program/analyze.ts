@@ -103,6 +103,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
   const typeTestSelections = new WeakMap<Node, MojoTypeTestSelection>();
   const nullishCoalescingSelections = new WeakMap<Node, import("./model.js").MojoNullishCoalescingSelection>();
   const objectLiteralSelections = new WeakMap<Node, MojoObjectLiteralSelection>();
+  const objectLiteralNodes = new Set<Node>();
   const callableExpressionSelections = new WeakMap<Node, MojoCallableExpressionSelection>();
   const callableExpressionNodes = new Set<Node>();
   const callableExpressionByDeclaration = new WeakMap<Node, Node>();
@@ -295,11 +296,23 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     expression: Node,
     sourceFile: SourceFile,
     owner: import("./model.js").MojoAnalyzedClassOwner | undefined,
-  ): void => {
+    options: {
+      readonly selectedType?: import("@tsonic/tsts").Type;
+      readonly kind?: import("./model.js").MojoAnalyzedCallableKind;
+      readonly name?: string;
+      readonly allowAsynchronous?: boolean;
+      readonly captureSelf?: boolean;
+    } = {},
+  ): MojoCallableExpressionSelection | undefined => {
     analyzeAndSealMojoCallableExpression({
       expression,
       sourceFile,
       ...(owner === undefined ? {} : { owner }),
+      ...(options.selectedType === undefined ? {} : { selectedType: options.selectedType }),
+      ...(options.kind === undefined ? {} : { kind: options.kind }),
+      ...(options.name === undefined ? {} : { name: options.name }),
+      ...(options.allowAsynchronous === true ? { allowAsynchronous: true } : {}),
+      ...(options.captureSelf === false ? { captureSelf: false } : {}),
       allocateLocalName: createNameAllocator(),
       ensureLocationStorage(declaration, bindingName) {
         const existing = locationStorageNames.get(declaration);
@@ -318,6 +331,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     if (callableExpressionSelections.get(expression) !== undefined) {
       callableExpressionNodes.add(expression);
     }
+    return callableExpressionSelections.get(expression);
   };
   executableEnvironment = {
     source: input.source,
@@ -348,6 +362,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     typeTestSelections,
     nullishCoalescingSelections,
     objectLiteralSelections,
+    objectLiteralNodes,
     templateExpressionNodes,
     bindingPatternSelections,
     returnValueTransfers,
@@ -607,6 +622,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     catchErrorTypes: effects.catchErrorTypes,
     callableExpressionSelections,
     callableExpressionNodes,
+    objectLiteralNodes,
     callableDeclarationByExpression,
     templateExpressionSelections,
     templateExpressionNodes,

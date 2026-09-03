@@ -30,6 +30,10 @@ export interface MojoCallableExpressionSignatureInput {
   readonly expression: Node;
   readonly sourceFile: SourceFile;
   readonly owner?: MojoAnalyzedClassOwner;
+  readonly selectedType?: import("@tsonic/tsts").Type;
+  readonly kind?: import("../program/model.js").MojoAnalyzedCallableKind;
+  readonly name?: string;
+  readonly allowAsynchronous?: boolean;
   readonly source: TargetSourceProgram;
   readonly providerSemantics: MojoProviderSemantics;
   readonly projectTypes: MojoProjectTypeCatalog;
@@ -49,7 +53,7 @@ export function analyzeMojoCallableExpressionSignature(
 ): MojoAnalyzedFunction | undefined {
   const { ast } = input.source;
   const semantics = input.source.semantics.forFile(input.sourceFile);
-  const selectedType = semantics.types.expressionType(input.expression);
+  const selectedType = input.selectedType ?? semantics.types.expressionType(input.expression);
   const callableEvidence = selectedType === undefined
     ? undefined
     : semantics.types.callable(selectedType);
@@ -74,17 +78,18 @@ export function analyzeMojoCallableExpressionSignature(
       : { sourceCallableErrorType: input.sourceCallableErrorType }),
     declaration: input.expression,
     sourceFile: input.sourceFile,
-    name: "",
+    name: input.name ?? "",
     body,
     allocateLocalName: input.allocateLocalName,
     bindingNames: input.bindingNames,
     bindingTypes: input.bindingTypes,
     diagnostics: input.diagnostics,
     ...(callableEvidence === undefined ? {} : { callable: callableEvidence }),
+    ...(input.kind === undefined ? {} : { kind: input.kind }),
     ...(input.owner === undefined ? {} : { owner: input.owner }),
   });
   if (callable === undefined) return undefined;
-  if (callable.asynchronous) {
+  if (callable.asynchronous && input.allowAsynchronous !== true) {
     input.diagnostics.push(mojoAnalysisDiagnostic(
       "MOJO_ASYNC_CALLABLE_EXPRESSION_NATIVE_LIMIT",
       "The pinned Mojo lambda syntax has no native asynchronous lambda form.",
@@ -120,6 +125,7 @@ export interface MojoCallableCaptureInput {
   readonly moduleBindingByDeclaration: WeakMap<Node, unknown>;
   readonly diagnostics: TargetDiagnostic[];
   readonly recursiveDeclaration?: Node;
+  readonly captureSelf?: boolean;
 }
 
 export function collectMojoCallableCaptures(
@@ -137,7 +143,7 @@ export function collectMojoCallableCaptures(
     walkSourceTree(root, ast, (node): void => {
       if (!valid) return;
       if (ast.kindName(node) === "KindThisKeyword") {
-        capturesSelf = input.owner !== undefined;
+        capturesSelf = input.captureSelf !== false && input.owner !== undefined;
         return;
       }
       if (!ast.is.IsIdentifier(node)) return;
@@ -209,6 +215,11 @@ export interface MojoCallableExpressionAnalysisInput {
   readonly expression: Node;
   readonly sourceFile: SourceFile;
   readonly owner?: MojoAnalyzedClassOwner;
+  readonly selectedType?: import("@tsonic/tsts").Type;
+  readonly kind?: import("../program/model.js").MojoAnalyzedCallableKind;
+  readonly name?: string;
+  readonly allowAsynchronous?: boolean;
+  readonly captureSelf?: boolean;
   readonly allocateLocalName: (sourceName: string) => string;
   readonly moduleBindingByDeclaration: WeakMap<Node, unknown>;
   readonly ensureLocationStorage: (declaration: Node, bindingName: string) => string;
@@ -229,6 +240,10 @@ export function analyzeAndSealMojoCallableExpression(
     expression: input.expression,
     sourceFile: input.sourceFile,
     ...(input.owner === undefined ? {} : { owner: input.owner }),
+    ...(input.selectedType === undefined ? {} : { selectedType: input.selectedType }),
+    ...(input.kind === undefined ? {} : { kind: input.kind }),
+    ...(input.name === undefined ? {} : { name: input.name }),
+    ...(input.allowAsynchronous === true ? { allowAsynchronous: true } : {}),
     source: environment.source,
     providerSemantics: environment.providerSemantics,
     projectTypes: environment.projectTypes,
@@ -371,6 +386,7 @@ export function analyzeAndSealMojoCallableExpression(
     moduleBindingByDeclaration: input.moduleBindingByDeclaration,
     diagnostics: environment.diagnostics,
     ...(declaration === undefined ? {} : { recursiveDeclaration: declaration }),
+    ...(input.captureSelf === false ? { captureSelf: false } : {}),
   });
   const selectedType = environment.expressionTypes.get(input.expression);
   if (captureAnalysis === undefined || selectedType?.kind !== "callable" ||
@@ -396,6 +412,9 @@ export function analyzeAndSealMojoCallableExpression(
   environment.expressionTypes.set(input.expression, callableType);
   input.selections.set(input.expression, Object.freeze({
     expression: input.expression,
+    sourceFile: input.sourceFile,
+    kind: callable.kind,
+    typeParameters: callable.typeParameters,
     parameters: callable.parameters,
     captures: captureAnalysis.captures,
     ...(captureAnalysis.recursiveBinding === undefined
@@ -403,7 +422,9 @@ export function analyzeAndSealMojoCallableExpression(
       : { recursiveBinding: captureAnalysis.recursiveBinding }),
     resultType: callable.resultType,
     body: callable.body,
+    asynchronous: callable.asynchronous,
     raises,
+    ...(input.owner === undefined ? {} : { owner: input.owner }),
     callableType,
   }));
   if (declaration !== undefined) {
@@ -503,5 +524,7 @@ function nodeIsWithin(
 }
 
 function isNestedCallable(node: Node, ast: TargetSourceProgram["ast"]): boolean {
-  return ast.is.IsFunctionExpression(node) || ast.is.IsArrowFunction(node);
+  return ast.is.IsFunctionExpression(node) || ast.is.IsArrowFunction(node) ||
+    ast.is.IsMethodDeclaration(node) || ast.is.IsGetAccessorDeclaration(node) ||
+    ast.is.IsSetAccessorDeclaration(node);
 }

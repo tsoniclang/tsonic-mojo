@@ -61,6 +61,7 @@ export interface MojoProgramResultFinalizationInput {
   readonly catchErrorTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly callableExpressionSelections: WeakMap<Node, MojoCallableExpressionSelection>;
   readonly callableExpressionNodes: ReadonlySet<Node>;
+  readonly objectLiteralNodes: ReadonlySet<Node>;
   readonly callableDeclarationByExpression: WeakMap<Node, Node>;
   readonly templateExpressionSelections: WeakMap<Node, MojoTemplateExpressionSelection>;
   readonly templateExpressionNodes: ReadonlySet<Node>;
@@ -88,6 +89,7 @@ export function finalizeMojoProgramResult(
     catchErrorTypes,
     callableExpressionSelections,
     callableExpressionNodes,
+    objectLiteralNodes,
     callableDeclarationByExpression,
     templateExpressionSelections,
     templateExpressionNodes,
@@ -280,6 +282,9 @@ export function finalizeMojoProgramResult(
     callNodes: environment.callNodes,
     callSelections,
     implementations: finalizedByDeclaration,
+    objectLiteralNodes,
+    objectLiteralSelections,
+    callableExpressionSelections,
     libraryOutput: configuration.outputType !== "bin",
   });
   for (const issue of projectDispatch.issues) {

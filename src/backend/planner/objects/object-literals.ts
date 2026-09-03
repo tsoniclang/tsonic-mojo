@@ -13,6 +13,7 @@ import { applyMojoConversion } from "../expressions/support.js";
 import { withMojoValue } from "../expressions/value-plan.js";
 import type { MojoValuePlan } from "../expressions/value-plan.js";
 import { planDictionaryKey } from "../expressions/conditional-values.js";
+import { planMojoPolymorphicObjectLiteral } from "./polymorphism/object-literals.js";
 
 export function planMojoProjectObjectLiteral(
   node: Node,
@@ -21,6 +22,10 @@ export function planMojoProjectObjectLiteral(
 ): MojoValuePlan | undefined {
   const selection = context.program.queries.objectLiteralSelection(node);
   if (selection?.kind !== "interface") return undefined;
+  const dispatch = context.program.projectDispatch.objectLiteralFor(node);
+  if (dispatch !== undefined) {
+    return planMojoPolymorphicObjectLiteral(node, dispatch, context, planValue);
+  }
   registerMojoTypeImports(selection.constructionType, context);
   registerMojoTypeImports(selection.resultType, context);
   const before: MojoStatement[] = [];
@@ -43,6 +48,7 @@ export function planMojoProjectObjectLiteral(
   }
   for (const contribution of selection.contributions) {
     if (contribution.kind === "field") {
+      if (contribution.field.kind !== "interface-field") return undefined;
       const plan = planValue(contribution.value, context, contribution.fieldType);
       if (plan === undefined) return undefined;
       before.push(...plan.before);
@@ -73,6 +79,8 @@ export function planMojoProjectObjectLiteral(
       }));
       continue;
     }
+    if (contribution.kind === "method" || contribution.kind === "getter" ||
+      contribution.kind === "setter") return undefined;
     const plan = planValue(contribution.value, context, contribution.sourceType);
     if (plan === undefined) return undefined;
     before.push(...plan.before);
