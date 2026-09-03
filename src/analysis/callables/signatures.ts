@@ -1,9 +1,12 @@
 import { argumentPassingFactKey } from "@tsonic/tsts";
-import type { Node, SourceFile, Type } from "@tsonic/tsts";
+import type { Node, Signature, SourceFile, Type } from "@tsonic/tsts";
 import { Node_Initializer, sourceNodeIdentity } from "@tsonic/target-api/source";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
-import type { SourceCallableTypeEvidence } from "@tsonic/target-api/source";
+import type {
+  SourceCallableParameterEvidence,
+  SourceCallableTypeEvidence,
+} from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
@@ -87,14 +90,22 @@ export function analyzeMojoCallableSignature(
   const { ast } = source;
   const semantics = source.semantics.forFile(sourceFile);
   const callableType = semantics.declarations.declaredValueType(declaration);
-  const callable = input.callable ??
-    (callableType === undefined ? undefined : semantics.types.callable(callableType));
-  if (callable === undefined) {
+  const callable = input.callable ?? selectDeclarationCallable(
+    declaration,
+    callableType,
+    semantics,
+    ast,
+  );
+  const callableParameters = callable?.parameters ??
+    (input.kind === "getter" || input.kind === "setter"
+      ? selectAccessorParameters(input)
+      : undefined);
+  if (callableParameters === undefined) {
     append(input, "MOJO_FUNCTION_SIGNATURE_NOT_PROVEN", "The checker supplied no exact callable signature.", declaration);
     return undefined;
   }
   const sourceParameters = ast.parameters(declaration);
-  if (sourceParameters.length !== callable.parameters.length ||
+  if (sourceParameters.length !== callableParameters.length ||
     sourceParameters.some((parameter) => parameter === undefined)) {
     append(input, "MOJO_FUNCTION_PARAMETER_EVIDENCE_MISMATCH", "Function syntax and checker parameter evidence do not align exactly.", declaration);
     return undefined;
@@ -104,7 +115,7 @@ export function analyzeMojoCallableSignature(
   const parameters: MojoAnalyzedParameter[] = [];
   for (const [index, parameter] of (sourceParameters as readonly Node[]).entries()) {
     const nameNode = ast.name(parameter);
-    const selected = callable.parameters[index];
+    const selected = callableParameters[index];
     if (nameNode === undefined || !ast.is.IsIdentifier(nameNode) || selected === undefined ||
       !ast.is.IsParameterDeclaration(parameter)) {
       append(input, "MOJO_PARAMETER_SHAPE_UNSUPPORTED", "Mojo requires one exact named parameter declaration.", parameter);
@@ -112,7 +123,7 @@ export function analyzeMojoCallableSignature(
     }
     const resolved = resolve(input, selected.type, ast.typeNode(parameter));
     if (resolved === undefined) return undefined;
-    const rest = ast.as.AsParameterDeclaration(parameter)?.DotDotDotToken !== undefined;
+    const rest = ast.as.AsParameterDeclaration(parameter)!.DotDotDotToken !== undefined;
     const parameterType = rest ? restElementType(resolved) : resolved;
     if (parameterType === undefined) {
       append(input, "MOJO_REST_PARAMETER_CARRIER_UNSUPPORTED", "A rest parameter requires one exact list element carrier.", parameter);
@@ -164,11 +175,21 @@ export function analyzeMojoCallableSignature(
         : { initializer: Node_Initializer(ast, parameter)! }),
     }));
   }
-  const selectedResultType = input.resultType ?? resolve(
-    input,
-    callable.result.selectedType,
-    callable.result.authoredTypeNode ?? ast.typeNode(declaration),
-  );
+  const selectedResultType = input.resultType ??
+    (input.kind === "setter"
+      ? Object.freeze({ kind: "unit" as const })
+      : callable === undefined
+        ? resolve(
+            input,
+            semantics.declarations.declaredValueType(declaration) ??
+              semantics.declarations.declaredType(declaration),
+            ast.typeNode(declaration),
+          )
+        : resolve(
+            input,
+            callable.result.selectedType,
+            callable.result.authoredTypeNode ?? ast.typeNode(declaration),
+          ));
   if (selectedResultType === undefined) return undefined;
   const asynchronous = ast.hasModifierKind(declaration, "async");
   if (asynchronous && selectedResultType.kind !== "future") {
@@ -198,6 +219,91 @@ export function analyzeMojoCallableSignature(
     ...(input.static === undefined ? {} : { static: input.static }),
     ...(input.owner === undefined ? {} : { owner: input.owner }),
   });
+}
+
+function selectDeclarationCallable(
+  declaration: Node,
+  callableType: Type | undefined,
+  semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
+  ast: TargetSourceProgram["ast"],
+): SourceCallableTypeEvidence | undefined {
+  if (callableType === undefined) return undefined;
+  const exactSignatures = semantics.types.callSignatures(callableType).filter((signature) =>
+    semantics.declarations.signatureDeclaration(signature) === declaration);
+  if (exactSignatures.length === 1) {
+    return callableEvidenceForSignature(exactSignatures[0]!, semantics, ast);
+  }
+  return exactSignatures.length === 0 ? semantics.types.callable(callableType) : undefined;
+}
+
+function callableEvidenceForSignature(
+  signature: Signature,
+  semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
+  ast: TargetSourceProgram["ast"],
+): SourceCallableTypeEvidence | undefined {
+  const resultType = semantics.types.returnType(signature);
+  if (resultType === undefined) return undefined;
+  const resultDeclaration = semantics.declarations.signatureDeclaration(signature);
+  return Object.freeze({
+    parameters: Object.freeze(semantics.types.signatureParameterInfos(signature).map((parameter) => {
+      const omissionKind = parameter.parameterKind === "rest"
+        ? "rest" as const
+        : parameter.parameterKind === "required"
+          ? "required" as const
+          : parameter.declaration !== undefined &&
+              ast.is.IsParameterDeclaration(parameter.declaration) &&
+              Node_Initializer(ast, parameter.declaration) !== undefined
+            ? "initializer" as const
+            : "undefined" as const;
+      return Object.freeze({ ...parameter, omissionKind });
+    })),
+    result: Object.freeze({
+      selectedType: resultType,
+      ...(resultDeclaration === undefined ? {} : { declaration: resultDeclaration }),
+      ...(resultDeclaration === undefined || ast.typeNode(resultDeclaration) === undefined
+        ? {}
+        : { authoredTypeNode: ast.typeNode(resultDeclaration)! }),
+    }),
+  });
+}
+
+function selectAccessorParameters(
+  input: MojoCallableSignatureInput,
+): readonly SourceCallableParameterEvidence[] | undefined {
+  const { ast } = input.source;
+  const semantics = input.source.semantics.forFile(input.sourceFile);
+  const parameters: SourceCallableParameterEvidence[] = [];
+  for (const parameter of ast.parameters(input.declaration)) {
+    const name = parameter === undefined ? undefined : ast.name(parameter);
+    const reference = name === undefined
+      ? undefined
+      : input.source.navigation.sourceReferenceFor(name);
+    const type = parameter === undefined
+      ? undefined
+      : semantics.declarations.declaredValueType(parameter) ??
+        semantics.declarations.declaredType(parameter) ??
+        (ast.typeNode(parameter) === undefined
+          ? undefined
+          : semantics.types.authoredType(ast.typeNode(parameter)!));
+    if (parameter === undefined || !ast.is.IsParameterDeclaration(parameter) ||
+      reference?.symbol === undefined || type === undefined) return undefined;
+    const rest = ast.as.AsParameterDeclaration(parameter)!.DotDotDotToken !== undefined;
+    const optional = ast.questionToken(parameter) !== undefined || Node_Initializer(ast, parameter) !== undefined;
+    parameters.push(Object.freeze({
+      sourceSymbol: reference.symbol,
+      type,
+      parameterKind: rest ? "rest" : optional ? "optional" : "required",
+      declaration: parameter,
+      omissionKind: rest
+        ? "rest"
+        : Node_Initializer(ast, parameter) !== undefined
+          ? "initializer"
+          : optional
+            ? "undefined"
+            : "required",
+    }));
+  }
+  return Object.freeze(parameters);
 }
 
 export function analyzeMojoTypeParameters(

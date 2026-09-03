@@ -64,6 +64,7 @@ import {
   mojoProjectStaticMember,
 } from "./types.js";
 import { planMojoIndexAdapterMethods } from "./index-adapters.js";
+import { planMojoProjectDispatchArguments } from "./parameter-adapters.js";
 
 export function planMojoPolymorphicObjectLiteral(
   node: Node,
@@ -181,10 +182,7 @@ export function planMojoPolymorphicObjectLiteral(
         );
         return undefined;
       }
-      const optionalType: MojoTargetTypeRef = Object.freeze({
-        kind: "optional",
-        value: storage.callableType,
-      });
+      const optionalType = storage.storageType;
       registerMojoTypeImports(optionalType, context);
       storedMethods.set(storage.name, Object.freeze({
         kind: "construct",
@@ -250,7 +248,7 @@ export function planMojoPolymorphicObjectLiteral(
   for (const storage of dispatch.methodStorages) {
     if (storedMethods.has(storage.name)) continue;
     if (storage.initialization.kind !== "default") return undefined;
-    registerMojoTypeImports(Object.freeze({ kind: "optional", value: storage.callableType }), context);
+    registerMojoTypeImports(storage.storageType, context);
     storedMethods.set(storage.name, Object.freeze({ kind: "none-literal" }));
   }
 
@@ -273,7 +271,7 @@ export function planMojoPolymorphicObjectLiteral(
     stateArguments.push(Object.freeze({
       value: consumeMojoValue(
         value,
-        Object.freeze({ kind: "optional", value: storage.callableType }),
+        storage.storageType,
         context.program.lifecycle,
       ),
     }));
@@ -338,10 +336,7 @@ function planObjectStateDeclarations(
     fields.push(Object.freeze({ name: adapter.stateName, type: adapter.storageType, compileTime: false }));
   }
   for (const storage of stateFields.methods) {
-    const type: MojoTargetTypeRef = Object.freeze({
-      kind: "optional",
-      value: storage.callableType,
-    });
+    const type = storage.storageType;
     registerMojoTypeImports(type, context);
     fields.push(Object.freeze({ name: storage.name, type, compileTime: false }));
   }
@@ -646,23 +641,12 @@ function planObjectCallableAdapter(
   if (adapter.implementation === undefined) return undefined;
   const parameters = adapter.parameters.map((parameter) =>
     planMojoParameterDeclaration(parameter, context));
-  const arguments_: MojoCallArgument[] = [Object.freeze({
-    value: Object.freeze({ kind: "path", path: "_object" }),
-  })];
-  for (const [index, parameter] of adapter.parameters.entries()) {
-    const implementationParameter = adapter.implementationParameters[index];
-    const converted = applyMojoConversion(
-      Object.freeze({ kind: "path", path: parameter.name }),
-      adapter.argumentConversions[index],
-      context,
-    );
-    if (implementationParameter === undefined || converted === undefined) return undefined;
-    arguments_.push(Object.freeze({
-      value: mojoParameterConvention(implementationParameter.disposition) === "var"
-        ? consumeMojoValue(converted, implementationParameter.callType, context.program.lifecycle)
-        : converted,
-    }));
-  }
+  const adapted = planMojoProjectDispatchArguments(adapter.parameterAdapters, context);
+  if (adapted === undefined) return undefined;
+  const arguments_: MojoCallArgument[] = [
+    Object.freeze({ value: Object.freeze({ kind: "path", path: "_object" }) }),
+    ...adapted.arguments,
+  ];
   let call: MojoExpression = Object.freeze({
     kind: "call",
     callee: mojoProjectStaticMember(stateType, implementationName),
@@ -689,9 +673,12 @@ function planObjectCallableAdapter(
     raises: adapter.variant.contract.raises,
     ...(adapter.errorType === undefined ? {} : { errorType: adapter.errorType }),
     decorators: mojoStaticMethodDecorators,
-    statements: Object.freeze([adapter.resultType.kind === "unit"
-      ? Object.freeze({ kind: "expression", expression: call })
-      : Object.freeze({ kind: "return", expression: result })]),
+    statements: Object.freeze([
+      ...adapted.before,
+      adapter.resultType.kind === "unit"
+        ? Object.freeze({ kind: "expression", expression: call })
+        : Object.freeze({ kind: "return", expression: result }),
+    ]),
   });
 }
 
@@ -759,10 +746,7 @@ function planObjectMethodPropertyAdapters(
   }
   if (property?.write !== undefined) {
     if (storage === undefined || adapter.methodWriteAdapterName === undefined) return undefined;
-    const optionalType: MojoTargetTypeRef = Object.freeze({
-      kind: "optional",
-      value: storage.callableType,
-    });
+    const optionalType = storage.storageType;
     registerMojoTypeImports(optionalType, context);
     methods.push(Object.freeze({
       kind: "function",
@@ -943,7 +927,7 @@ function objectDirectMethodCall(
     value: Object.freeze({ kind: "path", path: "_object" }),
   })];
   for (const parameter of adapter.parameters) {
-    const value: MojoExpression = Object.freeze({ kind: "path", path: parameter.name });
+    const value: MojoExpression = Object.freeze({ kind: "path", path: parameter.incomingName });
     arguments_.push(Object.freeze({
       value: parameter.disposition.kind === "owned"
         ? consumeMojoValue(value, parameter.callType, context.program.lifecycle)
@@ -965,7 +949,7 @@ function objectErasedMethodCall(
 ): MojoExpression | undefined {
   if (adapter.methodStorage === undefined) return undefined;
   const values = adapter.parameters.map((parameter): MojoExpression => {
-    const value: MojoExpression = Object.freeze({ kind: "path", path: parameter.name });
+    const value: MojoExpression = Object.freeze({ kind: "path", path: parameter.incomingName });
     return parameter.disposition.kind === "owned"
       ? consumeMojoValue(value, parameter.callType, context.program.lifecycle)
       : value;

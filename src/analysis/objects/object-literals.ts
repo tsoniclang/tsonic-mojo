@@ -41,6 +41,10 @@ export interface MojoObjectLiteralAnalysisInput {
     name: string,
     owner: MojoAnalyzedClassOwner,
   ) => MojoCallableExpressionSelection | undefined;
+  readonly analyzeCallableValue: (
+    expression: Node,
+    selectedType: import("@tsonic/tsts").Type,
+  ) => MojoCallableExpressionSelection | undefined;
   readonly resolveType: (type: import("@tsonic/tsts").Type | undefined) => MojoTargetTypeRef | undefined;
   readonly diagnostics: TargetDiagnostic[];
 }
@@ -130,20 +134,44 @@ export function analyzeMojoObjectLiteral(
       const declarations = Object.freeze([...member.sourceSelectedDeclarations]);
       for (const declaration of declarations) accessorAssignments.add(declaration);
       if (member.getter !== undefined) {
+        const getterDeclarations = property.kind === "accessor-property"
+          ? property.read === undefined ? undefined : Object.freeze([property.read.declaration])
+          : Object.freeze([property.declaration]);
+        if (getterDeclarations === undefined) {
+          reject(
+            input,
+            "MOJO_OBJECT_GETTER_CONTRACT_UNRESOLVED",
+            "Object-literal getter has no exact checker-selected readable project property contract.",
+            member.getter.element,
+          );
+          return undefined;
+        }
         accessors.set(member.getter.element, Object.freeze({
           kind: "getter",
           selectedType: member.getter.sourceElementType,
-          contractDeclarations: declarations,
+          contractDeclarations: getterDeclarations,
           name: property.kind === "accessor-property"
             ? property.read?.name ?? `_get_${member.sourceName}`
             : `_get_${member.sourceName}`,
         }));
       }
       if (member.setter !== undefined) {
+        const setterDeclarations = property.kind === "accessor-property"
+          ? property.write === undefined ? undefined : Object.freeze([property.write.declaration])
+          : Object.freeze([property.declaration]);
+        if (setterDeclarations === undefined) {
+          reject(
+            input,
+            "MOJO_OBJECT_SETTER_CONTRACT_UNRESOLVED",
+            "Object-literal setter has no exact checker-selected writable project property contract.",
+            member.setter.element,
+          );
+          return undefined;
+        }
         accessors.set(member.setter.element, Object.freeze({
           kind: "setter",
           selectedType: member.setter.sourceElementType,
-          contractDeclarations: declarations,
+          contractDeclarations: setterDeclarations,
           name: property.kind === "accessor-property"
             ? property.write?.name ?? `_set_${member.sourceName}`
             : `_set_${member.sourceName}`,
@@ -296,12 +324,27 @@ export function analyzeMojoObjectLiteral(
       reject(input, "MOJO_OBJECT_FIELD_SELECTION_UNRESOLVED", "Object property has no exact instantiated project-interface field.", element);
       return undefined;
     }
+    const fieldType = instantiated?.fieldType ?? instantiatedAccessor!.fieldType;
+    if ((ast.is.IsFunctionExpression(value) || ast.is.IsArrowFunction(value)) &&
+      fieldType.kind === "callable") {
+      const callable = input.analyzeCallableValue(value, selected.sourceSelectedType);
+      if (callable === undefined) {
+        reject(
+          input,
+          "MOJO_OBJECT_CALLABLE_FIELD_UNRESOLVED",
+          "A callable-valued object field requires one exact contextual callable implementation.",
+          value,
+        );
+        return undefined;
+      }
+      input.expressionTypes.set(value, callable.callableType);
+    }
     contributions.push(Object.freeze({
       kind: "field",
       element,
       value,
       field: instantiated?.field ?? instantiatedAccessor!.property,
-      fieldType: instantiated?.fieldType ?? instantiatedAccessor!.fieldType,
+      fieldType,
     }));
     for (const declaration of instantiated === undefined
       ? instantiatedAccessor!.property.declarations

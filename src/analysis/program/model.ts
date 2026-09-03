@@ -254,6 +254,7 @@ export interface MojoProjectMethodStorage {
   readonly declarations: readonly Node[];
   readonly name: string;
   readonly callableType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
+  readonly storageType: Extract<MojoTargetTypeRef, { readonly kind: "optional" }>;
 }
 
 export interface MojoProjectDispatchFieldAccess {
@@ -325,6 +326,33 @@ export interface MojoProjectDispatchView {
   }[];
 }
 
+export type MojoProjectDispatchParameterAdapter =
+  | {
+      readonly kind: "value";
+      readonly sourceIndex: number;
+      readonly source: MojoAnalyzedParameter;
+      readonly target: MojoAnalyzedParameter;
+      readonly conversion: MojoValueConversion;
+    }
+  | {
+      readonly kind: "omitted";
+      readonly target: MojoAnalyzedParameter;
+    }
+  | {
+      readonly kind: "fixed-rest";
+      readonly sourceIndexes: readonly number[];
+      readonly sources: readonly MojoAnalyzedParameter[];
+      readonly target: MojoAnalyzedParameter;
+      readonly conversions: readonly MojoValueConversion[];
+    }
+  | {
+      readonly kind: "sequence-rest";
+      readonly sourceIndex: number;
+      readonly source: MojoAnalyzedParameter;
+      readonly target: MojoAnalyzedParameter;
+      readonly elementConversion: MojoValueConversion;
+    };
+
 export interface MojoProjectDispatchCallableAdapter {
   readonly variant: MojoProjectDispatchCallableVariant;
   readonly genericArguments: readonly import("../../target-model/types/model.js").MojoTargetGenericArgument[];
@@ -335,8 +363,7 @@ export interface MojoProjectDispatchCallableAdapter {
   readonly implementationName: string;
   readonly implementation: MojoAnalyzedFunction;
   readonly implementationOwnerType: MojoTargetTypeRef;
-  readonly implementationParameters: readonly MojoAnalyzedParameter[];
-  readonly argumentConversions: readonly MojoValueConversion[];
+  readonly parameterAdapters: readonly MojoProjectDispatchParameterAdapter[];
   readonly resultConversion: MojoValueConversion;
   readonly methodStorage?: MojoProjectMethodStorage;
   readonly methodCallAdapterName?: string;
@@ -400,8 +427,7 @@ export interface MojoProjectObjectLiteralCallableAdapter {
   readonly parameters: readonly MojoAnalyzedParameter[];
   readonly resultType: MojoTargetTypeRef;
   readonly errorType?: MojoTargetTypeRef;
-  readonly implementationParameters: readonly MojoAnalyzedParameter[];
-  readonly argumentConversions: readonly MojoValueConversion[];
+  readonly parameterAdapters: readonly MojoProjectDispatchParameterAdapter[];
   readonly resultConversion: MojoValueConversion;
   readonly adapterName: string;
   readonly methodStorage?: MojoProjectObjectLiteralMethodStorage;
@@ -475,6 +501,7 @@ export interface MojoProjectDispatchPlan {
     readonly code: string;
     readonly message: string;
   }[];
+  readonly representationTypes: readonly MojoTargetTypeRef[];
   viewForType(type: MojoTargetTypeRef): MojoProjectDispatchView | undefined;
   callableFor(
     receiverType: MojoTargetTypeRef,

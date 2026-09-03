@@ -43,6 +43,8 @@ import {
 import { substituteMojoTargetType } from "../../target-model/types/substitution.js";
 import type { MojoTargetTypeSubstitutions } from "../../target-model/types/substitution.js";
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
+import { mojoTargetTypeKey } from "../../target-model/types/key.js";
+import { selectMojoProjectDispatchParameterAdapters } from "./parameter-adapters.js";
 
 const maximumDispatchEntries = 1_048_576;
 const projectObjectType: MojoTargetTypeRef = Object.freeze({
@@ -412,7 +414,6 @@ export function createMojoProjectDispatchPlan(input: {
           : substituteMojoTargetType(implementationError, implementationSubstitutions);
         if (implementationParameters === undefined ||
           implementationParameters.some((parameter) => parameter === undefined) ||
-          implementationParameters.length !== closedConcreteParameters.length ||
           closedImplementationResult === undefined ||
           implementation.asynchronous !== variant.contract.asynchronous ||
           implementation.raises && !variant.contract.raises ||
@@ -429,26 +430,18 @@ export function createMojoProjectDispatchPlan(input: {
           continue;
         }
         const closedImplementationParameters = implementationParameters as readonly MojoAnalyzedParameter[];
-        const argumentConversions = closedConcreteParameters.map((parameter, index) => {
-          const target = closedImplementationParameters[index]!;
-          if (mojoParameterConvention(parameter.disposition) !==
-            mojoParameterConvention(target.disposition)) return undefined;
-          const conversion = classifyMojoValueConversion(
-            parameter.bodyType,
-            target.callType,
-            undefined,
-            input.relationships,
-          );
-          return conversion.kind === "resolved" ? conversion.conversion : undefined;
-        });
+        const parameterAdapters = selectMojoProjectDispatchParameterAdapters(
+          closedConcreteParameters,
+          closedImplementationParameters,
+          input.relationships,
+        );
         const resultConversion = classifyMojoValueConversion(
           closedImplementationResult,
           concreteResult,
           undefined,
           input.relationships,
         );
-        if (argumentConversions.some((conversion) => conversion === undefined) ||
-          resultConversion.kind === "unsupported") {
+        if (parameterAdapters === undefined || resultConversion.kind === "unsupported") {
           issues.push(Object.freeze({
             node: variant.contract.declaration,
             code: "MOJO_PROJECT_DISPATCH_IMPLEMENTATION_CONVERSION_UNPROVEN",
@@ -491,6 +484,7 @@ export function createMojoProjectDispatchPlan(input: {
             declarations: Object.freeze([selected.implementation.declaration]),
             name: allocateName(adapterNames, `_method_${implementation.name}`),
             callableType,
+            storageType: methodStorageType(callableType),
           });
           methodStoragesByImplementation.set(
             selected.implementation.declaration,
@@ -523,8 +517,7 @@ export function createMojoProjectDispatchPlan(input: {
           implementationName,
           implementation,
           implementationOwnerType: implementationRelation.targetType,
-          implementationParameters: Object.freeze(closedImplementationParameters),
-          argumentConversions: Object.freeze(argumentConversions as readonly import("../../target-model/conversions/model.js").MojoValueConversion[]),
+          parameterAdapters,
           resultConversion: resultConversion.conversion,
           ...(methodStorage === undefined ? {} : { methodStorage }),
           ...(methodCallAdapterName === undefined ? {} : { methodCallAdapterName }),
@@ -635,6 +628,11 @@ export function createMojoProjectDispatchPlan(input: {
 
   const plan: MojoProjectDispatchPlan = {
     issues: Object.freeze(issues),
+    representationTypes: collectDispatchRepresentationTypes(
+      views,
+      concreteDispatch,
+      objectLiteralDispatch.plans,
+    ),
     viewForType,
     callableFor(receiverType, declaration, genericArguments) {
       const view = viewForType(receiverType);
@@ -679,7 +677,7 @@ export function createMojoProjectDispatchPlan(input: {
       return concreteDispatch.get(definition);
     },
     objectLiteralFor(expression) {
-      return objectLiteralDispatch.get(expression);
+      return objectLiteralDispatch.byExpression.get(expression);
     },
     statePath(definition, declaration) {
       const concrete = concreteDispatch.get(definition);
@@ -707,8 +705,12 @@ function createObjectLiteralDispatchPlans(input: {
   readonly views: readonly MojoProjectDispatchView[];
   readonly issues: { readonly node: Node; readonly code: string; readonly message: string }[];
   readonly methodPropertyUsages: ReadonlyMap<Node, MethodPropertyUsage>;
-}): WeakMap<Node, MojoProjectObjectLiteralDispatch> {
-  const result = new WeakMap<Node, MojoProjectObjectLiteralDispatch>();
+}): {
+  readonly byExpression: WeakMap<Node, MojoProjectObjectLiteralDispatch>;
+  readonly plans: readonly MojoProjectObjectLiteralDispatch[];
+} {
+  const byExpression = new WeakMap<Node, MojoProjectObjectLiteralDispatch>();
+  const plans: MojoProjectObjectLiteralDispatch[] = [];
   for (const expression of input.nodes) {
     const selection = input.selections.get(expression);
     if (selection?.kind !== "interface") continue;
@@ -769,7 +771,9 @@ function createObjectLiteralDispatchPlans(input: {
     type FinalMethodContribution =
       | {
           readonly kind: "authored";
-          readonly contribution: Extract<MojoObjectLiteralContribution, { readonly kind: "method" }>;
+          readonly contribution: Extract<MojoObjectLiteralContribution, {
+            readonly kind: "method" | "getter" | "setter";
+          }>;
           readonly implementation: MojoCallableExpressionSelection;
         }
       | {
@@ -779,7 +783,8 @@ function createObjectLiteralDispatchPlans(input: {
         };
     const finalMethods = new Map<Node, FinalMethodContribution>();
     for (const contribution of selection.contributions) {
-      if (contribution.kind === "method") {
+      if (contribution.kind === "method" || contribution.kind === "getter" ||
+        contribution.kind === "setter") {
         const implementation = input.callables.get(contribution.element);
         if (implementation === undefined) continue;
         for (const declaration of contribution.contractDeclarations) {
@@ -867,7 +872,6 @@ function createObjectLiteralDispatchPlans(input: {
           parameters.some((parameter) => parameter === undefined) || resultType === undefined ||
           (variant.errorType !== undefined && errorType === undefined) ||
           implementationParameters === undefined || implementationResult === undefined ||
-          implementationParameters.length !== parameters.length ||
           selectedMethod.kind === "authored" && (
             implementation === undefined ||
             implementation.asynchronous !== variant.contract.asynchronous ||
@@ -887,30 +891,24 @@ function createObjectLiteralDispatchPlans(input: {
         }
         const closedParameters = parameters as readonly MojoAnalyzedParameter[];
         const closedImplementationParameters = implementationParameters as readonly MojoAnalyzedParameter[];
-        const argumentConversions = closedParameters.map((parameter, index) => {
-          const target = closedImplementationParameters[index]!;
-          if (mojoParameterConvention(parameter.disposition) !==
-            mojoParameterConvention(target.disposition)) return undefined;
-          const conversion = classifyMojoValueConversion(
-            parameter.bodyType,
-            target.callType,
-            undefined,
-            input.relationships,
-          );
-          return conversion.kind === "resolved" ? conversion.conversion : undefined;
-        });
+        const parameterAdapters = selectMojoProjectDispatchParameterAdapters(
+          closedParameters,
+          closedImplementationParameters,
+          input.relationships,
+        );
         const resultConversion = classifyMojoValueConversion(
           implementationResult,
           resultType,
           undefined,
           input.relationships,
         );
-        if (argumentConversions.some((conversion) => conversion === undefined) ||
-          resultConversion.kind === "unsupported") {
+        if (parameterAdapters === undefined || resultConversion.kind === "unsupported") {
           input.issues.push(Object.freeze({
             node: selectedMethod.contribution.element,
             code: "MOJO_OBJECT_METHOD_DISPATCH_CONVERSION_UNPROVEN",
-            message: "An object-literal method cannot exactly adapt its selected interface argument or result carriers.",
+            message: parameterAdapters === undefined
+              ? "An object-literal method cannot exactly adapt its selected interface parameter carriers."
+              : "An object-literal method cannot exactly adapt its selected interface result carrier.",
           }));
           valid = false;
           continue;
@@ -962,6 +960,7 @@ function createObjectLiteralDispatchPlans(input: {
               declarations,
               name: allocateName(usedNames, `_method_${variant.name}`),
               callableType: methodCallableType,
+              storageType: methodStorageType(methodCallableType),
               initialization: selectedMethod.kind === "spread"
                 ? Object.freeze({
                     kind: "spread" as const,
@@ -1006,8 +1005,7 @@ function createObjectLiteralDispatchPlans(input: {
           parameters: Object.freeze(closedParameters),
           resultType,
           ...(errorType === undefined ? {} : { errorType }),
-          implementationParameters: Object.freeze(closedImplementationParameters),
-          argumentConversions: Object.freeze(argumentConversions as readonly import("../../target-model/conversions/model.js").MojoValueConversion[]),
+          parameterAdapters,
           resultConversion: resultConversion.conversion,
           adapterName,
           ...(methodStorage === undefined ? {} : { methodStorage }),
@@ -1100,15 +1098,17 @@ function createObjectLiteralDispatchPlans(input: {
     if (!valid || !objectViews.some((view) =>
       mojoTargetTypeEquals(view.viewType, selection.constructionType))) continue;
     for (const builder of methodStorageBuilders) Object.freeze(builder.declarations);
-    result.set(expression, Object.freeze({
+    const dispatch = Object.freeze({
       expression,
       selection,
       captures: Object.freeze([...capturesByDeclaration.values()]),
       views: Object.freeze(objectViews),
       methodStorages: Object.freeze(methodStorageBuilders.map(({ storage }) => storage)),
-    }));
+    });
+    byExpression.set(expression, dispatch);
+    plans.push(dispatch);
   }
-  return result;
+  return Object.freeze({ byExpression, plans: Object.freeze(plans) });
 }
 
 function createObjectLiteralFieldAdapter(
@@ -1381,6 +1381,118 @@ function dispatchCallableType(
   });
 }
 
+function methodStorageType(
+  callableType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
+): Extract<MojoTargetTypeRef, { readonly kind: "optional" }> {
+  return Object.freeze({ kind: "optional", value: callableType });
+}
+
+function collectDispatchRepresentationTypes(
+  views: readonly MojoProjectDispatchView[],
+  concreteDispatch: ReadonlyMap<MojoProjectTypeDefinition, MojoProjectConcreteDispatch>,
+  objectLiteralDispatches: readonly MojoProjectObjectLiteralDispatch[],
+): readonly MojoTargetTypeRef[] {
+  const types: MojoTargetTypeRef[] = [projectObjectType];
+  const addParameter = (parameter: MojoAnalyzedParameter): void => {
+    types.push(parameter.type, parameter.bodyType, parameter.callType);
+  };
+  const addParameters = (parameters: readonly MojoAnalyzedParameter[]): void => {
+    for (const parameter of parameters) addParameter(parameter);
+  };
+  const addView = (view: MojoProjectDispatchView): void => {
+    types.push(view.type);
+    for (const callable of view.callables) {
+      types.push(callable.slotType, callable.resultType);
+      if (callable.errorType !== undefined) types.push(callable.errorType);
+      addParameters(callable.parameters);
+      if (callable.property !== undefined) {
+        types.push(callable.property.callableType);
+        if (callable.property.read !== undefined) types.push(callable.property.read.slotType);
+        if (callable.property.write !== undefined) types.push(callable.property.write.slotType);
+      }
+    }
+    for (const field of view.fields) {
+      if (field.read !== undefined) types.push(field.read.slotType, field.read.valueType);
+      if (field.write !== undefined) types.push(field.write.slotType, field.write.valueType);
+    }
+    for (const index of view.indexes) {
+      types.push(index.keyType, index.valueType, index.read.slotType, index.copy.slotType);
+      if (index.write !== undefined) types.push(index.write.slotType);
+    }
+    for (const downcast of view.downcasts) types.push(downcast.targetType, downcast.slotType);
+    for (const conversion of view.conversions) {
+      types.push(conversion.targetType, conversion.slotType);
+    }
+  };
+  const addParameterAdapters = (
+    adapters: readonly import("../program/model.js").MojoProjectDispatchParameterAdapter[],
+  ): void => {
+    for (const adapter of adapters) {
+      addParameter(adapter.target);
+      if (adapter.kind === "value" || adapter.kind === "sequence-rest") {
+        addParameter(adapter.source);
+      } else if (adapter.kind === "fixed-rest") {
+        addParameters(adapter.sources);
+      }
+    }
+  };
+  for (const view of views) addView(view);
+  for (const concrete of concreteDispatch.values()) {
+    types.push(concrete.concrete.targetType);
+    for (const storage of concrete.methodStorages) {
+      types.push(storage.callableType, storage.storageType);
+    }
+    for (const storage of concrete.indexStorages) types.push(storage.type);
+    for (const view of concrete.views) {
+      types.push(view.viewType);
+      for (const adapter of view.callableAdapters) {
+        types.push(adapter.resultType, adapter.implementationOwnerType);
+        if (adapter.errorType !== undefined) types.push(adapter.errorType);
+        addParameters(adapter.parameters);
+        addParameterAdapters(adapter.parameterAdapters);
+      }
+      for (const adapter of view.fieldAdapters) {
+        if (adapter.readType !== undefined) types.push(adapter.readType);
+        if (adapter.writeType !== undefined) types.push(adapter.writeType);
+        if (adapter.kind === "stored") types.push(adapter.storageType);
+        if (adapter.kind === "accessor") {
+          types.push(adapter.implementationOwnerType);
+          if (adapter.writeImplementationParameter !== undefined) {
+            addParameter(adapter.writeImplementationParameter);
+          }
+        }
+      }
+      for (const adapter of view.indexAdapters) types.push(adapter.storageType);
+    }
+  }
+  for (const dispatch of objectLiteralDispatches) {
+    types.push(dispatch.selection.constructionType, dispatch.selection.resultType);
+    for (const capture of dispatch.captures) types.push(capture.capture.type, capture.storageType);
+    for (const storage of dispatch.methodStorages) {
+      types.push(storage.callableType, storage.storageType);
+    }
+    for (const view of dispatch.views) {
+      types.push(view.viewType);
+      for (const adapter of view.callableAdapters) {
+        types.push(adapter.resultType);
+        if (adapter.errorType !== undefined) types.push(adapter.errorType);
+        addParameters(adapter.parameters);
+        addParameterAdapters(adapter.parameterAdapters);
+      }
+      for (const adapter of view.fieldAdapters) {
+        if (adapter.kind === "stored") types.push(adapter.storageType);
+        if (adapter.readType !== undefined) types.push(adapter.readType);
+        if (adapter.writeType !== undefined) types.push(adapter.writeType);
+      }
+      for (const adapter of view.indexAdapters) types.push(adapter.storageType);
+    }
+  }
+  const unique = new Map<string, MojoTargetTypeRef>();
+  for (const type of types) unique.set(mojoTargetTypeKey(type), type);
+  return Object.freeze([...unique].sort(([left], [right]) =>
+    left.localeCompare(right, "en")).map(([, type]) => type));
+}
+
 function collectSelectedGenericArguments(
   nodes: ReadonlySet<Node>,
   selections: WeakMap<Node, MojoCallSelection>,
@@ -1488,9 +1600,10 @@ function createCallableVariant(
     slotType: functionType([
       { type: projectObjectType, convention: "imm", passing: "plain" },
       ...closedParameters.map((parameter) => ({
-        type: parameter.bodyType,
+        type: parameter.omissionKind === "rest" ? parameter.type : parameter.callType,
         convention: mojoParameterConvention(parameter.disposition),
         passing: parameter.disposition.kind === "owned" ? "consume" as const : "plain" as const,
+        omissionKind: parameter.omissionKind,
       })),
     ], resultType, contract.asynchronous, contract.raises, errorType),
     parameters: closedParameters,

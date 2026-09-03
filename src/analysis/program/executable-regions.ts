@@ -3,6 +3,7 @@ import {
   CatchClause_VariableDeclaration,
   Node_Expression,
   Node_Initializer,
+  ObjectLiteralProperty_Value,
 } from "@tsonic/target-api/source";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
@@ -250,7 +251,9 @@ export function analyzeMojoExecutableRegion(
   }, (node, regionRoot) => descendWithinExecutableRegion(node, regionRoot, ast));
 
   for (const expression of callableExpressionNodes) {
-    input.analyzeCallableExpression(expression, sourceFile, input.owner);
+    if (!isContextualObjectCallable(expression, source, semantics)) {
+      input.analyzeCallableExpression(expression, sourceFile, input.owner);
+    }
   }
 
   const pendingBindingPatterns = new Set(bindingPatternDeclarations);
@@ -371,6 +374,14 @@ export function analyzeMojoExecutableRegion(
                   allowAsynchronous: true,
                   captureSelf: false,
                 },
+              );
+            },
+            analyzeCallableValue(expression, selectedType) {
+              return input.analyzeCallableExpression(
+                expression,
+                sourceFile,
+                input.owner,
+                { selectedType },
               );
             },
             resolveType(type) {
@@ -496,4 +507,27 @@ export function analyzeMojoExecutableRegion(
     errorTypes,
     raises: errorTypes.length > 0,
   });
+}
+
+function isContextualObjectCallable(
+  expression: Node,
+  source: TargetSourceProgram,
+  semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
+): boolean {
+  const { ast } = source;
+  let value = expression;
+  let parent = ast.parent(value);
+  while (parent !== undefined &&
+    (ast.is.IsParenthesizedExpression(parent) || ast.is.IsAsExpression(parent) ||
+      ast.is.IsTypeAssertion(parent) || ast.is.IsNonNullExpression(parent) ||
+      ast.is.IsSatisfiesExpression(parent)) && Node_Expression(ast, parent) === value) {
+    value = parent;
+    parent = ast.parent(value);
+  }
+  if (parent === undefined || !ast.is.IsPropertyAssignment(parent) ||
+    ObjectLiteralProperty_Value(ast, parent) !== value) return false;
+  const objectLiteral = ast.parent(parent);
+  const selected = semantics.operations.objectLiteralElement(parent);
+  return objectLiteral !== undefined && ast.is.IsObjectLiteralExpression(objectLiteral) &&
+    selected !== undefined && selected.objectLiteral === objectLiteral && selected.element === parent;
 }

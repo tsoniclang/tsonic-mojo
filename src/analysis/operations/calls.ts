@@ -148,6 +148,12 @@ export function analyzeMojoCall(
     ? undefined
     : context.callableByDeclaration.get(selectedSignatureDeclaration);
   if (projectCallable !== undefined) {
+    const callableType = context.expressionTypes.get(sourceCall.sourceCallee.expression) ??
+      resolve(sourceCall.sourceCallee.type, sourceCall.sourceCallee.authoredTypeNode);
+    if (projectCallable.contract.kind === "method" &&
+      sourceCall.sourceReceiver === undefined && callableType?.kind === "callable") {
+      return analyzeCallableValueCall(sourceCall, callableType, resolve, context);
+    }
     return analyzeProjectCall(sourceCall, projectCallable, resolve, context);
   }
   const directlySelectedClass = selectedDeclaration === undefined

@@ -25,6 +25,8 @@ import type {
 import { recordMojoExecutableRegionConversionUses } from "../conversions/uses.js";
 import { allocateMojoLocalBindings } from "../program/local-bindings.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
+import { resolveMojoTargetType } from "../../policy/types/resolution.js";
+import { mojoParameterConvention } from "../representations/index.js";
 
 export interface MojoCallableExpressionSignatureInput {
   readonly expression: Node;
@@ -143,7 +145,17 @@ export function collectMojoCallableCaptures(
     walkSourceTree(root, ast, (node): void => {
       if (!valid) return;
       if (ast.kindName(node) === "KindThisKeyword") {
-        capturesSelf = input.captureSelf !== false && input.owner !== undefined;
+        if (input.captureSelf === false && input.owner !== undefined) return;
+        if (ast.is.IsArrowFunction(input.expression) && input.owner !== undefined) {
+          capturesSelf = true;
+          return;
+        }
+        input.diagnostics.push(mojoAnalysisDiagnostic(
+          "MOJO_DYNAMIC_THIS_CALLABLE_UNSUPPORTED",
+          "A function-valued expression using dynamic 'this' requires an exact receiver-bearing method contract.",
+          node,
+        ));
+        valid = false;
         return;
       }
       if (!ast.is.IsIdentifier(node)) return;
@@ -388,7 +400,37 @@ export function analyzeAndSealMojoCallableExpression(
     ...(declaration === undefined ? {} : { recursiveDeclaration: declaration }),
     ...(input.captureSelf === false ? { captureSelf: false } : {}),
   });
-  const selectedType = environment.expressionTypes.get(input.expression);
+  const selectedCarrier = input.selectedType === undefined
+    ? undefined
+    : resolveMojoTargetType(input.selectedType, undefined, {
+        ast: environment.source.ast,
+        navigation: environment.source.navigation,
+        semantics: environment.source.semantics.forFile(input.sourceFile),
+        sourceFacts: environment.source.sourceFacts,
+        providerSemantics: environment.providerSemantics,
+        projectTypes: environment.projectTypes,
+        sourceProfiles: environment.sourceProfiles,
+        jsEnabled: environment.jsEnabled,
+        ...(environment.sourceCallableErrorType === undefined
+          ? {}
+          : { sourceCallableErrorType: environment.sourceCallableErrorType }),
+      });
+  if (selectedCarrier?.kind === "unsupported" && callable.kind !== "getter" &&
+    callable.kind !== "setter") {
+    environment.diagnostics.push(mojoAnalysisDiagnostic(
+      "MOJO_CALLABLE_EXPRESSION_SELECTED_TYPE_UNRESOLVED",
+      selectedCarrier.reason,
+      input.expression,
+    ));
+    return;
+  }
+  const selectedType = callable.kind === "getter" || callable.kind === "setter"
+    ? callableExpressionType(callable, raises, environment.sourceCallableErrorType)
+    : input.selectedType === undefined
+      ? environment.expressionTypes.get(input.expression)
+      : selectedCarrier?.kind === "resolved"
+        ? selectedCarrier.type
+        : undefined;
   if (captureAnalysis === undefined || selectedType?.kind !== "callable" ||
     selectedType.parameters.length !== callable.parameters.length) {
     if (captureAnalysis !== undefined) {
@@ -431,6 +473,26 @@ export function analyzeAndSealMojoCallableExpression(
     input.byDeclaration.set(declaration, input.expression);
     input.declarationByExpression.set(input.expression, declaration);
   }
+}
+
+function callableExpressionType(
+  callable: MojoAnalyzedFunction,
+  raises: boolean,
+  errorType: MojoTargetTypeRef | undefined,
+): Extract<MojoTargetTypeRef, { readonly kind: "callable" }> {
+  return Object.freeze({
+    kind: "callable",
+    parameters: Object.freeze(callable.parameters.map((parameter) => Object.freeze({
+      name: parameter.name,
+      convention: mojoParameterConvention(parameter.disposition),
+      passing: parameter.disposition.kind === "owned" ? "consume" as const : "plain" as const,
+      type: parameter.callType,
+      omissionKind: parameter.omissionKind,
+    }))),
+    result: callable.resultType,
+    raises,
+    ...(raises && errorType !== undefined ? { errorType } : {}),
+  });
 }
 
 export function resolveMojoCallableExpressionDependency(

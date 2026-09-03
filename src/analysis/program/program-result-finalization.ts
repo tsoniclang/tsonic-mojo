@@ -318,7 +318,10 @@ export function finalizeMojoProgramResult(
     bindingTypes,
     expressionTypes,
     valueRefinements: environment.valueRefinements,
-    rootTypes: mojoRepresentationRootTypes(declarations, finalizedModules),
+    rootTypes: Object.freeze([
+      ...mojoRepresentationRootTypes(declarations, finalizedModules),
+      ...projectDispatch.representationTypes,
+    ]),
     parameters: mojoRepresentationParameters(declarations),
     modules: finalizedModules,
     sourceModules: modules,

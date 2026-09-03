@@ -56,10 +56,7 @@ export function planMojoPolymorphicClassState(
   for (const field of class_.fields) registerMojoTypeImports(field.type, context);
   const methodStorage = dispatch.methodStorages.map((storage) => Object.freeze({
     storage,
-    type: Object.freeze({
-      kind: "optional" as const,
-      value: storage.callableType,
-    }),
+    type: storage.storageType,
   }));
   for (const entry of methodStorage) registerMojoTypeImports(entry.type, context);
   for (const storage of dispatch.indexStorages) registerMojoTypeImports(storage.type, context);
