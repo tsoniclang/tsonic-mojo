@@ -827,22 +827,38 @@ export type MojoElementSelection = {
   readonly optionalChain: boolean;
 };
 
-export interface MojoIterationSelection {
-  readonly kind: "for-of" | "for-in";
+interface MojoIterationSelectionBase {
   readonly statement: Node;
   readonly iterable: Node;
   readonly bindingDeclaration: Node;
   readonly bindingName: string;
   readonly iterableType: MojoTargetTypeRef;
   readonly elementType: MojoTargetTypeRef;
-  readonly target:
-    | "native-values"
-    | "dictionary-keys"
-    | "js-array-values"
-    | "js-map-entries"
-    | "js-set-values"
-    | "js-string-values";
 }
+
+type MojoValueIterationTarget =
+  | "native-values"
+  | "js-array-values"
+  | "js-map-entries"
+  | "js-set-values"
+  | "js-string-values";
+
+export type MojoIterationSelection =
+  | MojoIterationSelectionBase & {
+      readonly kind: "for-in";
+      readonly adaptation: "none";
+      readonly target: "dictionary-keys";
+    }
+  | MojoIterationSelectionBase & {
+      readonly kind: "for-of";
+      readonly adaptation: "none";
+      readonly target: MojoValueIterationTarget;
+    }
+  | MojoIterationSelectionBase & {
+      readonly kind: "for-await-of";
+      readonly adaptation: "synchronous-to-async";
+      readonly target: MojoValueIterationTarget;
+    };
 
 export type MojoResourceDisposalSelection =
   | {

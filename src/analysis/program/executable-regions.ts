@@ -168,7 +168,12 @@ export function sealMojoCatchBindingCarrier(
     const selectedReceiverType = selectedOperationReceiverType(use.reference, input);
     const exactRefinement = selectedReceiverType === undefined
       ? undefined
-      : classifyMojoValueRefinement(errorType, selectedReceiverType);
+      : classifyMojoValueRefinement(
+          errorType,
+          selectedReceiverType,
+          input.projectRelationships,
+          input.modules,
+        );
     if (exactRefinement !== undefined) {
       input.valueRefinements.set(use.reference, exactRefinement);
     }
@@ -434,6 +439,9 @@ export function analyzeMojoExecutableRegion(
       bindingTypes: input.bindingTypes,
       resolveType(type) {
         return resolveType(type, undefined, input, semantics);
+      },
+      sourceTypesIdentical(left, right) {
+        return semantics.types.isIdentical(left, right);
       },
     });
     if (iteration.kind === "unsupported") {

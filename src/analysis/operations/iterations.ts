@@ -24,11 +24,13 @@ export interface MojoIterationAnalysisInput {
   readonly bindingNames: WeakMap<Node, string>;
   readonly bindingTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly resolveType: (type: Type) => MojoTargetTypeRef | undefined;
+  readonly sourceTypesIdentical: (left: Type, right: Type) => boolean;
 }
 
 export function analyzeMojoIteration(input: MojoIterationAnalysisInput): MojoIterationAnalysis {
   const { source } = input;
-  if (source.iterationKind === "for-await-of" && !isSynchronousAsyncAdaptation(source.mechanism)) {
+  if (source.iterationKind === "for-await-of" &&
+    !isSynchronousAsyncAdaptation(source, input.sourceTypesIdentical)) {
     return unsupported(
       "MOJO_ASYNC_ITERATOR_PROTOCOL_NATIVE_LIMIT",
       "The active Mojo compiler exposes no native asynchronous iterator protocol; only checker-selected synchronous iteration adapted to for-await is representable without a target-owned suspension machine.",
@@ -81,32 +83,94 @@ export function analyzeMojoIteration(input: MojoIterationAnalysisInput): MojoIte
       "Iteration binding requires a conversion that cannot be represented at the native loop boundary.",
     );
   }
-  return {
-    kind: "resolved",
-    selection: Object.freeze({
-      kind: source.iterationKind === "for-await-of" ? "for-of" : source.iterationKind,
-      statement: input.statement,
-      iterable: input.iterable,
-      bindingDeclaration,
-      bindingName,
-      iterableType,
-      elementType: target.elementType,
-      target: target.target,
-    }),
+  const common = {
+    statement: input.statement,
+    iterable: input.iterable,
+    bindingDeclaration,
+    bindingName,
+    iterableType,
+    elementType: target.elementType,
   };
+  let selection: MojoIterationSelection;
+  if (source.iterationKind === "for-in") {
+    if (target.target !== "dictionary-keys") {
+      return unsupported(
+        "MOJO_ITERATION_SOURCE_TARGET_CONFLICT",
+        "Property-key iteration selected a non-key target iteration contract.",
+      );
+    }
+    selection = Object.freeze({
+      ...common,
+      kind: "for-in",
+      adaptation: "none",
+      target: target.target,
+    });
+  } else {
+    if (target.target === "dictionary-keys") {
+      return unsupported(
+        "MOJO_ITERATION_SOURCE_TARGET_CONFLICT",
+        "Value iteration selected a property-key target iteration contract.",
+      );
+    }
+    selection = source.iterationKind === "for-await-of"
+      ? Object.freeze({
+          ...common,
+          kind: "for-await-of",
+          adaptation: "synchronous-to-async",
+          target: target.target,
+        })
+      : Object.freeze({
+          ...common,
+          kind: "for-of",
+          adaptation: "none",
+          target: target.target,
+        });
+  }
+  return { kind: "resolved", selection };
 }
 
 function isSynchronousAsyncAdaptation(
-  mechanism: Extract<ResolvedSourceIterationInfo, { readonly iterationKind: "for-await-of" }>[
-    "mechanism"
-  ],
+  source: Extract<ResolvedSourceIterationInfo, { readonly iterationKind: "for-await-of" }>,
+  sourceTypesIdentical: (left: Type, right: Type) => boolean,
 ): boolean {
+  const mechanism = source.mechanism;
   if (mechanism.kind === "union") {
-    return mechanism.alternatives.every(isSynchronousAsyncAdaptation);
+    return mechanism.alternatives.every((alternative) =>
+      synchronousAlternativeYieldsSourceElement(
+        alternative,
+        source.sourceElementType,
+        sourceTypesIdentical,
+      ));
   }
-  return mechanism.kind === "synchronous-iterator-adapted-to-async" ||
-    mechanism.kind === "array-like-index-adapted-to-async" ||
-    mechanism.kind === "string-code-unit-index-adapted-to-async";
+  return synchronousAlternativeYieldsSourceElement(
+    mechanism,
+    source.sourceElementType,
+    sourceTypesIdentical,
+  );
+}
+
+function synchronousAlternativeYieldsSourceElement(
+  mechanism: Exclude<
+    Extract<ResolvedSourceIterationInfo, { readonly iterationKind: "for-await-of" }>[
+      "mechanism"
+    ],
+    { readonly kind: "union" }
+  >,
+  sourceElementType: Type,
+  sourceTypesIdentical: (left: Type, right: Type) => boolean,
+): boolean {
+  if (mechanism.kind === "synchronous-iterator-adapted-to-async") {
+    const yieldType = mechanism.protocol.iterationTypes.yieldType;
+    if (yieldType === undefined) return false;
+    return sourceTypesIdentical(
+      yieldType,
+      sourceElementType,
+    );
+  }
+  if (mechanism.kind === "array-like-index-adapted-to-async") {
+    return sourceTypesIdentical(mechanism.selectedIndexType, sourceElementType);
+  }
+  return mechanism.kind === "string-code-unit-index-adapted-to-async";
 }
 
 function selectedBindingDeclaration(statement: Node, ast: AstReader): Node | undefined {
