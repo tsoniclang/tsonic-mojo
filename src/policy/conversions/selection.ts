@@ -578,6 +578,7 @@ function jsValueSourceKind(
   }
   if (type.kind === "native-string") return "native-string";
   if (isJsString(type)) return "string";
+  if (type.kind === "symbol") return "symbol";
   if (type.kind === "null") return "null";
   if (type.kind === "undefined") return "undefined";
   return undefined;

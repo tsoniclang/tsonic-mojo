@@ -48,7 +48,7 @@ export type MojoValueConversion =
   | {
       readonly kind: "js-box";
       readonly targetType: MojoTargetTypeRef;
-      readonly source: "bool" | "number" | "string" | "native-string" | "null" | "undefined";
+      readonly source: "bool" | "number" | "string" | "native-string" | "symbol" | "null" | "undefined";
     }
   | { readonly kind: "native-to-js-string"; readonly targetType: MojoTargetTypeRef }
   | { readonly kind: "js-to-native-string" }

@@ -18,11 +18,13 @@ export type {
 } from "../target-model/operations/model.js";
 export {
   mojoCallableTargetType,
+  mojoDynamicTargetType,
   mojoFutureTargetType,
   mojoListTargetType,
   mojoNamedTargetType,
   mojoOptionalTargetType,
   mojoPrimitiveTargetType,
   mojoStringTargetType,
+  mojoUnionTargetType,
   mojoUnitTargetType,
 } from "../target-model/types/constructors.js";
