@@ -8,6 +8,9 @@ export function printPixiProject(plan: MojoOutputPlan): string {
     component.id,
     `build_${component.packageName}`,
   ]));
+  const nativeTaskNames = new Map(plan.nativeBuild.packages
+    .filter((package_) => package_.translationUnits.length !== 0)
+    .map((package_) => [package_.packageName, `build_native_${package_.packageName}`]));
   const runtimeIncludes = plan.runtimePackages.length === 0 ? [] : ["-I 'packages'"];
   const rootIncludes = [
     "-I 'src'",
@@ -30,6 +33,7 @@ export function printPixiProject(plan: MojoOutputPlan): string {
     shellQuote(compilerInput),
     "-o",
     shellQuote(output),
+    ...nativeLinkArguments(plan),
   ].filter((part) => part.length > 0).join(" ");
   const lines = [
     "[workspace]",
@@ -39,9 +43,26 @@ export function printPixiProject(plan: MojoOutputPlan): string {
     "",
     "[dependencies]",
     `mojo = ${JSON.stringify(`==${plan.configuration.toolchain.compilerVersion}`)}`,
+    ...plan.nativeBuild.dependencies.map((dependency) =>
+      `${dependency.name} = ${JSON.stringify(dependency.version)}`),
     "",
     "[tasks]",
   ];
+  for (const package_ of plan.nativeBuild.packages) {
+    const taskName = nativeTaskNames.get(package_.packageName);
+    if (taskName === undefined) continue;
+    const commands = package_.translationUnits.map((unit) => [
+      `mkdir -p ${shellQuote(parentPath(unit.objectPath))} &&`,
+      `"$CC" -O3 -fPIC -std=${unit.standard}`,
+      ...package_.includeDirectories.map((path) =>
+        `-I${shellEnvironmentPath(path)}`),
+      "-c",
+      shellQuote(unit.sourcePath),
+      "-o",
+      shellQuote(unit.objectPath),
+    ].join(" "));
+    lines.push(`${taskName} = ${tomlTask(commands.join(" && "), [])}`);
+  }
   for (const component of dependencies) {
     const taskName = dependencyTaskNames.get(component.id)!;
     const componentDependencies = component.dependencies
@@ -60,15 +81,36 @@ export function printPixiProject(plan: MojoOutputPlan): string {
   }
   lines.push(`build = ${tomlTask(
     buildCommand,
-    root.dependencies
+    [
+      ...root.dependencies
       .map((dependencyId) => dependencyTaskNames.get(dependencyId))
-      .filter((name): name is string => name !== undefined)
-      .sort((left, right) => left.localeCompare(right, "en")),
+      .filter((name): name is string => name !== undefined),
+      ...nativeTaskNames.values(),
+    ].sort((left, right) => left.localeCompare(right, "en")),
   )}`);
   if (plan.configuration.outputType === "bin") {
     lines.push(`run = ${tomlTask(shellQuote(output), ["build"])}`);
   }
   return `${lines.join("\n")}\n`;
+}
+
+function nativeLinkArguments(plan: MojoOutputPlan): readonly string[] {
+  return Object.freeze([
+    ...plan.nativeBuild.packages.flatMap((package_) =>
+      package_.translationUnits.map((unit) => `-Xlinker ${shellQuote(unit.objectPath)}`)),
+    ...plan.nativeBuild.staticLibraries.map((path) =>
+      `-Xlinker ${shellEnvironmentPath(path)}`),
+    ...plan.nativeBuild.dynamicLibraries.map((library) => `-Xlinker -l${library}`),
+  ]);
+}
+
+function shellEnvironmentPath(path: string): string {
+  return `"$CONDA_PREFIX/${path.replace(/["`$\\]/gu, "\\$&")}"`;
+}
+
+function parentPath(path: string): string {
+  const separator = path.lastIndexOf("/");
+  return separator < 0 ? "." : path.slice(0, separator);
 }
 
 function orderedDependencyComponents(

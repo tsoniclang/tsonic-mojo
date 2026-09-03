@@ -36,6 +36,7 @@ import {
 import { planMojoPhysicalTypeAliases } from "../types/aliases.js";
 import { normalizeMojoDeclarations } from "../../normalization/index.js";
 import { createMojoOutputComponents } from "../../artifact-model/project/components.js";
+import { createMojoNativeBuildPlan } from "../../artifact-model/project/native.js";
 
 export function planMojoOutput(
   input: MojoOutputPlanningContext,
@@ -74,6 +75,7 @@ export function planMojoOutput(
     ),
     sources: orderedSources,
     runtimePackages: program.runtimePackages,
+    nativeBuild: createMojoNativeBuildPlan(program.runtimePackages),
   }));
 }
 

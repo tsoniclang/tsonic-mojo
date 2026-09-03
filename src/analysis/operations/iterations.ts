@@ -11,6 +11,10 @@ import {
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoIterationSelection } from "../program/model.js";
+import {
+  sourceProfileRegExpElementType,
+  sourceProfileRegExpIteratorElement,
+} from "../../policy/types/js-regexp.js";
 
 export type MojoIterationAnalysis =
   | { readonly kind: "resolved"; readonly selection: MojoIterationSelection }
@@ -191,6 +195,14 @@ function targetIterationContract(
   readonly elementType: MojoTargetTypeRef;
 } | undefined {
   if (kind === "for-of") {
+    const regexpIteratorElement = sourceProfileRegExpIteratorElement(iterable);
+    if (regexpIteratorElement !== undefined) {
+      return { target: "js-array-values", elementType: regexpIteratorElement };
+    }
+    const regexpArrayElement = sourceProfileRegExpElementType(iterable);
+    if (regexpArrayElement !== undefined) {
+      return { target: "js-array-values", elementType: regexpArrayElement };
+    }
     if (iterable.kind === "list" || iterable.kind === "fixed-array") {
       return { target: "native-values", elementType: iterable.element };
     }

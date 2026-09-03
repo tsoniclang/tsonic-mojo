@@ -30,6 +30,7 @@ import type {
   MojoAnalyzedFunction,
 } from "../program/model.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
+import { mojoProjectMethodName } from "./well-known-methods.js";
 
 export interface MojoClassAnalysisInput {
   readonly source: TargetSourceProgram;
@@ -141,7 +142,7 @@ export function analyzeMojoClass(
       const nameNode = ast.name(member);
       const selectedName = nameNode === undefined
         ? undefined
-        : projectMethodName(nameNode, semantics, ast);
+        : mojoProjectMethodName(nameNode, semantics, ast);
       if (selectedName === undefined || (body !== undefined && !ast.is.IsBlock(body))) {
         append(input, "MOJO_CLASS_METHOD_SHAPE_UNSUPPORTED", "Class methods require one exact name and an optional block implementation body.", member);
         continue;
@@ -178,7 +179,7 @@ export function analyzeMojoClass(
       const nameNode = ast.name(member);
       const sourceName = nameNode === undefined
         ? undefined
-        : projectMethodName(nameNode, semantics, ast);
+        : mojoProjectMethodName(nameNode, semantics, ast);
       if (sourceName === undefined || (body !== undefined && !ast.is.IsBlock(body))) {
         append(input, "MOJO_CLASS_ACCESSOR_SHAPE_UNSUPPORTED", "Class accessors require one exact name and an optional block implementation body.", member);
         continue;
@@ -300,18 +301,6 @@ function allocateCallableName(
   const selected = allocate(requested);
   allocated.set(key, selected);
   return selected;
-}
-
-function projectMethodName(
-  name: Node,
-  semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
-  ast: TargetSourceProgram["ast"],
-): string | undefined {
-  if (ast.is.IsIdentifier(name) || ast.is.IsPrivateIdentifier(name)) return ast.text(name);
-  const wellKnown = semantics.operations.wellKnownSymbol(name);
-  if (wellKnown?.kind === "dispose") return "dispose";
-  if (wellKnown?.kind === "async-dispose") return "disposeAsync";
-  return undefined;
 }
 
 function signatureInput(

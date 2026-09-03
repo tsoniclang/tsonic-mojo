@@ -23,6 +23,10 @@ import { classifyMojoValueRefinement } from "../refinements/value.js";
 import { classifyMojoRefinedValueConversion } from "../refinements/value.js";
 import { mojoPrimitiveTargetType } from "../../target-model/types/constructors.js";
 import { analyzeNativeElement } from "./native-elements.js";
+import {
+  sourceProfileRegExpElementType,
+  sourceProfileRegExpNamedValueType,
+} from "../../policy/types/js-regexp.js";
 
 export type MojoElementAnalysis =
   | {
@@ -191,7 +195,10 @@ function analyzeSourceProfileElement(
     return analyzeNativeElement(source, accessMode, receiver, index, context);
   }
   const owner = identity.declaringName;
-  if (owner !== "Array" && owner !== "ReadonlyArray" && owner !== "String") {
+  const regexpElement = sourceProfileRegExpElementType(receiver);
+  const regexpNamedValue = sourceProfileRegExpNamedValueType(receiver);
+  if (owner !== "Array" && owner !== "ReadonlyArray" && owner !== "String" &&
+    regexpNamedValue === undefined) {
     return unsupported(
       "MOJO_SOURCE_PROFILE_ELEMENT_UNSUPPORTED",
       `The exact JavaScript source-profile indexer '${owner}' has no Mojo policy row.`,
@@ -216,7 +223,9 @@ function analyzeSourceProfileElement(
   const receiverElement = sourceProfileReceiverElement(receiver);
   const sourceWrite = source.sourceWriteType === undefined
     ? undefined
-    : owner === "Array" ? receiverElement : context.resolveType(source.sourceWriteType);
+    : owner === "Array" || regexpNamedValue !== undefined
+      ? receiverElement ?? regexpNamedValue
+      : context.resolveType(source.sourceWriteType);
   if ((accessMode === "read" || accessMode === "read-write") && sourceRead === undefined ||
     (accessMode === "write" || accessMode === "read-write") && sourceWrite === undefined) {
     return unsupported(
@@ -230,7 +239,9 @@ function analyzeSourceProfileElement(
       `The exact JavaScript '${owner}' index result has no closed Mojo read contract.`,
     );
   }
-  const targetIndex = mojoPrimitiveTargetType("float64");
+  const targetIndex = regexpNamedValue === undefined
+    ? mojoPrimitiveTargetType("float64")
+    : Object.freeze({ kind: "native-string" as const });
   const readOperation: MojoSelectedProviderOperation | undefined = readContract === undefined
     ? undefined
     : Object.freeze({
@@ -252,7 +263,12 @@ function analyzeSourceProfileElement(
     : Object.freeze({
         target: Object.freeze({
           kind: "index-write",
-          access: Object.freeze({ kind: "element" }),
+          access: regexpElement === undefined && regexpNamedValue === undefined
+            ? Object.freeze({ kind: "element" as const })
+            : Object.freeze({
+                kind: "method" as const,
+                name: regexpNamedValue === undefined ? "set_index" : "set",
+              }),
           receiver: "mut",
           index: Object.freeze({ convention: "imm", position: "positional-or-keyword" }),
           value: Object.freeze({ convention: "imm", position: "positional-or-keyword" }),
@@ -309,6 +325,8 @@ function sourceProfileReceiverElement(
   receiver: MojoTargetTypeRef,
 ): MojoTargetTypeRef | undefined {
   const value = receiver.kind === "optional" ? receiver.value : receiver;
+  const regexpElement = sourceProfileRegExpElementType(value);
+  if (regexpElement !== undefined) return regexpElement;
   if (value.kind !== "target-named" || value.id !== "tsonic.mojo.js.JsArray") return undefined;
   const argument = value.genericArguments?.[0];
   return argument?.kind === "type" ? argument.type : undefined;
@@ -331,6 +349,24 @@ function sourceProfileElementReadContract(
   const selectedSourceRead = source.sourceReadType;
   const presentSourceRead = semantics.types.withoutMissingOrUndefined(selectedSourceRead);
   if (presentSourceRead === undefined) return undefined;
+  const regexpElement = sourceProfileRegExpElementType(receiver);
+  if (regexpElement !== undefined) {
+    return Object.freeze({
+      access: Object.freeze({ kind: "method", name: "get_index" }),
+      operationResultType: regexpElement,
+      expressionType: regexpElement,
+      raises: false,
+    });
+  }
+  const regexpNamedValue = sourceProfileRegExpNamedValueType(receiver);
+  if (regexpNamedValue !== undefined) {
+    return Object.freeze({
+      access: Object.freeze({ kind: "method", name: "get" }),
+      operationResultType: regexpNamedValue,
+      expressionType: regexpNamedValue,
+      raises: false,
+    });
+  }
   if (owner === "String") {
     const valueType = receiver.kind === "optional" ? receiver.value : receiver;
     if (semantics.types.isStringLike(selectedSourceRead)) {

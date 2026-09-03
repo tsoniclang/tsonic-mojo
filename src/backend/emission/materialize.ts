@@ -30,6 +30,13 @@ export function materializeMojoOutputPlan(plan: MojoOutputPlan): TargetCompileOu
         text: source.text,
       }));
     }
+    for (const source of runtime.native?.translationUnits ?? []) {
+      artifacts.push(Object.freeze({
+        kind: "asset",
+        path: `packages/.native/${runtime.packageName}/${source.path}`,
+        text: source.text,
+      }));
+    }
   }
   if (plan.configuration.project.kind === "generated") {
     artifacts.push(Object.freeze({

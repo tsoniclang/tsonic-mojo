@@ -24,6 +24,7 @@ export function providerCallRequiresRaisingConversion(
 export function mojoConversionRaises(conversion: MojoValueConversion): boolean {
   switch (conversion.kind) {
     case "js-to-native-string": return true;
+    case "native-error-result-unwrap": return true;
     case "collection-map":
       return conversion.elementConversion !== undefined &&
         mojoConversionRaises(conversion.elementConversion);

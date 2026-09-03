@@ -45,6 +45,7 @@ export function inferMojoExpressionType(
 export function isMojoExpressionNode(node: Node, ast: AstReader): boolean {
   return ast.is.IsIdentifier(node) || ast.is.IsStringLiteral(node) ||
     ast.is.IsNoSubstitutionTemplateLiteral(node) || isNumericLiteral(node, ast) ||
+    ast.is.IsRegularExpressionLiteral(node) ||
     ast.is.IsBinaryExpression(node) || ast.is.IsCallExpression(node) || ast.is.IsNewExpression(node) ||
     ast.is.IsPropertyAccessExpression(node) || ast.is.IsElementAccessExpression(node) ||
     ast.is.IsArrayLiteralExpression(node) || ast.is.IsObjectLiteralExpression(node) ||

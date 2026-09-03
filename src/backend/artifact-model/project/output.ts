@@ -1,12 +1,14 @@
 import type { MojoRuntimePackagePlan } from "../../../analysis/program/model.js";
 import type { MojoTargetConfiguration } from "../../../target-model/configuration/model.js";
 import type { MojoSourceModule } from "../../target-ast/index.js";
+import type { MojoNativeBuildPlan } from "./native.js";
 
 export interface MojoOutputPlan {
   readonly configuration: MojoTargetConfiguration;
   readonly components: readonly MojoOutputComponent[];
   readonly sources: readonly MojoOutputSourceFile[];
   readonly runtimePackages: readonly MojoRuntimePackagePlan[];
+  readonly nativeBuild: MojoNativeBuildPlan;
 }
 
 export interface MojoOutputComponent {

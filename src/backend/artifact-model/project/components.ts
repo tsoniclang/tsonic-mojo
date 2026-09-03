@@ -37,6 +37,7 @@ export function createMojoOutputComponents(
       runtimePackages: runtimePackages.map((runtime) => Object.freeze({
         packageName: runtime.packageName,
         digest: runtime.digest,
+        nativeDigest: runtime.native?.digest,
       })),
       sources: componentSources,
     })).digest("hex");

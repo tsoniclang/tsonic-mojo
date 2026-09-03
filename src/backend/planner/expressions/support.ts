@@ -557,6 +557,15 @@ export function applyMojoConversion(
     }
     case "js-to-native-string":
       return { kind: "method-call", receiver: expression, name: "to_native_strict", arguments: Object.freeze([]) };
+    case "native-error-result-unwrap":
+      registerMojoTypeImports(conversion.sourceType, context);
+      registerMojoTypeImports(conversion.targetType, context);
+      return {
+        kind: "method-call",
+        receiver: expression,
+        name: "unwrap",
+        arguments: Object.freeze([]),
+      };
     case "native-to-js-string":
       registerMojoTypeImports(conversion.targetType, context);
       return { kind: "construct", type: conversion.targetType, arguments: Object.freeze([{ value: expression }]) };

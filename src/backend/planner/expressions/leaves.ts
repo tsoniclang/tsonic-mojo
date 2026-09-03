@@ -81,6 +81,30 @@ export function planMojoLeafExpression(
     }
   } else if (ast.is.IsStringLiteral(node) || ast.is.IsNoSubstitutionTemplateLiteral(node)) {
     planned = { kind: "string-literal", value: ast.text(node) };
+  } else if (ast.is.IsRegularExpressionLiteral(node)) {
+    const literal = ast.regularExpressionLiteral(node);
+    if (literal === undefined || actualType?.kind !== "target-named" ||
+      actualType.id !== "tsonic.mojo.js.JsRegExp") {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_REGEXP_LITERAL_NOT_SEALED",
+        "A regular-expression literal requires exact syntax and one sealed JavaScript RegExp carrier.",
+        node,
+      );
+      return undefined;
+    }
+    planned = Object.freeze({
+      kind: "call",
+      callee: mojoModuleMemberExpression(context, ["tsonic_js"], "regexp_construct"),
+      arguments: Object.freeze([
+        Object.freeze({
+          value: Object.freeze({ kind: "string-literal", value: literal.pattern }),
+        }),
+        Object.freeze({
+          value: Object.freeze({ kind: "string-literal", value: literal.flags }),
+        }),
+      ]),
+    });
   } else if (ast.is.IsNumericLiteral(node)) {
     const literal = Object.freeze({ kind: "number-literal" as const, text: ast.text(node) });
     const targetType = numericTargetType ?? actualType;

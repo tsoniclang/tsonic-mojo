@@ -53,6 +53,11 @@ export type MojoValueConversion =
   | { readonly kind: "native-to-js-string"; readonly targetType: MojoTargetTypeRef }
   | { readonly kind: "js-to-native-string" }
   | {
+      readonly kind: "native-error-result-unwrap";
+      readonly sourceType: MojoTargetTypeRef;
+      readonly targetType: MojoTargetTypeRef;
+    }
+  | {
       readonly kind: "collection-map";
       readonly sourceType: MojoTargetTypeRef;
       readonly targetType: MojoTargetTypeRef;

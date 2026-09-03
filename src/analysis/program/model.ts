@@ -932,6 +932,7 @@ export interface MojoRuntimePackagePlan {
     readonly digest: string;
     readonly text: string;
   }[];
+  readonly native?: import("../runtime/native-package.js").MojoRuntimeNativePackagePlan;
 }
 
 export interface MojoPlanningHost {

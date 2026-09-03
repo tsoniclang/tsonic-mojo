@@ -149,6 +149,12 @@ export function executableRegionErrorTypes(
     if (raises) errors.push(mojoNativeErrorType());
   };
   walkSourceTree(root, input.source.ast, (node): void => {
+    if (input.source.ast.is.IsRegularExpressionLiteral(node)) {
+      const type = input.expressionTypes.get(node);
+      if (type?.kind === "target-named" && type.id === "tsonic.mojo.js.JsRegExp") {
+        errors.push(mojoNativeErrorType());
+      }
+    }
     if (input.source.ast.is.IsCallExpression(node) || input.source.ast.is.IsNewExpression(node)) {
       const selection = input.callSelections.get(node);
       if (selection?.kind === "provider") {

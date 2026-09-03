@@ -19,6 +19,7 @@ import { consumeMojoValue, mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { planDictionaryKey } from "./conditional-values.js";
 import { mojoParameterConvention } from "../../../analysis/representations/index.js";
+import { mojoConvertedValueType } from "../../../analysis/operations/call-results.js";
 
 export function planMojoProperty(
   node: Node,
@@ -626,11 +627,14 @@ export function planMojoProviderPropertyMethodWrite(
     ? undefined
     : convertMojoValue(prepared.plan, selection.receiverConversion, context);
   if (prepared === undefined || converted === undefined) return undefined;
-  const ordered = orderMojoValues([
+  const location = orderMojoValues([
     Object.freeze({ plan: converted, type: write.receiverType, role: "property_write_receiver" }),
+  ], context, true);
+  let before: readonly MojoStatement[] = location.before;
+  let assigned: MojoExpression;
+  const orderedValue = orderMojoValues([
     Object.freeze({ plan: value, type: write.parameterTypes[0]!, role: "property_write_value" }),
-  ], context);
-  let assigned = ordered.values[1]!;
+  ], context, true);
   if (operator !== "=") {
     const read = selection.readOperation;
     if (read?.target.kind !== "property-read" || read.receiverType === undefined ||
@@ -645,10 +649,10 @@ export function planMojoProviderPropertyMethodWrite(
       return undefined;
     }
     const rawRead: MojoExpression = read.target.access.kind === "member"
-      ? Object.freeze({ kind: "member", receiver: ordered.values[0]!, name: read.target.access.name })
+      ? Object.freeze({ kind: "member", receiver: location.values[0]!, name: read.target.access.name })
       : Object.freeze({
           kind: "method-call",
-          receiver: ordered.values[0]!,
+          receiver: location.values[0]!,
           name: read.target.access.name,
           arguments: Object.freeze([]),
         });
@@ -657,21 +661,36 @@ export function planMojoProviderPropertyMethodWrite(
       selection.readResultConversion,
       context,
     );
-    if (current === undefined || current.before.length !== 0) return undefined;
+    if (current === undefined) return undefined;
+    const orderedCurrent = orderMojoValues([
+      Object.freeze({
+        plan: current,
+        type: mojoConvertedValueType(read.resultType, selection.readResultConversion),
+        role: "property_write_current",
+      }),
+    ], context, true);
+    before = Object.freeze([
+      ...before,
+      ...orderedCurrent.before,
+      ...orderedValue.before,
+    ]);
     assigned = Object.freeze({
       kind: "binary",
       operator: operator.slice(0, -1),
-      left: current.value,
-      right: assigned,
+      left: orderedCurrent.values[0]!,
+      right: orderedValue.values[0]!,
     });
+  } else {
+    before = Object.freeze([...before, ...orderedValue.before]);
+    assigned = orderedValue.values[0]!;
   }
   return Object.freeze({
-    before: ordered.before,
+    before,
     statement: Object.freeze({
       kind: "expression",
       expression: Object.freeze({
         kind: "method-call",
-        receiver: ordered.values[0]!,
+        receiver: location.values[0]!,
         name: write.target.access.name,
         arguments: Object.freeze([Object.freeze({
           value: assigned,

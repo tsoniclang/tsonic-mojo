@@ -12,7 +12,7 @@ import {
   prepareMojoReceiver,
 } from "./support.js";
 import type { MojoValuePlanner } from "./support.js";
-import { withMojoValue } from "./value-plan.js";
+import { mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { applyValueRefinement } from "./leaves.js";
 
@@ -187,6 +187,131 @@ export function projectElementUsesMethodWrite(
 ): boolean {
   return selection?.kind === "project-index" &&
     context.program.projectDispatch.viewForType(selection.receiverType) !== undefined;
+}
+
+export function providerElementUsesMethodWrite(
+  selection: import("../../../analysis/program/model.js").MojoElementSelection | undefined,
+): boolean {
+  return selection?.kind === "provider" &&
+    selection.writeOperation?.target.kind === "index-write" &&
+    selection.writeOperation.target.access.kind === "method";
+}
+
+export function planMojoProviderElementMethodWrite(
+  node: Node,
+  value: MojoValuePlan,
+  operator: string,
+  context: MojoPlanningContext,
+  planValue: MojoValuePlanner,
+): { readonly before: readonly MojoStatement[]; readonly statement: MojoStatement } | undefined {
+  const selection = context.program.queries.elementSelection(node);
+  if (selection?.kind !== "provider") return undefined;
+  const write = selection.writeOperation;
+  if (write?.target.kind !== "index-write" || write.target.access.kind !== "method" ||
+    write.receiverType === undefined || write.parameterTypes.length !== 2) return undefined;
+  if (selection.optionalChain) {
+    appendMojoPlanningDiagnostic(
+      context,
+      "MOJO_PROVIDER_OPTIONAL_ELEMENT_METHOD_WRITE_UNSUPPORTED",
+      "An optional element assignment has no exact JavaScript write semantics.",
+      node,
+    );
+    return undefined;
+  }
+  const prepared = prepareMojoReceiver(
+    selection.receiver,
+    selection.sourceReceiverType,
+    false,
+    context,
+    planValue,
+  );
+  const rawIndex = planValue(selection.index, context);
+  const convertedReceiver = prepared === undefined
+    ? undefined
+    : convertMojoValue(prepared.plan, selection.receiverConversion, context);
+  const convertedIndex = rawIndex === undefined
+    ? undefined
+    : convertMojoValue(rawIndex, selection.indexConversion, context);
+  if (prepared === undefined || convertedReceiver === undefined || convertedIndex === undefined) {
+    return undefined;
+  }
+  const location = orderMojoValues([
+    Object.freeze({ plan: convertedReceiver, type: write.receiverType, role: "element_write_receiver" }),
+    Object.freeze({ plan: convertedIndex, type: write.parameterTypes[0]!, role: "element_write_index" }),
+  ], context, true);
+  let before: readonly MojoStatement[] = location.before;
+  let assigned: MojoExpression;
+  if (operator === "=") {
+    const orderedValue = orderMojoValues([
+      Object.freeze({ plan: value, type: write.parameterTypes[1]!, role: "element_write_value" }),
+    ], context, true);
+    before = Object.freeze([...before, ...orderedValue.before]);
+    assigned = orderedValue.values[0]!;
+  } else {
+    const read = selection.readOperation;
+    if (read?.target.kind !== "index-read" || read.receiverType === undefined ||
+      read.parameterTypes.length !== 1 || selection.readResultConversion === undefined ||
+      !mojoTargetTypeEquals(read.receiverType, write.receiverType) ||
+      !mojoTargetTypeEquals(read.parameterTypes[0]!, write.parameterTypes[0]!)) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROVIDER_ELEMENT_METHOD_COMPOUND_WRITE_UNSUPPORTED",
+        "A method-backed compound element write requires compatible exact read and write operations.",
+        node,
+      );
+      return undefined;
+    }
+    const rawRead: MojoExpression = read.target.access.kind === "element"
+      ? Object.freeze({
+          kind: "element",
+          receiver: location.values[0]!,
+          index: location.values[1]!,
+        })
+      : Object.freeze({
+          kind: "method-call",
+          receiver: location.values[0]!,
+          name: read.target.access.name,
+          arguments: Object.freeze([Object.freeze({ value: location.values[1]! })]),
+        });
+    const current = convertMojoValue(
+      mojoValue(rawRead),
+      selection.readResultConversion,
+      context,
+    );
+    if (current === undefined) return undefined;
+    const orderedCurrent = orderMojoValues([
+      Object.freeze({ plan: current, type: selection.readType!, role: "element_write_current" }),
+    ], context, true);
+    const orderedValue = orderMojoValues([
+      Object.freeze({ plan: value, type: write.parameterTypes[1]!, role: "element_write_value" }),
+    ], context, true);
+    before = Object.freeze([
+      ...before,
+      ...orderedCurrent.before,
+      ...orderedValue.before,
+    ]);
+    assigned = Object.freeze({
+      kind: "binary",
+      operator: operator.slice(0, -1),
+      left: orderedCurrent.values[0]!,
+      right: orderedValue.values[0]!,
+    });
+  }
+  return Object.freeze({
+    before,
+    statement: Object.freeze({
+      kind: "expression",
+      expression: Object.freeze({
+        kind: "method-call",
+        receiver: location.values[0]!,
+        name: write.target.access.name,
+        arguments: Object.freeze([
+          Object.freeze({ value: location.values[1]! }),
+          Object.freeze({ value: assigned }),
+        ]),
+      }),
+    }),
+  });
 }
 
 export function planMojoProjectElementWrite(

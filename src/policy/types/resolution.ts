@@ -38,6 +38,7 @@ import {
 } from "../../source/semantics/generic-parameters.js";
 import { implicitHeapLifecycle, nativeSetLifecycle } from "./lifecycle-contracts.js";
 import { mojoSourceGenericLifecycleRequirements } from "./generic-lifecycle.js";
+import { resolveMojoJsRegExpSourceProfileType } from "./js-regexp.js";
 
 export { providerOwnerMatches } from "./resolution-helpers.js";
 
@@ -290,13 +291,31 @@ function resolveMojoTargetTypeWithState(
             reason: "Date values require the explicit JavaScript source profile",
           };
     }
-    if (sourceProfile?.name === "RegExp") {
-      return {
-        kind: "unsupported",
-        reason: sourceProfile.profile === "js"
-          ? "the pinned Mojo runtime has no exact ECMAScript RegExp engine"
-          : "RegExp values require the explicit JavaScript source profile",
-      };
+    if (sourceProfile !== undefined) {
+      if (sourceProfile.profile !== "js" && sourceProfile.name.startsWith("RegExp")) {
+        return {
+          kind: "unsupported",
+          reason: "RegExp values require the explicit JavaScript source profile",
+        };
+      }
+      const sourceArguments = types.effectiveTypeArguments(selectedType) ??
+        types.typeArguments(selectedType);
+      const targetArguments: MojoTargetTypeRef[] = [];
+      for (const sourceArgument of sourceArguments) {
+        const argument = resolveMojoTargetTypeWithState(
+          sourceArgument,
+          undefined,
+          context,
+          resolving,
+        );
+        if (argument.kind === "unsupported") return argument;
+        targetArguments.push(argument.type);
+      }
+      const regexp = resolveMojoJsRegExpSourceProfileType(
+        sourceProfile.name,
+        targetArguments,
+      );
+      if (regexp !== undefined) return regexp;
     }
     const typeParameter = resolveTypeParameter(symbol, context);
     if (typeParameter !== undefined) {

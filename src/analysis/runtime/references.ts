@@ -7,6 +7,7 @@ import {
   mojoPackagePathReferenceKind,
 } from "../../target-model/project/runtime-reference.js";
 import type { MojoRuntimePackagePlan } from "../program/model.js";
+import { analyzeMojoRuntimeNativePackage } from "./native-package.js";
 
 export function analyzeMojoRuntimePackages(
   references: readonly TargetRuntimeReference[],
@@ -74,13 +75,15 @@ function snapshotRuntimePackage(packageName: string, importRoot: string): MojoRu
       text,
     });
   });
+  const native = analyzeMojoRuntimeNativePackage(importRoot, packageName);
   return Object.freeze({
     packageName,
-    digest: createHash("sha256").update(JSON.stringify(sources.map(({ path, digest }) => ({
-      path,
-      digest,
-    })))).digest("hex"),
+    digest: createHash("sha256").update(JSON.stringify({
+      sources: sources.map(({ path, digest }) => ({ path, digest })),
+      nativeDigest: native?.digest,
+    })).digest("hex"),
     sources: Object.freeze(sources),
+    ...(native === undefined ? {} : { native }),
   });
 }
 

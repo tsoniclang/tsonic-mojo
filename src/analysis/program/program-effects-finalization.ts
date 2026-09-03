@@ -378,13 +378,19 @@ export function finalizeMojoProgramEffects(
       entry === argument ? finalizedArgument : entry));
     const parameterTypes = Object.freeze(selection.operation.parameterTypes.map((type, index) =>
       index === parameterIndex ? targetType : type));
+    const operationErrorType = closeMojoErrorType([
+      ...(selection.propagatedCallbackBaseErrorType === undefined
+        ? []
+        : [selection.propagatedCallbackBaseErrorType]),
+      callbackErrorType,
+    ]);
     return Object.freeze({
       ...selection,
       operation: Object.freeze({
         ...selection.operation,
         parameterTypes,
-        raises: true,
-        errorType: callbackErrorType,
+        raises: operationErrorType !== undefined,
+        ...(operationErrorType === undefined ? {} : { errorType: operationErrorType }),
       }),
       arguments: finalizedArguments,
     });

@@ -185,6 +185,7 @@ export type MojoCallSelection =
       readonly receiverConversion?: MojoValueConversion;
       readonly receiverDisposition?: MojoArgumentDisposition;
       readonly propagatedCallbackParameterIndex?: number;
+      readonly propagatedCallbackBaseErrorType?: MojoTargetTypeRef;
       readonly resultConversion: MojoValueConversion;
       readonly optionalChain: boolean;
     }

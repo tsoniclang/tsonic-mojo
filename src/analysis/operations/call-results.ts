@@ -6,10 +6,10 @@ export function mojoCallResultType(
   selection: MojoCallSelection,
 ): MojoTargetTypeRef {
   if (selection.kind !== "provider") return selection.resultType;
-  return convertedType(selection.operation.resultType, selection.resultConversion);
+  return mojoConvertedValueType(selection.operation.resultType, selection.resultConversion);
 }
 
-function convertedType(
+export function mojoConvertedValueType(
   input: MojoTargetTypeRef,
   conversion: MojoValueConversion,
 ): MojoTargetTypeRef {
@@ -20,5 +20,6 @@ function convertedType(
   if (conversion.kind === "js-truthiness") {
     return Object.freeze({ kind: "source-primitive", name: "bool" });
   }
+  if (conversion.kind === "native-error-result-unwrap") return conversion.targetType;
   return conversion.targetType;
 }

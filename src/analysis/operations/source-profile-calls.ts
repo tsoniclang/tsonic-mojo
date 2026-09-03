@@ -20,16 +20,32 @@ import {
   restCallableElementType,
 } from "./call-arguments.js";
 import { selectMojoSourceProfileCallback } from "./source-profile-callbacks.js";
+import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
+import {
+  closeMojoErrorType,
+  mojoNativeErrorType,
+} from "../../target-model/types/error-domains.js";
+import { mojoRegExpNativeResultType } from "../../policy/types/js-regexp.js";
+import { analyzeSourceProfileRegExpProtocolCall } from "./source-profile-regexp-protocols.js";
 
 export function analyzeSourceProfileCall(
   sourceCall: ResolvedSourceCallInfo,
   resolve: (type: Type, authoredTypeNode?: Node) => MojoTargetTypeRef | undefined,
   context: MojoCallAnalysisContext,
 ): MojoCallAnalysis | undefined {
+  const protocol = analyzeSourceProfileRegExpProtocolCall(
+    sourceCall,
+    resolve,
+    context,
+  );
+  if (protocol !== undefined) return protocol;
+  const sourceArgumentTypes = sourceCall.sourceArguments.map((argument) =>
+    context.expressionTypes.get(argument.expression) ?? resolve(argument.type));
   const selected = selectMojoSourceProfileCallRow(
     context.source,
     sourceCall,
     context.sourceProfiles,
+    sourceArgumentTypes,
   );
   if (selected.kind === "not-source-profile") return undefined;
   if (selected.kind === "unsupported") return selected;
@@ -217,6 +233,15 @@ export function analyzeSourceProfileCall(
     context,
   );
   if (result.kind === "unsupported") return result;
+  const baseErrorType = selected.row.raises === true ? mojoNativeErrorType() : undefined;
+  const callbackErrorType = callback === undefined ||
+      selected.row.callback?.errorMode !== "propagate"
+    ? undefined
+    : callback.type.errorType ?? mojoNativeErrorType();
+  const operationErrorType = closeMojoErrorType([
+    ...(baseErrorType === undefined ? [] : [baseErrorType]),
+    ...(callbackErrorType === undefined ? [] : [callbackErrorType]),
+  ]);
   return {
     kind: "resolved",
     selection: Object.freeze({
@@ -228,15 +253,17 @@ export function analyzeSourceProfileCall(
         resultType: result.type,
         genericArguments: Object.freeze(genericArguments),
         genericParameters: Object.freeze([]),
-        raises: selected.row.raises === true,
-        ...(selected.row.raises !== true || callback?.type.errorType === undefined
-          ? {}
-          : { errorType: callback.type.errorType }),
+        raises: operationErrorType !== undefined,
+        ...(operationErrorType === undefined ? {} : { errorType: operationErrorType }),
       }),
       arguments: arguments_.arguments,
       ...(callback === undefined || selected.row.callback?.errorMode !== "propagate"
         ? {}
         : { propagatedCallbackParameterIndex: callback.parameterIndex }),
+      ...(callback === undefined || selected.row.callback?.errorMode !== "propagate" ||
+          baseErrorType === undefined
+        ? {}
+        : { propagatedCallbackBaseErrorType: baseErrorType }),
       ...(receiver === undefined ? {} : { receiver }),
       ...(sourceReceiverType === undefined ? {} : { sourceReceiverType }),
       ...(receiverConversion === undefined ? {} : { receiverConversion }),
@@ -344,6 +371,55 @@ function closeSourceProfileResult(
       code: "MOJO_SOURCE_PROFILE_RESULT_NOT_CLOSED",
       reason: "The selected source-profile call result has no exact Mojo carrier.",
     };
+  }
+  if (row.runtimeResultContract?.kind === "native-error-result") {
+    const runtimeType = mojoRegExpNativeResultType(selectedResult);
+    return Object.freeze({
+      kind: "resolved",
+      type: runtimeType,
+      conversion: Object.freeze({
+        kind: "native-error-result-unwrap" as const,
+        sourceType: runtimeType,
+        targetType: selectedResult,
+      }),
+    });
+  }
+  if (row.runtimeResultContract?.kind === "optional-source-union") {
+    const absence = row.runtimeResultContract.absence;
+    if (selectedResult.kind !== "union") {
+      return {
+        kind: "unsupported",
+        code: "MOJO_SOURCE_PROFILE_RUNTIME_RESULT_CONTRACT_INVALID",
+        reason: "An optional source-profile runtime result requires one exact source union.",
+      };
+    }
+    const absent = selectedResult.members.filter((member) =>
+      member.kind === absence);
+    const present = selectedResult.members.filter((member) =>
+      member.kind !== absence);
+    if (absent.length !== 1 || present.length !== 1) {
+      return {
+        kind: "unsupported",
+        code: "MOJO_SOURCE_PROFILE_RUNTIME_RESULT_CONTRACT_INVALID",
+        reason: `The selected source-profile result is not one value plus ${absence}.`,
+      };
+    }
+    const runtimeType = Object.freeze({
+      kind: "optional" as const,
+      value: present[0]!,
+    });
+    const conversion = classifyMojoValueConversion(runtimeType, selectedResult);
+    return conversion.kind === "unsupported"
+      ? {
+          kind: "unsupported",
+          code: "MOJO_SOURCE_PROFILE_RUNTIME_RESULT_CONVERSION_UNPROVEN",
+          reason: conversion.reason,
+        }
+      : Object.freeze({
+          kind: "resolved",
+          type: runtimeType,
+          conversion: conversion.conversion,
+        });
   }
   if (row.resultContract?.kind === "constructed-explicit-arguments") {
     const explicitNodes = context.source.ast.typeArguments(sourceCall.call)

@@ -23,6 +23,7 @@ import { resolveMojoTargetType } from "../../policy/types/resolution.js";
 import type { MojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
 import { mojoGenericParameterReference } from "../../target-model/types/constructors.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
+import { mojoProjectMethodName } from "./well-known-methods.js";
 
 export interface MojoInterfaceAnalysisInput {
   readonly source: TargetSourceProgram;
@@ -109,11 +110,13 @@ export function analyzeMojoInterface(
     }
     if (ast.is.IsMethodSignatureDeclaration(member)) {
       const nameNode = ast.name(member);
-      if (nameNode === undefined || !ast.is.IsIdentifier(nameNode)) {
-        append(input, "MOJO_INTERFACE_METHOD_NAME_UNSUPPORTED", "Interface methods require one exact identifier name.", member);
+      const sourceName = nameNode === undefined
+        ? undefined
+        : mojoProjectMethodName(nameNode, semantics, ast);
+      if (sourceName === undefined) {
+        append(input, "MOJO_INTERFACE_METHOD_NAME_UNSUPPORTED", "Interface methods require one exact identifier or supported well-known-symbol name.", member);
         continue;
       }
-      const sourceName = ast.text(nameNode);
       const name = allocateCallableName(allocatedNames, names, `method:${sourceName}`, sourceName);
       const signature = analyzeMojoCallableSignature({
         ...callableSignatureInput(input, member, name),

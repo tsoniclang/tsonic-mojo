@@ -15,10 +15,12 @@ import {
   snakeCase,
   sourceErrorRows,
 } from "./source-profile-row-builders.js";
+import { mojoRegExpSourceProfileCallRows } from "./source-profile-regexp-rows.js";
 
 export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Object.freeze([
   ...sourceErrorRows,
   ...jsConstructorRows,
+  ...mojoRegExpSourceProfileCallRows,
   Object.freeze({
     profile: "js",
     kind: "call",
@@ -73,36 +75,6 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     ["toUpperCase", "to_upper_case", true], "toWellFormed",
     "trim", "trimEnd", "trimLeft", "trimRight", "trimStart", "valueOf", "isWellFormed",
   ]),
-  Object.freeze({
-    profile: "js",
-    kind: "call",
-    owner: "String",
-    member: "replace",
-    target: Object.freeze({ kind: "instance", name: "replace", receiver: "imm" }),
-    parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["js-string", "js-string"]),
-  }),
-  Object.freeze({
-    profile: "js",
-    kind: "call",
-    owner: "String",
-    member: "replaceAll",
-    target: Object.freeze({ kind: "instance", name: "replace_all", receiver: "imm" }),
-    parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["js-string", "js-string"]),
-    raises: true,
-  }),
-  Object.freeze({
-    profile: "js",
-    kind: "call",
-    owner: "String",
-    member: "split",
-    target: Object.freeze({
-      kind: "function",
-      modulePath: Object.freeze(["tsonic_js"]),
-      name: "string_split",
-      receiver: "imm",
-    }),
-    parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["js-string", "float64"]),
-  }),
   ...jsInstanceRows("Array", "mut", ["copyWithin", "pop", "reverse", "shift"]),
   jsInstanceParameterRow("Array", "fill", "mut", [receiverArgument(0), "float64", "float64"]),
   jsInstanceParameterRow("Array", "push", "mut", [receiverArgument(0)]),
