@@ -234,6 +234,7 @@ export interface MojoProjectDispatchCallableVariant {
   readonly slotType: Extract<MojoTargetTypeRef, { readonly kind: "function" }>;
   readonly parameters: readonly MojoAnalyzedParameter[];
   readonly resultType: MojoTargetTypeRef;
+  readonly raises: boolean;
   readonly errorType?: MojoTargetTypeRef;
   readonly property?: MojoProjectDispatchMethodProperty;
 }
@@ -358,6 +359,7 @@ export interface MojoProjectDispatchCallableAdapter {
   readonly genericArguments: readonly import("../../target-model/types/model.js").MojoTargetGenericArgument[];
   readonly parameters: readonly MojoAnalyzedParameter[];
   readonly resultType: MojoTargetTypeRef;
+  readonly raises: boolean;
   readonly errorType?: MojoTargetTypeRef;
   readonly adapterName: string;
   readonly implementationName: string;
@@ -426,6 +428,7 @@ export interface MojoProjectObjectLiteralCallableAdapter {
   readonly genericArguments: readonly import("../../target-model/types/model.js").MojoTargetGenericArgument[];
   readonly parameters: readonly MojoAnalyzedParameter[];
   readonly resultType: MojoTargetTypeRef;
+  readonly raises: boolean;
   readonly errorType?: MojoTargetTypeRef;
   readonly parameterAdapters: readonly MojoProjectDispatchParameterAdapter[];
   readonly resultConversion: MojoValueConversion;
@@ -532,7 +535,10 @@ export interface MojoProjectDispatchPlan {
     definition: import("../../target-model/types/project.js").MojoProjectTypeDefinition,
     declaration: Node,
   ): readonly string[] | undefined;
-  implementationName(declaration: Node): string | undefined;
+  implementationName(
+    declaration: Node,
+    genericArguments?: readonly import("../../target-model/types/model.js").MojoTargetGenericArgument[],
+  ): string | undefined;
 }
 
 export interface MojoAnalyzedEnumMember {
@@ -579,7 +585,7 @@ export type MojoAnalyzedDeclaration =
   | MojoAnalyzedTypeAlias;
 
 export interface MojoAnalyzedModuleBinding {
-  readonly kind: "module-binding" | "class-static-field";
+  readonly kind: "module-binding" | "class-static-field" | "function-value";
   readonly declaration: Node;
   readonly sourceFile: SourceFile;
   readonly sourceName: string;
@@ -588,6 +594,7 @@ export interface MojoAnalyzedModuleBinding {
   readonly disposition: MojoBindingDisposition;
   readonly type: MojoTargetTypeRef;
   readonly initializer: Node;
+  readonly functionValue?: MojoAnalyzedTopLevelFunction;
 }
 
 export type MojoModuleInitializationStep =
@@ -976,6 +983,7 @@ export interface MojoTargetProgram {
   readonly sourceFiles: readonly SourceFile[];
   readonly projectTypes: MojoProjectTypeCatalog;
   readonly projectRelationships: MojoProjectTypeRelationships;
+  readonly sourceCallableSpecializations: import("../callables/specializations.js").MojoSourceCallableSpecializationPlan;
   readonly projectDispatch: MojoProjectDispatchPlan;
   readonly modules: MojoSourceModuleCatalog;
   readonly analyzedModules: readonly MojoAnalyzedModule[];

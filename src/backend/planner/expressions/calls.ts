@@ -2,6 +2,8 @@ import type { Node } from "@tsonic/tsts";
 import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 import {
   appendMojoPlanningDiagnostic,
+  mojoTargetGenericArgumentsInContext,
+  mojoTargetTypeInContext,
   mojoModuleMemberExpression,
   mojoModulePathExpression,
   mojoSelfExpression,
@@ -253,6 +255,10 @@ export function planMojoCall(
     }
   }
   if (selection.kind === "project") {
+    const genericArguments = mojoTargetGenericArgumentsInContext(
+      selection.genericArguments,
+      context,
+    );
     const arguments_ = selection.arguments.map((argument) => planSelectedArgument(argument, context, planValue));
     if (arguments_.some((argument) => argument === undefined)) return undefined;
     const plannedArguments = arguments_ as PlannedMojoCallArgument[];
@@ -261,6 +267,23 @@ export function planMojoCall(
     switch (selection.target.kind) {
       case "function": {
         if (selection.optionalChain) return unsupportedOptionalCall(node, context);
+        const requiresSpecialization = context.program.sourceCallableSpecializations
+          .requiresSpecialization(selection.target.declaration);
+        const specialization = requiresSpecialization
+          ? context.program.sourceCallableSpecializations.variantForCall(
+              selection.target.declaration,
+              genericArguments,
+            )
+          : undefined;
+        if (requiresSpecialization && specialization === undefined) {
+          appendMojoPlanningDiagnostic(
+            context,
+            "MOJO_SOURCE_CALLABLE_SPECIALIZATION_NOT_SEALED",
+            "A selected project function call has no exact finite Mojo specialization.",
+            node,
+          );
+          return undefined;
+        }
         const ordered = orderCallArguments(plannedArguments, context);
         before = ordered.before;
         call = {
@@ -268,24 +291,27 @@ export function planMojoCall(
           callee: mojoModuleMemberExpression(
             context,
             selection.target.modulePath,
-            selection.target.name,
+            specialization?.targetName ?? selection.target.name,
           ),
-          ...(selection.genericArguments.length === 0 ? {} : { genericArguments: selection.genericArguments }),
+          ...(genericArguments.length === 0 || specialization !== undefined
+            ? {}
+            : { genericArguments }),
           arguments: ordered.arguments,
         };
         break;
       }
       case "method": {
+        const receiverType = mojoTargetTypeInContext(selection.target.receiverType, context);
         const exactDispatch = selection.target.dispatch === "exact";
         const exactConversion = exactDispatch && context.selfType !== undefined
           ? context.program.projectDispatch.conversionFor(
               context.selfType,
-              selection.target.receiverType,
+              receiverType,
             )
           : undefined;
         const exactReceiver = exactDispatch && context.selfType !== undefined
           ? exactConversion === undefined &&
-              mojoTargetTypeEquals(context.selfType, selection.target.receiverType)
+              mojoTargetTypeEquals(context.selfType, receiverType)
             ? mojoValue(mojoSelfExpression(context))
             : exactConversion === undefined
               ? undefined
@@ -302,7 +328,7 @@ export function planMojoCall(
             : Object.freeze({ kind: "required", plan: exactReceiver })
           : prepareMojoReceiver(
               selection.target.receiver,
-              selection.target.receiverType,
+              receiverType,
               selection.optionalChain,
               context,
               planValue,
@@ -319,23 +345,41 @@ export function planMojoCall(
         if (receiver === undefined) return undefined;
         const ordered = orderCallArguments(plannedArguments, context, Object.freeze({
           plan: receiver.plan,
-          type: selection.target.receiverType,
+          type: receiverType,
           role: "call_receiver",
         }));
         before = ordered.before;
-        const dispatchView = context.program.projectDispatch.viewForType(selection.target.receiverType);
+        const dispatchView = context.program.projectDispatch.viewForType(receiverType);
         const dispatch = dispatchView === undefined
           ? undefined
           : context.program.projectDispatch.callableFor(
-              selection.target.receiverType,
+              receiverType,
               selection.target.declaration,
-              selection.genericArguments,
+              genericArguments,
             );
         const exactName = exactDispatch
           ? context.program.projectDispatch.implementationName(
               selection.target.implementationDeclaration,
+              genericArguments,
             )
           : undefined;
+        const requiresSpecialization = context.program.sourceCallableSpecializations
+          .requiresSpecialization(selection.target.implementationDeclaration);
+        const specialization = requiresSpecialization
+          ? context.program.sourceCallableSpecializations.variantForCall(
+              selection.target.implementationDeclaration,
+              genericArguments,
+            )
+          : undefined;
+        if (dispatchView === undefined && requiresSpecialization && specialization === undefined) {
+          appendMojoPlanningDiagnostic(
+            context,
+            "MOJO_SOURCE_METHOD_SPECIALIZATION_NOT_SEALED",
+            "A selected project method call has no exact finite Mojo specialization.",
+            node,
+          );
+          return undefined;
+        }
         if (dispatchView !== undefined && (!exactDispatch && dispatch === undefined ||
           exactDispatch && exactName === undefined)) {
           appendMojoPlanningDiagnostic(
@@ -349,10 +393,11 @@ export function planMojoCall(
         call = {
           kind: "method-call",
           receiver: ordered.receiver!,
-          name: exactName ?? dispatch?.name ?? selection.target.name,
-          ...(dispatch !== undefined || exactName !== undefined || selection.genericArguments.length === 0
+          name: exactName ?? dispatch?.name ?? specialization?.targetName ?? selection.target.name,
+          ...(dispatch !== undefined || exactName !== undefined || specialization !== undefined ||
+              genericArguments.length === 0
             ? {}
-            : { genericArguments: selection.genericArguments }),
+            : { genericArguments }),
           arguments: ordered.arguments,
         };
         const converted = convertMojoValue(withMojoValue(before, call), selection.resultConversion, context);
@@ -362,13 +407,32 @@ export function planMojoCall(
       case "static-method": {
         if (selection.optionalChain) return unsupportedOptionalCall(node, context);
         registerMojoTypeImports(selection.target.owner, context);
+        const requiresSpecialization = context.program.sourceCallableSpecializations
+          .requiresSpecialization(selection.target.implementationDeclaration);
+        const specialization = requiresSpecialization
+          ? context.program.sourceCallableSpecializations.variantForCall(
+              selection.target.implementationDeclaration,
+              genericArguments,
+            )
+          : undefined;
+        if (requiresSpecialization && specialization === undefined) {
+          appendMojoPlanningDiagnostic(
+            context,
+            "MOJO_SOURCE_STATIC_METHOD_SPECIALIZATION_NOT_SEALED",
+            "A selected project static-method call has no exact finite Mojo specialization.",
+            node,
+          );
+          return undefined;
+        }
         const ordered = orderCallArguments(plannedArguments, context);
         before = ordered.before;
         call = {
           kind: "method-call",
           receiver: { kind: "type-value", type: selection.target.owner },
-          name: selection.target.name,
-          ...(selection.genericArguments.length === 0 ? {} : { genericArguments: selection.genericArguments }),
+          name: specialization?.targetName ?? selection.target.name,
+          ...(genericArguments.length === 0 || specialization !== undefined
+            ? {}
+            : { genericArguments }),
           arguments: ordered.arguments,
         };
         break;

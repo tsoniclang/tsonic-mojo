@@ -1,7 +1,15 @@
 import type { Node } from "@tsonic/tsts";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { MojoTargetProgram } from "../../../analysis/program/model.js";
-import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
+import type {
+  MojoTargetGenericArgument,
+  MojoTargetTypeRef,
+} from "../../../target-model/types/model.js";
+import {
+  substituteMojoTargetGenericArguments,
+  substituteMojoTargetType,
+  type MojoTargetTypeSubstitutions,
+} from "../../../target-model/types/substitution.js";
 import type { MojoSourceModuleDefinition } from "../../../analysis/source-modules/model.js";
 import type { MojoImportDeclaration } from "../../target-ast/index.js";
 import type { MojoTypeAliasUse } from "../../target-ast/index.js";
@@ -25,6 +33,7 @@ export interface MojoPlanningContext {
   readonly syntheticDeclarations: MojoDeclaration[];
   readonly callableArtifactNames: WeakMap<Node, string>;
   readonly bindingOverrides: ReadonlyMap<Node, MojoBindingPlanOverride>;
+  readonly genericSubstitutions?: MojoTargetTypeSubstitutions;
   readonly errorType?: MojoTargetTypeRef;
   readonly selfType?: MojoTargetTypeRef;
   readonly selfExpression?: MojoExpression;
@@ -93,6 +102,31 @@ export function withMojoBindingOverrides(
   return Object.freeze({ ...context, bindingOverrides });
 }
 
+export function withMojoGenericSubstitutions(
+  context: MojoPlanningContext,
+  genericSubstitutions: MojoTargetTypeSubstitutions,
+): MojoPlanningContext {
+  return Object.freeze({ ...context, genericSubstitutions });
+}
+
+export function mojoTargetTypeInContext(
+  type: MojoTargetTypeRef,
+  context: MojoPlanningContext,
+): MojoTargetTypeRef {
+  return context.genericSubstitutions === undefined
+    ? type
+    : substituteMojoTargetType(type, context.genericSubstitutions);
+}
+
+export function mojoTargetGenericArgumentsInContext(
+  arguments_: readonly MojoTargetGenericArgument[],
+  context: MojoPlanningContext,
+): readonly MojoTargetGenericArgument[] {
+  return context.genericSubstitutions === undefined
+    ? arguments_
+    : substituteMojoTargetGenericArguments(arguments_, context.genericSubstitutions);
+}
+
 export function withMojoLocalNameScope(
   context: MojoPlanningContext,
 ): MojoPlanningContext {
@@ -124,6 +158,19 @@ export function withMojoModuleStateInitialization(
     ...context,
     initializingModuleState: Object.freeze({ moduleId, pointer, value }),
   });
+}
+
+export function withMojoDeferredExecution(
+  context: MojoPlanningContext,
+): MojoPlanningContext {
+  const {
+    initializingState: ignoredStateInitialization,
+    initializingModuleState: ignoredModuleStateInitialization,
+    ...deferredContext
+  } = context;
+  void ignoredStateInitialization;
+  void ignoredModuleStateInitialization;
+  return Object.freeze(deferredContext);
 }
 
 export function withMojoErrorType(

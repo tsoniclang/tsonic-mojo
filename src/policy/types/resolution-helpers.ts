@@ -26,12 +26,23 @@ export function resolveTypeParameter(
 
 export function resolveUnion(
   selectedType: Type,
+  authoredTypeNode: Node | undefined,
   context: MojoTypeResolutionContext,
-  resolveMember: (member: Type) => MojoTypeResolution,
+  resolveMember: (member: Type, authoredMember: Node | undefined) => MojoTypeResolution,
 ): MojoTypeResolution {
   const members: MojoTargetTypeRef[] = [];
+  const authoredMembers = authoredTypeNode === undefined
+    ? Object.freeze([])
+    : authoredUnionMemberNodes(authoredTypeNode, context.ast);
   for (const member of context.semantics.types.unionOrIntersectionTypes(selectedType)) {
-    const resolved = resolveMember(member);
+    const matchingAuthoredMembers = authoredMembers.filter((candidate) => {
+      const selected = context.semantics.types.authoredSelection(candidate, member);
+      return selected.kind === "authored-members" && selected.nodes.includes(candidate);
+    });
+    if (matchingAuthoredMembers.length > 1) {
+      return { kind: "unsupported", reason: "the selected union member has ambiguous authored type syntax" };
+    }
+    const resolved = resolveMember(member, matchingAuthoredMembers[0]);
     if (resolved.kind === "unsupported") return resolved;
     if (!members.some((candidate) => mojoTargetTypeEquals(candidate, resolved.type))) {
       members.push(resolved.type);
@@ -49,6 +60,22 @@ export function resolveUnion(
     };
   }
   return { kind: "resolved", type: { kind: "union", members: Object.freeze(members) } };
+}
+
+function authoredUnionMemberNodes(
+  node: Node,
+  ast: AstReader,
+): readonly Node[] {
+  if (ast.is.IsUnionTypeNode(node)) {
+    return Object.freeze(ast.children(node).filter(
+      (child): child is Node => child !== undefined,
+    ));
+  }
+  if (!ast.is.IsParenthesizedTypeNode(node)) return Object.freeze([node]);
+  const inner = ast.as.AsParenthesizedTypeNode(node)?.Type;
+  return inner === undefined
+    ? Object.freeze([])
+    : authoredUnionMemberNodes(inner, ast);
 }
 
 export function exactUndefinedType(type: Type, context: MojoTypeResolutionContext): boolean {

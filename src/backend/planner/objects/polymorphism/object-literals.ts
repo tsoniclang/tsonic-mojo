@@ -30,6 +30,7 @@ import {
   appendMojoPlanningDiagnostic,
   mojoModuleMemberExpression,
   withMojoBindingOverrides,
+  withMojoDeferredExecution,
   withMojoErrorType,
   withMojoLocalNameScope,
   withMojoSelfType,
@@ -470,7 +471,10 @@ function planObjectImplementation(
   });
   const implementationContext = withMojoSelfType(
     withMojoErrorType(
-      withMojoBindingOverrides(withMojoLocalNameScope(context), overrides),
+      withMojoBindingOverrides(
+        withMojoDeferredExecution(withMojoLocalNameScope(context)),
+        overrides,
+      ),
       implementation.errorType,
     ),
     dispatch.selection.constructionType,
@@ -670,7 +674,7 @@ function planObjectCallableAdapter(
     ]),
     resultType: adapter.resultType,
     asynchronous: adapter.variant.contract.asynchronous,
-    raises: adapter.variant.contract.raises,
+    raises: adapter.raises,
     ...(adapter.errorType === undefined ? {} : { errorType: adapter.errorType }),
     decorators: mojoStaticMethodDecorators,
     statements: Object.freeze([
@@ -724,7 +728,7 @@ function planObjectMethodPropertyAdapters(
       parameters: objectMethodAdapterParameters(adapter, context),
       resultType: adapter.resultType,
       asynchronous: false,
-      raises: adapter.variant.contract.raises,
+      raises: adapter.raises,
       ...(adapter.errorType === undefined ? {} : { errorType: adapter.errorType }),
       decorators: mojoStaticMethodDecorators,
       statements: Object.freeze(statements),
@@ -820,8 +824,10 @@ function planObjectMethodBindingAdapter(
     ]),
     resultType: adapter.resultType,
     asynchronous: false,
-    raises: adapter.variant.contract.raises,
-    ...(adapter.errorType === undefined ? {} : { errorType: adapter.errorType }),
+    raises: property.callableType.raises,
+    ...(property.callableType.errorType === undefined
+      ? {}
+      : { errorType: property.callableType.errorType }),
     decorators: mojoStaticMethodDecorators,
     statements: Object.freeze([objectMethodCallStatement(call, adapter.resultType)]),
   });

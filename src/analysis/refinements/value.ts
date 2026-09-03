@@ -17,6 +17,7 @@ export function classifyMojoValueRefinement(
   projectRelationships?: MojoProjectTypeRelationships,
   modules?: MojoSourceModuleCatalog,
 ): MojoValueRefinementSelection | undefined {
+  if (mojoTargetTypeEquals(sourceType, resultType)) return undefined;
   if (sourceType.kind === "optional" &&
     mojoTargetTypeEquals(sourceType.value, resultType)) {
     return Object.freeze({ kind: "optional-present", sourceType, resultType });

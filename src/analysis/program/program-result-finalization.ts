@@ -12,6 +12,8 @@ import {
   targetSourceSyntaxProgram,
 } from "@tsonic/target-api/analysis";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
+import { mojoNativeErrorType } from "../../target-model/types/error-domains.js";
 import { analyzeMojoRuntimePackages } from "../runtime/references.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import { analyzeMojoTemplateExpression } from "../operations/template-expressions.js";
@@ -27,6 +29,8 @@ import {
   mojoRepresentationRootTypes,
 } from "../representations/index.js";
 import { createMojoProjectDispatchPlan } from "../project-types/dispatch.js";
+import { createMojoSourceCallableSpecializationPlan } from "../callables/specializations.js";
+import { mojoParameterConvention } from "../representations/index.js";
 import type { MojoAnalyzedModuleRegionFacts } from "./module-effects.js";
 import type { MojoExecutableRegionAnalysisEnvironment } from "./executable-regions.js";
 import type {
@@ -171,12 +175,23 @@ export function finalizeMojoProgramResult(
       ...(typedError ? { errorRole: "typed" as const } : {}),
     });
   });
-  const finalizedModules = finalizeMojoModuleBindingTypes(finalizeMojoModuleEffects(
+  const effectFinalizedModules = finalizeMojoModuleBindingTypes(finalizeMojoModuleEffects(
     analyzedModules,
     modules,
     moduleRegionFacts,
     errorTypesByDeclaration,
   ), bindingTypes);
+  const finalizedModules = addMojoFirstClassFunctionBindings(
+    effectFinalizedModules,
+    finalizedFunctions.filter(
+      (function_): function_ is import("./model.js").MojoAnalyzedTopLevelFunction =>
+        function_.kind === "function",
+    ),
+    checkedSource,
+    expressionTypes,
+    bindingTypes,
+    diagnostics,
+  );
   diagnostics.push(...diagnoseMojoRuntimeModuleCycles(finalizedModules, modules));
   for (const module of finalizedModules) {
     for (const binding of module.bindings) {
@@ -251,6 +266,22 @@ export function finalizeMojoProgramResult(
       diagnostics,
     );
   }
+  const sourceCallableSpecializations = createMojoSourceCallableSpecializationPlan({
+    ast,
+    functions: finalizedFunctions,
+    classes: finalizedClasses,
+    interfaces,
+    callNodes: environment.callNodes,
+    callSelections,
+    callableExpressionNodes,
+    callableExpressionSelections,
+    relationships: environment.projectRelationships,
+    reservedNames,
+    libraryOutput: configuration.outputType !== "bin",
+  });
+  for (const issue of sourceCallableSpecializations.issues) {
+    diagnostics.push(diagnostic(issue.code, issue.message, issue.node));
+  }
   if (diagnostics.length > 0) return rejectedTargetStage(diagnostics);
 
   const source = targetSourceSyntaxProgram(checkedSource);
@@ -298,14 +329,13 @@ export function finalizeMojoProgramResult(
     interfaces,
     relationships: environment.projectRelationships,
     modules,
-    callNodes: environment.callNodes,
-    callSelections,
     propertyNodes,
     propertySelections,
     implementations: finalizedByDeclaration,
     objectLiteralNodes,
     objectLiteralSelections,
     callableExpressionSelections,
+    sourceCallableSpecializations,
     libraryOutput: configuration.outputType !== "bin",
   });
   for (const issue of projectDispatch.issues) {
@@ -320,6 +350,7 @@ export function finalizeMojoProgramResult(
     valueRefinements: environment.valueRefinements,
     rootTypes: Object.freeze([
       ...mojoRepresentationRootTypes(declarations, finalizedModules),
+      ...sourceCallableSpecializations.representationTypes,
       ...projectDispatch.representationTypes,
     ]),
     parameters: mojoRepresentationParameters(declarations),
@@ -351,6 +382,7 @@ export function finalizeMojoProgramResult(
     sourceFiles,
     projectTypes,
     projectRelationships: environment.projectRelationships,
+    sourceCallableSpecializations,
     projectDispatch,
     modules,
     analyzedModules: finalizedModules,
@@ -360,6 +392,135 @@ export function finalizeMojoProgramResult(
     queries,
     runtimePackages: analyzeMojoRuntimePackages(hostInput.runtimeReferences),
     binaryEpilogues: providerSemantics.binaryEpilogues,
-    reservedNames: Object.freeze([...reservedNames].sort((left, right) => left.localeCompare(right, "en"))),
+    reservedNames: Object.freeze([
+      ...new Set([...reservedNames, ...sourceCallableSpecializations.allocatedNames]),
+    ].sort((left, right) => left.localeCompare(right, "en"))),
   }));
+}
+
+function addMojoFirstClassFunctionBindings(
+  modules: readonly MojoAnalyzedModule[],
+  functions: readonly import("./model.js").MojoAnalyzedTopLevelFunction[],
+  source: MojoTargetAnalysisRequest["input"]["source"],
+  expressionTypes: WeakMap<Node, MojoTargetTypeRef>,
+  bindingTypes: WeakMap<Node, MojoTargetTypeRef>,
+  diagnostics: TargetDiagnostic[],
+): readonly MojoAnalyzedModule[] {
+  const functionsBySourceFile = new Map<SourceFile, import("./model.js").MojoAnalyzedTopLevelFunction[]>();
+  for (const function_ of functions) {
+    const summary = source.navigation.declarationUseSummary(function_.declaration);
+    if (summary.firstClassUseCount === 0) continue;
+    const current = functionsBySourceFile.get(function_.sourceFile) ?? [];
+    current.push(function_);
+    functionsBySourceFile.set(function_.sourceFile, current);
+  }
+  return Object.freeze(modules.map((module) => {
+    const selectedFunctions = functionsBySourceFile.get(module.sourceFile) ?? [];
+    if (selectedFunctions.length === 0) return module;
+    const occupiedNames = new Set(module.bindings.map((binding) => binding.name));
+    const bindings = [...module.bindings];
+    const functionValueSteps: import("./model.js").MojoModuleInitializationStep[] = [];
+    for (const function_ of selectedFunctions) {
+      const summary = source.navigation.declarationUseSummary(function_.declaration);
+      const firstClassUses = summary.uses.filter((use) => use.kind === "first-class");
+      const selectedTypes = firstClassUses.map((use) => expressionTypes.get(use.reference));
+      if (selectedTypes.some((type) => type?.kind !== "callable")) {
+        diagnostics.push(diagnostic(
+          "MOJO_FIRST_CLASS_FUNCTION_CARRIER_UNRESOLVED",
+          `First-class function '${function_.name}' has a use without one exact callable carrier.`,
+          function_.declaration,
+        ));
+        continue;
+      }
+      const callableTypes = selectedTypes as Extract<MojoTargetTypeRef, { readonly kind: "callable" }>[];
+      const callableType = callableTypes[0];
+      if (callableType === undefined || callableTypes.some((candidate) =>
+        !sameFirstClassFunctionShape(callableType, candidate))) {
+        diagnostics.push(diagnostic(
+          "MOJO_FIRST_CLASS_FUNCTION_CARRIER_CONFLICT",
+          `First-class function '${function_.name}' is selected through incompatible callable carriers.`,
+          function_.declaration,
+        ));
+        continue;
+      }
+      if (function_.asynchronous || function_.typeParameters.length !== 0 ||
+        function_.parameters.some((parameter) => {
+          const convention = mojoParameterConvention(parameter.disposition);
+          return convention !== "imm" && convention !== "var";
+        }) || !sameFirstClassFunctionSignature(function_, callableType)) {
+        diagnostics.push(diagnostic(
+          "MOJO_FIRST_CLASS_FUNCTION_ABI_UNSUPPORTED",
+          `First-class function '${function_.name}' has no exact closed erased-callable ABI.`,
+          function_.declaration,
+        ));
+        continue;
+      }
+      const name = allocateFunctionValueName(occupiedNames, `${function_.name}_value`);
+      const sourceNameNode = source.ast.name(function_.declaration);
+      const binding = Object.freeze({
+        kind: "function-value" as const,
+        declaration: function_.declaration,
+        sourceFile: function_.sourceFile,
+        sourceName: sourceNameNode === undefined ? function_.name : source.ast.text(sourceNameNode),
+        name,
+        declarationKind: "const" as const,
+        disposition: Object.freeze({ kind: "immutable-runtime" as const }),
+        type: callableType,
+        initializer: function_.declaration,
+        functionValue: function_,
+      }) satisfies MojoAnalyzedModuleBinding;
+      bindings.push(binding);
+      functionValueSteps.push(Object.freeze({ kind: "binding" as const, binding }));
+      bindingTypes.set(function_.declaration, callableType);
+    }
+    if (bindings.length === module.bindings.length) return module;
+    return Object.freeze({
+      ...module,
+      bindings: Object.freeze(bindings),
+      initializationSteps: Object.freeze([
+        ...functionValueSteps,
+        ...module.initializationSteps,
+      ]),
+      initializationStateRequired: true,
+      runtimeInitializationRequired: true,
+    });
+  }));
+}
+
+function sameFirstClassFunctionSignature(
+  function_: import("./model.js").MojoAnalyzedTopLevelFunction,
+  callableType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
+): boolean {
+  if (function_.parameters.length !== callableType.parameters.length) return false;
+  return function_.parameters.every((parameter, index) => {
+    const selected = callableType.parameters[index];
+    return selected !== undefined && selected.convention === mojoParameterConvention(parameter.disposition) &&
+      selected.passing === (parameter.disposition.kind === "owned" ? "consume" : "plain") &&
+      selected.omissionKind === parameter.omissionKind &&
+      mojoTargetTypeEquals(selected.type, parameter.callType);
+  }) && mojoTargetTypeEquals(callableType.result, function_.resultType) &&
+    (!function_.raises || callableType.raises && (
+      mojoTargetTypeEquals(
+        function_.errorType ?? mojoNativeErrorType(),
+        callableType.errorType ?? mojoNativeErrorType(),
+      )
+    ));
+}
+
+function sameFirstClassFunctionShape(
+  left: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
+  right: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
+): boolean {
+  return mojoTargetTypeEquals(left, right);
+}
+
+function allocateFunctionValueName(occupied: Set<string>, requested: string): string {
+  let candidate = requested;
+  let suffix = 2;
+  while (occupied.has(candidate)) {
+    candidate = `${requested}_${suffix}`;
+    suffix += 1;
+  }
+  occupied.add(candidate);
+  return candidate;
 }

@@ -8,6 +8,7 @@ import { analyzeMojoProjectProperty } from "../operations/project-fields.js";
 import { analyzeMojoProviderProperty } from "../operations/properties.js";
 import { analyzeMojoStructuralProperty } from "../operations/structural-fields.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
+import { classifyMojoValueRefinement } from "../refinements/value.js";
 import { resolveExecutableRegionType as resolveType } from "./executable-region-support.js";
 import type { MojoExecutableRegionAnalysisInput } from "./executable-regions.js";
 
@@ -78,6 +79,17 @@ export function analyzeProperty(
   const selectedReceiverType = resolve(selected.receiver.type);
   const exactReceiverType = input.expressionTypes.get(selected.receiver.expression) ??
     selectedReceiverType;
+  if (exactReceiverType !== undefined && selectedReceiverType !== undefined) {
+    const refinement = classifyMojoValueRefinement(
+      exactReceiverType,
+      selectedReceiverType,
+      input.projectRelationships,
+      input.modules,
+    );
+    if (refinement !== undefined) {
+      input.valueRefinements.set(selected.receiver.expression, refinement);
+    }
+  }
   const projectReceiverType = reconcileProjectReceiverType(
     exactReceiverType,
     selectedReceiverType,

@@ -38,6 +38,7 @@ import { adaptMojoValueErrorDomain } from "../expressions/error-domains.js";
 import { mojoValue } from "../expressions/value-plan.js";
 import { planMojoProjectFunction } from "../declarations/project.js";
 import { planMojoCompileTimeInitializer } from "../compile-time/values.js";
+import { planMojoFunctionValue } from "./function-values.js";
 
 export function planMojoModuleState(
   program: MojoTargetProgram,
@@ -419,7 +420,9 @@ function planModuleBindingInitialization(
 ): readonly MojoStatement[] | undefined {
   if (binding.disposition.kind !== "immutable-runtime" &&
     binding.disposition.kind !== "live-cell") return Object.freeze([]);
-  const value = planMojoValue(binding.initializer, context, binding.type);
+  const value = binding.kind === "function-value"
+    ? planMojoFunctionValue(binding, context)
+    : planMojoValue(binding.initializer, context, binding.type);
   const slot = mojoModuleBindingSlot(binding, context);
   if (value === undefined || slot === undefined) return undefined;
   registerMojoTypeImports(binding.type, context);

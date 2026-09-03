@@ -30,7 +30,7 @@ import {
 import {
   planMojoProjectClass,
   planMojoProjectEnum,
-  planMojoProjectFunction,
+  planMojoProjectFunctionVariants,
   planMojoProjectTypeAlias,
 } from "../declarations/project.js";
 import { planMojoPhysicalTypeAliases } from "../types/aliases.js";
@@ -154,9 +154,9 @@ function planSourceModule(
       continue;
     }
     const diagnosticCount = context.diagnostics.length;
-    const planned = planMojoProjectFunction(declaration, context);
+    const planned = planMojoProjectFunctionVariants(declaration, context);
     if (planned !== undefined) {
-      declarations.push(planned);
+      declarations.push(...planned);
     } else if (context.diagnostics.length === diagnosticCount) {
       context.diagnostics.push(planningDiagnostic(
         "MOJO_PROJECT_FUNCTION_NOT_PLANNED",

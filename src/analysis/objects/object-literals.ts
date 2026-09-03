@@ -329,12 +329,6 @@ export function analyzeMojoObjectLiteral(
       fieldType.kind === "callable") {
       const callable = input.analyzeCallableValue(value, selected.sourceSelectedType);
       if (callable === undefined) {
-        reject(
-          input,
-          "MOJO_OBJECT_CALLABLE_FIELD_UNRESOLVED",
-          "A callable-valued object field requires one exact contextual callable implementation.",
-          value,
-        );
         return undefined;
       }
       input.expressionTypes.set(value, callable.callableType);
@@ -483,6 +477,7 @@ function instantiateIndexSignatures(
     const argument = arguments_[index];
     if (argument?.kind !== "type") return undefined;
     types.set(parameter.name, argument.type);
+    types.set(parameter.identity, argument.type);
   }
   const substitutions = {
     types,
@@ -550,6 +545,7 @@ function instantiateFields(
     const argument = arguments_[index];
     if (argument?.kind !== "type") return undefined;
     types.set(parameter.name, argument.type);
+    types.set(parameter.identity, argument.type);
   }
   return Object.freeze(interface_.fields.map((field) => Object.freeze({
     field,

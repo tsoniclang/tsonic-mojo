@@ -9,7 +9,7 @@ import type {
   MojoAnalyzedProjectCallable,
   MojoCallSelection,
 } from "../program/model.js";
-import { analyzeArguments, closeResultConversion } from "./call-arguments.js";
+import { analyzeArguments } from "./call-arguments.js";
 import type { MojoCallAnalysis, MojoCallAnalysisContext } from "./calls.js";
 import {
   mojoParameterArgumentDisposition,
@@ -49,6 +49,7 @@ export function analyzeProjectCall(
     }
     if (parameter.kind === "type" && argument.kind === "type") {
       typeSubstitutions.set(parameter.name, argument.type);
+      typeSubstitutions.set(parameter.identity, argument.type);
     } else if (parameter.kind === "origin" && argument.kind === "origin") {
       originSubstitutions.set(parameter.name, argument.origin);
     } else if (parameter.kind === "value" && argument.kind !== "type" && argument.kind !== "origin") {
@@ -154,12 +155,7 @@ export function analyzeProjectCall(
       reason: "Project constructor has no exact owning class carrier.",
     };
   }
-  const result = closeResultConversion(
-    callResult,
-    sourceCall.sourceResultType,
-    resolve,
-    context.projectRelationships,
-  );
+  const result = closeCanonicalProjectResult(callResult);
   if (result.kind === "unsupported") return result;
   const target = projectCallTarget(callable, sourceCall, callResult, resolve, context);
   if (target.kind === "unsupported") return target;
@@ -278,6 +274,7 @@ function projectCallTarget(
       kind: "resolved",
       target: Object.freeze({
         kind: "function",
+        declaration: implementation.declaration,
         name: implementation.name,
         modulePath: Object.freeze([...context.modulePathForSourceFile(implementation.sourceFile)]),
       }),
@@ -293,7 +290,13 @@ function projectCallTarget(
     }
     return {
       kind: "resolved",
-      target: Object.freeze({ kind: "static-method", owner: implementation.owner.type, name: implementation.name }),
+      target: Object.freeze({
+        kind: "static-method",
+        declaration: contract.declaration,
+        implementationDeclaration: implementation.declaration,
+        owner: implementation.owner.type,
+        name: implementation.name,
+      }),
     };
   }
   const receiver = sourceCall.sourceReceiver?.expression;

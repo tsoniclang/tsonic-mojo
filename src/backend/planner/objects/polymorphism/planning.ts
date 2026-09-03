@@ -5,7 +5,7 @@ import type {
 import type { MojoStructDeclaration } from "../../../target-ast/index.js";
 import { mojoStaticMethodDecorators } from "../../../target-ast/index.js";
 import {
-  planMojoProjectFunction,
+  planMojoProjectFunctionVariants,
   planMojoGenericParameters,
 } from "../../declarations/project.js";
 import type { MojoPlanningContext } from "../../program/context.js";
@@ -19,7 +19,7 @@ import {
   mojoProjectErrorWritableMethod,
   mojoProjectIdentityEqualityMethod,
 } from "./identity.js";
-import { planMojoProjectImplementation } from "./implementations.js";
+import { planMojoProjectImplementationVariants } from "./implementations.js";
 import {
   planMojoPolymorphicClassConstructor,
   planMojoPolymorphicClassState,
@@ -46,31 +46,31 @@ export function planMojoPolymorphicProjectClass(
   ];
   for (const method of class_.methods) {
     if (method.static === true) {
-      const planned = planMojoProjectFunction(method, context);
+      const planned = planMojoProjectFunctionVariants(method, context);
       if (planned === undefined) return undefined;
-      methods.push(Object.freeze({ ...planned, decorators: mojoStaticMethodDecorators }));
+      methods.push(...planned.map((declaration) => Object.freeze({
+        ...declaration,
+        decorators: mojoStaticMethodDecorators,
+      })));
       continue;
     }
-    const name = context.program.projectDispatch.implementationName(method.declaration);
-    const planned = name === undefined
-      ? undefined
-      : planMojoProjectImplementation(method, name, context);
+    const planned = planMojoProjectImplementationVariants(method, context);
     if (planned === undefined) return undefined;
-    methods.push(planned);
+    methods.push(...planned);
   }
   for (const accessor of class_.accessors) {
     if (accessor.static === true) {
-      const planned = planMojoProjectFunction(accessor, context);
+      const planned = planMojoProjectFunctionVariants(accessor, context);
       if (planned === undefined) return undefined;
-      methods.push(Object.freeze({ ...planned, decorators: mojoStaticMethodDecorators }));
+      methods.push(...planned.map((declaration) => Object.freeze({
+        ...declaration,
+        decorators: mojoStaticMethodDecorators,
+      })));
       continue;
     }
-    const name = context.program.projectDispatch.implementationName(accessor.declaration);
-    const planned = name === undefined
-      ? undefined
-      : planMojoProjectImplementation(accessor, name, context);
+    const planned = planMojoProjectImplementationVariants(accessor, context);
     if (planned === undefined) return undefined;
-    methods.push(planned);
+    methods.push(...planned);
   }
   methods.push(...adapters);
   if (class_.errorRole === "typed") {

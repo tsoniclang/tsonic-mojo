@@ -516,8 +516,14 @@ function resolveMojoTargetTypeWithState(
     if (types.isUnion(selectedType)) {
       return resolveUnion(
         selectedType,
+        authoredTypeNode,
         context,
-        (member) => resolveMojoTargetTypeWithState(member, undefined, context, resolving),
+        (member, authoredMember) => resolveMojoTargetTypeWithState(
+          member,
+          authoredMember,
+          context,
+          resolving,
+        ),
       );
     }
     if (types.isTuple(selectedType)) {

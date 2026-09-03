@@ -459,6 +459,7 @@ function projectOwnerSubstitutions(
     const argument = arguments_[index];
     if (parameter.kind === "type" && argument?.kind === "type") {
       types.set(parameter.name, argument.type);
+      types.set(parameter.identity, argument.type);
     } else if (parameter.kind === "origin" && argument?.kind === "origin") {
       origins.set(parameter.name, argument.origin);
     } else if (parameter.kind === "value" && argument !== undefined && isValueGenericArgument(argument)) {

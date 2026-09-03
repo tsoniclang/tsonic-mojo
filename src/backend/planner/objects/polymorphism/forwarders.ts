@@ -14,6 +14,7 @@ import type {
 } from "../../../target-ast/index.js";
 import { consumeMojoValue } from "../../expressions/value-plan.js";
 import {
+  mojoModuleMemberExpression,
   withMojoErrorType,
   withMojoLocalNameScope,
 } from "../../program/context.js";
@@ -151,18 +152,37 @@ export function planMojoProjectViewForwarders(
     methods.push(planIndexCopy(index));
   }
   for (const downcast of view.downcasts) {
+    const resultType: MojoTargetTypeRef = Object.freeze({
+      kind: "optional",
+      value: downcast.targetType,
+    });
+    registerMojoTypeImports(resultType, context);
     methods.push(Object.freeze({
       kind: "function",
       name: downcast.name,
       genericParameters: Object.freeze([]),
       parameters: Object.freeze([]),
-      resultType: Object.freeze({ kind: "optional", value: downcast.targetType }),
+      resultType,
       asynchronous: false,
       raises: false,
       self: "self",
       statements: Object.freeze([Object.freeze({
         kind: "return",
-        expression: slotCall(downcast.slotName, Object.freeze([])),
+        expression: Object.freeze({
+          kind: "call",
+          callee: mojoModuleMemberExpression(
+            context,
+            ["tsonic_runtime"],
+            "restore_project_view",
+          ),
+          genericArguments: Object.freeze([Object.freeze({
+            kind: "type",
+            type: downcast.targetType,
+          })]),
+          arguments: Object.freeze([Object.freeze({
+            value: slotCall(downcast.slotName, Object.freeze([])),
+          })]),
+        }),
       })]),
     }));
   }
@@ -261,7 +281,7 @@ function planCallableForwarder(
       planMojoParameterDeclaration(parameter, context))),
     resultType: callable.resultType,
     asynchronous: callable.contract.asynchronous,
-    raises: callable.contract.raises,
+    raises: callable.raises,
     ...(callable.errorType === undefined ? {} : { errorType: callable.errorType }),
     self: "self",
     statements: Object.freeze([

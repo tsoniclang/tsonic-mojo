@@ -19,6 +19,7 @@ import {
   appendMojoPlanningDiagnostic,
   mojoModuleMemberExpression,
   withMojoBindingOverrides,
+  withMojoDeferredExecution,
   withMojoErrorType,
 } from "../program/context.js";
 import type {
@@ -238,7 +239,7 @@ function planNativeCallableExpression(
       asynchronous: selection.asynchronous,
       raises: selection.raises,
       ...(selection.errorType === undefined ? {} : { errorType: selection.errorType }),
-    }), context);
+    }), withMojoDeferredExecution(context));
     if (declaration === undefined) return undefined;
     context.syntheticDeclarations.push(declaration);
   }
@@ -253,7 +254,8 @@ function planNativeLambda(
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
 ): MojoValuePlan | undefined {
-  const body = planValue(selection.body, context, selection.resultType);
+  const deferredContext = withMojoDeferredExecution(context);
+  const body = planValue(selection.body, deferredContext, selection.resultType);
   if (body === undefined) return undefined;
   if (body.before.length !== 0) {
     appendMojoPlanningDiagnostic(
@@ -267,7 +269,7 @@ function planNativeLambda(
   return withMojoValue(Object.freeze([]), Object.freeze({
     kind: "lambda",
     parameters: Object.freeze(selection.parameters.map((parameter) =>
-      planMojoParameterDeclaration(parameter, context))),
+      planMojoParameterDeclaration(parameter, deferredContext))),
     captures: Object.freeze(selection.captures.map((capture) => Object.freeze({
       name: capture.name,
       convention: capture.storage === "location" ? "mut" as const : "imm" as const,
@@ -357,7 +359,7 @@ function planCallableEnvironment(
     }));
   }
   const callableContext = withMojoErrorType(
-    withMojoBindingOverrides(context, overrides),
+    withMojoBindingOverrides(withMojoDeferredExecution(context), overrides),
     callableType.raises
       ? callableType.errorType ?? mojoNativeErrorType()
       : undefined,

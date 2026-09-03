@@ -1,6 +1,9 @@
 import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import type { MojoPlanningContext } from "../program/context.js";
-import { registerMojoSymbolImport } from "../program/context.js";
+import {
+  mojoTargetTypeInContext,
+  registerMojoSymbolImport,
+} from "../program/context.js";
 import { mojoTargetTypeKey } from "../../../target-model/types/key.js";
 
 export function registerMojoTypeImports(
@@ -8,6 +11,7 @@ export function registerMojoTypeImports(
   context: MojoPlanningContext,
   expandedAliasKey?: string,
 ): void {
+  type = mojoTargetTypeInContext(type, context);
   const typeKey = mojoTargetTypeKey(type);
   if (typeKey !== expandedAliasKey) {
     const alias = context.program.representations.aliasForType(type, context.module.modulePath);

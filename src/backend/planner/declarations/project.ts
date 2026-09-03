@@ -1,3 +1,4 @@
+import type { Node } from "@tsonic/tsts";
 import type {
   MojoAnalyzedClass,
   MojoAnalyzedEnum,
@@ -20,6 +21,7 @@ import { planMojoValue } from "../expressions/value.js";
 import { consumeMojoValue } from "../expressions/value-plan.js";
 import {
   withMojoErrorType,
+  withMojoGenericSubstitutions,
   withMojoLocalNameScope,
   withMojoSelfType,
   withMojoStateInitialization,
@@ -38,16 +40,37 @@ import {
 import { mojoStateStorageType } from "./state-storage.js";
 import { mojoParameterConvention } from "../../../analysis/representations/index.js";
 import { mojoGenericParameterReference } from "../../../target-model/types/constructors.js";
+import type { MojoSourceCallableSpecializationVariant } from "../../../analysis/callables/specializations.js";
+import {
+  specializeMojoFunctionDeclaration,
+  substituteMojoDeclaration,
+} from "../types/substitution.js";
+
+export interface MojoProjectFunctionPlanOptions {
+  readonly specialization?: MojoSourceCallableSpecializationVariant;
+  readonly targetName?: string;
+}
 
 export function planMojoProjectFunction(
   function_: MojoAnalyzedFunction,
   context: MojoPlanningContext,
   self?: MojoFunctionDeclaration["self"],
+  options: MojoProjectFunctionPlanOptions = {},
 ): MojoFunctionDeclaration | undefined {
-  registerMojoTypeImports(function_.resultType, context);
-  if (function_.errorType !== undefined) registerMojoTypeImports(function_.errorType, context);
+  const specialization = options.specialization;
+  const specializedContext: MojoPlanningContext = specialization === undefined
+    ? context
+    : Object.freeze({
+        ...withMojoGenericSubstitutions(context, specialization.substitutions),
+        syntheticDeclarations: [],
+        callableArtifactNames: new WeakMap<Node, string>(),
+      });
+  registerMojoTypeImports(function_.resultType, specializedContext);
+  if (function_.errorType !== undefined) {
+    registerMojoTypeImports(function_.errorType, specializedContext);
+  }
   const functionContext = withMojoSelfType(
-    withMojoErrorType(withMojoLocalNameScope(context), function_.errorType),
+    withMojoErrorType(withMojoLocalNameScope(specializedContext), function_.errorType),
     self === undefined ? undefined : function_.owner?.type,
   );
   const parameterPrelude = planMojoParameterPrelude(
@@ -64,12 +87,12 @@ export function planMojoProjectFunction(
     ...planLocationParameterPrelude(function_, functionContext),
     ...bodyStatements,
   ]);
-  return Object.freeze({
+  const declaration: MojoFunctionDeclaration = Object.freeze({
     kind: "function",
-    name: function_.name,
+    name: options.targetName ?? function_.name,
     genericParameters: planMojoGenericParameters(function_),
     parameters: Object.freeze(function_.parameters.map((parameter) =>
-      planMojoParameterDeclaration(parameter, context))),
+      planMojoParameterDeclaration(parameter, specializedContext))),
     resultType: function_.resultType,
     asynchronous: function_.asynchronous,
     raises: function_.raises,
@@ -77,6 +100,42 @@ export function planMojoProjectFunction(
     statements,
     ...(self === undefined ? {} : { self }),
   });
+  if (specialization === undefined) return declaration;
+  const transformed = specializeMojoFunctionDeclaration(
+    declaration,
+    specialization.substitutions,
+    options.targetName ?? specialization.targetName,
+  );
+  context.syntheticDeclarations.push(...specializedContext.syntheticDeclarations.map((synthetic) =>
+    substituteMojoDeclaration(synthetic, specialization.substitutions)));
+  return transformed;
+}
+
+export function planMojoProjectFunctionVariants(
+  function_: MojoAnalyzedFunction,
+  context: MojoPlanningContext,
+  self?: MojoFunctionDeclaration["self"],
+  targetName?: (variant: MojoSourceCallableSpecializationVariant) => string | undefined,
+): readonly MojoFunctionDeclaration[] | undefined {
+  const specializations = context.program.sourceCallableSpecializations;
+  if (!specializations.requiresSpecialization(function_.declaration)) {
+    const declaration = planMojoProjectFunction(function_, context, self);
+    return declaration === undefined ? undefined : Object.freeze([declaration]);
+  }
+  const variants = specializations.variantsForCallable(function_.declaration);
+  if (variants.length === 0) return undefined;
+  const declarations: MojoFunctionDeclaration[] = [];
+  for (const variant of variants) {
+    const name = targetName?.(variant) ?? variant.targetName;
+    if (name === undefined) return undefined;
+    const declaration = planMojoProjectFunction(function_, context, self, {
+      specialization: variant,
+      targetName: name,
+    });
+    if (declaration === undefined) return undefined;
+    declarations.push(declaration);
+  }
+  return Object.freeze(declarations);
 }
 
 export function planMojoFunctionBody(
@@ -239,22 +298,26 @@ export function planMojoProjectClass(
       : []),
   ];
   for (const method of class_.methods) {
-    const planned = planMojoProjectFunction(method, context, method.static === true ? undefined : "self");
+    const planned = planMojoProjectFunctionVariants(
+      method,
+      context,
+      method.static === true ? undefined : "self",
+    );
     if (planned === undefined) return undefined;
-    methods.push(method.static === true
-      ? Object.freeze({ ...planned, decorators: mojoStaticMethodDecorators })
-      : planned);
+    methods.push(...planned.map((declaration) => method.static === true
+      ? Object.freeze({ ...declaration, decorators: mojoStaticMethodDecorators })
+      : declaration));
   }
   for (const accessor of class_.accessors) {
-    const planned = planMojoProjectFunction(
+    const planned = planMojoProjectFunctionVariants(
       accessor,
       context,
       accessor.static === true ? undefined : "self",
     );
     if (planned === undefined) return undefined;
-    methods.push(accessor.static === true
-      ? Object.freeze({ ...planned, decorators: mojoStaticMethodDecorators })
-      : planned);
+    methods.push(...planned.map((declaration) => accessor.static === true
+      ? Object.freeze({ ...declaration, decorators: mojoStaticMethodDecorators })
+      : declaration));
   }
   const wrapper: MojoStructDeclaration = Object.freeze({
     kind: "struct",

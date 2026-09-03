@@ -252,6 +252,9 @@ export function directMojoNodeErrorTypes(
       if (dependency !== undefined) {
         errors.push(...(errorTypesByDeclaration.get(dependency) ?? []));
       }
+      if (selection.dynamicDispatchErrorType !== undefined) {
+        errors.push(selection.dynamicDispatchErrorType);
+      }
       addNativeConversionError(
         selection.arguments.some((argument) => mojoConversionRaises(argument.conversion)) ||
         mojoConversionRaises(selection.resultConversion),

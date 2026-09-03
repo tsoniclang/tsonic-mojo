@@ -40,8 +40,9 @@ export function planMojoPublicModuleExports(
   for (const exported of program.modules.entryPoint.exports) {
     if (program.modules.forSourceFile(exported.sourceFile)?.id !== definition.id) continue;
     const binding = program.queries.moduleBinding(exported.declaration);
-    if (binding?.disposition.kind === "immutable-runtime" ||
-      binding?.disposition.kind === "live-cell") bindings.set(binding.declaration, binding);
+    if (binding?.kind !== "function-value" &&
+      (binding?.disposition.kind === "immutable-runtime" ||
+        binding?.disposition.kind === "live-cell")) bindings.set(binding.declaration, binding);
   }
   if (bindings.size === 0) return Object.freeze([]);
   if (module.asynchronous) {

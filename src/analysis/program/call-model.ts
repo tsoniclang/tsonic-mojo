@@ -158,7 +158,12 @@ export type MojoCallSelection =
   | {
       readonly kind: "project";
       readonly target:
-        | { readonly kind: "function"; readonly name: string; readonly modulePath: readonly string[] }
+        | {
+            readonly kind: "function";
+            readonly declaration: Node;
+            readonly name: string;
+            readonly modulePath: readonly string[];
+          }
         | {
             readonly kind: "method";
             readonly name: string;
@@ -168,12 +173,19 @@ export type MojoCallSelection =
             readonly receiverType: MojoTargetTypeRef;
             readonly dispatch: "virtual" | "exact";
           }
-        | { readonly kind: "static-method"; readonly owner: MojoTargetTypeRef; readonly name: string }
+        | {
+            readonly kind: "static-method";
+            readonly declaration: Node;
+            readonly implementationDeclaration: Node;
+            readonly owner: MojoTargetTypeRef;
+            readonly name: string;
+          }
         | { readonly kind: "constructor"; readonly type: MojoTargetTypeRef };
       readonly genericArguments: readonly MojoTargetGenericArgument[];
       readonly arguments: readonly MojoAnalyzedCallArgument[];
       readonly resultType: MojoTargetTypeRef;
       readonly resultConversion: MojoValueConversion;
+      readonly dynamicDispatchErrorType?: MojoTargetTypeRef;
       readonly optionalChain: boolean;
     }
   | {

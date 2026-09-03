@@ -88,6 +88,7 @@ export function finalizeMojoProgramEffects(
     callNodes,
     callDependencies,
     propertySelections,
+    propertyNodes,
     elementSelections,
     resourceManagementSelections,
     resourceDeclarations,
@@ -120,6 +121,30 @@ export function finalizeMojoProgramEffects(
       callableExpressionByDeclaration,
     );
     if (dependency !== undefined) callDependencies.set(callNode, dependency);
+  }
+
+  const dynamicMethodErrors = new Map<Node, MojoTargetTypeRef[]>();
+  for (const propertyNode of propertyNodes) {
+    const selection = propertySelections.get(propertyNode);
+    if (selection?.kind !== "project-method" ||
+      (selection.accessMode !== "write" && selection.accessMode !== "read-write") ||
+      !selection.callableType.raises) continue;
+    const errorType = selection.callableType.errorType ?? mojoNativeErrorType();
+    const current = dynamicMethodErrors.get(selection.declaration) ?? [];
+    if (!current.some((candidate) => mojoTargetTypeEquals(candidate, errorType))) {
+      current.push(errorType);
+    }
+    dynamicMethodErrors.set(selection.declaration, current);
+  }
+  for (const callNode of callNodes) {
+    const selection = callSelections.get(callNode);
+    if (selection?.kind !== "project" || selection.target.kind !== "method") continue;
+    const dynamicDispatchErrorType = closeMojoErrorType(Object.freeze(
+      dynamicMethodErrors.get(selection.target.declaration) ?? [],
+    ));
+    if (dynamicDispatchErrorType !== undefined) {
+      callSelections.set(callNode, Object.freeze({ ...selection, dynamicDispatchErrorType }));
+    }
   }
 
   const errorRegionIndexes = Object.freeze({

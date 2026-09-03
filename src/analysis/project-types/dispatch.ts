@@ -25,7 +25,6 @@ import type {
   MojoObjectLiteralSelection,
   MojoObjectLiteralContribution,
   MojoCallableExpressionSelection,
-  MojoCallSelection,
   MojoPropertySelection,
 } from "../program/model.js";
 import type {
@@ -45,6 +44,7 @@ import type { MojoTargetTypeSubstitutions } from "../../target-model/types/subst
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 import { mojoTargetTypeKey } from "../../target-model/types/key.js";
 import { selectMojoProjectDispatchParameterAdapters } from "./parameter-adapters.js";
+import type { MojoSourceCallableSpecializationPlan } from "../callables/specializations.js";
 
 const maximumDispatchEntries = 1_048_576;
 const projectObjectType: MojoTargetTypeRef = Object.freeze({
@@ -53,20 +53,23 @@ const projectObjectType: MojoTargetTypeRef = Object.freeze({
   modulePath: Object.freeze(["tsonic_runtime"]),
   name: "ProjectObject",
 });
+const optionalProjectObjectType: MojoTargetTypeRef = Object.freeze({
+  kind: "optional",
+  value: projectObjectType,
+});
 
 export function createMojoProjectDispatchPlan(input: {
   readonly classes: readonly MojoAnalyzedClass[];
   readonly interfaces: readonly MojoAnalyzedInterface[];
   readonly relationships: MojoProjectTypeRelationships;
   readonly modules: import("../source-modules/model.js").MojoSourceModuleCatalog;
-  readonly callNodes: ReadonlySet<Node>;
-  readonly callSelections: WeakMap<Node, MojoCallSelection>;
   readonly propertyNodes: ReadonlySet<Node>;
   readonly propertySelections: WeakMap<Node, MojoPropertySelection>;
   readonly implementations: WeakMap<Node, MojoAnalyzedFunction>;
   readonly objectLiteralNodes: ReadonlySet<Node>;
   readonly objectLiteralSelections: WeakMap<Node, MojoObjectLiteralSelection>;
   readonly callableExpressionSelections: WeakMap<Node, MojoCallableExpressionSelection>;
+  readonly sourceCallableSpecializations: MojoSourceCallableSpecializationPlan;
   readonly libraryOutput: boolean;
 }): MojoProjectDispatchPlan {
   const issues: { readonly node: Node; readonly code: string; readonly message: string }[] = [];
@@ -78,14 +81,14 @@ export function createMojoProjectDispatchPlan(input: {
     ...input.interfaces.map((interface_) => [interface_.definition, interface_] as const),
   ]);
   const selectedGenericArguments = collectSelectedGenericArguments(
-    input.callNodes,
-    input.callSelections,
+    input.sourceCallableSpecializations,
   );
   const methodPropertyUsages = collectMethodPropertyUsages(
     input.propertyNodes,
     input.propertySelections,
     input.objectLiteralNodes,
     input.objectLiteralSelections,
+    issues,
   );
   const implementationMethodPropertyUsages = collectImplementationMethodPropertyUsages(
     methodPropertyUsages,
@@ -98,18 +101,19 @@ export function createMojoProjectDispatchPlan(input: {
 
   for (const analyzed of [...input.classes, ...input.interfaces]) {
     if (!analyzed.polymorphic) continue;
-    const usedNames = new Set<string>();
+    const usedNames = new Set<string>(input.sourceCallableSpecializations.allocatedNames);
     const callables: MojoProjectDispatchCallableVariant[] = [];
     const fields: MojoProjectDispatchField[] = [];
     const indexes: MojoProjectDispatchIndex[] = [];
     const related = relatedDefinitions(analyzed.definition, input.relationships)
       .map((definition) => analyzedByDefinition.get(definition))
       .filter((value): value is MojoAnalyzedClass | MojoAnalyzedInterface => value !== undefined);
+    const contractOwners = related.filter((owner) => owner.kind === analyzed.kind);
 
-    for (const owner of related) {
+    for (const owner of contractOwners) {
       for (const contract of callableContracts(owner)) {
         if (contract.static === true || contract.kind === "constructor") continue;
-        const propertyUsage = methodPropertyUsages.get(contract.declaration);
+        const propertyUsage = implementationMethodPropertyUsages.get(contract.declaration);
         if (propertyUsage !== undefined && contract.asynchronous) {
           issues.push(Object.freeze({
             node: contract.declaration,
@@ -216,10 +220,6 @@ export function createMojoProjectDispatchPlan(input: {
           .sort((left, right) => left.definition.id.localeCompare(right.definition.id, "en"))
           .map((target) => {
             const targetType = input.relationships.openType(target.definition);
-            const optionalTarget: MojoTargetTypeRef = Object.freeze({
-              kind: "optional",
-              value: targetType,
-            });
             return Object.freeze({
               source: analyzed.definition,
               target: target.definition,
@@ -228,7 +228,7 @@ export function createMojoProjectDispatchPlan(input: {
               slotName: allocateName(usedNames, `_downcast_${target.name}_dispatch`),
               slotType: functionType(
                 [{ type: projectObjectType, convention: "imm", passing: "plain" }],
-                optionalTarget,
+                optionalProjectObjectType,
                 false,
                 false,
               ),
@@ -285,6 +285,7 @@ export function createMojoProjectDispatchPlan(input: {
     input.classes,
     views,
     input.relationships,
+    input.sourceCallableSpecializations,
   );
   const implementationNames = generatedNames.implementations;
   const viewForType = (type: MojoTargetTypeRef): MojoProjectDispatchView | undefined => {
@@ -330,10 +331,20 @@ export function createMojoProjectDispatchPlan(input: {
               relationship.targetType,
               variant.errorType,
             );
+        const concretePropertyCallableType = variant.property === undefined
+          ? undefined
+          : input.relationships.instantiateType(
+              view.definition,
+              relationship.targetType,
+              variant.property.callableType,
+            );
         if (concreteGenericArguments === undefined ||
           concreteParameters.some((parameter) => parameter === undefined) ||
           concreteResult === undefined ||
-          (variant.errorType !== undefined && concreteError === undefined)) {
+          (variant.errorType !== undefined && concreteError === undefined) ||
+          (variant.property !== undefined &&
+            (concretePropertyCallableType === undefined ||
+              concretePropertyCallableType.kind !== "callable"))) {
           issues.push(Object.freeze({
             node: variant.contract.declaration,
             code: "MOJO_PROJECT_CONCRETE_DISPATCH_SIGNATURE_UNCLOSED",
@@ -363,7 +374,17 @@ export function createMojoProjectDispatchPlan(input: {
         const implementationRelation = implementationOwner === undefined
           ? undefined
           : input.relationships.relationship(concrete.targetType, implementationOwner);
-        const implementationName = implementationNames.get(selected.implementation.declaration);
+        const implementationRequiresSpecialization = input.sourceCallableSpecializations
+          .requiresSpecialization(selected.implementation.declaration);
+        const implementationSpecialization = implementationRequiresSpecialization
+          ? input.sourceCallableSpecializations.variantForCall(
+              selected.implementation.declaration,
+              concreteGenericArguments,
+            )
+          : undefined;
+        const implementationName = implementationRequiresSpecialization
+          ? implementationSpecialization?.targetName
+          : implementationNames.get(selected.implementation.declaration);
         if (implementation === undefined || implementationName === undefined ||
           implementationRelation?.kind !== "related") {
           issues.push(Object.freeze({
@@ -412,15 +433,37 @@ export function createMojoProjectDispatchPlan(input: {
             implementationSubstitutions === undefined
           ? undefined
           : substituteMojoTargetType(implementationError, implementationSubstitutions);
+        const implementationUsage = implementationMethodPropertyUsages.get(
+          selected.implementation.declaration,
+        );
+        const implementationContractType = implementationUsage?.writable === true
+          ? dispatchCallableType(
+              variant.contract,
+              closedConcreteParameters,
+              concreteResult,
+              concreteError,
+            )
+          : undefined;
+        const writableCallableType = implementationUsage?.writable === true &&
+            implementationContractType !== undefined
+          ? selectMethodPropertyCallableType(
+              implementationUsage,
+              implementationContractType,
+            )
+          : undefined;
+        const adapterRaises = variant.raises || writableCallableType?.raises === true;
+        const adapterErrorType = writableCallableType?.raises === true
+          ? writableCallableType.errorType
+          : concreteError;
         if (implementationParameters === undefined ||
           implementationParameters.some((parameter) => parameter === undefined) ||
           closedImplementationResult === undefined ||
           implementation.asynchronous !== variant.contract.asynchronous ||
-          implementation.raises && !variant.contract.raises ||
+          implementation.raises && !adapterRaises ||
           implementation.raises && (
-            (closedImplementationError === undefined) !== (concreteError === undefined) ||
-            closedImplementationError !== undefined && concreteError !== undefined &&
-              !mojoTargetTypeEquals(closedImplementationError, concreteError)
+            (closedImplementationError === undefined) !== (adapterErrorType === undefined) ||
+            closedImplementationError !== undefined && adapterErrorType !== undefined &&
+              !mojoTargetTypeEquals(closedImplementationError, adapterErrorType)
           )) {
           issues.push(Object.freeze({
             node: variant.contract.declaration,
@@ -449,17 +492,9 @@ export function createMojoProjectDispatchPlan(input: {
           }));
           continue;
         }
-        const implementationUsage = implementationMethodPropertyUsages.get(
-          selected.implementation.declaration,
-        );
         let methodStorage: MojoProjectMethodStorage | undefined;
         if (implementationUsage?.writable === true) {
-          const callableType = dispatchCallableType(
-            variant.contract,
-            closedConcreteParameters,
-            concreteResult,
-            concreteError,
-          );
+          const callableType = writableCallableType;
           if (callableType === undefined) {
             issues.push(Object.freeze({
               node: variant.contract.declaration,
@@ -512,7 +547,8 @@ export function createMojoProjectDispatchPlan(input: {
           genericArguments: concreteGenericArguments,
           parameters: Object.freeze(closedConcreteParameters),
           resultType: concreteResult,
-          ...(concreteError === undefined ? {} : { errorType: concreteError }),
+          raises: adapterRaises,
+          ...(adapterErrorType === undefined ? {} : { errorType: adapterErrorType }),
           adapterName,
           implementationName,
           implementation,
@@ -690,8 +726,10 @@ export function createMojoProjectDispatchPlan(input: {
         samePath(candidate, path)) === index);
       return unique.length === 1 ? unique[0] : undefined;
     },
-    implementationName(declaration) {
-      return implementationNames.get(declaration);
+    implementationName(declaration, genericArguments = Object.freeze([])) {
+      return input.sourceCallableSpecializations.requiresSpecialization(declaration)
+        ? input.sourceCallableSpecializations.variantForCall(declaration, genericArguments)?.targetName
+        : implementationNames.get(declaration);
     },
   };
   return Object.freeze(plan);
@@ -875,7 +913,7 @@ function createObjectLiteralDispatchPlans(input: {
           selectedMethod.kind === "authored" && (
             implementation === undefined ||
             implementation.asynchronous !== variant.contract.asynchronous ||
-            implementation.raises && !variant.contract.raises ||
+            implementation.raises && !variant.raises ||
             implementation.raises && (
             implementationError === undefined || errorType === undefined ||
             !mojoTargetTypeEquals(implementationError, errorType)
@@ -913,20 +951,25 @@ function createObjectLiteralDispatchPlans(input: {
           valid = false;
           continue;
         }
-        const methodCallableType = dispatchCallableType(
-          variant.contract,
-          closedParameters,
-          resultType,
-          errorType,
-        );
+        const methodCallableType = variant.property === undefined
+          ? dispatchCallableType(
+              variant.contract,
+              closedParameters,
+              resultType,
+              errorType,
+            )
+          : input.relationships.instantiateType(
+              view.definition,
+              relationship.targetType,
+              variant.property.callableType,
+            );
         const writable = (selectedMethod.kind === "authored"
           ? selectedMethod.contribution.contractDeclarations
           : [selectedMethod.sourceDeclaration])
           .some((declaration) => input.methodPropertyUsages.get(declaration)?.writable === true);
         const requiresStorage = selectedMethod.kind === "spread" || writable;
-        if ((requiresStorage && methodCallableType === undefined) ||
-          (variant.property !== undefined && methodCallableType !== undefined &&
-            !mojoTargetTypeEquals(variant.property.callableType, methodCallableType)) ||
+        if ((requiresStorage && (methodCallableType === undefined ||
+            methodCallableType.kind !== "callable")) ||
           (selectedMethod.kind === "spread" && variant.property?.read === undefined)) {
           input.issues.push(Object.freeze({
             node: selectedMethod.contribution.element,
@@ -937,7 +980,7 @@ function createObjectLiteralDispatchPlans(input: {
           continue;
         }
         let methodStorage: import("../program/model.js").MojoProjectObjectLiteralMethodStorage | undefined;
-        if (requiresStorage && methodCallableType !== undefined) {
+        if (requiresStorage && methodCallableType?.kind === "callable") {
           const sourceDeclaration = selectedMethod.kind === "spread"
             ? selectedMethod.sourceDeclaration
             : undefined;
@@ -982,6 +1025,10 @@ function createObjectLiteralDispatchPlans(input: {
           }
           methodStorage = builder.storage;
         }
+        const adapterRaises = variant.raises || methodStorage?.callableType.raises === true;
+        const adapterErrorType = methodStorage?.callableType.raises === true
+          ? methodStorage.callableType.errorType
+          : errorType;
         const adapterName = allocateName(
           usedNames,
           `_dispatch_${view.definition.targetName}_${variant.name}`,
@@ -1004,7 +1051,8 @@ function createObjectLiteralDispatchPlans(input: {
           genericArguments,
           parameters: Object.freeze(closedParameters),
           resultType,
-          ...(errorType === undefined ? {} : { errorType }),
+          raises: adapterRaises,
+          ...(adapterErrorType === undefined ? {} : { errorType: adapterErrorType }),
           parameterAdapters,
           resultConversion: resultConversion.conversion,
           adapterName,
@@ -1244,6 +1292,7 @@ interface MethodPropertyUsage {
   readonly declaration: Node;
   readonly readable: boolean;
   readonly writable: boolean;
+  readonly callableTypes: readonly Extract<MojoTargetTypeRef, { readonly kind: "callable" }>[];
 }
 
 function collectMethodPropertyUsages(
@@ -1251,15 +1300,30 @@ function collectMethodPropertyUsages(
   selections: WeakMap<Node, MojoPropertySelection>,
   objectLiteralNodes: ReadonlySet<Node>,
   objectLiteralSelections: WeakMap<Node, MojoObjectLiteralSelection>,
+  issues: { readonly node: Node; readonly code: string; readonly message: string }[],
 ): ReadonlyMap<Node, MethodPropertyUsage> {
-  const pending = new Map<Node, { readable: boolean; writable: boolean }>();
-  const merge = (declaration: Node, readable: boolean, writable: boolean): void => {
+  const pending = new Map<Node, {
+    readable: boolean;
+    writable: boolean;
+    callableTypes: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>[];
+  }>();
+  const merge = (
+    declaration: Node,
+    readable: boolean,
+    writable: boolean,
+    callableType?: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
+  ): void => {
     const usage = pending.get(declaration) ?? {
       readable: false,
       writable: false,
+      callableTypes: [],
     };
     usage.readable ||= readable;
     usage.writable ||= writable;
+    if (callableType !== undefined && !usage.callableTypes.some((candidate) =>
+      mojoTargetTypeEquals(candidate, callableType))) {
+      usage.callableTypes.push(callableType);
+    }
     pending.set(declaration, usage);
   };
   for (const node of nodes) {
@@ -1269,6 +1333,7 @@ function collectMethodPropertyUsages(
       selection.declaration,
       selection.accessMode === "read" || selection.accessMode === "read-write",
       selection.accessMode === "write" || selection.accessMode === "read-write",
+      selection.callableType,
     );
   }
   for (const node of objectLiteralNodes) {
@@ -1279,10 +1344,22 @@ function collectMethodPropertyUsages(
       for (const { method } of contribution.methods) merge(method.declaration, true, false);
     }
   }
-  return new Map([...pending].map(([declaration, usage]) => [declaration, Object.freeze({
-    declaration,
-    ...usage,
-  })] as const));
+  return new Map([...pending].flatMap(([declaration, usage]) => {
+    if (usage.callableTypes.length > 1) {
+      issues.push(Object.freeze({
+        node: declaration,
+        code: "MOJO_PROJECT_METHOD_PROPERTY_ABI_CONFLICT",
+        message: "One project method property is selected through incompatible exact callable ABIs.",
+      }));
+      return [];
+    }
+    return [[declaration, Object.freeze({
+      declaration,
+      readable: usage.readable,
+      writable: usage.writable,
+      callableTypes: Object.freeze([...usage.callableTypes]),
+    })] as const];
+  }));
 }
 
 function collectImplementationMethodPropertyUsages(
@@ -1290,15 +1367,27 @@ function collectImplementationMethodPropertyUsages(
   classes: readonly MojoAnalyzedClass[],
   relationships: MojoProjectTypeRelationships,
 ): ReadonlyMap<Node, MethodPropertyUsage> {
-  const result = new Map<Node, { declaration: Node; readable: boolean; writable: boolean }>();
+  const result = new Map<Node, {
+    declaration: Node;
+    readable: boolean;
+    writable: boolean;
+    callableTypes: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>[];
+  }>();
   const merge = (declaration: Node, usage: MethodPropertyUsage): void => {
     const current = result.get(declaration) ?? {
       declaration,
       readable: false,
       writable: false,
+      callableTypes: [],
     };
     current.readable ||= usage.readable;
     current.writable ||= usage.writable;
+    for (const callableType of usage.callableTypes) {
+      if (!current.callableTypes.some((candidate) =>
+        mojoTargetTypeEquals(candidate, callableType))) {
+        current.callableTypes.push(callableType);
+      }
+    }
     result.set(declaration, current);
   };
   for (const usage of usages.values()) {
@@ -1313,7 +1402,10 @@ function collectImplementationMethodPropertyUsages(
       }
     }
   }
-  return new Map([...result].map(([declaration, usage]) => [declaration, Object.freeze(usage)]));
+  return new Map([...result].map(([declaration, usage]) => [declaration, Object.freeze({
+    ...usage,
+    callableTypes: Object.freeze([...usage.callableTypes]),
+  })]));
 }
 
 function createMethodProperty(
@@ -1494,20 +1586,17 @@ function collectDispatchRepresentationTypes(
 }
 
 function collectSelectedGenericArguments(
-  nodes: ReadonlySet<Node>,
-  selections: WeakMap<Node, MojoCallSelection>,
+  specializations: MojoSourceCallableSpecializationPlan,
 ): WeakMap<Node, readonly (readonly MojoTargetGenericArgument[])[]> {
   const pending = new WeakMap<Node, MojoTargetGenericArgument[][]>();
-  for (const node of nodes) {
-    const selection = selections.get(node);
-    if (selection?.kind !== "project" || selection.target.kind !== "method" ||
-      selection.genericArguments.length === 0) continue;
-    const current = pending.get(selection.target.declaration) ?? [];
+  for (const request of specializations.projectMethodRequests) {
+    if (request.targetArguments.length === 0) continue;
+    const current = pending.get(request.declaration) ?? [];
     if (!current.some((arguments_) =>
-      mojoTargetGenericArgumentsEqual(arguments_, selection.genericArguments))) {
-      current.push([...selection.genericArguments]);
+      mojoTargetGenericArgumentsEqual(arguments_, request.targetArguments))) {
+      current.push([...request.targetArguments]);
     }
-    pending.set(selection.target.declaration, current);
+    pending.set(request.declaration, current);
   }
   return pending;
 }
@@ -1525,8 +1614,8 @@ function callableContracts(
   analyzed: MojoAnalyzedClass | MojoAnalyzedInterface,
 ): readonly MojoAnalyzedCallableSignature[] {
   return analyzed.kind === "class"
-    ? analyzed.callableContracts
-    : [...analyzed.methods, ...analyzed.accessors];
+    ? analyzed.callableContracts.filter((contract) => contract.kind === "method")
+    : analyzed.methods;
 }
 
 function dispatchProperties(
@@ -1580,9 +1669,13 @@ function createCallableVariant(
     specializationCount <= 1 ? contract.name : `${contract.name}_specialization`,
   );
   const slotName = allocateName(usedNames, `_${name}_dispatch`);
-  const callableType = propertyUsage === undefined
+  const contractCallableType = propertyUsage === undefined
     ? undefined
     : dispatchCallableType(contract, closedParameters, resultType, errorType);
+  if (propertyUsage !== undefined && contractCallableType === undefined) return undefined;
+  const callableType = contractCallableType === undefined || propertyUsage === undefined
+    ? undefined
+    : selectMethodPropertyCallableType(propertyUsage, contractCallableType);
   if (propertyUsage !== undefined && callableType === undefined) return undefined;
   const property = callableType === undefined || propertyUsage === undefined
     ? undefined
@@ -1592,6 +1685,14 @@ function createCallableVariant(
         name,
         usedNames,
       );
+  const raises = propertyUsage?.writable === true && callableType !== undefined
+    ? callableType.raises
+    : contract.raises;
+  const effectiveErrorType = raises
+    ? propertyUsage?.writable === true && callableType !== undefined
+      ? callableType.errorType
+      : errorType
+    : undefined;
   return Object.freeze({
     contract,
     genericArguments: Object.freeze([...genericArguments]),
@@ -1605,12 +1706,29 @@ function createCallableVariant(
         passing: parameter.disposition.kind === "owned" ? "consume" as const : "plain" as const,
         omissionKind: parameter.omissionKind,
       })),
-    ], resultType, contract.asynchronous, contract.raises, errorType),
+    ], resultType, contract.asynchronous, raises, effectiveErrorType),
     parameters: closedParameters,
     resultType,
-    ...(errorType === undefined ? {} : { errorType }),
+    raises,
+    ...(effectiveErrorType === undefined ? {} : { errorType: effectiveErrorType }),
     ...(property === undefined ? {} : { property }),
   });
+}
+
+function selectMethodPropertyCallableType(
+  usage: MethodPropertyUsage,
+  contractType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
+): Extract<MojoTargetTypeRef, { readonly kind: "callable" }> | undefined {
+  if (usage.callableTypes.length > 1) return undefined;
+  const selected = usage.callableTypes[0];
+  if (selected === undefined) return contractType;
+  const { errorType: ignoredContractError, ...contractWithoutError } = contractType;
+  const { errorType: ignoredSelectedError, ...selectedWithoutError } = selected;
+  void ignoredContractError;
+  void ignoredSelectedError;
+  const contractShape = Object.freeze({ ...contractWithoutError, raises: false });
+  const selectedShape = Object.freeze({ ...selectedWithoutError, raises: false });
+  return mojoTargetTypeEquals(contractShape, selectedShape) ? selected : undefined;
 }
 
 function instantiateMemberParameter(
@@ -2026,6 +2144,7 @@ function createImplementationNames(
   classes: readonly MojoAnalyzedClass[],
   views: readonly MojoProjectDispatchView[],
   relationships: MojoProjectTypeRelationships,
+  specializations: MojoSourceCallableSpecializationPlan,
 ): {
   readonly implementations: WeakMap<Node, string>;
   readonly usedByClass: Map<MojoProjectTypeDefinition, Set<string>>;
@@ -2058,6 +2177,12 @@ function createImplementationNames(
     }
     for (const implementation of [...class_.methods, ...class_.accessors]) {
       if (implementation.static === true) continue;
+      if (specializations.requiresSpecialization(implementation.declaration)) {
+        for (const variant of specializations.variantsForCallable(implementation.declaration)) {
+          used.add(variant.targetName);
+        }
+        continue;
+      }
       implementations.set(
         implementation.declaration,
         allocateName(used, `_implement_${implementation.name}`),
@@ -2078,11 +2203,19 @@ function callableSubstitutions(
   const origins = new Map<string, import("../../target-model/origins/model.js").MojoOriginRef>();
   for (const [index, parameter] of contract.typeParameters.entries()) {
     const argument = genericArguments[index];
-    if (parameter.kind === "type" && argument?.kind === "type") types.set(parameter.name, argument.type);
-    else if (parameter.kind === "origin" && argument?.kind === "origin") origins.set(parameter.name, argument.origin);
+    if (parameter.kind === "type" && argument?.kind === "type") {
+      types.set(parameter.name, argument.type);
+      types.set(parameter.identity, argument.type);
+    } else if (parameter.kind === "origin" && argument?.kind === "origin") {
+      origins.set(parameter.name, argument.origin);
+      origins.set(parameter.identity, argument.origin);
+    }
     else if (parameter.kind === "value" && argument !== undefined &&
       argument.kind !== "type" && argument.kind !== "type-expression" &&
-      argument.kind !== "origin" && argument.kind !== "unbound") values.set(parameter.name, argument);
+      argument.kind !== "origin" && argument.kind !== "unbound") {
+      values.set(parameter.name, argument);
+      values.set(parameter.identity, argument);
+    }
     else return undefined;
   }
   return Object.freeze({ types, values, origins, packs: new Map() });

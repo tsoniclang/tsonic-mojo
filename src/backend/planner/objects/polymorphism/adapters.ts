@@ -246,7 +246,7 @@ function planCallableAdapter(
     ]),
     resultType: adapter.resultType,
     asynchronous: adapter.variant.contract.asynchronous,
-    raises: adapter.variant.contract.raises,
+    raises: adapter.raises,
     ...(adapter.errorType === undefined ? {} : { errorType: adapter.errorType }),
     decorators: mojoStaticMethodDecorators,
     statements: Object.freeze([...adapted.before, statement]),
@@ -275,7 +275,7 @@ function planMethodPropertyAdapters(
       parameters: methodAdapterParameters(adapter, context),
       resultType: adapter.resultType,
       asynchronous: false,
-      raises: adapter.variant.contract.raises,
+      raises: adapter.raises,
       ...(adapter.errorType === undefined ? {} : { errorType: adapter.errorType }),
       decorators: mojoStaticMethodDecorators,
       statements: Object.freeze([Object.freeze({
@@ -376,8 +376,8 @@ function planMethodBindingAdapter(
     ]),
     resultType: adapter.resultType,
     asynchronous: false,
-    raises: adapter.variant.contract.raises,
-    ...(adapter.errorType === undefined ? {} : { errorType: adapter.errorType }),
+    raises: callableType.raises,
+    ...(callableType.errorType === undefined ? {} : { errorType: callableType.errorType }),
     decorators: mojoStaticMethodDecorators,
     statements: Object.freeze([methodCallStatement(call, adapter.resultType)]),
   });
@@ -694,7 +694,7 @@ function planDowncastAdapter(
 ): MojoFunctionDeclaration | undefined {
   const resultType: MojoTargetTypeRef = Object.freeze({
     kind: "optional",
-    value: adapter.route.targetType,
+    value: mojoProjectObjectType,
   });
   registerMojoTypeImports(resultType, context);
   const targetView = adapter.available
@@ -709,12 +709,22 @@ function planDowncastAdapter(
         arguments: Object.freeze([Object.freeze({
           value: Object.freeze({
             kind: "call",
-            callee: mojoProjectStaticMember(
-              dispatch.concrete.targetType,
-              targetView.conversionAdapterName,
+            callee: mojoModuleMemberExpression(
+              context,
+              ["tsonic_runtime"],
+              "erase_project_view",
             ),
             arguments: Object.freeze([Object.freeze({
-              value: Object.freeze({ kind: "path", path: "object" }),
+              value: Object.freeze({
+                kind: "call",
+                callee: mojoProjectStaticMember(
+                  dispatch.concrete.targetType,
+                  targetView.conversionAdapterName,
+                ),
+                arguments: Object.freeze([Object.freeze({
+                  value: Object.freeze({ kind: "path", path: "object" }),
+                })]),
+              }),
             })]),
           }),
         })]),

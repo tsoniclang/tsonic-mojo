@@ -31,7 +31,9 @@ export function substituteMojoTargetType(
     case "compiler-expression":
       return type;
     case "type-parameter":
-      return substitutions.types.get(type.name) ?? type;
+      return type.identity === undefined
+        ? substitutions.types.get(type.name) ?? type
+        : substitutions.types.get(type.identity) ?? type;
     case "target-named":
       return Object.freeze({
         ...type,

@@ -379,6 +379,7 @@ function genericSubstitutions(
     if (parameter.kind === "type") {
       if (argument.kind !== "type") return undefined;
       types.set(parameter.name, argument.type);
+      types.set(parameter.identity, argument.type);
     } else if (parameter.kind === "origin") {
       if (argument.kind !== "origin") return undefined;
       origins.set(parameter.name, argument.origin);
