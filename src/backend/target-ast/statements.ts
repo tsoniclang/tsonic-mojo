@@ -1,4 +1,5 @@
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import type { MojoFunctionDeclaration } from "./declarations.js";
 import type { MojoExpression } from "./expressions.js";
 
 export interface MojoCatchClause {
@@ -7,6 +8,7 @@ export interface MojoCatchClause {
 }
 
 export type MojoStatement =
+  | { readonly kind: "local-function"; readonly declaration: MojoFunctionDeclaration }
   | { readonly kind: "return"; readonly expression?: MojoExpression }
   | {
       readonly kind: "variable";

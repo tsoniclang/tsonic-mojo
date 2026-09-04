@@ -3,7 +3,7 @@ import type {
   MojoTargetGenericArgument,
   MojoTargetTypeRef,
 } from "../../target-model/types/model.js";
-import type { MojoExpression } from "./expressions.js";
+import type { MojoExpression, MojoLambdaCapture } from "./expressions.js";
 import type { MojoStatement } from "./statements.js";
 
 export interface MojoParameter {
@@ -39,6 +39,7 @@ export interface MojoFunctionDeclaration {
   readonly asynchronous: boolean;
   readonly raises: boolean;
   readonly errorType?: MojoTargetTypeRef;
+  readonly captures?: readonly MojoLambdaCapture[];
   readonly statements?: readonly MojoStatement[];
   readonly decorators?: readonly MojoDecorator[];
   readonly self?: "self" | "mut self" | "out self" | "owned self";

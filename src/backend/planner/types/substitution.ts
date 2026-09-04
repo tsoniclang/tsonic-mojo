@@ -175,6 +175,11 @@ function substituteStatement(
   substitutions: MojoTargetTypeSubstitutions,
 ): MojoStatement {
   switch (statement.kind) {
+    case "local-function":
+      return Object.freeze({
+        ...statement,
+        declaration: substituteFunction(statement.declaration, substitutions, false),
+      });
     case "return":
       return Object.freeze({
         ...statement,

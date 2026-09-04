@@ -17,7 +17,11 @@ import {
 } from "../document/builders.js";
 import type { MojoDocument } from "../document/model.js";
 import type { MojoPrintContext } from "./context.js";
-import { printMojoExpressionDocument, printParameterDocument } from "./expressions.js";
+import {
+  printLambdaCaptures,
+  printMojoExpressionDocument,
+  printParameterDocument,
+} from "./expressions.js";
 import { printMojoBodyDocument } from "./statements.js";
 import {
   printMojoGenericParametersDocument,
@@ -30,7 +34,7 @@ export function printMojoDeclarationDocument(
   context: MojoPrintContext,
 ): MojoDocument {
   switch (declaration.kind) {
-    case "function": return printFunctionDocument(declaration, context);
+    case "function": return printMojoFunctionDocument(declaration, context);
     case "struct": return printStructDocument(declaration, context);
     case "trait": return printTraitDocument(declaration, context);
     case "type-alias": return group(concat(
@@ -55,7 +59,7 @@ export function printMojoDeclarationDocument(
   }
 }
 
-function printFunctionDocument(
+export function printMojoFunctionDocument(
   function_: MojoFunctionDeclaration,
   context: MojoPrintContext,
 ): MojoDocument {
@@ -78,11 +82,15 @@ function printFunctionDocument(
   const error = function_.errorType === undefined
     ? emptyDocument
     : concat(text(" "), requiredMojoTypeDocument(function_.errorType, functionContext));
+  const captures = function_.captures === undefined
+    ? emptyDocument
+    : concat(text(" "), printLambdaCaptures(function_.captures));
   const signature = group(concat(
     text(function_.asynchronous ? `async def ${function_.name}` : `def ${function_.name}`),
     printMojoGenericParametersDocument(function_.genericParameters, context),
     parameters,
     function_.raises ? concat(text(" raises"), error) : emptyDocument,
+    captures,
     result === undefined ? emptyDocument : concat(text(" -> "), result),
   ));
   const declaration = block(
@@ -146,7 +154,7 @@ function printStructDocument(
       : concat(text(" = "), printMojoExpressionDocument(field.initializer, memberContext)),
   )));
   for (const method of declaration.methods) {
-    members.push(printFunctionDocument(method, memberContext));
+    members.push(printMojoFunctionDocument(method, memberContext));
   }
   const fields = members.slice(0, declaration.fields.length);
   const methods = members.slice(declaration.fields.length);
@@ -188,7 +196,7 @@ function printTraitDocument(
         declaration.parents.map((type) => requiredMojoTypeDocument(type, context)),
         ")",
       );
-  const methods = declaration.methods.map((method) => printFunctionDocument({
+  const methods = declaration.methods.map((method) => printMojoFunctionDocument({
     ...method,
     statements: undefined,
   }, context));

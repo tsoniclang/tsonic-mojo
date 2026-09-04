@@ -7,6 +7,7 @@ import type { MojoValueConversionNarrowing } from "../../target-model/conversion
 import { mojoTargetTypeKey } from "../../target-model/types/key.js";
 import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
 import { collectionShape, isJsString, isJsValue, jsValueBoxConversion, sameConversion } from "./javascript-conversions.js";
+import { mojoValueConversionRepresentationTypes } from "../../target-model/conversions/representation-types.js";
 
 export type MojoConversionClassification =
   | { readonly kind: "resolved"; readonly conversion: MojoValueConversion }
@@ -27,6 +28,7 @@ export interface MojoConversionIndex {
     expression: Node,
     expected: MojoTargetTypeRef,
   ): MojoValueConversion | undefined;
+  representationTypes(): readonly MojoTargetTypeRef[];
 }
 
 export function createMojoConversionIndex(
@@ -35,7 +37,22 @@ export function createMojoConversionIndex(
 ): MojoConversionIndex {
   const byExpression = new WeakMap<Node, Map<string, MojoValueConversion>>();
   const finalizedCallableKeys = new WeakMap<Node, Set<string>>();
+  const representationTypesByKey = new Map<string, MojoTargetTypeRef>();
   let sealed = false;
+  const retainRepresentationType = (type: MojoTargetTypeRef): void => {
+    representationTypesByKey.set(mojoTargetTypeKey(type), type);
+  };
+  const retainConversion = (
+    actual: MojoTargetTypeRef,
+    expected: MojoTargetTypeRef,
+    conversion: MojoValueConversion,
+  ): void => {
+    retainRepresentationType(actual);
+    retainRepresentationType(expected);
+    for (const type of mojoValueConversionRepresentationTypes(conversion)) {
+      retainRepresentationType(type);
+    }
+  };
   const index: MojoConversionIndex = {
     record(
       expression: Node,
@@ -61,6 +78,7 @@ export function createMojoConversionIndex(
       }
       entries.set(key, classified.conversion);
       byExpression.set(expression, entries);
+      retainConversion(actual, expected, classified.conversion);
       return classified;
     },
     finalizeCallable(
@@ -86,6 +104,7 @@ export function createMojoConversionIndex(
       finalized.add(key);
       byExpression.set(expression, entries);
       finalizedCallableKeys.set(expression, finalized);
+      retainConversion(actual, expected, classified.conversion);
       return classified;
     },
     get(
@@ -94,6 +113,11 @@ export function createMojoConversionIndex(
     ): MojoValueConversion | undefined {
       sealed = true;
       return byExpression.get(expression)?.get(mojoTargetTypeKey(expected));
+    },
+    representationTypes(): readonly MojoTargetTypeRef[] {
+      return Object.freeze([...representationTypesByKey.entries()]
+        .sort(([left], [right]) => left.localeCompare(right, "en"))
+        .map(([, type]) => type));
     },
   };
   return Object.freeze(index);

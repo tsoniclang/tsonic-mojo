@@ -73,6 +73,10 @@ export function normalizeMojoStatements(
 
 function normalizeStatement(statement: MojoStatement): MojoStatement {
   switch (statement.kind) {
+    case "local-function": return Object.freeze({
+      ...statement,
+      declaration: normalizeFunction(statement.declaration),
+    });
     case "if": return Object.freeze({
       ...statement,
       condition: normalizeMojoExpression(statement.condition),

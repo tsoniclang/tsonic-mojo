@@ -438,6 +438,27 @@ test("contextual array literals select the exact present aggregate from an optio
   assert.match(source.text, /Optional\[JsArray\[Float64\]\]\(JsArray\[Float64\]\(\[\]\)\)/u);
 });
 
+test("collection conversions seal their intermediate lifecycle carriers", () => {
+  const result = compileMojo({
+    surfaces: ["js"],
+    files: {
+      "index.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        "class State {",
+        "  values: i32[];",
+        "  constructor() { this.values = [0]; }",
+        "}",
+        "export function main(): void { new State(); }",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("struct State"));
+  assert.ok(source);
+  assert.match(source.text, /var _conversion_result: List\[Int32\] = \[\]/u);
+  assert.match(source.text, /JsArray\[Int32\]\(_conversion_result\)/u);
+});
+
 test("all native Mojo and shared fixed-width primitive aliases retain authored carriers", () => {
   const result = compileMojo({
     files: {
@@ -556,6 +577,30 @@ test("expression callables retain exact immutable captures", () => {
   const source = artifactTexts(result).find(({ text }) => text.includes("def select"));
   assert.ok(source);
   assert.match(source.text, /lambda \(value: Int32\) \{imm offset\} -> Int32: value \+ offset/u);
+  assert.doesNotMatch(source.text, /allocate_callable_environment|_callable_environment/u);
+});
+
+test("native closures use local declarations when exact conversions require statements", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        "function apply(transform: (message: string) => number | undefined): number | undefined {",
+        '  return transform("value");',
+        "}",
+        "function select(line?: i32): number | undefined {",
+        "  return apply((_message: string): number | undefined => line);",
+        "}",
+        "export function main(): void {}",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("def select"));
+  assert.ok(source);
+  assert.match(source.text, /def _closure\(_message: String\) raises Error \{imm line\} -> Optional\[Float64\]:/u);
+  assert.match(source.text, /var _optional_source: Optional\[Int32\] = line/u);
+  assert.match(source.text, /return _optional_result/u);
   assert.doesNotMatch(source.text, /allocate_callable_environment|_callable_environment/u);
 });
 
@@ -968,4 +1013,27 @@ test("assertions consume the checker-selected narrowed union route", () => {
   const source = artifactTexts(result).find(({ text }) => text.includes("def name"));
   assert.ok(source);
   assert.match(source.text, /return pet\[Dog\]\._state\[\]\.name/u);
+});
+
+test("assertions preserve checker narrowing for repeated property access", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        "class NumberValue { value: i32; constructor(value: i32) { this.value = value; } }",
+        "class TextValue { value: string; constructor(value: string) { this.value = value; } }",
+        "class Field { value: NumberValue | TextValue; constructor(value: NumberValue | TextValue) { this.value = value; } }",
+        "function read(field: Field): i32 {",
+        '  if (!(field.value instanceof NumberValue)) throw new Error("number required");',
+        "  const selected = field.value as NumberValue;",
+        "  return selected.value;",
+        "}",
+        "export function main(): void { if (read(new Field(new NumberValue(7))) !== 7) throw new Error(\"bad\"); }",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("def read"));
+  assert.ok(source);
+  assert.match(source.text, /field\._state\[\]\.value\[NumberValue\]/u);
 });

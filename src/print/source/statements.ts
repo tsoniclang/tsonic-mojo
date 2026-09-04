@@ -11,6 +11,7 @@ import {
 import type { MojoDocument } from "../document/model.js";
 import type { MojoPrintContext } from "./context.js";
 import { printMojoExpressionDocument } from "./expressions.js";
+import { printMojoFunctionDocument } from "./declarations.js";
 import { requiredMojoTypeDocument } from "./types.js";
 
 export function printMojoStatementDocument(
@@ -18,6 +19,7 @@ export function printMojoStatementDocument(
   context: MojoPrintContext,
 ): MojoDocument {
   switch (statement.kind) {
+    case "local-function": return printMojoFunctionDocument(statement.declaration, context);
     case "return": return statement.expression === undefined
       ? text("return")
       : group(concat(text("return "), printMojoExpressionDocument(statement.expression, context)));

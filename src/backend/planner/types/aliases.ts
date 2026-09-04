@@ -80,6 +80,7 @@ function visitDeclaration(
 
 function visitStatement(statement: MojoStatement, visitType: (type: MojoTargetTypeRef) => void): void {
   switch (statement.kind) {
+    case "local-function": visitDeclaration(statement.declaration, visitType); return;
     case "return": if (statement.expression !== undefined) visitExpression(statement.expression, visitType); return;
     case "variable":
       if (statement.type !== undefined) visitType(statement.type);

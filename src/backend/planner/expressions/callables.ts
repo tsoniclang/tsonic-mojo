@@ -32,6 +32,7 @@ import { consumeMojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { planMojoParameterPrelude } from "../declarations/parameters.js";
 import { planMojoParameterDeclaration } from "../declarations/parameters.js";
+import { planMojoGenericParameters } from "../declarations/generic-parameters.js";
 import { mojoParameterConvention } from "../../../analysis/representations/index.js";
 import type { MojoCallableDisposition } from "../../../analysis/representations/model.js";
 import { planMojoFunctionBody, planMojoProjectFunction } from "../declarations/project.js";
@@ -223,7 +224,7 @@ function planNativeCallableExpression(
     }
   }
   if (disposition.kind === "native-closure") {
-    return planNativeLambda(selection, context, planValue, widenedCallableType);
+    return planNativeClosure(selection, context, planValue, widenedCallableType);
   }
   const existingName = context.callableArtifactNames.get(selection.expression);
   const name = existingName ?? allocateMojoSyntheticDeclarationName(context, "callable");
@@ -253,41 +254,66 @@ function planNativeCallableExpression(
   );
 }
 
-function planNativeLambda(
+function planNativeClosure(
   selection: MojoCallableExpressionSelection,
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
   widenedCallableType?: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
 ): MojoValuePlan | undefined {
   const deferredContext = withMojoDeferredExecution(context);
+  const parameterPrelude = planMojoParameterPrelude(
+    selection.parameters,
+    deferredContext,
+    planValue,
+    true,
+  );
+  if (parameterPrelude === undefined) return undefined;
   const body = planValue(
     selection.body,
     deferredContext,
     widenedCallableType?.result ?? selection.resultType,
   );
   if (body === undefined) return undefined;
-  if (body.before.length !== 0) {
-    appendMojoPlanningDiagnostic(
-      context,
-      "MOJO_NATIVE_CLOSURE_REQUIRES_STATEMENT_PRELUDE",
-      "A callable classified as a native Mojo closure produced an unsealed statement prelude.",
-      selection.expression,
-    );
-    return undefined;
+  const captures = Object.freeze(selection.captures.map((capture) => Object.freeze({
+    name: capture.name,
+    convention: capture.storage === "location" ? "mut" as const : "imm" as const,
+  })));
+  const resultType = widenedCallableType?.result ?? selection.resultType;
+  const raises = widenedCallableType?.raises ?? selection.raises;
+  const errorType = widenedCallableType?.errorType ?? selection.errorType;
+  if (parameterPrelude.length !== 0 || body.before.length !== 0) {
+    const name = allocateMojoSyntheticName(context, "closure");
+    return withMojoValue(Object.freeze([Object.freeze({
+      kind: "local-function" as const,
+      declaration: Object.freeze({
+        kind: "function" as const,
+        name,
+        genericParameters: planMojoGenericParameters(selection),
+        parameters: Object.freeze(selection.parameters.map((parameter) =>
+          planMojoParameterDeclaration(parameter, deferredContext))),
+        resultType,
+        asynchronous: false,
+        raises,
+        ...(errorType === undefined ? {} : { errorType }),
+        captures,
+        statements: Object.freeze([
+          ...parameterPrelude,
+          ...body.before,
+          resultType.kind === "unit"
+            ? Object.freeze({ kind: "expression" as const, expression: body.value })
+            : Object.freeze({ kind: "return" as const, expression: body.value }),
+        ]),
+      }),
+    })]), Object.freeze({ kind: "path", path: name }));
   }
   return withMojoValue(Object.freeze([]), Object.freeze({
     kind: "lambda",
     parameters: Object.freeze(selection.parameters.map((parameter) =>
       planMojoParameterDeclaration(parameter, deferredContext))),
-    captures: Object.freeze(selection.captures.map((capture) => Object.freeze({
-      name: capture.name,
-      convention: capture.storage === "location" ? "mut" as const : "imm" as const,
-    }))),
-    resultType: widenedCallableType?.result ?? selection.resultType,
-    raises: widenedCallableType?.raises ?? selection.raises,
-    ...((widenedCallableType?.errorType ?? selection.errorType) === undefined
-      ? {}
-      : { errorType: widenedCallableType?.errorType ?? selection.errorType }),
+    captures,
+    resultType,
+    raises,
+    ...(errorType === undefined ? {} : { errorType }),
     expression: body.value,
   }));
 }

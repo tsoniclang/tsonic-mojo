@@ -261,7 +261,7 @@ function printCallArgument(
   );
 }
 
-function printLambdaCaptures(captures: readonly MojoLambdaCapture[]): MojoDocument {
+export function printLambdaCaptures(captures: readonly MojoLambdaCapture[]): MojoDocument {
   return delimitedList("{", captures.map((capture) => text(
     `${capture.convention} ${capture.name}${capture.transfer === true ? "^" : ""}`,
   )), "}");

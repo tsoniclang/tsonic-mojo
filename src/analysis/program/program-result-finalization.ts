@@ -395,6 +395,7 @@ export function finalizeMojoProgramResult(
       ...sourceCallableSpecializations.representationTypes,
       ...projectDispatch.representationTypes,
       ...mojoObjectLiteralRepresentationTypes(objectLiteralNodes, objectLiteralSelections),
+      ...conversions.representationTypes(),
     ]),
     parameters: mojoRepresentationParameters(
       declarations,

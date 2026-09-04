@@ -125,9 +125,10 @@ export function planMojoSourceModuleIdentities(
       entryPoint: normalizedFileName === entryFileName,
     }));
   }
+  const physicalSources = allocatePhysicalSourceSegments(pending);
 
   const rootsByComponent = new Map<string, ModuleSegmentNode>();
-  for (const source of pending) {
+  for (const source of physicalSources) {
     const root = rootsByComponent.get(source.componentId) ?? createModuleSegmentNode();
     rootsByComponent.set(source.componentId, root);
     let node = root;
@@ -143,7 +144,7 @@ export function planMojoSourceModuleIdentities(
   const identities: MojoSourceModuleIdentity[] = [];
   const seenModulePaths = new Map<string, string>();
   const seenArtifactPaths = new Map<string, string>();
-  for (const source of pending) {
+  for (const source of physicalSources) {
     const root = rootsByComponent.get(source.componentId)!;
     const moduleSegments = resolveMojoModuleSegments(root, source.sourceSegments);
     const modulePath = Object.freeze([source.packageName, ...moduleSegments]);
@@ -293,8 +294,39 @@ function sourceModuleSegments(relativeSourcePath: string): {
     return undefined;
   }
   const indexModule = segments[segments.length - 1] === "index";
-  if (indexModule) segments.pop();
   return Object.freeze({ segments: Object.freeze(segments), indexModule });
+}
+
+function allocatePhysicalSourceSegments<T extends {
+  readonly componentId: string;
+  readonly sourceSegments: readonly string[];
+  readonly indexModule: boolean;
+}>(sources: readonly T[]): readonly T[] {
+  const occupied = new Set(sources
+    .filter(({ indexModule }) => !indexModule)
+    .map((source) => sourceSegmentKey(source.componentId, source.sourceSegments)));
+  const allocated = new Map<T, T>();
+  const indexes = sources.filter(({ indexModule }) => indexModule).sort((left, right) =>
+    left.sourceSegments.length - right.sourceSegments.length ||
+    sourceSegmentKey(left.componentId, left.sourceSegments)
+      .localeCompare(sourceSegmentKey(right.componentId, right.sourceSegments), "en"));
+  for (const source of indexes) {
+    const collapsed = source.sourceSegments.slice(0, -1);
+    const collapsedKey = sourceSegmentKey(source.componentId, collapsed);
+    const preserveIndex = occupied.has(collapsedKey);
+    const sourceSegments = preserveIndex ? source.sourceSegments : collapsed;
+    occupied.add(sourceSegmentKey(source.componentId, sourceSegments));
+    allocated.set(source, Object.freeze({
+      ...source,
+      sourceSegments: Object.freeze([...sourceSegments]),
+      indexModule: !preserveIndex,
+    }));
+  }
+  return Object.freeze(sources.map((source) => allocated.get(source) ?? source));
+}
+
+function sourceSegmentKey(componentId: string, segments: readonly string[]): string {
+  return `${componentId}\0${segments.join("/")}`;
 }
 
 interface ModuleSegmentNode {
