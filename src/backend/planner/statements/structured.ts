@@ -44,6 +44,8 @@ import {
   isMojoCompileTimeIteration,
   planMojoCompileTimeCondition,
 } from "../compile-time/values.js";
+import { planMojoBindingProjection } from "../bindings/patterns.js";
+import { mojoValue } from "../expressions/value-plan.js";
 
 export function planMojoFunctionStatements(
   function_: MojoAnalyzedFunction,
@@ -345,10 +347,21 @@ function planStatement(
           arguments: Object.freeze([]),
         });
     let statements = planStatementBody(body, scope, context, loopFlowContext(Object.freeze([])));
+    if (statements !== undefined && selection.binding.kind === "pattern") {
+      const projected = planMojoBindingProjection(
+        selection.binding.projection,
+        mojoValue(Object.freeze({ kind: "path", path: selection.binding.name })),
+        "direct",
+        context,
+        planMojoValue,
+      );
+      if (projected === undefined) return undefined;
+      statements = Object.freeze([...projected, ...statements]);
+    }
     if (statements !== undefined) {
-      const bindingKind = ast.variableDeclarationKind(selection.bindingDeclaration);
+      const bindingKind = ast.variableDeclarationKind(selection.binding.declaration);
       if (bindingKind === "using" || bindingKind === "await using") {
-        statements = planMojoResourceScope(selection.bindingDeclaration, statements, context);
+        statements = planMojoResourceScope(selection.binding.declaration, statements, context);
       }
     }
     const compileTime = isMojoCompileTimeIteration(selection.iterable, context);
@@ -356,7 +369,7 @@ function planStatement(
       ? undefined
       : Object.freeze([...sourceIterable.before, {
           kind: "for",
-          binding: selection.bindingName,
+          binding: selection.binding.name,
           iterable,
           statements,
           ...(compileTime ? { compileTime: true } : {}),

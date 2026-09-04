@@ -34,6 +34,7 @@ import type {
   MojoCallableCapture,
   MojoCallableExpressionSelection,
   MojoTemplateExpressionSelection,
+  MojoBindingProjectionPlan,
   MojoBindingPatternSelection,
   MojoObjectLiteralContribution,
   MojoObjectLiteralSelection,
@@ -47,6 +48,7 @@ export type {
   MojoBindingValueProjection,
   MojoBindingProjection,
   MojoBindingNormalization,
+  MojoBindingProjectionPlan,
   MojoBindingPatternElementSelection,
   MojoBindingPatternSelection,
   MojoObjectLiteralContribution,
@@ -71,6 +73,7 @@ export interface MojoAnalyzedParameter {
   readonly disposition: MojoParameterDisposition;
   readonly omissionKind: "required" | "undefined" | "initializer" | "rest";
   readonly initializer?: Node;
+  readonly bindingPatternNode?: Node;
 }
 
 export interface MojoAnalyzedTypeParameter {
@@ -864,8 +867,18 @@ export type MojoElementSelection = {
 interface MojoIterationSelectionBase {
   readonly statement: Node;
   readonly iterable: Node;
-  readonly bindingDeclaration: Node;
-  readonly bindingName: string;
+  readonly binding:
+    | {
+        readonly kind: "identifier";
+        readonly declaration: Node;
+        readonly name: string;
+      }
+    | {
+      readonly kind: "pattern";
+      readonly declaration: Node;
+      readonly name: string;
+      readonly projection: MojoBindingProjectionPlan;
+      };
   readonly iterableType: MojoTargetTypeRef;
   readonly elementType: MojoTargetTypeRef;
 }
@@ -946,6 +959,7 @@ export interface MojoProgramQueries {
   callableExpressionSelection(expression: Node): MojoCallableExpressionSelection | undefined;
   templateExpressionSelection(expression: Node): MojoTemplateExpressionSelection | undefined;
   bindingPatternSelection(declaration: Node): MojoBindingPatternSelection | undefined;
+  bindingProjection(declaration: Node): MojoBindingProjectionPlan | undefined;
   returnValueTransfer(expression: Node): boolean;
   catchErrorType(catchClause: Node): MojoTargetTypeRef | undefined;
   moduleForSourceFile(sourceFile: SourceFile): MojoAnalyzedModule | undefined;

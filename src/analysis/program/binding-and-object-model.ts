@@ -118,12 +118,15 @@ export interface MojoBindingPatternElementSelection {
       };
 }
 
-export interface MojoBindingPatternSelection {
+export interface MojoBindingProjectionPlan {
   readonly declaration: Node;
-  readonly initializer: Node;
   readonly sourceType: MojoTargetTypeRef;
-  readonly sourceReuse: "direct" | "stabilized";
   readonly elements: readonly MojoBindingPatternElementSelection[];
+}
+
+export interface MojoBindingPatternSelection extends MojoBindingProjectionPlan {
+  readonly initializer: Node;
+  readonly sourceReuse: "direct" | "stabilized";
 }
 
 export type MojoObjectLiteralContribution =

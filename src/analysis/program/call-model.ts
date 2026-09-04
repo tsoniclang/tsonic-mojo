@@ -10,6 +10,10 @@ import type { MojoArgumentDisposition } from "../representations/model.js";
 
 export interface MojoAnalyzedCallArgument {
   readonly expression: Node;
+  readonly sourceArgumentIndex: number;
+  readonly sourceForm: "value" | "spread-element" | "spread-sequence";
+  readonly spreadElementIndex?: number;
+  readonly sourceContainerType?: MojoTargetTypeRef;
   readonly sourceType: MojoTargetTypeRef;
   readonly parameterType: MojoTargetTypeRef;
   readonly conversion: MojoValueConversion;

@@ -12,7 +12,9 @@ import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import { analyzeMojoIteration } from "../operations/iterations.js";
-import { analyzeMojoBindingPattern } from "../bindings/patterns.js";
+import {
+  analyzeMojoBindingProjection,
+} from "../bindings/patterns.js";
 import type { MojoStructuralObjectCatalog } from "../bindings/structural-objects.js";
 import { analyzeMojoObjectLiteral } from "../objects/object-literals.js";
 import { analyzeMojoResourceManagement } from "../resources/management.js";
@@ -26,6 +28,7 @@ import { inferMojoExpressionType, isMojoExpressionNode } from "./expression-type
 import type {
   MojoAnalyzedClass,
   MojoAnalyzedClassOwner,
+  MojoBindingProjectionPlan,
   MojoBindingPatternSelection,
   MojoAnalyzedFunction,
   MojoAnalyzedProjectProperty,
@@ -67,6 +70,7 @@ import {
 } from "./executable-region-carriers.js";
 import {
   analyzeNullishCoalescing,
+  isMojoIterationBindingDeclaration,
   publishBindingPatternCarriers,
   selectReturnValueTransfer,
 } from "./executable-region-flow.js";
@@ -112,6 +116,7 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly objectLiteralNodes: Set<Node>;
   readonly templateExpressionNodes: Set<Node>;
   readonly bindingPatternSelections: WeakMap<Node, MojoBindingPatternSelection>;
+  readonly bindingProjections: WeakMap<Node, MojoBindingProjectionPlan>;
   readonly returnValueTransfers: WeakSet<Node>;
   readonly structuralObjects: MojoStructuralObjectCatalog;
   readonly conversions: MojoConversionIndex;
@@ -142,6 +147,50 @@ export type MojoExecutableRegionAnalysisEnvironment = Omit<
   MojoExecutableRegionAnalysisInput,
   "root" | "sourceFile" | "owner" | "rootExpectedType" | "returnType"
 >;
+
+export function analyzeMojoExecutableBindingProjection(
+  declaration: Node,
+  sourceType: MojoTargetTypeRef,
+  sourceSemanticType: import("@tsonic/tsts").Type | undefined,
+  sourceFile: SourceFile,
+  input: MojoExecutableRegionAnalysisEnvironment,
+): MojoBindingProjectionPlan | undefined {
+  const { ast } = input.source;
+  const pattern = ast.name(declaration);
+  if (pattern === undefined || (!ast.is.IsArrayBindingPattern(pattern) &&
+    !ast.is.IsObjectBindingPattern(pattern))) return undefined;
+  const semantics = input.source.semantics.forFile(sourceFile);
+  const executableInput: MojoExecutableRegionAnalysisInput = {
+    ...input,
+    root: declaration,
+    sourceFile,
+  };
+  const projection = analyzeMojoBindingProjection({
+    ast,
+    declaration,
+    pattern,
+    sourceType,
+    sourceSemanticType,
+    semantics,
+    resolveType(type) {
+      return resolveType(type, undefined, executableInput, semantics);
+    },
+    expressionTypes: input.expressionTypes,
+    conversions: input.conversions,
+    bindingNames: input.bindingNames,
+    bindingTypes: input.bindingTypes,
+    classByTypeId: input.classByTypeId,
+    interfaceByTypeId: input.interfaceByTypeId,
+    projectRelationships: input.projectRelationships,
+    structuralObjects: input.structuralObjects,
+    diagnostics: input.diagnostics,
+  });
+  if (projection === undefined) return undefined;
+  input.bindingTypes.set(declaration, sourceType);
+  input.bindingProjections.set(declaration, projection);
+  publishBindingPatternCarriers(projection.elements, input);
+  return projection;
+}
 
 export interface MojoExecutableRegionAnalysis {
   readonly dependencies: ReadonlySet<Node>;
@@ -234,7 +283,7 @@ export function analyzeMojoExecutableRegion(
       } else {
         if (resolved !== undefined) input.bindingTypes.set(node, resolved);
       }
-      if (bindingPattern) {
+      if (bindingPattern && !isMojoIterationBindingDeclaration(node, ast)) {
         bindingPatternDeclarations.push(node);
       }
     }
@@ -263,34 +312,23 @@ export function analyzeMojoExecutableRegion(
   ): void => {
     const initializer = Node_Initializer(ast, declaration);
     if (initializer === undefined || sourceType === undefined) return;
-    const selection = analyzeMojoBindingPattern({
-      ast,
+    const projection = analyzeMojoExecutableBindingProjection(
       declaration,
-      initializer,
       sourceType,
+      semantics.types.expressionType(initializer),
+      input.sourceFile,
+      input,
+    );
+    if (projection === undefined) return;
+    const selection = Object.freeze({
+      ...projection,
+      initializer,
       sourceReuse: ast.is.IsIdentifier(initializer) &&
         input.source.navigation.sourceReferenceFor(initializer)?.project === true
-        ? "direct"
-        : "stabilized",
-      sourceSemanticType: semantics.types.expressionType(initializer),
-      semantics,
-      resolveType(type) {
-        return resolveType(type, undefined, input, semantics);
-      },
-      expressionTypes: input.expressionTypes,
-      conversions: input.conversions,
-      bindingNames: input.bindingNames,
-      bindingTypes: input.bindingTypes,
-      classByTypeId: input.classByTypeId,
-      interfaceByTypeId: input.interfaceByTypeId,
-      projectRelationships: input.projectRelationships,
-      structuralObjects: input.structuralObjects,
-      diagnostics: input.diagnostics,
+        ? "direct" as const
+        : "stabilized" as const,
     });
-    if (selection === undefined) return;
-    input.bindingTypes.set(declaration, sourceType);
     input.bindingPatternSelections.set(declaration, selection);
-    publishBindingPatternCarriers(selection.elements, input);
     pendingBindingPatterns.delete(declaration);
   };
   for (const declaration of pendingBindingPatterns) {
@@ -453,6 +491,15 @@ export function analyzeMojoExecutableRegion(
       },
       sourceTypesIdentical(left, right) {
         return semantics.types.isIdentical(left, right);
+      },
+      analyzeBindingProjection(declaration, sourceType, sourceSemanticType) {
+        return analyzeMojoExecutableBindingProjection(
+          declaration,
+          sourceType,
+          sourceSemanticType,
+          input.sourceFile,
+          input,
+        );
       },
     });
     if (iteration.kind === "unsupported") {

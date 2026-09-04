@@ -13,6 +13,8 @@ import type { MojoPlanningContext } from "../program/context.js";
 import type { MojoValuePlanner } from "../expressions/support.js";
 import { registerMojoTypeImports } from "../types/imports.js";
 import { mojoParameterConvention } from "../../../analysis/representations/index.js";
+import { planMojoBindingProjection } from "../bindings/patterns.js";
+import { mojoValue } from "../expressions/value-plan.js";
 
 export function planMojoParameterDeclaration(
   parameter: MojoAnalyzedParameter,
@@ -86,9 +88,7 @@ export function planMojoParameterPrelude(
           ]),
         }),
       );
-      continue;
-    }
-    if (parameter.disposition.kind === "immutable" && parameter.disposition.localCopy &&
+    } else if (parameter.disposition.kind === "immutable" && parameter.disposition.localCopy &&
       parameter.omissionKind !== "rest") {
       registerMojoTypeImports(parameter.bodyType, context);
       statements.push(Object.freeze({
@@ -97,26 +97,44 @@ export function planMojoParameterPrelude(
         type: parameter.bodyType,
         initializer: Object.freeze({ kind: "path", path: parameter.incomingName }),
       }));
-      continue;
+    } else if (parameter.omissionKind === "rest" && normalizeRest) {
+      const normalized = normalizeRestParameter(parameter);
+      if (normalized === undefined) {
+        appendMojoPlanningDiagnostic(
+          context,
+          "MOJO_REST_PARAMETER_CARRIER_INVALID",
+          "A source rest parameter requires one exact native List or JavaScript array body carrier.",
+          parameter.declaration,
+        );
+        return undefined;
+      }
+      registerMojoTypeImports(parameter.bodyType, context);
+      statements.push(Object.freeze({
+        kind: "variable",
+        name: parameter.name,
+        type: parameter.bodyType,
+        initializer: normalized,
+      }));
     }
-    if (parameter.omissionKind !== "rest" || !normalizeRest) continue;
-    const normalized = normalizeRestParameter(parameter);
-    if (normalized === undefined) {
+    const projection = context.program.queries.bindingProjection(parameter.declaration);
+    if (projection === undefined) continue;
+    const projected = planMojoBindingProjection(
+      projection,
+      mojoValue(Object.freeze({ kind: "path", path: parameter.name })),
+      "direct",
+      context,
+      planValue,
+    );
+    if (projected === undefined) {
       appendMojoPlanningDiagnostic(
         context,
-        "MOJO_REST_PARAMETER_CARRIER_INVALID",
-        "A source rest parameter requires one exact native List or JavaScript array body carrier.",
+        "MOJO_PARAMETER_BINDING_PROJECTION_INVALID",
+        "A binding-pattern parameter has no exact sealed projection plan.",
         parameter.declaration,
       );
       return undefined;
     }
-    registerMojoTypeImports(parameter.bodyType, context);
-    statements.push(Object.freeze({
-      kind: "variable",
-      name: parameter.name,
-      type: parameter.bodyType,
-      initializer: normalized,
-    }));
+    statements.push(...projected);
   }
   return Object.freeze(statements);
 }

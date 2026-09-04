@@ -53,12 +53,6 @@ export function analyzeMojoElementAccess(
   source: ResolvedSourceElementAccessInfo,
   context: MojoElementAnalysisContext,
 ): MojoElementAnalysis {
-  if (source.callCallee) {
-    return unsupported(
-      "MOJO_ELEMENT_CALL_CALLEE_UNSUPPORTED",
-      "Calling an element-selected callable requires a sealed callable-value ABI.",
-    );
-  }
   if (source.accessMode === "delete") {
     return unsupported(
       "MOJO_ELEMENT_DELETE_UNSUPPORTED",

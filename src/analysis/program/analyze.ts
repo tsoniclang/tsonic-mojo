@@ -15,6 +15,7 @@ import { resolveMojoTargetType } from "../../policy/types/resolution.js";
 import type {
   MojoAnalyzedProjectProperty,
   MojoBindingPatternSelection,
+  MojoBindingProjectionPlan,
   MojoCallSelection,
   MojoCallableExpressionSelection,
   MojoElementSelection,
@@ -33,7 +34,10 @@ import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import { analyzeMojoSourceModules } from "../source-modules/index.js";
 import { analyzeMojoModuleBindings } from "./module-bindings.js";
-import { analyzeMojoExecutableRegion } from "./executable-regions.js";
+import {
+  analyzeMojoExecutableBindingProjection,
+  analyzeMojoExecutableRegion,
+} from "./executable-regions.js";
 import type { MojoExecutableRegionAnalysisEnvironment } from "./executable-regions.js";
 import { allocateMojoLocalBindings } from "./local-bindings.js";
 import type { MojoAnalyzedModuleRegionFacts } from "./module-effects.js";
@@ -112,6 +116,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
   const templateExpressionSelections = new WeakMap<Node, MojoTemplateExpressionSelection>();
   const templateExpressionNodes = new Set<Node>();
   const bindingPatternSelections = new WeakMap<Node, MojoBindingPatternSelection>();
+  const bindingProjections = new WeakMap<Node, MojoBindingProjectionPlan>();
   const returnValueTransfers = new WeakSet<Node>();
   const analyzedCallableExpressions = new WeakSet<Node>();
   const structuralObjects = createMojoStructuralObjectCatalog(ast);
@@ -367,6 +372,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     objectLiteralNodes,
     templateExpressionNodes,
     bindingPatternSelections,
+    bindingProjections,
     returnValueTransfers,
     structuralObjects,
     analyzeCallableExpression,
@@ -507,6 +513,19 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
 
   for (const function_ of functions) {
     const roots: Node[] = [];
+    for (const parameter of function_.parameters) {
+      if (parameter.bindingPatternNode === undefined) continue;
+      const semantics = input.source.semantics.forFile(function_.sourceFile);
+      const sourceType = semantics.declarations.declaredValueType(parameter.declaration) ??
+        semantics.declarations.declaredType(parameter.declaration);
+      analyzeMojoExecutableBindingProjection(
+        parameter.declaration,
+        parameter.bodyType,
+        sourceType,
+        function_.sourceFile,
+        executableEnvironment,
+      );
+    }
     for (const parameter of function_.parameters) {
       if (parameter.omissionKind !== "initializer" || parameter.initializer === undefined) continue;
       roots.push(parameter.initializer);

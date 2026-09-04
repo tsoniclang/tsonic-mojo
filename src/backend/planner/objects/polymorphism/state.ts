@@ -20,7 +20,7 @@ import { planMojoValue } from "../../expressions/value.js";
 import { consumeMojoValue } from "../../expressions/value-plan.js";
 import {
   orderCallArguments,
-  planSelectedArgument,
+  planSelectedArguments,
 } from "../../expressions/support.js";
 import {
   appendMojoPlanningDiagnostic,
@@ -295,11 +295,10 @@ function planBaseInitialization(
       );
       return undefined;
     }
-    const planned = selection.arguments.map((argument) =>
-      planSelectedArgument(argument, context, planMojoValue));
-    if (planned.some((argument) => argument === undefined)) return undefined;
+    const planned = planSelectedArguments(selection.arguments, context, planMojoValue);
+    if (planned === undefined) return undefined;
     const ordered = orderCallArguments(
-      planned as readonly import("../../expressions/support.js").PlannedMojoCallArgument[],
+      planned,
       context,
     );
     before = ordered.before;

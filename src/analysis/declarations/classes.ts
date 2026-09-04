@@ -224,24 +224,31 @@ export function analyzeMojoClass(
     }
     if (ast.is.IsConstructorDeclaration(member)) {
       const body = ast.body(member);
-      if (body === undefined || !ast.is.IsBlock(body)) {
-        append(input, "MOJO_CONSTRUCTOR_BODY_REQUIRED", "A project constructor requires one exact implementation body.", member);
+      if (body !== undefined && !ast.is.IsBlock(body)) {
+        append(input, "MOJO_CONSTRUCTOR_BODY_INVALID", "A project constructor implementation requires one exact block body.", member);
         continue;
       }
-      const callable = constructorCallable(input, member);
+      const callable = body === undefined
+        ? selectedConstructorCallable(input, member)
+        : constructorImplementationCallable(input, member);
       if (callable === undefined) continue;
       const localNames = input.createNameAllocator();
-      const constructor = analyzeMojoFunctionSignature({
-        ...signatureInput(input, member, body, "__init__", localNames),
+      const signatureInput_ = {
+        ...callableSignatureInput(input, member, "__init__", localNames),
         kind: "constructor",
         owner,
         callable,
         resultType: Object.freeze({ kind: "unit" }),
-      });
+      } as const;
+      const constructor = body === undefined
+        ? analyzeMojoCallableSignature(signatureInput_)
+        : analyzeMojoFunctionSignature({ ...signatureInput_, body });
       if (constructor === undefined) continue;
-      constructors.push(constructor);
       callableContracts.push(constructor);
-      input.allocateLocalBindings(body, localNames);
+      if (body !== undefined) {
+        constructors.push(constructor as MojoAnalyzedFunction);
+        input.allocateLocalBindings(body, localNames);
+      }
       continue;
     }
     if (ast.is.IsSemicolonClassElement(member)) continue;
@@ -342,7 +349,7 @@ function callableSignatureInput(
   };
 }
 
-function constructorCallable(
+function selectedConstructorCallable(
   input: MojoClassAnalysisInput,
   declaration: Node,
 ): SourceCallableTypeEvidence | undefined {
@@ -382,6 +389,68 @@ function constructorCallable(
       omissionKind,
     });
   });
+  return Object.freeze({
+    parameters: Object.freeze(parameters),
+    result: Object.freeze({ selectedType: resultType, declaration: input.declaration }),
+  });
+}
+
+function constructorImplementationCallable(
+  input: MojoClassAnalysisInput,
+  declaration: Node,
+): SourceCallableTypeEvidence | undefined {
+  const { ast } = input.source;
+  const semantics = input.source.semantics.forFile(input.sourceFile);
+  const parameters: SourceCallableTypeEvidence["parameters"][number][] = [];
+  for (const parameter of ast.parameters(declaration)) {
+    const name = parameter === undefined ? undefined : ast.name(parameter);
+    const reference = name === undefined
+      ? undefined
+      : input.source.navigation.sourceReferenceFor(name);
+    const typeNode = parameter === undefined ? undefined : ast.typeNode(parameter);
+    const type = parameter === undefined
+      ? undefined
+      : semantics.declarations.declaredValueType(parameter) ??
+        semantics.declarations.declaredType(parameter) ??
+        (typeNode === undefined ? undefined : semantics.types.authoredType(typeNode));
+    if (parameter === undefined || !ast.is.IsParameterDeclaration(parameter) ||
+      reference?.symbol === undefined || type === undefined) {
+      append(
+        input,
+        "MOJO_CONSTRUCTOR_IMPLEMENTATION_PARAMETER_UNRESOLVED",
+        "A constructor implementation parameter requires exact syntax, symbol, and checker type evidence.",
+        parameter ?? declaration,
+      );
+      return undefined;
+    }
+    const syntax = ast.as.AsParameterDeclaration(parameter)!;
+    const rest = syntax.DotDotDotToken !== undefined;
+    const initializer = Node_Initializer(ast, parameter);
+    const optional = ast.questionToken(parameter) !== undefined || initializer !== undefined;
+    parameters.push(Object.freeze({
+      sourceSymbol: reference.symbol,
+      type,
+      parameterKind: rest ? "rest" : optional ? "optional" : "required",
+      declaration: parameter,
+      omissionKind: rest
+        ? "rest"
+        : initializer !== undefined
+          ? "initializer"
+          : optional
+            ? "undefined"
+            : "required",
+    }));
+  }
+  const resultType = semantics.declarations.declaredType(input.declaration);
+  if (resultType === undefined) {
+    append(
+      input,
+      "MOJO_CONSTRUCTOR_RESULT_TYPE_UNRESOLVED",
+      "The checker supplied no exact project class instance type.",
+      declaration,
+    );
+    return undefined;
+  }
   return Object.freeze({
     parameters: Object.freeze(parameters),
     result: Object.freeze({ selectedType: resultType, declaration: input.declaration }),

@@ -17,6 +17,7 @@ import type {
 } from "../program/model.js";
 import { walkSourceTree } from "../../source/syntax/traversal.js";
 import {
+  analyzeMojoExecutableBindingProjection,
   analyzeMojoExecutableRegion,
 } from "../program/executable-regions.js";
 import type {
@@ -274,6 +275,19 @@ export function analyzeAndSealMojoCallableExpression(
   if (callable === undefined) return;
   let raises = false;
   const initializerRoots: Node[] = [];
+  const semantics = environment.source.semantics.forFile(input.sourceFile);
+  for (const parameter of callable.parameters) {
+    if (parameter.bindingPatternNode === undefined) continue;
+    const sourceType = semantics.declarations.declaredValueType(parameter.declaration) ??
+      semantics.declarations.declaredType(parameter.declaration);
+    analyzeMojoExecutableBindingProjection(
+      parameter.declaration,
+      parameter.bodyType,
+      sourceType,
+      input.sourceFile,
+      environment,
+    );
+  }
   for (const parameter of callable.parameters) {
     if (parameter.omissionKind !== "initializer" || parameter.initializer === undefined) continue;
     initializerRoots.push(parameter.initializer);

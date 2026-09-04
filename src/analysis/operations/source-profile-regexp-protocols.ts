@@ -141,6 +141,8 @@ export function analyzeSourceProfileRegExpProtocolCall(
     if (disposition.kind === "unsupported") return disposition;
     arguments_.push(Object.freeze({
       expression: value.expression,
+      sourceArgumentIndex: index,
+      sourceForm: "value",
       sourceType,
       parameterType: parameter.callType,
       conversion: conversion.conversion,

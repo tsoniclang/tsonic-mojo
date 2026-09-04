@@ -76,12 +76,15 @@ export function analyzeProjectCall(
     ? resolve(sourceCall.sourceResultType)
     : undefined;
   const ownerInstance = contract.kind === "constructor" ? constructedType : receiverType;
-  const declaredParameterTypes = contract.parameters.map((parameter) =>
+  const invocationContract = contract.kind === "constructor" && callable.implementation !== undefined
+    ? callable.implementation
+    : contract;
+  const declaredParameterTypes = invocationContract.parameters.map((parameter) =>
     parameter.omissionKind === "rest" ? parameter.type : parameter.callType);
   const ownerParameterTypes = declaredParameterTypes.map((type) =>
-    instantiateProjectContractType(contract, ownerInstance, type, context));
-  const ownerCallTypes = contract.parameters.map((parameter) =>
-    instantiateProjectContractType(contract, ownerInstance, parameter.callType, context));
+    instantiateProjectContractType(invocationContract, ownerInstance, type, context));
+  const ownerCallTypes = invocationContract.parameters.map((parameter) =>
+    instantiateProjectContractType(invocationContract, ownerInstance, parameter.callType, context));
   if (ownerParameterTypes.some((type) => type === undefined) ||
     ownerCallTypes.some((type) => type === undefined)) {
     return {
@@ -92,7 +95,7 @@ export function analyzeProjectCall(
   }
   const parameterTypes = (ownerParameterTypes as readonly MojoTargetTypeRef[]).map((type) =>
     substituteMojoTargetType(type, substitutions));
-  const targetArguments = contract.parameters.map((parameter, index) => Object.freeze({
+  const targetArguments = invocationContract.parameters.map((parameter, index) => Object.freeze({
     convention: mojoParameterConvention(parameter.disposition),
     position: "positional-or-keyword" as const,
     variadic: parameter.omissionKind === "rest",
@@ -104,6 +107,7 @@ export function analyzeProjectCall(
       : "plain" as const,
   }));
   const arguments_ = analyzeArguments(
+    context.source.ast,
     sourceCall,
     parameterTypes,
     targetArguments,
@@ -233,8 +237,8 @@ export function locationBackedMutableArgument(
   targets: readonly { readonly convention: string }[],
   context: MojoCallAnalysisContext,
 ): MojoCallAnalysis | undefined {
-  for (const [index, argument] of arguments_.entries()) {
-    const convention = targets[index]?.convention;
+  for (const argument of arguments_) {
+    const convention = targets[argument.parameterIndex]?.convention;
     if (convention === undefined || convention === "imm" || convention === "var" ||
       convention === "deinit") continue;
     const reference = context.source.navigation.sourceReferenceFor(argument.expression);

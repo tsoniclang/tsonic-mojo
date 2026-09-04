@@ -10,7 +10,10 @@ import { analyzeMojoParameterDisposition } from "../representations/index.js";
 import { analyzeMojoNullishCoalescing } from "../operations/nullish-coalescing.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import type { MojoBindingPatternSelection } from "./model.js";
-import type { MojoExecutableRegionAnalysisInput } from "./executable-regions.js";
+import type {
+  MojoExecutableRegionAnalysisEnvironment,
+  MojoExecutableRegionAnalysisInput,
+} from "./executable-regions.js";
 
 export function analyzeNullishCoalescing(
   node: Node,
@@ -70,13 +73,13 @@ export function selectReturnValueTransfer(
     const mode = input.source.sourceFacts.getFact(declaration, argumentPassingFactKey)?.mode;
     return analyzeMojoParameterDisposition(mode, false).kind === "owned";
   }
-  if (ast.is.IsBindingElement(declaration)) {
-    return sourceNodeIsWithin(declaration, input.root, ast) &&
-      !isIterationBindingDeclaration(declaration, ast);
-  }
-  return ast.is.IsVariableDeclaration(declaration) &&
-    sourceNodeIsWithin(declaration, input.root, ast) &&
-    !isIterationBindingDeclaration(declaration, ast);
+    if (ast.is.IsBindingElement(declaration)) {
+      return sourceNodeIsWithin(declaration, input.root, ast) &&
+      !isMojoIterationBindingDeclaration(declaration, ast);
+    }
+    return ast.is.IsVariableDeclaration(declaration) &&
+      sourceNodeIsWithin(declaration, input.root, ast) &&
+      !isMojoIterationBindingDeclaration(declaration, ast);
 }
 
 function returnFinallyUsesDeclaration(
@@ -102,7 +105,7 @@ function returnFinallyUsesDeclaration(
   return false;
 }
 
-function isIterationBindingDeclaration(declaration: Node, ast: AstReader): boolean {
+export function isMojoIterationBindingDeclaration(declaration: Node, ast: AstReader): boolean {
   let current: Node | undefined = declaration;
   while (current !== undefined) {
     const parent = ast.parent(current);
@@ -126,7 +129,7 @@ function sourceNodeIsWithin(node: Node, root: Node, ast: AstReader): boolean {
 
 export function publishBindingPatternCarriers(
   elements: readonly MojoBindingPatternSelection["elements"][number][],
-  input: MojoExecutableRegionAnalysisInput,
+  input: MojoExecutableRegionAnalysisEnvironment,
 ): void {
   for (const element of elements) {
     if (element.target.kind === "pattern") {

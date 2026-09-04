@@ -1,4 +1,7 @@
-import type { MojoCallableArgumentSlot } from "../../../analysis/program/call-model.js";
+import type {
+  MojoAnalyzedCallArgument,
+  MojoCallableArgumentSlot,
+} from "../../../analysis/program/call-model.js";
 import type { MojoArgumentDisposition } from "../../../analysis/representations/model.js";
 import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
@@ -11,6 +14,7 @@ import { registerMojoTypeImports } from "../types/imports.js";
 import {
   orderMojoValues,
   planSelectedArgument,
+  planSelectedArguments,
 } from "./support.js";
 import type { MojoValuePlanner, PlannedMojoCallArgument } from "./support.js";
 import { consumeMojoValue, mojoValue, withMojoValue } from "./value-plan.js";
@@ -32,8 +36,12 @@ export function planCallableArgumentSlot(
   slot: MojoCallableArgumentSlot,
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
+  plannedArguments?: ReadonlyMap<MojoAnalyzedCallArgument, PlannedMojoCallArgument>,
 ): PlannedMojoCallArgument | undefined {
-  if (slot.kind === "value") return planSelectedArgument(slot.argument, context, planValue);
+  if (slot.kind === "value") {
+    return plannedArguments?.get(slot.argument) ??
+      planSelectedArgument(slot.argument, context, planValue);
+  }
   registerMojoTypeImports(slot.type, context);
   if (slot.kind === "optional-absent") {
     if (slot.type.kind !== "optional") {
@@ -55,9 +63,11 @@ export function planCallableArgumentSlot(
       spread: false,
     });
   }
-  const items = slot.arguments.map((argument) => planSelectedArgument(argument, context, planValue));
-  if (items.some((item) => item === undefined)) return undefined;
-  const ordered = orderMojoValues((items as PlannedMojoCallArgument[]).map((item) => Object.freeze({
+  const items = plannedArguments === undefined
+    ? planSelectedArguments(slot.arguments, context, planValue)
+    : slot.arguments.map((argument) => plannedArguments.get(argument));
+  if (items === undefined || items.some((item) => item === undefined)) return undefined;
+  const ordered = orderMojoValues((items as readonly PlannedMojoCallArgument[]).map((item) => Object.freeze({
     plan: item.plan,
     type: item.type,
     role: "callable_rest_argument",

@@ -14,7 +14,7 @@ import {
   finishOptionalMojoOperation,
   orderCallArguments,
   orderMojoValues,
-  planSelectedArgument,
+  planSelectedArguments,
   prepareMojoReceiver,
   unsupportedOptionalCall,
 } from "./support.js";
@@ -259,9 +259,8 @@ export function planMojoCall(
       selection.genericArguments,
       context,
     );
-    const arguments_ = selection.arguments.map((argument) => planSelectedArgument(argument, context, planValue));
-    if (arguments_.some((argument) => argument === undefined)) return undefined;
-    const plannedArguments = arguments_ as PlannedMojoCallArgument[];
+    const plannedArguments = planSelectedArguments(selection.arguments, context, planValue);
+    if (plannedArguments === undefined) return undefined;
     let call: MojoExpression;
     let before: readonly MojoStatement[];
     switch (selection.target.kind) {
@@ -449,39 +448,57 @@ export function planMojoCall(
     return convertMojoValue(withMojoValue(before, call), selection.resultConversion, context);
   }
   if (selection.kind === "callable") {
-    if (selection.optionalChain) return unsupportedOptionalCall(node, context);
+    const actualCalleeType = context.program.queries.expressionType(selection.callee);
+    const optionalCallee = selection.optionalChain && actualCalleeType?.kind === "optional";
+    const callee = prepareMojoReceiver(
+      selection.callee,
+      selection.callableType,
+      optionalCallee,
+      context,
+      planValue,
+    );
+    if (callee === undefined) return undefined;
     const callableDisposition = context.program.representations.callable(selection.callee);
     if (callableDisposition !== undefined && callableDisposition.kind !== "erased") {
-      const callee = planValue(selection.callee, context);
+      const allArguments = planSelectedArguments(selection.arguments, context, planValue);
+      if (allArguments === undefined) return undefined;
+      const plannedByArgument = new Map(selection.arguments.map((argument, index) =>
+        [argument, allArguments[index]!] as const));
       const arguments_ = selection.argumentSlots.map((slot) =>
-        planCallableArgumentSlot(slot, context, planValue));
-      if (callee === undefined || arguments_.some((argument) => argument === undefined)) {
+        planCallableArgumentSlot(slot, context, planValue, plannedByArgument));
+      if (arguments_.some((argument) => argument === undefined)) {
         return undefined;
       }
       const ordered = orderCallArguments(
         arguments_ as PlannedMojoCallArgument[],
         context,
-        Object.freeze({ plan: callee, type: selection.callableType, role: "callable_value" }),
+        Object.freeze({ plan: callee.plan, type: selection.callableType, role: "callable_value" }),
       );
       const call: MojoExpression = Object.freeze({
         kind: "call",
         callee: ordered.receiver!,
         arguments: ordered.arguments,
       });
-      return convertMojoValue(
+      const converted = convertMojoValue(
         withMojoValue(ordered.before, call),
         selection.resultConversion,
         context,
       );
+      return converted === undefined
+        ? undefined
+        : finishOptionalMojoOperation(node, callee, converted, context);
     }
-    const callee = planValue(selection.callee, context);
+    const allArguments = planSelectedArguments(selection.arguments, context, planValue);
+    if (allArguments === undefined) return undefined;
+    const plannedByArgument = new Map(selection.arguments.map((argument, index) =>
+      [argument, allArguments[index]!] as const));
     const arguments_ = selection.argumentSlots.map((slot) =>
-      planCallableArgumentSlot(slot, context, planValue));
-    if (callee === undefined || arguments_.some((argument) => argument === undefined)) return undefined;
+      planCallableArgumentSlot(slot, context, planValue, plannedByArgument));
+    if (arguments_.some((argument) => argument === undefined)) return undefined;
     const ordered = orderCallArguments(
       arguments_ as PlannedMojoCallArgument[],
       context,
-      Object.freeze({ plan: callee, type: selection.callableType, role: "callable_value" }),
+      Object.freeze({ plan: callee.plan, type: selection.callableType, role: "callable_value" }),
     );
     if (ordered.arguments.some((argument) => argument.name !== undefined || argument.spread === true)) {
       appendMojoPlanningDiagnostic(
@@ -503,7 +520,14 @@ export function planMojoCall(
         }),
       })]),
     });
-    return convertMojoValue(withMojoValue(ordered.before, call), selection.resultConversion, context);
+    const converted = convertMojoValue(
+      withMojoValue(ordered.before, call),
+      selection.resultConversion,
+      context,
+    );
+    return converted === undefined
+      ? undefined
+      : finishOptionalMojoOperation(node, callee, converted, context);
   }
   const target = selection.operation.target;
   if (target.kind !== "function-call" && target.kind !== "instance-call") {
@@ -515,9 +539,8 @@ export function planMojoCall(
     );
     return undefined;
   }
-  const arguments_ = selection.arguments.map((argument) => planSelectedArgument(argument, context, planValue));
-  if (arguments_.some((argument) => argument === undefined)) return undefined;
-  const plannedArguments = arguments_ as PlannedMojoCallArgument[];
+  const plannedArguments = planSelectedArguments(selection.arguments, context, planValue);
+  if (plannedArguments === undefined) return undefined;
   let call: MojoExpression;
   let before: readonly MojoStatement[];
   if (target.kind === "function-call") {

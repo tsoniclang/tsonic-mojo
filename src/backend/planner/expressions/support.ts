@@ -92,18 +92,21 @@ export function planSelectedArgument(
   argument: MojoAnalyzedCallArgument,
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
+  preparedExpression?: MojoValuePlan,
 ): PlannedMojoCallArgument | undefined {
-  const directCallableAdaptation = argument.conversion.kind === "callable-adapt" &&
+  const directCallableAdaptation = preparedExpression === undefined &&
+    argument.sourceForm === "value" && argument.conversion.kind === "callable-adapt" &&
     argument.conversion.error !== "erase" &&
     (context.program.source.ast.is.IsArrowFunction(argument.expression) ||
       context.program.source.ast.is.IsFunctionExpression(argument.expression));
-  const directNumericConversion = context.program.source.ast.is.IsNumericLiteral(argument.expression) &&
+  const directNumericConversion = preparedExpression === undefined &&
+    argument.sourceForm === "value" && context.program.source.ast.is.IsNumericLiteral(argument.expression) &&
     argument.conversion.kind === "primitive-cast" &&
     mojoNumericLiteralCanInitialize(
       context.program.source.ast.text(argument.expression),
       argument.conversion.targetType,
     );
-  const expression = directNumericConversion && argument.conversion.kind === "primitive-cast"
+  const expression = preparedExpression ?? (directNumericConversion && argument.conversion.kind === "primitive-cast"
     ? mojoValue(Object.freeze({
         kind: "construct",
         type: argument.conversion.targetType,
@@ -124,7 +127,7 @@ export function planSelectedArgument(
           ? argument.conversion.targetType
           : undefined,
       )
-      : planValue(argument.expression, context);
+      : planValue(argument.expression, context));
   if (expression === undefined) return undefined;
   const converted = directCallableAdaptation || directNumericConversion
     ? expression
@@ -146,6 +149,81 @@ export function planSelectedArgument(
     ...(argument.position === "keyword" ? { name: argument.nativeName! } : {}),
     spread: argument.spread,
   });
+}
+
+export function planSelectedArguments(
+  arguments_: readonly MojoAnalyzedCallArgument[],
+  context: MojoPlanningContext,
+  planValue: MojoValuePlanner,
+): readonly PlannedMojoCallArgument[] | undefined {
+  const spreadSources = new Map<number, {
+    readonly name: string;
+    readonly type: MojoTargetTypeRef;
+    readonly before: readonly MojoStatement[];
+  }>();
+  const emittedSpreadSources = new Set<number>();
+  const planned: PlannedMojoCallArgument[] = [];
+  for (const argument of arguments_) {
+    let prepared: MojoValuePlan | undefined;
+    if (argument.sourceForm === "spread-element") {
+      if (argument.sourceContainerType === undefined || argument.spreadElementIndex === undefined) {
+        appendMojoPlanningDiagnostic(
+          context,
+          "MOJO_SPREAD_ELEMENT_PLAN_INCOMPLETE",
+          "A selected spread element has no exact aggregate carrier and ordinal.",
+          argument.expression,
+        );
+        return undefined;
+      }
+      let source = spreadSources.get(argument.sourceArgumentIndex);
+      if (source === undefined) {
+        const value = planValue(argument.expression, context, argument.sourceContainerType);
+        if (value === undefined) return undefined;
+        registerMojoTypeImports(argument.sourceContainerType, context);
+        const name = allocateMojoSyntheticName(context, "spread_argument");
+        source = {
+          name,
+          type: argument.sourceContainerType,
+          before: Object.freeze([
+            ...value.before,
+            Object.freeze({
+              kind: "variable" as const,
+              name,
+              type: argument.sourceContainerType,
+              initializer: value.value,
+            }),
+          ]),
+        };
+        spreadSources.set(argument.sourceArgumentIndex, source);
+      } else if (!mojoTargetTypeEquals(source.type, argument.sourceContainerType)) {
+        appendMojoPlanningDiagnostic(
+          context,
+          "MOJO_SPREAD_ELEMENT_CARRIER_CONFLICT",
+          "One authored spread argument was selected through incompatible aggregate carriers.",
+          argument.expression,
+        );
+        return undefined;
+      }
+      prepared = withMojoValue(
+        emittedSpreadSources.has(argument.sourceArgumentIndex)
+          ? Object.freeze([])
+          : source.before,
+        Object.freeze({
+          kind: "element",
+          receiver: Object.freeze({ kind: "path", path: source.name }),
+          index: Object.freeze({
+            kind: "number-literal",
+            text: String(argument.spreadElementIndex),
+          }),
+        }),
+      );
+      emittedSpreadSources.add(argument.sourceArgumentIndex);
+    }
+    const result = planSelectedArgument(argument, context, planValue, prepared);
+    if (result === undefined) return undefined;
+    planned.push(result);
+  }
+  return Object.freeze(planned);
 }
 
 export function orderCallArguments(

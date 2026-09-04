@@ -237,6 +237,7 @@ export function analyzeMojoCall(
     };
   }
   const arguments_ = analyzeArguments(
+    context.source.ast,
     sourceCall,
     instantiated.operation.parameterTypes,
     target.arguments,
@@ -367,6 +368,7 @@ function analyzeCallableValueCall(
     };
   }
   const arguments_ = analyzeArguments(
+    context.source.ast,
     sourceCall,
     parameterTypes as readonly MojoTargetTypeRef[],
     callableType.parameters.map((parameter, index) => Object.freeze({

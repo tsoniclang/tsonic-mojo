@@ -146,6 +146,7 @@ export function analyzeSourceProfileCall(
     }));
   }
   const arguments_ = analyzeArguments(
+    context.source.ast,
     sourceCall,
     parameterTypes,
     targetArguments,

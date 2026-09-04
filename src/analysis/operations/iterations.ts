@@ -11,6 +11,7 @@ import {
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoIterationSelection } from "../program/model.js";
+import type { MojoBindingProjectionPlan } from "../program/model.js";
 import {
   sourceProfileRegExpElementType,
   sourceProfileRegExpIteratorElement,
@@ -29,6 +30,11 @@ export interface MojoIterationAnalysisInput {
   readonly bindingTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly resolveType: (type: Type) => MojoTargetTypeRef | undefined;
   readonly sourceTypesIdentical: (left: Type, right: Type) => boolean;
+  readonly analyzeBindingProjection: (
+    declaration: Node,
+    sourceType: MojoTargetTypeRef,
+    sourceSemanticType: Type,
+  ) => MojoBindingProjectionPlan | undefined;
 }
 
 export function analyzeMojoIteration(input: MojoIterationAnalysisInput): MojoIterationAnalysis {
@@ -48,15 +54,19 @@ export function analyzeMojoIteration(input: MojoIterationAnalysisInput): MojoIte
     );
   }
   const bindingNameNode = input.ast.name(bindingDeclaration);
+  const bindingPattern = bindingNameNode !== undefined &&
+    (input.ast.is.IsArrayBindingPattern(bindingNameNode) ||
+      input.ast.is.IsObjectBindingPattern(bindingNameNode));
   const bindingName = input.bindingNames.get(bindingDeclaration) ??
     (bindingNameNode === undefined ? undefined : input.bindingNames.get(bindingNameNode));
   const bindingType = input.bindingTypes.get(bindingDeclaration);
   const iterableType = input.resolveType(source.sourceIterableType);
   const sourceElementType = input.resolveType(source.sourceElementType);
-  if (bindingName === undefined || bindingType === undefined || iterableType === undefined || sourceElementType === undefined) {
+  if (bindingName === undefined || (!bindingPattern && bindingType === undefined) ||
+    iterableType === undefined || sourceElementType === undefined) {
     const missing = [
       ...(bindingName === undefined ? ["binding name"] : []),
-      ...(bindingType === undefined ? ["binding carrier"] : []),
+      ...(!bindingPattern && bindingType === undefined ? ["binding carrier"] : []),
       ...(iterableType === undefined ? ["source iterable carrier"] : []),
       ...(sourceElementType === undefined ? ["source element carrier"] : []),
     ];
@@ -81,17 +91,40 @@ export function analyzeMojoIteration(input: MojoIterationAnalysisInput): MojoIte
       "The checker-selected source element and native Mojo iterator element carriers differ.",
     );
   }
-  if (!mojoTargetTypeEquals(sourceElementType, bindingType)) {
+  if (!bindingPattern && !mojoTargetTypeEquals(sourceElementType, bindingType!)) {
     return unsupported(
       "MOJO_ITERATION_BINDING_CONVERSION_UNSUPPORTED",
       "Iteration binding requires a conversion that cannot be represented at the native loop boundary.",
     );
   }
+  const binding = bindingPattern
+    ? input.analyzeBindingProjection(
+        bindingDeclaration,
+        sourceElementType,
+        source.sourceElementType,
+      )
+    : undefined;
+  if (bindingPattern && binding === undefined) {
+    return unsupported(
+      "MOJO_ITERATION_BINDING_PROJECTION_UNPROVEN",
+      "The exact iteration element has no sealed projection for its authored binding pattern.",
+    );
+  }
   const common = {
     statement: input.statement,
     iterable: input.iterable,
-    bindingDeclaration,
-    bindingName,
+    binding: bindingPattern
+      ? Object.freeze({
+          kind: "pattern" as const,
+          declaration: bindingDeclaration,
+          name: bindingName,
+          projection: binding!,
+        })
+      : Object.freeze({
+          kind: "identifier" as const,
+          declaration: bindingDeclaration,
+          name: bindingName,
+        }),
     iterableType,
     elementType: target.elementType,
   };
@@ -184,7 +217,10 @@ function selectedBindingDeclaration(statement: Node, ast: AstReader): Node | und
   if (declarations.length !== 1 || declarations[0] === undefined) return undefined;
   const declaration = declarations[0];
   const name = ast.name(declaration);
-  return name !== undefined && ast.is.IsIdentifier(name) ? declaration : undefined;
+  return name !== undefined && (ast.is.IsIdentifier(name) ||
+    ast.is.IsArrayBindingPattern(name) || ast.is.IsObjectBindingPattern(name))
+    ? declaration
+    : undefined;
 }
 
 function targetIterationContract(

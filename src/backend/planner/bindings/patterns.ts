@@ -1,4 +1,5 @@
 import type {
+  MojoBindingProjectionPlan,
   MojoBindingPatternElementSelection,
   MojoBindingPatternSelection,
   MojoBindingValueProjection,
@@ -10,6 +11,7 @@ import { allocateMojoSyntheticName } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import type { MojoValuePlanner } from "../expressions/support.js";
 import { registerMojoTypeImports } from "../types/imports.js";
+import type { MojoValuePlan } from "../expressions/value-plan.js";
 
 export function planMojoBindingPattern(
   selection: MojoBindingPatternSelection,
@@ -18,12 +20,28 @@ export function planMojoBindingPattern(
 ): readonly MojoStatement[] | undefined {
   const source = planValue(selection.initializer, context, selection.sourceType);
   if (source === undefined) return undefined;
+  return planMojoBindingProjection(
+    selection,
+    source,
+    selection.sourceReuse,
+    context,
+    planValue,
+  );
+}
+
+export function planMojoBindingProjection(
+  selection: MojoBindingProjectionPlan,
+  source: MojoValuePlan,
+  sourceReuse: "direct" | "stabilized",
+  context: MojoPlanningContext,
+  planValue: MojoValuePlanner,
+): readonly MojoStatement[] | undefined {
   registerMojoTypeImports(selection.sourceType, context);
   const sourceName = allocateMojoSyntheticName(context, "binding_source");
   const sourcePath: MojoExpression = Object.freeze({ kind: "path", path: sourceName });
-  if (selection.sourceReuse === "direct" && source.before.length !== 0) return undefined;
-  const projectionSource = selection.sourceReuse === "direct" ? source.value : sourcePath;
-  const statements: MojoStatement[] = selection.sourceReuse === "direct"
+  if (sourceReuse === "direct" && source.before.length !== 0) return undefined;
+  const projectionSource = sourceReuse === "direct" ? source.value : sourcePath;
+  const statements: MojoStatement[] = sourceReuse === "direct"
     ? []
     : [
         ...source.before,

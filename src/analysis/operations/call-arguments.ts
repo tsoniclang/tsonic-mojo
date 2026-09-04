@@ -1,4 +1,5 @@
-import type { Node, ResolvedSourceCallInfo, Type } from "@tsonic/tsts";
+import type { AstReader, Node, ResolvedSourceCallInfo, Type } from "@tsonic/tsts";
+import { Node_Expression } from "@tsonic/target-api/source";
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
@@ -32,6 +33,7 @@ export function restCallableElementType(
 }
 
 export function analyzeArguments(
+  ast: AstReader,
   sourceCall: ResolvedSourceCallInfo,
   parameterTypes: readonly MojoTargetTypeRef[],
   targetArguments: readonly MojoCallArgumentTarget[],
@@ -54,8 +56,9 @@ export function analyzeArguments(
   }
   const arguments_: MojoAnalyzedCallArgument[] = [];
   for (const [sourceArgumentIndex, sourceArgument] of sourceCall.sourceArguments.entries()) {
-    const bindings = sourceCall.sourceArgumentBindings.filter((binding) =>
-      binding.sourceArgumentIndex === sourceArgumentIndex);
+    const bindings = sourceCall.sourceArgumentBindings
+      .filter((binding) => binding.sourceArgumentIndex === sourceArgumentIndex)
+      .sort((left, right) => left.effectiveArgumentIndex - right.effectiveArgumentIndex);
     if (bindings.length === 0) {
       return {
         kind: "unsupported",
@@ -63,82 +66,131 @@ export function analyzeArguments(
         reason: `Source call argument ${sourceArgumentIndex} has no exact selected parameter binding.`,
       };
     }
-    const parameterIndex = bindings[0]!.sourceParameterIndex;
-    if (bindings.some((binding) => binding.sourceParameterIndex !== parameterIndex)) {
+    const hasSpread = bindings.some((binding) => binding.sourceForm !== "value");
+    const sourceExpression = hasSpread
+      ? Node_Expression(ast, sourceArgument.expression)
+      : sourceArgument.expression;
+    if (sourceExpression === undefined) {
       return {
         kind: "unsupported",
-        code: "MOJO_CALL_ARGUMENT_EXPANSION_UNSUPPORTED",
-        reason: `Source call argument ${sourceArgumentIndex} expands across multiple target parameters.`,
+        code: "MOJO_CALL_ARGUMENT_SPREAD_OPERAND_MISSING",
+        reason: `Spread call argument ${sourceArgumentIndex} has no exact operand expression.`,
       };
     }
-    const spread = bindings.some((binding) => binding.sourceForm !== "value");
-    const parameterType = spread
-      ? targetArguments[parameterIndex]?.variadicCollectionType ?? parameterTypes[parameterIndex]
-      : parameterTypes[parameterIndex];
-    const target = targetArguments[parameterIndex];
-    const selectedSourceType = expressionTypes.get(sourceArgument.expression) ??
-      resolve(bindings[0]!.selectedArgumentType);
-    const sourceType = selectedSourceType ??
-      (parameterType !== undefined && contextualAggregate?.(sourceArgument.expression, parameterType)
-        ? parameterType
-        : undefined);
-    if (selectedSourceType === undefined && sourceType !== undefined) {
-      expressionTypes.set(sourceArgument.expression, sourceType);
-    }
-    if (parameterType === undefined || target === undefined || sourceType === undefined) {
+    const sourceContainerType = hasSpread
+      ? expressionTypes.get(sourceExpression) ??
+        expressionTypes.get(sourceArgument.expression) ??
+        resolve(sourceArgument.type)
+      : undefined;
+    if (hasSpread && sourceContainerType === undefined) {
       return {
         kind: "unsupported",
-        code: "MOJO_CALL_ARGUMENT_CARRIER_NOT_CLOSED",
-        reason: `Source call argument ${sourceArgumentIndex} has no closed Mojo argument contract.`,
+        code: "MOJO_CALL_ARGUMENT_SPREAD_CARRIER_NOT_CLOSED",
+        reason: `Spread call argument ${sourceArgumentIndex} has no exact aggregate carrier.`,
       };
     }
-    if (spread && target.variadic !== true) {
-      return {
-        kind: "unsupported",
-        code: "MOJO_CALL_ARGUMENT_SPREAD_UNSUPPORTED",
-        reason: `Source call argument ${sourceArgumentIndex} spreads into a non-variadic Mojo parameter.`,
-      };
+    if (sourceContainerType !== undefined) expressionTypes.set(sourceExpression, sourceContainerType);
+    for (const binding of bindings) {
+      const parameterIndex = binding.sourceParameterIndex;
+      const target = targetArguments[parameterIndex];
+      const spreadSequence = binding.sourceForm === "spread-sequence";
+      const parameterType = spreadSequence
+        ? target?.variadicCollectionType ?? parameterTypes[parameterIndex]
+        : parameterTypes[parameterIndex];
+      if (parameterType === undefined || target === undefined) {
+        return {
+          kind: "unsupported",
+          code: "MOJO_CALL_ARGUMENT_CARRIER_NOT_CLOSED",
+          reason: `Source call argument ${sourceArgumentIndex} has no closed Mojo parameter contract.`,
+        };
+      }
+      if (spreadSequence && target.variadic !== true) {
+        return {
+          kind: "unsupported",
+          code: "MOJO_CALL_ARGUMENT_SPREAD_UNSUPPORTED",
+          reason: `Source call argument ${sourceArgumentIndex} supplies an open sequence to a non-variadic Mojo parameter.`,
+        };
+      }
+      const selectedBindingType = resolve(binding.selectedArgumentType);
+      const selectedSourceType = binding.sourceForm === "spread-element"
+        ? spreadElementType(sourceContainerType!, binding.spreadElementIndex) ?? selectedBindingType
+        : binding.sourceForm === "spread-sequence"
+          ? sourceContainerType
+          : expressionTypes.get(sourceExpression) ?? selectedBindingType;
+      const sourceType = selectedSourceType ??
+        (binding.sourceForm === "value" &&
+            contextualAggregate?.(sourceExpression, parameterType) === true
+          ? parameterType
+          : undefined);
+      if (sourceType === undefined) {
+        return {
+          kind: "unsupported",
+          code: "MOJO_CALL_ARGUMENT_CARRIER_NOT_CLOSED",
+          reason: `Source call argument ${sourceArgumentIndex} has no closed Mojo input carrier.`,
+        };
+      }
+      if (binding.sourceForm === "value" && expressionTypes.get(sourceExpression) === undefined) {
+        expressionTypes.set(sourceExpression, sourceType);
+      }
+      const overriddenConversion = conversionOverrides?.get(parameterIndex);
+      const conversion = overriddenConversion === undefined
+        ? classifyMojoRefinedValueConversion(
+            sourceType,
+            parameterType,
+            binding.sourceForm === "value"
+              ? valueRefinements.get(sourceExpression)
+              : undefined,
+            projectRelationships,
+          )
+        : { kind: "resolved" as const, conversion: overriddenConversion };
+      if (conversion.kind === "unsupported") {
+        return {
+          kind: "unsupported",
+          code: "MOJO_CALL_ARGUMENT_CONVERSION_UNPROVEN",
+          reason: conversion.reason,
+        };
+      }
+      const disposition = analyzeMojoArgumentDisposition(
+        sourceExpression,
+        parameterType,
+        target,
+        conversion.conversion,
+        lifecycle,
+        valueOwnership,
+      );
+      if (disposition.kind === "unsupported") return disposition;
+      arguments_.push(Object.freeze({
+        expression: sourceExpression,
+        sourceArgumentIndex,
+        sourceForm: binding.sourceForm,
+        ...(binding.spreadElementIndex === undefined
+          ? {}
+          : { spreadElementIndex: binding.spreadElementIndex }),
+        ...(sourceContainerType === undefined ? {} : { sourceContainerType }),
+        sourceType,
+        parameterType,
+        conversion: conversion.conversion,
+        disposition: disposition.disposition,
+        spread: spreadSequence,
+        position: target.position,
+        parameterIndex,
+        ...(target.position === "keyword" && target.nativeName !== undefined
+          ? { nativeName: target.nativeName }
+          : {}),
+      }));
     }
-    const overriddenConversion = conversionOverrides?.get(parameterIndex);
-    const conversion = overriddenConversion === undefined
-      ? classifyMojoRefinedValueConversion(
-          sourceType,
-          parameterType,
-          valueRefinements.get(sourceArgument.expression),
-          projectRelationships,
-        )
-      : { kind: "resolved" as const, conversion: overriddenConversion };
-    if (conversion.kind === "unsupported") {
-      return {
-        kind: "unsupported",
-        code: "MOJO_CALL_ARGUMENT_CONVERSION_UNPROVEN",
-        reason: conversion.reason,
-      };
-    }
-    const disposition = analyzeMojoArgumentDisposition(
-      sourceArgument.expression,
-      parameterType,
-      target,
-      conversion.conversion,
-      lifecycle,
-      valueOwnership,
-    );
-    if (disposition.kind === "unsupported") return disposition;
-    arguments_.push(Object.freeze({
-      expression: sourceArgument.expression,
-      sourceType,
-      parameterType,
-      conversion: conversion.conversion,
-      disposition: disposition.disposition,
-      spread,
-      position: target.position,
-      parameterIndex,
-      ...(target.position === "keyword" && target.nativeName !== undefined
-        ? { nativeName: target.nativeName }
-        : {}),
-    }));
   }
   return { kind: "resolved", arguments: Object.freeze(arguments_) };
+}
+
+function spreadElementType(
+  source: MojoTargetTypeRef,
+  index: number | undefined,
+): MojoTargetTypeRef | undefined {
+  if (index === undefined) return undefined;
+  if (source.kind === "tuple") return source.elements[index];
+  if (source.kind === "fixed-array" || source.kind === "list") return source.element;
+  return undefined;
 }
 
 export function analyzeMojoArgumentDisposition(

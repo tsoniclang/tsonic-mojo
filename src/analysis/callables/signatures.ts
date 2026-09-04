@@ -32,6 +32,7 @@ import {
 import { resolveMojoSourceOrigin } from "../../policy/types/origins.js";
 import { mojoLifecycleTraitTargetType } from "../../target-model/lifecycle/index.js";
 import { mojoSourceGenericLifecycleRequirements } from "../../policy/types/generic-lifecycle.js";
+import { allocateMojoBindingPatternNames } from "../program/local-bindings.js";
 
 export interface MojoTypeParameterAnalysisInput {
   readonly source: TargetSourceProgram;
@@ -116,9 +117,11 @@ export function analyzeMojoCallableSignature(
   for (const [index, parameter] of (sourceParameters as readonly Node[]).entries()) {
     const nameNode = ast.name(parameter);
     const selected = callableParameters[index];
-    if (nameNode === undefined || !ast.is.IsIdentifier(nameNode) || selected === undefined ||
-      !ast.is.IsParameterDeclaration(parameter)) {
-      append(input, "MOJO_PARAMETER_SHAPE_UNSUPPORTED", "Mojo requires one exact named parameter declaration.", parameter);
+    const bindingPattern = nameNode !== undefined &&
+      (ast.is.IsArrayBindingPattern(nameNode) || ast.is.IsObjectBindingPattern(nameNode));
+    if (nameNode === undefined || (!ast.is.IsIdentifier(nameNode) && !bindingPattern) ||
+      selected === undefined || !ast.is.IsParameterDeclaration(parameter)) {
+      append(input, "MOJO_PARAMETER_SHAPE_UNSUPPORTED", "A parameter requires one exact identifier or binding-pattern declaration.", parameter);
       return undefined;
     }
     const resolved = resolve(input, selected.type, ast.typeNode(parameter));
@@ -145,7 +148,21 @@ export function analyzeMojoCallableSignature(
       );
       return undefined;
     }
-    const name = input.allocateLocalName(ast.text(nameNode));
+    const sourceName = ast.is.IsIdentifier(nameNode)
+      ? ast.text(nameNode)
+      : `argument${index + 1}`;
+    const name = input.allocateLocalName(sourceName);
+    if (bindingPattern) {
+      allocateMojoBindingPatternNames(
+        nameNode,
+        undefined,
+        input.allocateLocalName,
+        input.bindingNames,
+        undefined,
+        ast,
+        input.diagnostics,
+      );
+    }
     const omissionKind = selected.omissionKind;
     const omittedType = (omissionKind === "undefined" || omissionKind === "initializer") &&
         resolved.kind !== "optional"
@@ -157,8 +174,8 @@ export function analyzeMojoCallableSignature(
       : resolved;
     const incomingName = omissionKind === "initializer" || omissionKind === "rest" ||
         disposition.kind === "immutable" && disposition.localCopy
-      ? input.allocateLocalName(`${ast.text(nameNode)}_slot`)
-      : name;
+        ? input.allocateLocalName(`${sourceName}_slot`)
+        : name;
     input.bindingNames.set(parameter, name);
     input.bindingTypes.set(parameter, bodyType);
     parameters.push(Object.freeze({
@@ -170,6 +187,7 @@ export function analyzeMojoCallableSignature(
       callType,
       disposition,
       omissionKind,
+      ...(bindingPattern ? { bindingPatternNode: nameNode } : {}),
       ...(Node_Initializer(ast, parameter) === undefined
         ? {}
         : { initializer: Node_Initializer(ast, parameter)! }),
