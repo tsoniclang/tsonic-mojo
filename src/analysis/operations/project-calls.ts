@@ -1,6 +1,7 @@
 import type { Node, ResolvedSourceCallInfo, Type } from "@tsonic/tsts";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
 import type { MojoTargetGenericArgument, MojoTargetTypeRef } from "../../target-model/types/model.js";
+import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 import { substituteMojoTargetType } from "../../target-model/types/substitution.js";
 import type {
@@ -10,6 +11,7 @@ import type {
   MojoCallSelection,
 } from "../program/model.js";
 import { analyzeArguments } from "./call-arguments.js";
+import type { MojoCallArgumentTarget } from "./call-arguments.js";
 import type { MojoCallAnalysis, MojoCallAnalysisContext } from "./calls.js";
 import {
   mojoParameterArgumentDisposition,
@@ -121,12 +123,12 @@ export function analyzeProjectCall(
     context.projectRelationships,
   );
   if (arguments_.kind === "unsupported") return arguments_;
-  const locationConflict = locationBackedMutableArgument(
+  const closedArguments = closeLocationBackedArguments(
     arguments_.arguments,
     targetArguments,
     context,
   );
-  if (locationConflict !== undefined) return locationConflict;
+  if (closedArguments.kind === "unsupported") return closedArguments;
   const ownerResultType = instantiateProjectContractType(
     contract,
     ownerInstance,
@@ -170,7 +172,7 @@ export function analyzeProjectCall(
       kind: "project",
       target: target.target,
       genericArguments: Object.freeze(genericArguments),
-      arguments: arguments_.arguments,
+      arguments: closedArguments.arguments,
       resultType: callResult,
       resultConversion: result.conversion,
       optionalChain: sourceCall.optionalChain,
@@ -232,25 +234,51 @@ export function analyzeImplicitProjectConstruction(
   };
 }
 
-export function locationBackedMutableArgument(
+export function closeLocationBackedArguments(
   arguments_: readonly MojoAnalyzedCallArgument[],
-  targets: readonly { readonly convention: string }[],
+  targets: readonly Pick<MojoCallArgumentTarget, "convention">[],
   context: MojoCallAnalysisContext,
-): MojoCallAnalysis | undefined {
+):
+  | { readonly kind: "resolved"; readonly arguments: readonly MojoAnalyzedCallArgument[] }
+  | { readonly kind: "unsupported"; readonly code: string; readonly reason: string } {
+  const closed: MojoAnalyzedCallArgument[] = [];
   for (const argument of arguments_) {
     const convention = targets[argument.parameterIndex]?.convention;
     if (convention === undefined || convention === "imm" || convention === "var" ||
-      convention === "deinit") continue;
+      convention === "deinit") {
+      closed.push(argument);
+      continue;
+    }
     const reference = context.source.navigation.sourceReferenceFor(argument.expression);
     if (reference?.project !== true ||
-      context.locationStorageNames.get(reference.declaration) === undefined) continue;
-    return {
-      kind: "unsupported",
-      code: "MOJO_LOCATION_MUTABLE_ARGUMENT_NATIVE_LIMIT",
-      reason: `A promoted typed-location storage cannot be passed through Mojo '${convention}' without an exact borrow projection.`,
-    };
+      context.locationStorageNames.get(reference.declaration) === undefined) {
+      closed.push(argument);
+      continue;
+    }
+    if (argument.sourceForm !== "value" || argument.conversion.kind !== "identity" ||
+      !mojoTargetTypeEquals(argument.sourceType, argument.parameterType)) {
+      return {
+        kind: "unsupported",
+        code: "MOJO_LOCATION_ARGUMENT_BORROW_CONVERSION_UNPROVEN",
+        reason: `A promoted typed-location storage cannot enter Mojo '${convention}' through a value conversion.`,
+      };
+    }
+    if (convention === "out") {
+      return {
+        kind: "unsupported",
+        code: "MOJO_LOCATION_OUT_ARGUMENT_NATIVE_LIMIT",
+        reason: "A constructed typed-location cell cannot satisfy Mojo's uninitialized out-parameter contract.",
+      };
+    }
+    closed.push(Object.freeze({
+      ...argument,
+      locationBorrow: Object.freeze({
+        declaration: reference.declaration,
+        mutability: convention === "mut" ? "mutable" as const : "immutable" as const,
+      }),
+    }));
   }
-  return undefined;
+  return Object.freeze({ kind: "resolved", arguments: Object.freeze(closed) });
 }
 
 function projectCallTarget(

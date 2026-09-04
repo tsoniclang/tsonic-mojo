@@ -22,6 +22,10 @@ export interface MojoAnalyzedCallArgument {
   readonly position: MojoCallArgumentPosition;
   readonly nativeName?: string;
   readonly parameterIndex: number;
+  readonly locationBorrow?: {
+    readonly declaration: Node;
+    readonly mutability: "immutable" | "mutable";
+  };
 }
 
 export type MojoCallableArgumentSlot =
@@ -155,6 +159,7 @@ export type MojoCallSelection =
       readonly operation: "equal-pointer";
       readonly pointeeType: MojoTargetTypeRef;
       readonly locationType: MojoTargetTypeRef;
+      readonly operandType: MojoTargetTypeRef;
       readonly resultType: MojoTargetTypeRef;
       readonly leftExpression: Node;
       readonly rightExpression: Node;

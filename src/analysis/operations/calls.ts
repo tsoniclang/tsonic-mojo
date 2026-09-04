@@ -29,7 +29,7 @@ import {
   analyzeImplicitProjectConstruction,
   analyzeProjectCall,
   closeCanonicalProjectResult,
-  locationBackedMutableArgument,
+  closeLocationBackedArguments,
 } from "./project-calls.js";
 import { analyzeSourceProfileCall } from "./source-profile-calls.js";
 import { analyzeMojoSourceIntrinsic } from "./source-intrinsics.js";
@@ -251,12 +251,12 @@ export function analyzeMojoCall(
     context.projectRelationships,
   );
   if (arguments_.kind === "unsupported") return arguments_;
-  const locationConflict = locationBackedMutableArgument(
+  const closedArguments = closeLocationBackedArguments(
     arguments_.arguments,
     target.arguments,
     context,
   );
-  if (locationConflict !== undefined) return locationConflict;
+  if (closedArguments.kind === "unsupported") return closedArguments;
   const result = closeResultConversion(
     instantiated.operation.resultType,
     sourceCall.sourceResultType,
@@ -314,7 +314,7 @@ export function analyzeMojoCall(
     selection: Object.freeze({
       kind: "provider",
       operation: instantiated.operation,
-      arguments: arguments_.arguments,
+      arguments: closedArguments.arguments,
       ...(sourceReceiverType === undefined
         ? {}
         : { receiver: sourceCall.sourceReceiver!.expression }),
@@ -388,9 +388,19 @@ function analyzeCallableValueCall(
     context.projectRelationships,
   );
   if (arguments_.kind === "unsupported") return arguments_;
+  const callableTargets = callableType.parameters.map((parameter) => Object.freeze({
+    convention: parameter.convention,
+  }));
+  const closedArguments = closeLocationBackedArguments(
+    arguments_.arguments,
+    callableTargets,
+    context,
+  );
+  if (closedArguments.kind === "unsupported") return closedArguments;
   const argumentSlots = callableType.parameters.map((parameter, parameterIndex) => {
     const selected = sourceParameters[parameterIndex]!;
-    const bound = arguments_.arguments.filter((argument) => argument.parameterIndex === parameterIndex);
+    const bound = closedArguments.arguments.filter((argument) =>
+      argument.parameterIndex === parameterIndex);
     if (selected.rest) {
       const elementType = parameterTypes[parameterIndex]!;
       return Object.freeze({
@@ -415,15 +425,6 @@ function analyzeCallableValueCall(
       reason: "The selected callable arguments do not close exactly over required, optional, and rest slots.",
     };
   }
-  const callableTargets = callableType.parameters.map((parameter) => Object.freeze({
-    convention: parameter.convention,
-  }));
-  const locationConflict = locationBackedMutableArgument(
-    arguments_.arguments,
-    callableTargets,
-    context,
-  );
-  if (locationConflict !== undefined) return locationConflict;
   const targetResult = callableType.result;
   const result = closeCanonicalProjectResult(targetResult);
   if (result.kind === "unsupported") return result;
@@ -433,7 +434,7 @@ function analyzeCallableValueCall(
       kind: "callable",
       callee: sourceCall.sourceCallee.expression,
       callableType,
-      arguments: arguments_.arguments,
+      arguments: closedArguments.arguments,
       argumentSlots: Object.freeze(argumentSlots as NonNullable<(typeof argumentSlots)[number]>[]),
       resultType: targetResult,
       resultConversion: result.conversion,

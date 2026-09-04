@@ -130,7 +130,7 @@ export function callArgumentExpectedType(
       return selection.valueExpression === expression ? selection.pointeeType : undefined;
     case "equal-pointer":
       return selection.leftExpression === expression || selection.rightExpression === expression
-        ? selection.locationType
+        ? selection.operandType
         : undefined;
   }
 }

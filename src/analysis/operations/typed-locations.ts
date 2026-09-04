@@ -129,7 +129,11 @@ export function analyzeMojoTypedLocation(
         kind: "typed-location",
         operation: "equal-pointer",
         pointeeType,
-        locationType,
+        locationType: mojoLocationTargetType(pointeeType),
+        operandType: Object.freeze({
+          kind: "optional",
+          value: mojoLocationTargetType(pointeeType),
+        }),
         resultType: Object.freeze({ kind: "source-primitive", name: "bool" }),
         leftExpression: fact.leftExpression,
         rightExpression: fact.rightExpression,

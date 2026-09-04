@@ -238,18 +238,21 @@ export function planMojoCall(
         }));
       }
       case "equal-pointer": {
-        const left = planValue(selection.leftExpression, context, selection.locationType);
-        const right = planValue(selection.rightExpression, context, selection.locationType);
+        const left = planValue(selection.leftExpression, context, selection.operandType);
+        const right = planValue(selection.rightExpression, context, selection.operandType);
         if (left === undefined || right === undefined) return undefined;
         const ordered = orderMojoValues([
-          Object.freeze({ plan: left, type: selection.locationType, role: "location_left" }),
-          Object.freeze({ plan: right, type: selection.locationType, role: "location_right" }),
+          Object.freeze({ plan: left, type: selection.operandType, role: "location_left" }),
+          Object.freeze({ plan: right, type: selection.operandType, role: "location_right" }),
         ], context);
         return withMojoValue(ordered.before, Object.freeze({
-          kind: "method-call",
-          receiver: ordered.values[0]!,
-          name: "same_storage",
-          arguments: Object.freeze([Object.freeze({ value: ordered.values[1]! })]),
+          kind: "call",
+          callee: mojoModuleMemberExpression(
+            context,
+            ["tsonic_runtime"],
+            "equal_location",
+          ),
+          arguments: Object.freeze(ordered.values.map((value) => Object.freeze({ value }))),
         }));
       }
     }

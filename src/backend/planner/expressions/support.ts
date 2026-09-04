@@ -57,6 +57,7 @@ export interface PlannedMojoCallArgument {
   readonly type: MojoTargetTypeRef;
   readonly name?: string;
   readonly spread: boolean;
+  readonly borrowProjection?: true;
 }
 
 export type PreparedMojoReceiver =
@@ -94,6 +95,39 @@ export function planSelectedArgument(
   planValue: MojoValuePlanner,
   preparedExpression?: MojoValuePlan,
 ): PlannedMojoCallArgument | undefined {
+  if (argument.locationBorrow !== undefined) {
+    const storage = context.program.queries.locationStorage(argument.locationBorrow.declaration);
+    if (storage === undefined) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_LOCATION_ARGUMENT_STORAGE_MISSING",
+        "A sealed location-backed call argument has no promoted Mojo storage.",
+        argument.expression,
+      );
+      return undefined;
+    }
+    if (!mojoTargetTypeEquals(storage.valueType, argument.parameterType)) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_LOCATION_ARGUMENT_STORAGE_TYPE_CONFLICT",
+        "A sealed location-backed call argument disagrees with its promoted storage carrier.",
+        argument.expression,
+      );
+      return undefined;
+    }
+    return Object.freeze({
+      plan: mojoValue(Object.freeze({
+        kind: "method-call",
+        receiver: Object.freeze({ kind: "path", path: storage.name }),
+        name: argument.locationBorrow.mutability === "mutable" ? "borrow_mut" : "borrow",
+        arguments: Object.freeze([]),
+      })),
+      type: argument.parameterType,
+      ...(argument.position === "keyword" ? { name: argument.nativeName! } : {}),
+      spread: false,
+      borrowProjection: true,
+    });
+  }
   const directCallableAdaptation = preparedExpression === undefined &&
     argument.sourceForm === "value" && argument.conversion.kind === "callable-adapt" &&
     argument.conversion.error !== "erase" &&
@@ -241,6 +275,7 @@ export function orderCallArguments(
       plan: argument.plan,
       type: argument.type,
       role: "call_argument",
+      ...(argument.borrowProjection === true ? { stabilize: false as const } : {}),
     })),
   ], context);
   const offset = receiver === undefined ? 0 : 1;
@@ -279,7 +314,8 @@ export function orderMojoValues(
   const expressions: MojoExpression[] = [];
   for (const [index, value] of values.entries()) {
     before.push(...value.plan.before);
-    if ((value.stabilize === true || stabilizeAll || index < finalPreludeIndex) &&
+    if (value.stabilize !== false &&
+      (value.stabilize === true || stabilizeAll || index < finalPreludeIndex) &&
       !isStableMojoLocation(value.plan.value) &&
       !isTriviallyPureMojoValue(value.plan.value)) {
       registerMojoTypeImports(value.type, context);
