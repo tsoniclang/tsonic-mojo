@@ -270,6 +270,15 @@ export function directMojoNodeErrorTypes(
         selection.arguments.some((argument) => mojoConversionRaises(argument.conversion)) ||
         mojoConversionRaises(selection.resultConversion),
       );
+    } else if (selection?.kind === "object-assign") {
+      addNativeConversionError(selection.fields.some((field) =>
+        mojoConversionRaises(field.conversion)));
+    } else if (selection?.kind === "json-stringify") {
+      errors.push(mojoNativeErrorType());
+      addNativeConversionError(
+        selection.arguments.some((argument) => mojoConversionRaises(argument.conversion)) ||
+        mojoConversionRaises(selection.resultConversion),
+      );
     }
   }
   if (ast.is.IsThrowStatement(node)) {

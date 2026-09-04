@@ -36,7 +36,7 @@ test("closed JSON values retain exact parse stringify and Object operations", ()
     "object_values",
     "object_entries",
     "object_has_own",
-  ]) assert.match(source, new RegExp(`tsonic_js\\.${operation}`, "u"));
+  ]) assert.match(source, new RegExp(`\\b${operation}\\b`, "u"));
 });
 
 test("dynamic and finalized catch values use exact closed template stringification", () => {
@@ -52,23 +52,39 @@ test("dynamic and finalized catch values use exact closed template stringificati
       ].join("\n"),
     },
   }));
-  assert.match(source, /tsonic_js\.js_value_to_string/u);
+  assert.match(source, /\bjs_value_to_string\b/u);
   assert.match(source, /String\(error\)/u);
 });
 
-test("JSON replacer arguments reject at the sealed source-profile boundary", () => {
-  const result = compileMojo({
+test("closed structural objects support identity-preserving assign and JSON replacers", () => {
+  const source = generatedSource(compileMojo({
     surfaces: ["js"],
     files: {
       "index.ts": [
         "export function main(): void {",
-        "  JSON.stringify({ ready: true }, null);",
+        "  const target = { count: 1, label: 'before' };",
+        "  const assigned = Object.assign(target, { label: 'after' });",
+        "  JSON.stringify({ keep: assigned.label, drop: 2 },",
+        "    (key, value) => key === 'drop' ? undefined : value, 2);",
         "}",
       ].join("\n"),
     },
-  });
-  assert.deepEqual(result.artifacts, []);
-  assert.deepEqual(result.diagnostics.map(({ code }) => code), [
-    "MOJO_SOURCE_PROFILE_CALL_UNSUPPORTED",
-  ]);
+  }));
+  assert.match(source, /StructuralObject/u);
+  assert.match(source, /json_stringify_with_replacer_and_space_number/u);
+  assert.match(source, /js_value_from_object_entries/u);
+});
+
+test("open Object.assign and property-list JSON replacers reject at the exact call boundary", () => {
+  for (const [body, code] of [
+    ["Object.assign({ value: 1 }, { other: 2 });", "MOJO_OBJECT_ASSIGN_FIELD_RELATION_UNPROVEN"],
+    ["JSON.stringify({ value: 1 }, ['value']);", "MOJO_JSON_STRINGIFY_REPLACER_UNSUPPORTED"],
+  ]) {
+    const result = compileMojo({
+      surfaces: ["js"],
+      files: { "index.ts": `export function main(): void { ${body} }` },
+    });
+    assert.deepEqual(result.artifacts, []);
+    assert.deepEqual(result.diagnostics.map((diagnostic) => diagnostic.code), [code]);
+  }
 });

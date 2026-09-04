@@ -226,4 +226,32 @@ export type MojoCallSelection =
       readonly resultType: MojoTargetTypeRef;
       readonly resultConversion: MojoValueConversion;
       readonly optionalChain: boolean;
+    }
+  | {
+      readonly kind: "object-assign";
+      readonly target: Node;
+      readonly source: Node;
+      readonly targetType: MojoTargetTypeRef;
+      readonly sourceType: MojoTargetTypeRef;
+      readonly arguments: readonly MojoAnalyzedCallArgument[];
+      readonly fields: readonly {
+        readonly sourceName: string;
+        readonly sourceStorageIndex: number;
+        readonly targetStorageIndex: number;
+        readonly sourceType: MojoTargetTypeRef;
+        readonly targetType: MojoTargetTypeRef;
+        readonly conversion: MojoValueConversion;
+      }[];
+      readonly resultType: MojoTargetTypeRef;
+      readonly optionalChain: false;
+    }
+  | {
+      readonly kind: "json-stringify";
+      readonly arguments: readonly MojoAnalyzedCallArgument[];
+      readonly replacer: "none" | "callable";
+      readonly space: "none" | "number" | "string";
+      readonly runtimeResultType: MojoTargetTypeRef;
+      readonly resultType: MojoTargetTypeRef;
+      readonly resultConversion: MojoValueConversion;
+      readonly optionalChain: false;
     };

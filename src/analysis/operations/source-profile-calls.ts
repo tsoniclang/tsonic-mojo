@@ -27,6 +27,10 @@ import {
 } from "../../target-model/types/error-domains.js";
 import { mojoRegExpNativeResultType } from "../../policy/types/js-regexp.js";
 import { analyzeSourceProfileRegExpProtocolCall } from "./source-profile-regexp-protocols.js";
+import {
+  analyzeMojoJsonStringify,
+  analyzeMojoObjectAssign,
+} from "./source-profile-special-calls.js";
 
 export function analyzeSourceProfileCall(
   sourceCall: ResolvedSourceCallInfo,
@@ -49,6 +53,12 @@ export function analyzeSourceProfileCall(
   );
   if (selected.kind === "not-source-profile") return undefined;
   if (selected.kind === "unsupported") return selected;
+  if ("specialOperation" in selected.row) {
+    if (selected.row.specialOperation === "object-assign") {
+      return analyzeMojoObjectAssign(sourceCall, resolve, context);
+    }
+    return analyzeMojoJsonStringify(sourceCall, resolve, context);
+  }
   if (sourceCall.sourceSelectedSignatureKind !== "resolved") {
     return {
       kind: "unsupported",

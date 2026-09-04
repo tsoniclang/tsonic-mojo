@@ -24,6 +24,7 @@ import type { MojoPlanningContext } from "../program/context.js";
 import { registerMojoTypeImports } from "../types/imports.js";
 import { consumeMojoValue, mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
+import { convertMojoJsonValue } from "./js-value-conversions.js";
 import { planMojoCallableExpression } from "./callables.js";
 import { adaptMojoRaisingCallableError } from "./callable-error-adapter.js";
 import { mojoNumericLiteralCanInitialize } from "../../../target-model/types/numeric-literals.js";
@@ -368,6 +369,11 @@ export function convertMojoValue(
   conversion: MojoValueConversion,
   context: MojoPlanningContext,
 ): MojoValuePlan | undefined {
+  if (conversion.kind === "js-structural-object-box" ||
+    conversion.kind === "js-sequence-box" || conversion.kind === "js-tuple-box" ||
+    conversion.kind === "js-optional-box" || conversion.kind === "js-union-box") {
+    return convertMojoJsonValue(plan, conversion, context, convertMojoValue);
+  }
   if (conversion.kind === "js-truthiness") {
     return convertMojoTruthiness(plan, conversion.conversion, context);
   }
@@ -692,6 +698,13 @@ export function applyMojoConversion(
       return undefined;
     case "js-box":
       if (conversion.source === "native-string") return boxNativeStringAsJsValue(expression, context);
+      const boxedValue = conversion.source === "number" && conversion.sourceType.name !== "float64"
+        ? Object.freeze({
+            kind: "construct" as const,
+            type: Object.freeze({ kind: "source-primitive" as const, name: "float64" as const }),
+            arguments: Object.freeze([{ value: expression }]),
+          })
+        : expression;
       return {
         kind: "call",
         callee: mojoModuleMemberExpression(
@@ -701,8 +714,14 @@ export function applyMojoConversion(
         ),
         arguments: conversion.source === "null" || conversion.source === "undefined"
           ? Object.freeze([])
-          : Object.freeze([{ value: expression }]),
+          : Object.freeze([{ value: boxedValue }]),
       };
+    case "js-structural-object-box":
+    case "js-sequence-box":
+    case "js-tuple-box":
+    case "js-optional-box":
+    case "js-union-box":
+      return undefined;
     case "primitive-cast":
     case "reference-copy":
       registerMojoTypeImports(conversion.targetType, context);

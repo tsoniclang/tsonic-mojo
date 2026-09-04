@@ -229,6 +229,35 @@ export function planMojoProviderRecordLiteral(
   }));
 }
 
+export function planMojoStructuralObjectLiteral(
+  node: Node,
+  context: MojoPlanningContext,
+  planValue: MojoValuePlanner,
+): MojoValuePlan | undefined {
+  const selection = context.program.queries.objectLiteralSelection(node);
+  if (selection?.kind !== "structural") return undefined;
+  registerMojoTypeImports(selection.definition.type, context);
+  const plans = selection.fields.map((field) => Object.freeze({
+    field,
+    plan: planValue(field.value, context, field.field.type),
+  }));
+  if (plans.some(({ plan }) => plan === undefined)) return undefined;
+  const ordered = orderMojoValues(plans.map(({ field, plan }) => Object.freeze({
+    plan: plan!,
+    type: field.field.type,
+    role: "structural_object_field",
+  })), context);
+  const storage: MojoExpression = Object.freeze({
+    kind: "tuple",
+    elements: Object.freeze(ordered.values),
+  });
+  return withMojoValue(ordered.before, Object.freeze({
+    kind: "construct",
+    type: selection.definition.type,
+    arguments: Object.freeze([Object.freeze({ value: storage })]),
+  }));
+}
+
 function stabilize(
   value: MojoExpression,
   type: MojoTargetTypeRef,

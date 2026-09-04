@@ -165,6 +165,15 @@ export function executableRegionErrorTypes(
           mojoConversionRaises(argument.conversion)) ||
           mojoConversionRaises(selection.resultConversion) ||
           (selection.kind === "callable" && selection.callableType.raises));
+      } else if (selection?.kind === "object-assign") {
+        addNativeConversionError(selection.fields.some((field) =>
+          mojoConversionRaises(field.conversion)));
+      } else if (selection?.kind === "json-stringify") {
+        errors.push(mojoNativeErrorType());
+        addNativeConversionError(
+          selection.arguments.some((argument) => mojoConversionRaises(argument.conversion)) ||
+          mojoConversionRaises(selection.resultConversion),
+        );
       }
     }
     if (input.source.ast.is.IsThrowStatement(node)) {

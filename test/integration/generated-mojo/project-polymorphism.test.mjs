@@ -214,7 +214,8 @@ export function main(): void {
   assert.match(source, /bind_raising_project_callable/u);
   assert.match(source, /_write_next_method/u);
   assert.match(source, /saved\.call/u);
-  assert.match(source, /replacement_value: Optional\[RaisingCallable\[Tuple\[\], Int32, Error\]\]/u);
+  assert.match(source, /replacement_value: Optional\[Callable\[Tuple\[\], Int32\]\]/u);
+  assert.match(source, /widen_callable[\s\S]*replacement_value\.value\(\)/u);
   assert.match(source, /struct _replacement_callable/u);
   assert.match(source, /counter\.next\(\)/u);
 });

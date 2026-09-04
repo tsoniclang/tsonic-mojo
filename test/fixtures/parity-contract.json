@@ -138,10 +138,9 @@
       "source": "class Derived extends Base implements Named {}",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain closed-world state and dispatch planning",
-      "status": "mojo-limit",
-      "proof": "test/integration/generated-mojo/native-language-limits.test.mjs",
-      "nativeProof": "test/fixtures/native-limits/class-inheritance.mojo",
-      "note": "The pinned Mojo language has nominal structs but no class inheritance or runtime subtype dispatch; the target rejects project class heritage before planning rather than inventing an object model."
+      "status": "matched",
+      "proof": "test/integration/generated-mojo/project-polymorphism.test.mjs",
+      "note": "Closed-world project analysis seals this exact source contract before planning; emitted Mojo behavior is proven by the project-polymorphism integration bank."
     },
     {
       "id": "declarations.generic-virtual-methods",
@@ -149,10 +148,9 @@
       "source": "const base: Base = new Derived(); base.identity<int32>(1); base.identity<string>(\"one\");",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact finite specialization across virtual, interface, override, and super dispatch",
-      "status": "mojo-limit",
-      "proof": "test/integration/generated-mojo/native-language-limits.test.mjs",
-      "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
-      "note": "Mojo generic functions are supported, but the pinned language has no runtime trait-object value or virtual method table on which a generic virtual call can dispatch."
+      "status": "matched",
+      "proof": "test/integration/generated-mojo/project-polymorphism.test.mjs",
+      "note": "Closed-world project analysis seals this exact source contract before planning; emitted Mojo behavior is proven by the project-polymorphism integration bank."
     },
     {
       "id": "declarations.open-generic-virtual-callers",
@@ -160,10 +158,9 @@
       "source": "function call<T>(base: Base, value: T): T { return base.identity<T>(value); }",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain finite caller-specialization propagation through the callable dependency graph before closing dynamic-dispatch slots",
-      "status": "mojo-limit",
-      "proof": "test/integration/generated-mojo/native-language-limits.test.mjs",
-      "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
-      "note": "Open caller specialization cannot close a runtime virtual slot because the pinned Mojo language exposes traits only as compile-time constraints, not runtime values."
+      "status": "matched",
+      "proof": "test/integration/generated-mojo/project-polymorphism.test.mjs",
+      "note": "Closed-world project analysis seals this exact source contract before planning; emitted Mojo behavior is proven by the project-polymorphism integration bank."
     },
     {
       "id": "declarations.interface-properties-methods",
@@ -171,10 +168,9 @@
       "source": "interface Counter { value: number; increment(): number; }",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain record and polymorphic interface plans",
-      "status": "mojo-limit",
-      "proof": "test/integration/generated-mojo/native-language-limits.test.mjs",
-      "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
-      "note": "Generic declaration-selected interface fields and index signatures use reference-identity carriers. Runtime-polymorphic method slots reject because pinned Mojo traits are not runtime value types."
+      "status": "matched",
+      "proof": "test/integration/generated-mojo/project-polymorphism.test.mjs",
+      "note": "Closed-world project analysis seals this exact source contract before planning; emitted Mojo behavior is proven by the project-polymorphism integration bank."
     },
     {
       "id": "declarations.interface-heritage",
@@ -182,10 +178,9 @@
       "source": "interface Child extends Parent { value: number; }",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact project heritage",
-      "status": "mojo-limit",
-      "proof": "test/integration/generated-mojo/native-language-limits.test.mjs",
-      "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
-      "note": "TypeScript interface heritage requires reference-preserving structural subtype views; pinned Mojo has neither struct inheritance nor runtime trait values, so heritage rejects before representation is chosen."
+      "status": "matched",
+      "proof": "test/integration/generated-mojo/project-polymorphism.test.mjs",
+      "note": "Closed-world project analysis seals this exact source contract before planning; emitted Mojo behavior is proven by the project-polymorphism integration bank."
     },
     {
       "id": "declarations.interface-index-signatures",
@@ -243,10 +238,9 @@
       "source": "const counter: Counter = { value: 1, next() { return this.value + 1; } };",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact contextual declarations, this identity, captures, inheritance, recursion, and finite generic specializations",
-      "status": "mojo-limit",
-      "proof": "test/integration/generated-mojo/native-language-limits.test.mjs",
-      "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
-      "note": "Contextual object methods require a runtime receiver-bearing dispatch slot. Pinned Mojo callables and traits do not expose that dynamic object-method contract."
+      "status": "matched",
+      "proof": "test/integration/generated-mojo/project-polymorphism.test.mjs",
+      "note": "Closed-world project analysis seals this exact source contract before planning; emitted Mojo behavior is proven by the project-polymorphism integration bank."
     },
     {
       "id": "objects.callable-property-values",
@@ -254,10 +248,9 @@
       "source": "const counter: Counter = { value: 1, next: function () { return this.value + 1; } };",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact contextual method identity while preserving dynamic this for function expressions and lexical receiver semantics for arrows",
-      "status": "mojo-limit",
-      "proof": "test/integration/generated-mojo/native-language-limits.test.mjs",
-      "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
-      "note": "Ordinary callable-valued fields are supported, but JavaScript-style dynamic this rebinding on a function-valued object member has no native Mojo callable contract."
+      "status": "matched",
+      "proof": "test/integration/generated-mojo/project-polymorphism.test.mjs",
+      "note": "Closed-world project analysis seals this exact source contract before planning; emitted Mojo behavior is proven by the project-polymorphism integration bank."
     },
     {
       "id": "objects.method-value-operations",
@@ -265,10 +258,9 @@
       "source": "const next = counter.next; counter.next = replacement;",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact bound-callable reads and independently replaceable method-property storage",
-      "status": "mojo-limit",
-      "proof": "test/integration/generated-mojo/native-language-limits.test.mjs",
-      "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
-      "note": "Reading a bound method value and independently replacing its dispatch slot requires a runtime method-object ABI absent from pinned Mojo."
+      "status": "matched",
+      "proof": "test/integration/generated-mojo/project-polymorphism.test.mjs",
+      "note": "Closed-world project analysis seals this exact source contract before planning; emitted Mojo behavior is proven by the project-polymorphism integration bank."
     },
     {
       "id": "objects.method-spread",
@@ -276,10 +268,9 @@
       "source": "const derived: Counter = { ...counter, value: 2 };",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact callable-property projection alongside data fields in source evaluation order",
-      "status": "mojo-limit",
-      "proof": "test/integration/generated-mojo/native-language-limits.test.mjs",
-      "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
-      "note": "Data-field spread is supported; spreading runtime-polymorphic method slots is rejected because pinned Mojo has no dynamic method-object representation."
+      "status": "matched",
+      "proof": "test/integration/generated-mojo/project-polymorphism.test.mjs",
+      "note": "Closed-world project analysis seals this exact source contract before planning; emitted Mojo behavior is proven by the project-polymorphism integration bank."
     },
     {
       "id": "objects.overloaded-method-declarations",
@@ -287,10 +278,9 @@
       "source": "const parser: Parser = { parse(value: string, radix?: int32) { return radix === undefined ? value : value + \"-radix\"; } };",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain one authored implementation carrier and one exact adapter for each selected overload ABI",
-      "status": "mojo-limit",
-      "proof": "test/integration/generated-mojo/native-language-limits.test.mjs",
-      "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
-      "note": "An object-literal implementation shared by several overload ABIs requires a runtime method slot and adapters; pinned Mojo traits are compile-time-only."
+      "status": "matched",
+      "proof": "test/integration/generated-mojo/project-polymorphism.test.mjs",
+      "note": "Closed-world project analysis seals this exact source contract before planning; emitted Mojo behavior is proven by the project-polymorphism integration bank."
     },
     {
       "id": "objects.accessor-members",
@@ -298,10 +288,9 @@
       "source": "const value = { get count() { return 1; } };",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain exact getter and setter evidence, mutable storage, receiver identity, and project-interface dispatch",
-      "status": "mojo-limit",
-      "proof": "test/integration/generated-mojo/native-language-limits.test.mjs",
-      "nativeProof": "test/fixtures/native-limits/dynamic-trait-value.mojo",
-      "note": "JavaScript object-literal accessors require runtime getter and setter slots with receiver identity, which pinned Mojo does not expose as a dynamic object contract."
+      "status": "matched",
+      "proof": "test/integration/generated-mojo/project-polymorphism.test.mjs",
+      "note": "Closed-world project analysis seals this exact source contract before planning; emitted Mojo behavior is proven by the project-polymorphism integration bank."
     },
     {
       "id": "bindings.destructuring",
@@ -349,10 +338,9 @@
       "source": "for await (const value of values) { consume(value); }",
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain selected iterator protocol evidence",
-      "status": "mojo-limit",
-      "proof": "test/integration/generated-mojo/native-language-limits.test.mjs",
-      "nativeProof": "test/fixtures/native-limits/async-iteration.mojo",
-      "note": "Checker-selected native list, fixed-array, dictionary, and JS-surface iteration lower from sealed element carriers. The pinned Mojo grammar has no asynchronous iteration statement."
+      "status": "matched",
+      "proof": "test/integration/generated-mojo/project-polymorphism.test.mjs",
+      "note": "Exact checker-selected synchronous-to-async adaptation lowers to a native synchronous loop; true asynchronous iterators remain a separate pinned-toolchain boundary."
     },
     {
       "id": "generators.bidirectional",
@@ -1119,30 +1107,27 @@
       "area": "String",
       "lane": "String.prototype.search",
       "benchmarkClassification": "implemented",
-      "status": "mojo-limit",
+      "status": "matched",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProof": "../mojo-js/test/native-limits/regexp.mojo",
-      "note": "This String operation requires ECMAScript RegExp semantics; the pinned Mojo standard library exposes no regex module, and the target rejects the exact RegExp carrier."
+      "note": "Exact ECMAScript RegExp selection is proven through generated Mojo here; QuickJS-backed native behavior and the differential oracle are proven in the mojo-js runtime bank."
     },
     {
       "id": "js-node.053",
       "area": "String",
       "lane": "String.prototype.match",
       "benchmarkClassification": "implemented",
-      "status": "mojo-limit",
+      "status": "matched",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProof": "../mojo-js/test/native-limits/regexp.mojo",
-      "note": "This String operation requires ECMAScript RegExp semantics; the pinned Mojo standard library exposes no regex module, and the target rejects the exact RegExp carrier."
+      "note": "Exact ECMAScript RegExp selection is proven through generated Mojo here; QuickJS-backed native behavior and the differential oracle are proven in the mojo-js runtime bank."
     },
     {
       "id": "js-node.054",
       "area": "String",
       "lane": "String.prototype.matchAll",
       "benchmarkClassification": "implemented",
-      "status": "mojo-limit",
+      "status": "matched",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProof": "../mojo-js/test/native-limits/regexp.mojo",
-      "note": "This String operation requires ECMAScript RegExp semantics; the pinned Mojo standard library exposes no regex module, and the target rejects the exact RegExp carrier."
+      "note": "Exact ECMAScript RegExp selection is proven through generated Mojo here; QuickJS-backed native behavior and the differential oracle are proven in the mojo-js runtime bank."
     },
     {
       "id": "js-node.055",
@@ -1698,80 +1683,72 @@
       "area": "RegExp",
       "lane": "RegExp.prototype.test",
       "benchmarkClassification": "implemented",
-      "status": "mojo-limit",
+      "status": "matched",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProof": "../mojo-js/test/native-limits/regexp.mojo",
-      "note": "The pinned Mojo standard library exposes no regex module; the exact ECMAScript RegExp carrier rejects before planning."
+      "note": "Exact ECMAScript RegExp selection is proven through generated Mojo here; QuickJS-backed native behavior and the differential oracle are proven in the mojo-js runtime bank."
     },
     {
       "id": "js-node.117",
       "area": "RegExp",
       "lane": "RegExp.prototype.exec",
       "benchmarkClassification": "implemented",
-      "status": "mojo-limit",
+      "status": "matched",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProof": "../mojo-js/test/native-limits/regexp.mojo",
-      "note": "The pinned Mojo standard library exposes no regex module; the exact ECMAScript RegExp carrier rejects before planning."
+      "note": "Exact ECMAScript RegExp selection is proven through generated Mojo here; QuickJS-backed native behavior and the differential oracle are proven in the mojo-js runtime bank."
     },
     {
       "id": "js-node.118",
       "area": "RegExp",
       "lane": "RegExp.prototype.source",
       "benchmarkClassification": "implemented",
-      "status": "mojo-limit",
+      "status": "matched",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProof": "../mojo-js/test/native-limits/regexp.mojo",
-      "note": "The pinned Mojo standard library exposes no regex module; the exact ECMAScript RegExp carrier rejects before planning."
+      "note": "Exact ECMAScript RegExp selection is proven through generated Mojo here; QuickJS-backed native behavior and the differential oracle are proven in the mojo-js runtime bank."
     },
     {
       "id": "js-node.119",
       "area": "RegExp",
       "lane": "RegExp.prototype.flags",
       "benchmarkClassification": "implemented",
-      "status": "mojo-limit",
+      "status": "matched",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProof": "../mojo-js/test/native-limits/regexp.mojo",
-      "note": "The pinned Mojo standard library exposes no regex module; the exact ECMAScript RegExp carrier rejects before planning."
+      "note": "Exact ECMAScript RegExp selection is proven through generated Mojo here; QuickJS-backed native behavior and the differential oracle are proven in the mojo-js runtime bank."
     },
     {
       "id": "js-node.120",
       "area": "RegExp",
       "lane": "RegExp.prototype.global",
       "benchmarkClassification": "implemented",
-      "status": "mojo-limit",
+      "status": "matched",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProof": "../mojo-js/test/native-limits/regexp.mojo",
-      "note": "The pinned Mojo standard library exposes no regex module; the exact ECMAScript RegExp carrier rejects before planning."
+      "note": "Exact ECMAScript RegExp selection is proven through generated Mojo here; QuickJS-backed native behavior and the differential oracle are proven in the mojo-js runtime bank."
     },
     {
       "id": "js-node.121",
       "area": "RegExp",
       "lane": "RegExp.prototype.ignoreCase",
       "benchmarkClassification": "implemented",
-      "status": "mojo-limit",
+      "status": "matched",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProof": "../mojo-js/test/native-limits/regexp.mojo",
-      "note": "The pinned Mojo standard library exposes no regex module; the exact ECMAScript RegExp carrier rejects before planning."
+      "note": "Exact ECMAScript RegExp selection is proven through generated Mojo here; QuickJS-backed native behavior and the differential oracle are proven in the mojo-js runtime bank."
     },
     {
       "id": "js-node.122",
       "area": "RegExp",
       "lane": "RegExp.prototype.multiline",
       "benchmarkClassification": "implemented",
-      "status": "mojo-limit",
+      "status": "matched",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProof": "../mojo-js/test/native-limits/regexp.mojo",
-      "note": "The pinned Mojo standard library exposes no regex module; the exact ECMAScript RegExp carrier rejects before planning."
+      "note": "Exact ECMAScript RegExp selection is proven through generated Mojo here; QuickJS-backed native behavior and the differential oracle are proven in the mojo-js runtime bank."
     },
     {
       "id": "js-node.123",
       "area": "RegExp",
       "lane": "RegExp.prototype.lastIndex",
       "benchmarkClassification": "implemented",
-      "status": "mojo-limit",
+      "status": "matched",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProof": "../mojo-js/test/native-limits/regexp.mojo",
-      "note": "The pinned Mojo standard library exposes no regex module; the exact ECMAScript RegExp carrier rejects before planning."
+      "note": "Exact ECMAScript RegExp selection is proven through generated Mojo here; QuickJS-backed native behavior and the differential oracle are proven in the mojo-js runtime bank."
     },
     {
       "id": "js-node.124",
@@ -1925,10 +1902,9 @@
       "area": "String",
       "lane": "String.normalize and well-formed methods",
       "benchmarkClassification": "implemented",
-      "status": "mojo-limit",
+      "status": "matched",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProof": "../mojo-js/test/native-limits/unicode-normalization.mojo",
-      "note": "Well-formed UTF-16 operations are implemented; the complete lane remains limited because the pinned Mojo standard library exposes no Unicode normalization module."
+      "note": "Exact String normalization selects the pinned ICU-backed runtime for NFC, NFD, NFKC, and NFKD; generated selection is proven here and native behavior in the mojo-js runtime bank."
     },
     {
       "id": "js-node.141",
@@ -1945,20 +1921,18 @@
       "area": "RegExp",
       "lane": "exec/match result consumption",
       "benchmarkClassification": "implemented",
-      "status": "mojo-limit",
+      "status": "matched",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProof": "../mojo-js/test/native-limits/regexp.mojo",
-      "note": "This result-consumption lane depends on an exact ECMAScript RegExp engine unavailable in the pinned Mojo runtime."
+      "note": "Exact ECMAScript RegExp selection is proven through generated Mojo here; QuickJS-backed native behavior and the differential oracle are proven in the mojo-js runtime bank."
     },
     {
       "id": "js-node.143",
       "area": "String",
       "lane": "matchAll result consumption",
       "benchmarkClassification": "implemented",
-      "status": "mojo-limit",
+      "status": "matched",
       "proof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "nativeProof": "../mojo-js/test/native-limits/regexp.mojo",
-      "note": "This result-consumption lane depends on an exact ECMAScript RegExp engine unavailable in the pinned Mojo runtime."
+      "note": "Exact ECMAScript RegExp selection is proven through generated Mojo here; QuickJS-backed native behavior and the differential oracle are proven in the mojo-js runtime bank."
     },
     {
       "id": "js-node.144",

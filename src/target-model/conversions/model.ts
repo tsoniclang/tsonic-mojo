@@ -45,10 +45,61 @@ export type MojoValueConversion =
     }
   | { readonly kind: "primitive-cast"; readonly targetType: MojoTargetTypeRef }
   | { readonly kind: "reference-copy"; readonly targetType: MojoTargetTypeRef }
-  | {
+  | ({
       readonly kind: "js-box";
       readonly targetType: MojoTargetTypeRef;
-      readonly source: "bool" | "number" | "string" | "native-string" | "symbol" | "null" | "undefined";
+    } & (
+      | {
+          readonly source: "number";
+          readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "source-primitive" }>;
+        }
+      | {
+          readonly source: "bool" | "string" | "native-string" | "symbol" | "null" | "undefined";
+        }
+    ))
+  | {
+      readonly kind: "js-structural-object-box";
+      readonly sourceType: MojoTargetTypeRef;
+      readonly targetType: MojoTargetTypeRef;
+      readonly fields: readonly {
+        readonly sourceName: string;
+        readonly storageIndex: number;
+        readonly sourceType: MojoTargetTypeRef;
+        readonly conversion: MojoValueConversion;
+      }[];
+    }
+  | {
+      readonly kind: "js-sequence-box";
+      readonly sourceType: MojoTargetTypeRef;
+      readonly targetType: MojoTargetTypeRef;
+      readonly source: "js-array";
+      readonly elementType: MojoTargetTypeRef;
+      readonly elementConversion: MojoValueConversion;
+    }
+  | {
+      readonly kind: "js-tuple-box";
+      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "tuple" | "fixed-array" }>;
+      readonly targetType: MojoTargetTypeRef;
+      readonly elements: readonly {
+        readonly index: number;
+        readonly sourceType: MojoTargetTypeRef;
+        readonly conversion: MojoValueConversion;
+      }[];
+    }
+  | {
+      readonly kind: "js-optional-box";
+      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "optional" }>;
+      readonly targetType: MojoTargetTypeRef;
+      readonly valueConversion: MojoValueConversion;
+    }
+  | {
+      readonly kind: "js-union-box";
+      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
+      readonly targetType: MojoTargetTypeRef;
+      readonly members: readonly {
+        readonly sourceType: MojoTargetTypeRef;
+        readonly conversion: MojoValueConversion;
+      }[];
     }
   | { readonly kind: "native-to-js-string"; readonly targetType: MojoTargetTypeRef }
   | { readonly kind: "js-to-native-string" }

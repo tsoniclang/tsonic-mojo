@@ -210,4 +210,14 @@ export type MojoObjectLiteralSelection =
         readonly targetName: string;
         readonly storageType: MojoTargetTypeRef;
       }[];
+    }
+  | {
+      readonly kind: "structural";
+      readonly definition: import("../bindings/structural-objects.js").MojoStructuralObjectDefinition;
+      readonly fields: readonly {
+        readonly element: Node;
+        readonly value: Node;
+        readonly storageIndex: number;
+        readonly field: import("../bindings/structural-objects.js").MojoStructuralObjectField;
+      }[];
     };

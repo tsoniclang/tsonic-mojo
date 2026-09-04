@@ -199,11 +199,11 @@ export function classifyMojoValueConversion(
     }
   }
   if (isJsValue(expected)) {
-    const source = jsValueSourceKind(actual);
-    if (source !== undefined) {
+    const conversion = jsValueBoxConversion(actual, expected);
+    if (conversion !== undefined) {
       return {
         kind: "resolved",
-        conversion: Object.freeze({ kind: "js-box", targetType: expected, source }),
+        conversion,
       };
     }
   }
@@ -569,19 +569,32 @@ function jsArrayElement(type: MojoTargetTypeRef): MojoTargetTypeRef | undefined 
   return argument?.kind === "type" ? argument.type : undefined;
 }
 
-function jsValueSourceKind(
+function jsValueBoxConversion(
   type: MojoTargetTypeRef,
-): Extract<MojoValueConversion, { kind: "js-box" }>["source"] | undefined {
+  targetType: MojoTargetTypeRef,
+): Extract<MojoValueConversion, { kind: "js-box" }> | undefined {
   if (type.kind === "source-primitive") {
-    if (type.name === "bool") return "bool";
-    if (type.name === "float64") return "number";
+    if (type.name === "bool") {
+      return Object.freeze({ kind: "js-box", targetType, source: "bool" });
+    }
+    return type.name === "char" || type.name === "decimal"
+      ? undefined
+      : Object.freeze({ kind: "js-box", targetType, source: "number", sourceType: type });
   }
-  if (type.kind === "native-string") return "native-string";
-  if (isJsString(type)) return "string";
-  if (type.kind === "symbol") return "symbol";
-  if (type.kind === "null") return "null";
-  if (type.kind === "undefined") return "undefined";
-  return undefined;
+  const source = type.kind === "native-string"
+    ? "native-string" as const
+    : isJsString(type)
+      ? "string" as const
+      : type.kind === "symbol"
+        ? "symbol" as const
+        : type.kind === "null"
+          ? "null" as const
+          : type.kind === "undefined"
+            ? "undefined" as const
+            : undefined;
+  return source === undefined
+    ? undefined
+    : Object.freeze({ kind: "js-box", targetType, source });
 }
 
 function sameConversion(left: MojoValueConversion, right: MojoValueConversion): boolean {

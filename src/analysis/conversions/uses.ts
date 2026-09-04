@@ -119,9 +119,12 @@ export function recordMojoExecutableRegionConversionUses(
                 visitExpression(contribution.key.expression);
               }
             }
-          } else {
+          } else if (selection.kind === "provider-record") {
             const field = selection.fields.find((candidate) => candidate.element === property);
             if (field !== undefined) record(value, field.storageType);
+          } else {
+            const field = selection.fields.find((candidate) => candidate.element === property);
+            if (field !== undefined) record(value, field.field.type);
           }
         }
         visitExpression(value);
@@ -168,7 +171,8 @@ export function recordMojoExecutableRegionConversionUses(
       for (const argument of ast.arguments(expression)) {
         if (argument === undefined) continue;
         if (selection?.kind !== "project" && selection?.kind !== "provider" &&
-          selection?.kind !== "callable") {
+          selection?.kind !== "callable" && selection?.kind !== "object-assign" &&
+          selection?.kind !== "json-stringify") {
           const expected = callArgumentExpectedType(selection, argument);
           if (expected !== undefined) record(argument, expected);
         }

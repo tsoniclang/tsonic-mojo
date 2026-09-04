@@ -117,6 +117,8 @@ export function validateMojoExecutableRegionSyntax(
   };
   const validateExpression = (expression: Node | undefined): void => {
     if (expression === undefined) return;
+    const expressionType = expressionTypes.get(expression);
+    if (expressionType?.kind === "null" || expressionType?.kind === "undefined") return;
     if (ast.is.IsIdentifier(expression) || ast.kindName(expression) === "KindThisKeyword") {
       if (bindings.get(expression) === undefined && values.get(expression) === undefined) {
         diagnostics.push(diagnostic(

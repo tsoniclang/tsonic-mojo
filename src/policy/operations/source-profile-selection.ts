@@ -9,16 +9,32 @@ import { mojoSourceProfileCallRows } from "./source-profile-rows.js";
 
 export { mojoSourceProfileCallRows } from "./source-profile-rows.js";
 
-export interface MojoSourceProfileCallRow {
+export interface MojoSourceProfileCallRowBase {
   readonly profile: "native" | "js";
   readonly kind: "call" | "construct";
   readonly owner: string;
   readonly member: string;
   readonly argumentCount?: number;
+  readonly argumentCarriers?: readonly MojoSourceProfileArgumentCarrierContract[];
   readonly parameterContract?: readonly MojoSourceProfileParameterContract[];
   readonly parameterContractMode?: "exact" | "overrides";
   readonly receiverCapability?: "integer";
-  readonly argumentCarriers?: readonly MojoSourceProfileArgumentCarrierContract[];
+  readonly raises?: boolean;
+  readonly callback?: MojoSourceProfileCallbackContract;
+  readonly resultContract?: MojoSourceProfileResultContract;
+  readonly runtimeResultContract?:
+    | {
+        readonly kind: "optional-source-union";
+        readonly absence: "null" | "undefined";
+      }
+    | { readonly kind: "native-error-result" };
+}
+
+export type MojoSourceProfileCallRow = MojoSourceProfileCallRowBase & (
+  | {
+      readonly specialOperation: "object-assign" | "json-stringify";
+    }
+  | {
   readonly target:
     | {
         readonly kind: "instance";
@@ -31,16 +47,8 @@ export interface MojoSourceProfileCallRow {
         readonly name: string;
         readonly receiver?: "imm" | "mut" | "var" | "ref" | "deinit";
       };
-  readonly raises?: boolean;
-  readonly callback?: MojoSourceProfileCallbackContract;
-  readonly resultContract?: MojoSourceProfileResultContract;
-  readonly runtimeResultContract?:
-    | {
-        readonly kind: "optional-source-union";
-        readonly absence: "null" | "undefined";
-      }
-    | { readonly kind: "native-error-result" };
-}
+  }
+);
 
 export interface MojoSourceProfileArgumentCarrierContract {
   readonly index: number;

@@ -13,7 +13,9 @@ export function inferMojoExpressionType(
   ast: AstReader,
   expressionTypes: WeakMap<Node, MojoTargetTypeRef>,
 ): MojoTargetTypeRef | undefined {
-  if (ast.is.IsParenthesizedExpression(node)) {
+  if (ast.is.IsParenthesizedExpression(node) || ast.is.IsAsExpression(node) ||
+    ast.is.IsTypeAssertion(node) || ast.is.IsNonNullExpression(node) ||
+    ast.is.IsSatisfiesExpression(node)) {
     const expression = Node_Expression(ast, node);
     return expression === undefined ? undefined : expressionTypes.get(expression);
   }

@@ -36,6 +36,7 @@ import { analyzeMojoSourceIntrinsic } from "./source-intrinsics.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 import type { MojoValueOwnership } from "../../target-model/lifecycle/model.js";
 import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
+import type { MojoStructuralObjectCatalog } from "../bindings/structural-objects.js";
 
 export type MojoCallAnalysis =
   | { readonly kind: "resolved"; readonly selection: MojoCallSelection; readonly dependency?: Node }
@@ -58,6 +59,7 @@ export interface MojoCallAnalysisContext {
   readonly classByDeclaration: WeakMap<Node, MojoAnalyzedClass>;
   readonly classByTypeId: ReadonlyMap<string, MojoAnalyzedClass>;
   readonly locationStorageNames: WeakMap<Node, string>;
+  readonly structuralObjects: MojoStructuralObjectCatalog;
   readonly modulePathForSourceFile: (sourceFile: import("@tsonic/tsts").SourceFile) => readonly string[];
 }
 

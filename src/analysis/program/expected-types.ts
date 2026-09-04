@@ -50,6 +50,9 @@ export function expectedExpressionType(
     if (selection?.kind === "provider-record") {
       return selection.fields.find((candidate) => candidate.element === parent)?.storageType;
     }
+    if (selection?.kind === "structural") {
+      return selection.fields.find((candidate) => candidate.element === parent)?.field.type;
+    }
     const contribution = selection?.contributions.find((candidate) =>
       (candidate.kind === "field" || candidate.kind === "index-entry") && candidate.element === parent);
     return contribution?.kind === "field"
@@ -87,6 +90,13 @@ export function callArgumentExpectedType(
     return selection.operand === expression ? selection.resultType : undefined;
   }
   if (selection.kind === "project" || selection.kind === "provider" || selection.kind === "callable") {
+    return selection.arguments.find((argument) => argument.expression === expression)?.parameterType;
+  }
+  if (selection.kind === "object-assign") {
+    if (selection.target === expression) return selection.targetType;
+    return selection.source === expression ? selection.sourceType : undefined;
+  }
+  if (selection.kind === "json-stringify") {
     return selection.arguments.find((argument) => argument.expression === expression)?.parameterType;
   }
   if (selection.kind === "raw-pointer") {

@@ -27,6 +27,10 @@ import { consumeMojoValue, mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { applyArgumentDisposition, planCallableArgumentSlot } from "./call-arguments.js";
 import { mojoTargetTypeEquals } from "../../../target-model/types/equality.js";
+import {
+  planMojoJsonStringify,
+  planMojoObjectAssign,
+} from "./source-profile-special-calls.js";
 
 export function planMojoCall(
   node: Node,
@@ -256,6 +260,12 @@ export function planMojoCall(
         }));
       }
     }
+  }
+  if (selection.kind === "object-assign") {
+    return planMojoObjectAssign(selection, context, planValue);
+  }
+  if (selection.kind === "json-stringify") {
+    return planMojoJsonStringify(selection, context, planValue);
   }
   if (selection.kind === "project") {
     const genericArguments = mojoTargetGenericArgumentsInContext(

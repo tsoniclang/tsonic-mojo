@@ -20,6 +20,7 @@ import { analyzeMojoObjectLiteral } from "../objects/object-literals.js";
 import { analyzeMojoResourceManagement } from "../resources/management.js";
 import { analyzeMojoArrayLiteral } from "../aggregates/array-literals.js";
 import { analyzeMojoProviderRecordLiteral } from "../objects/provider-records.js";
+import { analyzeMojoStructuralObjectLiteral } from "../objects/structural-object-literals.js";
 import type {
   MojoProjectTypeCatalog,
   MojoProjectTypeRelationships,
@@ -263,6 +264,7 @@ export function analyzeMojoExecutableRegion(
   const objectLiteralNodes: Node[] = [];
   const callableExpressionNodes: Node[] = [];
   const bindingPatternDeclarations: Node[] = [];
+  const pendingInferredBindings = new Set<Node>();
   const returnExpressions: Node[] = [];
   walkSourceTree(root, ast, (node): void => {
     if (ast.is.IsVariableDeclaration(node)) {
@@ -286,11 +288,8 @@ export function analyzeMojoExecutableRegion(
             input,
             semantics,
           );
-      if (resolved === undefined && !bindingPattern) {
-        input.diagnostics.push(typeDiagnostic(node, "the selected declaration has no closed Mojo carrier"));
-      } else {
-        if (resolved !== undefined) input.bindingTypes.set(node, resolved);
-      }
+      if (resolved === undefined && !bindingPattern) pendingInferredBindings.add(node);
+      else if (resolved !== undefined) input.bindingTypes.set(node, resolved);
       if (bindingPattern && !isMojoIterationBindingDeclaration(node, ast)) {
         bindingPatternDeclarations.push(node);
       }
@@ -311,6 +310,63 @@ export function analyzeMojoExecutableRegion(
     if (!isContextualObjectCallable(expression, source, semantics)) {
       input.analyzeCallableExpression(expression, sourceFile, input.owner);
     }
+  }
+
+  walkSourceTreePostOrder(root, ast, (node): void => {
+    if (isMojoExpressionNode(node, ast)) {
+      const inferred = inferMojoExpressionType(node, ast, input.expressionTypes);
+      if (inferred !== undefined) input.expressionTypes.set(node, inferred);
+    }
+    if (!ast.is.IsObjectLiteralExpression(node) || input.objectLiteralSelections.has(node)) return;
+    const expectedType = expectedExpressionType(node, input);
+    const contextual = semantics.types.contextualValueSelection(node);
+    const contextualType = contextual.kind === "selected"
+      ? resolveType(contextual.type, undefined, input, semantics)
+      : undefined;
+    const reservedType = expectedType ?? contextualType;
+    if (reservedType !== undefined && (
+      reservedType.kind === "target-named" || reservedType.kind === "optional" ||
+      reservedType.kind === "union"
+    )) return;
+    const selected = analyzeMojoStructuralObjectLiteral({
+      source,
+      expression: node,
+      expressionTypes: input.expressionTypes,
+      structuralObjects: input.structuralObjects,
+      resolveType(type) {
+        return resolveType(type, undefined, input, semantics);
+      },
+    });
+    if (selected.kind === "resolved") {
+      input.objectLiteralSelections.set(node, selected.selection);
+      input.objectLiteralNodes.add(node);
+      input.expressionTypes.set(node, selected.selection.definition.type);
+    } else if (selected.kind === "unsupported") {
+      input.diagnostics.push(diagnostic(selected.code, selected.reason, selected.node));
+    }
+  }, (node, regionRoot) => descendWithinExecutableRegion(node, regionRoot, ast));
+
+  const publishPendingBinding = (declaration: Node): boolean => {
+    const initializer = Node_Initializer(ast, declaration);
+    const selected = initializer === undefined
+      ? undefined
+      : input.expressionTypes.get(initializer) ?? resolveInferredBindingCarrier(
+          initializer,
+          input,
+          semantics,
+        );
+    if (selected === undefined) return false;
+    input.bindingTypes.set(declaration, selected);
+    for (const use of source.navigation.declarationUses(declaration)) {
+      if (use.kind !== "type-only" && use.kind !== "source-linkage") {
+        input.expressionTypes.set(use.reference, selected);
+      }
+    }
+    pendingInferredBindings.delete(declaration);
+    return true;
+  };
+  for (const declaration of [...pendingInferredBindings]) {
+    publishPendingBinding(declaration);
   }
 
   const pendingBindingPatterns = new Set(bindingPatternDeclarations);
@@ -388,6 +444,11 @@ export function analyzeMojoExecutableRegion(
     if (!isMojoExpressionNode(node, ast) || !isRuntimeValueOccurrence(node, input)) return;
     const inferred = inferMojoExpressionType(node, ast, input.expressionTypes);
     if (inferred !== undefined) input.expressionTypes.set(node, inferred);
+    const parent = ast.parent(node);
+    if (parent !== undefined && pendingInferredBindings.has(parent) &&
+      ast.is.IsVariableDeclaration(parent) && Node_Initializer(ast, parent) === node) {
+      publishPendingBinding(parent);
+    }
     if (ast.is.IsArrayLiteralExpression(node)) {
       const resultType = input.expressionTypes.get(node);
       if (resultType === undefined) {
@@ -416,11 +477,24 @@ export function analyzeMojoExecutableRegion(
     }
   }, (node, regionRoot) => descendWithinExecutableRegion(node, regionRoot, ast));
 
+  for (const declaration of [...pendingInferredBindings]) {
+    if (!publishPendingBinding(declaration)) {
+      input.diagnostics.push(typeDiagnostic(
+        declaration,
+        "the selected declaration has no closed Mojo carrier",
+      ));
+    }
+  }
+
   const pendingObjects = new Set(objectLiteralNodes);
   let progressed = true;
   while (pendingObjects.size !== 0 && progressed) {
     progressed = false;
     for (const node of pendingObjects) {
+      if (input.objectLiteralSelections.has(node)) {
+        pendingObjects.delete(node);
+        continue;
+      }
       const expectedType = expectedExpressionType(node, input);
       const inferredType = input.expressionTypes.get(node);
       const candidate = expectedType ?? inferredType;
@@ -490,6 +564,18 @@ export function analyzeMojoExecutableRegion(
         progressed = true;
       }
     }
+  }
+
+  const diagnosedNodes = new Set(input.diagnostics.map(({ sourceNode }) => sourceNode));
+  for (const node of objectLiteralNodes) {
+    if (input.objectLiteralSelections.has(node) ||
+      input.expressionTypes.get(node)?.kind === "dictionary" ||
+      diagnosedNodes.has(node)) continue;
+    input.diagnostics.push(diagnostic(
+      "MOJO_OBJECT_LITERAL_SHAPE_UNSUPPORTED",
+      "Object literal has no sealed dictionary, structural, provider-record, or project-interface representation.",
+      node,
+    ));
   }
 
   for (const declaration of pendingBindingPatterns) {
