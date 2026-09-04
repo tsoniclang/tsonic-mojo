@@ -41,7 +41,6 @@ export type MojoValueConversion =
       readonly kind: "js-callback-truthiness";
       readonly targetType: MojoTargetTypeRef;
       readonly source: "number" | "string" | "native-string" | "dynamic" | "always-true" | "always-false";
-      readonly widenRaises: boolean;
     }
   | { readonly kind: "primitive-cast"; readonly targetType: MojoTargetTypeRef }
   | { readonly kind: "reference-copy"; readonly targetType: MojoTargetTypeRef }

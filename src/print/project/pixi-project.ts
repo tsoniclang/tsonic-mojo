@@ -33,7 +33,7 @@ export function printPixiProject(plan: MojoOutputPlan): string {
     shellQuote(compilerInput),
     "-o",
     shellQuote(output),
-    ...nativeLinkArguments(plan),
+    ...(plan.configuration.outputType === "bin" ? nativeLinkArguments(plan) : []),
   ].filter((part) => part.length > 0).join(" ");
   const lines = [
     "[workspace]",

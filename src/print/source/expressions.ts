@@ -199,7 +199,14 @@ function printExpressionAtPrecedence(
           expression.parameters.map((parameter) => printParameterDocument(parameter, context)),
           ")",
         ),
-        expression.raises ? text(" raises") : emptyDocument,
+        expression.raises
+          ? concat(
+              text(" raises"),
+              expression.errorType === undefined
+                ? emptyDocument
+                : concat(text(" "), requiredMojoTypeDocument(expression.errorType, context)),
+            )
+          : emptyDocument,
         captures,
         result === undefined ? emptyDocument : concat(text(" -> "), result),
         text(": "),

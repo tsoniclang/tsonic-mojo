@@ -114,7 +114,7 @@ test("JavaScript callback families select one sealed runtime operation", () => {
   }
 });
 
-test("JavaScript predicate callbacks retain exact truthiness adapters", () => {
+test("JavaScript predicate callbacks use native immediate adapters", () => {
   const source = generatedSource(compileMojo({
     surfaces: ["js"],
     files: {
@@ -127,9 +127,35 @@ test("JavaScript predicate callbacks retain exact truthiness adapters", () => {
       ].join("\n"),
     },
   }));
-  assert.match(source, /adapt_truthy_number_callback\(widen_callable\(_callable\)\)/u);
-  assert.match(source, /adapt_truthy_native_string_callback\(widen_callable\(_callable_2\)\)/u);
-  assert.doesNotMatch(source, /adapt_truthy_string_callback/u);
+  assert.match(source, /lambda/u);
+  assert.match(source, /js_truthy_number\(_immediate_callback\(/u);
+  assert.match(source, /len\(_immediate_callback_2\(/u);
+  assert.doesNotMatch(source, /adapt_truthy_|widen_callable|RaisingCallable/u);
+});
+
+test("identity-bearing callbacks bridge once into the native immediate ABI", () => {
+  const source = generatedSource(compileMojo({
+    surfaces: ["js"],
+    files: {
+      "index.ts": [
+        "export function main(): void {",
+        "  const increment = (value: number): number => value + 1;",
+        "  const alias = increment;",
+        "  const strictSame = alias === increment;",
+        "  const looseSame = alias == increment;",
+        "  const strictDifferent = alias !== increment;",
+        "  const looseDifferent = alias != increment;",
+        "  if (strictSame && looseSame && !strictDifferent && !looseDifferent) [1].map(alias);",
+        "}",
+      ].join("\n"),
+    },
+  }));
+  assert.match(source, /Callable/u);
+  assert.equal(source.match(/\.identity\(\) is(?: not)? .*\.identity\(\)/gu)?.length, 4);
+  assert.doesNotMatch(source, /RaisingCallable/u);
+  assert.match(source, /lambda/u);
+  assert.match(source, /_immediate_callback\.call\(\(/u);
+  assert.doesNotMatch(source, /adapt_truthy_|widen_callable\(_immediate_callback/u);
 });
 
 test("JavaScript core collection date and math operations use sealed runtime rows", () => {
@@ -251,10 +277,12 @@ test("JavaScript string and array operations retain exact source-profile selecti
     "copy_within", "includes", "index_of", "last_index_of", "join", "slice", "at",
     "to_upper_case", "to_lower_case", "starts_with", "ends_with", "char_at",
     "char_code_at", "code_point_at", "pad_start", "pad_end", "repeat", "trim",
-    "trim_start", "trim_end", "substring", "substr", "replace", "replace_all",
+    "trim_start", "trim_end", "substring", "substr",
     "concat", "value_of",
   ]) assert.match(source, new RegExp(`\\.${method}\\(`, "u"));
-  assert.match(source, /\bstring_split\b/u);
+  assert.match(source, /\bstring_split_pattern\b/u);
+  assert.match(source, /\bstring_replace_pattern\b/u);
+  assert.match(source, /\bstring_replace_all_pattern\b/u);
   assert.match(source, /\bstring_from_char_code\b/u);
   assert.match(source, /\bstring_from_code_point\b/u);
 });

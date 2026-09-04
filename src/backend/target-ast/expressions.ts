@@ -75,6 +75,7 @@ export type MojoExpression =
       readonly captures: readonly MojoLambdaCapture[];
       readonly resultType: MojoTargetTypeRef;
       readonly raises: boolean;
+      readonly errorType?: MojoTargetTypeRef;
       readonly expression: MojoExpression;
     };
 

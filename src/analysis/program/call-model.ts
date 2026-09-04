@@ -22,6 +22,7 @@ export interface MojoAnalyzedCallArgument {
   readonly position: MojoCallArgumentPosition;
   readonly nativeName?: string;
   readonly parameterIndex: number;
+  readonly callableConsumption?: "immediate" | "retained";
   readonly locationBorrow?: {
     readonly declaration: Node;
     readonly mutability: "immutable" | "mutable";

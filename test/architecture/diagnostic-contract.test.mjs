@@ -59,7 +59,7 @@ test("every production Mojo diagnostic has one classified contract row", async (
     "replacementCode",
   ]);
   assert.equal(Number.isSafeInteger(baselineProductionCount), true);
-  assert.equal(baselineProductionCount, 420);
+  assert.equal(baselineProductionCount, 609);
 
   const rowsByCode = new Map();
   for (const row of rows) {
@@ -102,7 +102,7 @@ test("every production Mojo diagnostic has one classified contract row", async (
 test("the explicit unsupported and native-limit baseline is dispositioned", () => {
   const explicitRows = rows.filter((row) =>
     /(?:UNSUPPORTED|NATIVE_LIMIT|NOT_IMPLEMENTED|UNAVAILABLE)/u.test(row.code));
-  assert.equal(explicitRows.length, 97);
+  assert.equal(explicitRows.length, 116);
   assert.deepEqual(
     Object.fromEntries([...allowedAuditDispositions]
       .filter((disposition) => disposition !== "reviewed-other")
@@ -111,11 +111,11 @@ test("the explicit unsupported and native-limit baseline is dispositioned", () =
         explicitRows.filter((row) => row.auditDisposition === disposition).length,
       ])),
     {
-      "close-capability": 62,
+      "close-capability": 73,
       "replace-runtime-umbrella": 3,
-      "retain-exact-guard": 12,
-      "eliminate-late-planning": 5,
-      "split-or-delete": 14,
+      "retain-exact-guard": 19,
+      "eliminate-late-planning": 8,
+      "split-or-delete": 12,
       "retain-generator-limit": 1,
     },
   );

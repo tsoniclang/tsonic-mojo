@@ -217,10 +217,13 @@ export function analyzeMojoJsonStringify(
     context.source.ast,
     sourceCall,
     Object.freeze(parameterTypes),
-    Object.freeze(parameterTypes.map(() => Object.freeze({
+    Object.freeze(parameterTypes.map((_, parameterIndex) => Object.freeze({
       convention: "imm" as const,
       position: "positional-or-keyword" as const,
       passing: "plain" as const,
+      ...(parameterIndex === 1 && replacer === "callable"
+        ? { callableConsumption: "retained" as const }
+        : {}),
     }))),
     resolve,
     context.expressionTypes,

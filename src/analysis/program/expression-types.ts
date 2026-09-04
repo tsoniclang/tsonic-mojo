@@ -26,7 +26,9 @@ export function inferMojoExpressionType(
     const left = BinaryExpression_Left(ast, node);
     return left === undefined ? undefined : expressionTypes.get(left);
   }
-  if (operator === "KindEqualsEqualsEqualsToken" ||
+  if (operator === "KindEqualsEqualsToken" ||
+    operator === "KindEqualsEqualsEqualsToken" ||
+    operator === "KindExclamationEqualsToken" ||
     operator === "KindExclamationEqualsEqualsToken" ||
     operator === "KindLessThanToken" || operator === "KindLessThanEqualsToken" ||
     operator === "KindGreaterThanToken" || operator === "KindGreaterThanEqualsToken" ||

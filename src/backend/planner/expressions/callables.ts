@@ -84,6 +84,7 @@ export function planMojoCallableExpression(
       disposition,
       context,
       planValue,
+      widenedCallableType,
     );
   }
 
@@ -212,6 +213,7 @@ function planNativeCallableExpression(
   disposition: Exclude<MojoCallableDisposition, { readonly kind: "erased" }>,
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
+  widenedCallableType?: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
 ): MojoValuePlan | undefined {
   if (disposition.declaration !== undefined) {
     const binding = context.program.queries.moduleBinding(disposition.declaration);
@@ -221,7 +223,7 @@ function planNativeCallableExpression(
     }
   }
   if (disposition.kind === "native-closure") {
-    return planNativeLambda(selection, context, planValue);
+    return planNativeLambda(selection, context, planValue, widenedCallableType);
   }
   const existingName = context.callableArtifactNames.get(selection.expression);
   const name = existingName ?? allocateMojoSyntheticDeclarationName(context, "callable");
@@ -234,11 +236,13 @@ function planNativeCallableExpression(
       name,
       typeParameters: selection.typeParameters,
       parameters: selection.parameters,
-      resultType: selection.resultType,
+      resultType: widenedCallableType?.result ?? selection.resultType,
       body: selection.body,
       asynchronous: selection.asynchronous,
-      raises: selection.raises,
-      ...(selection.errorType === undefined ? {} : { errorType: selection.errorType }),
+      raises: widenedCallableType?.raises ?? selection.raises,
+      ...((widenedCallableType?.errorType ?? selection.errorType) === undefined
+        ? {}
+        : { errorType: widenedCallableType?.errorType ?? selection.errorType }),
     }), withMojoDeferredExecution(context));
     if (declaration === undefined) return undefined;
     context.syntheticDeclarations.push(declaration);
@@ -253,9 +257,14 @@ function planNativeLambda(
   selection: MojoCallableExpressionSelection,
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
+  widenedCallableType?: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
 ): MojoValuePlan | undefined {
   const deferredContext = withMojoDeferredExecution(context);
-  const body = planValue(selection.body, deferredContext, selection.resultType);
+  const body = planValue(
+    selection.body,
+    deferredContext,
+    widenedCallableType?.result ?? selection.resultType,
+  );
   if (body === undefined) return undefined;
   if (body.before.length !== 0) {
     appendMojoPlanningDiagnostic(
@@ -274,8 +283,11 @@ function planNativeLambda(
       name: capture.name,
       convention: capture.storage === "location" ? "mut" as const : "imm" as const,
     }))),
-    resultType: selection.resultType,
-    raises: selection.raises,
+    resultType: widenedCallableType?.result ?? selection.resultType,
+    raises: widenedCallableType?.raises ?? selection.raises,
+    ...((widenedCallableType?.errorType ?? selection.errorType) === undefined
+      ? {}
+      : { errorType: widenedCallableType?.errorType ?? selection.errorType }),
     expression: body.value,
   }));
 }

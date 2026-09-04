@@ -50,7 +50,8 @@ export type MojoCompositeValuePlanner = (
 
 const binaryOperatorText = new Map<string, string>([
   ["KindPlusToken", "+"], ["KindMinusToken", "-"], ["KindAsteriskToken", "*"],
-  ["KindSlashToken", "/"], ["KindPercentToken", "%"], ["KindEqualsEqualsEqualsToken", "=="],
+  ["KindSlashToken", "/"], ["KindPercentToken", "%"], ["KindEqualsEqualsToken", "=="],
+  ["KindEqualsEqualsEqualsToken", "=="], ["KindExclamationEqualsToken", "!="],
   ["KindExclamationEqualsEqualsToken", "!="], ["KindLessThanToken", "<"],
   ["KindLessThanEqualsToken", "<="], ["KindGreaterThanToken", ">"],
   ["KindGreaterThanEqualsToken", ">="], ["KindAmpersandAmpersandToken", "and"],
@@ -374,12 +375,23 @@ export function planBinary(
       Object.freeze({ plan: left, type: leftType, role: "binary_left" }),
       Object.freeze({ plan: right, type: rightType, role: "binary_right" }),
     ], context);
-    return withMojoValue(ordered.before, {
-      kind: "binary",
-      operator,
-      left: ordered.values[0]!,
-      right: ordered.values[1]!,
-    });
+    const callableIdentity = planErasedCallableIdentityComparison(
+      operatorKind,
+      leftNode,
+      rightNode,
+      ordered.values[0]!,
+      ordered.values[1]!,
+      context,
+    );
+    return withMojoValue(
+      ordered.before,
+      callableIdentity ?? Object.freeze({
+        kind: "binary" as const,
+        operator,
+        left: ordered.values[0]!,
+        right: ordered.values[1]!,
+      }),
+    );
   }
   if (resultType === undefined) return undefined;
   registerMojoTypeImports(resultType, context);
@@ -400,4 +412,36 @@ export function planBinary(
       ]),
     }),
   ], resultPath);
+}
+
+function planErasedCallableIdentityComparison(
+  operatorKind: string,
+  leftNode: Node | undefined,
+  rightNode: Node | undefined,
+  left: MojoExpression,
+  right: MojoExpression,
+  context: MojoPlanningContext,
+): MojoExpression | undefined {
+  if ((operatorKind !== "KindEqualsEqualsToken" &&
+      operatorKind !== "KindEqualsEqualsEqualsToken" &&
+      operatorKind !== "KindExclamationEqualsToken" &&
+      operatorKind !== "KindExclamationEqualsEqualsToken") ||
+    leftNode === undefined || rightNode === undefined ||
+    context.program.representations.callable(leftNode)?.kind !== "erased" ||
+    context.program.representations.callable(rightNode)?.kind !== "erased") return undefined;
+  const identity = (receiver: MojoExpression): MojoExpression => Object.freeze({
+    kind: "method-call",
+    receiver,
+    name: "identity",
+    arguments: Object.freeze([]),
+  });
+  return Object.freeze({
+    kind: "binary",
+    operator: operatorKind === "KindEqualsEqualsToken" ||
+        operatorKind === "KindEqualsEqualsEqualsToken"
+      ? "is"
+      : "is not",
+    left: identity(left),
+    right: identity(right),
+  });
 }

@@ -2,6 +2,7 @@ import type { Node } from "@tsonic/tsts";
 import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 import {
   appendMojoPlanningDiagnostic,
+  mojoModuleMemberExpression,
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import { mojoModuleBindingRead, mojoModuleBindingWrite } from "../bindings/module-bindings.js";
@@ -412,12 +413,22 @@ export function planMojoProperty(
   if (target.kind !== "property-read" && target.kind !== "property-write") return undefined;
   const member: MojoExpression = target.access.kind === "member"
     ? { kind: "member", receiver: ordered.values[0]!, name: target.access.name }
-    : {
-        kind: "method-call",
-        receiver: ordered.values[0]!,
-        name: target.access.name,
-        arguments: Object.freeze([]),
-      };
+    : target.access.kind === "method"
+      ? {
+          kind: "method-call",
+          receiver: ordered.values[0]!,
+          name: target.access.name,
+          arguments: Object.freeze([]),
+        }
+      : {
+          kind: "call",
+          callee: mojoModuleMemberExpression(
+            context,
+            target.access.modulePath,
+            target.access.name,
+          ),
+          arguments: Object.freeze([Object.freeze({ value: ordered.values[0]! })]),
+        };
   const operationPlan = mode !== "read" || selection.readResultConversion === undefined
     ? withMojoValue(ordered.before, member)
     : convertMojoValue(withMojoValue(ordered.before, member), selection.readResultConversion, context);
@@ -677,12 +688,22 @@ export function planMojoProviderPropertyMethodWrite(
     }
     const rawRead: MojoExpression = read.target.access.kind === "member"
       ? Object.freeze({ kind: "member", receiver: location.values[0]!, name: read.target.access.name })
-      : Object.freeze({
-          kind: "method-call",
-          receiver: location.values[0]!,
-          name: read.target.access.name,
-          arguments: Object.freeze([]),
-        });
+      : read.target.access.kind === "method"
+        ? Object.freeze({
+            kind: "method-call",
+            receiver: location.values[0]!,
+            name: read.target.access.name,
+            arguments: Object.freeze([]),
+          })
+        : Object.freeze({
+            kind: "call",
+            callee: mojoModuleMemberExpression(
+              context,
+              read.target.access.modulePath,
+              read.target.access.name,
+            ),
+            arguments: Object.freeze([Object.freeze({ value: location.values[0]! })]),
+          });
     const current = convertMojoValue(
       mojoValue(rawRead),
       selection.readResultConversion,

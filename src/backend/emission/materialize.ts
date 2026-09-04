@@ -1,6 +1,11 @@
 import type { TargetCompileOutput, TargetSourceFile } from "@tsonic/target-api/artifacts";
 import type { MojoOutputPlan } from "../artifact-model/project/output.js";
 import { printPixiProject } from "../../print/project/pixi-project.js";
+import {
+  hasMojoNativeBuild,
+  mojoNativeBuildManifestPath,
+  printMojoNativeBuildManifest,
+} from "../../print/project/native-build-manifest.js";
 import { printMojoModule } from "../../print/source/index.js";
 
 export function materializeMojoOutputPlan(plan: MojoOutputPlan): TargetCompileOutput {
@@ -43,6 +48,13 @@ export function materializeMojoOutputPlan(plan: MojoOutputPlan): TargetCompileOu
       kind: "project",
       path: "pixi.toml",
       text: printPixiProject(plan),
+    }));
+  }
+  if (hasMojoNativeBuild(plan)) {
+    artifacts.push(Object.freeze({
+      kind: "project",
+      path: mojoNativeBuildManifestPath,
+      text: printMojoNativeBuildManifest(plan),
     }));
   }
   return Object.freeze({ artifacts: Object.freeze(artifacts) });

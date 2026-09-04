@@ -295,6 +295,22 @@ export function finalizeMojoProgramEffects(
     const declaration = callableDeclarationByExpression.get(expression);
     if (declaration !== undefined) sealCallableDeclaration(declaration, callableType);
   }
+  for (const sourceFile of sourceFiles) {
+    walkSourceTree(sourceFile, ast, (node): void => {
+      const initializer = Node_Initializer(ast, node);
+      if (initializer === undefined) return;
+      const dependency = resolveMojoCallableExpressionDependency(
+        initializer,
+        source,
+        callableExpressionSelections,
+        callableExpressionByDeclaration,
+      );
+      const callable = dependency === undefined
+        ? undefined
+        : callableExpressionSelections.get(dependency);
+      if (callable !== undefined) sealCallableDeclaration(node, callable.callableType);
+    });
+  }
   const finalizeCallableArgument = (
     argument: MojoAnalyzedCallArgument,
   ): MojoAnalyzedCallArgument => {
@@ -311,10 +327,7 @@ export function finalizeMojoProgramEffects(
     let conversion: MojoValueConversion | undefined;
     let incompatibilityReason: string | undefined;
     if (argument.conversion.kind === "js-callback-truthiness") {
-      conversion = Object.freeze({
-        ...argument.conversion,
-        widenRaises: !callable.callableType.raises,
-      });
+      conversion = argument.conversion;
     } else {
       const classified = classifyMojoValueConversion(
         callable.callableType,
@@ -381,7 +394,6 @@ export function finalizeMojoProgramEffects(
       ? Object.freeze({
           ...argument.conversion,
           targetType,
-          widenRaises: !argument.sourceType.raises,
         })
       : classified?.kind === "resolved"
         ? classified.conversion

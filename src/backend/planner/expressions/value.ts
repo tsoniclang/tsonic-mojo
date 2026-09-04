@@ -40,7 +40,7 @@ import {
   requiredConversion,
 } from "./support.js";
 import { registerMojoTypeImports } from "../types/imports.js";
-import { mojoValue } from "./value-plan.js";
+import { consumeMojoValue, mojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { planMojoCallableExpression } from "./callables.js";
 import {
@@ -139,7 +139,7 @@ export function planMojoUpdate(
             receiver: storage,
             name: "write",
             arguments: Object.freeze([Object.freeze({
-              value: Object.freeze({ kind: "consume", expression: value }),
+              value: consumeMojoValue(value, type, context.program.lifecycle),
             })]),
           }),
         });
@@ -152,7 +152,7 @@ export function planMojoUpdate(
             receiver: storage,
             name: "write",
             arguments: Object.freeze([Object.freeze({
-              value: Object.freeze({ kind: "consume", expression: assignedValue }),
+              value: consumeMojoValue(assignedValue, type, context.program.lifecycle),
             })]),
           }),
         });
@@ -556,7 +556,7 @@ export function planMojoAssignment(
             receiver: storage,
             name: "write",
             arguments: Object.freeze([Object.freeze({
-              value: Object.freeze({ kind: "consume", expression: argumentValue }),
+              value: consumeMojoValue(argumentValue, targetType, context.program.lifecycle),
             })]),
           }),
         });

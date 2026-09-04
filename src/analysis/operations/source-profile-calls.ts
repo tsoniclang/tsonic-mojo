@@ -22,7 +22,6 @@ import {
 import { selectMojoSourceProfileCallback } from "./source-profile-callbacks.js";
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 import {
-  closeMojoErrorType,
   mojoNativeErrorType,
 } from "../../target-model/types/error-domains.js";
 import { mojoRegExpNativeResultType } from "../../policy/types/js-regexp.js";
@@ -72,6 +71,7 @@ export function analyzeSourceProfileCall(
     readonly position: "positional-or-keyword";
     readonly variadic: boolean;
     readonly passing: "plain";
+    readonly callableConsumption?: "immediate";
   }[] = [];
   const parameterContract = selected.row.parameterContract;
   const parameterContractMode = selected.row.parameterContractMode ?? "exact";
@@ -153,6 +153,9 @@ export function analyzeSourceProfileCall(
       variadic: parameter.rest,
       ...(variadicCollectionType === undefined ? {} : { variadicCollectionType }),
       passing: "plain",
+      ...(callback?.parameterIndex === parameterIndex
+        ? { callableConsumption: "immediate" as const }
+        : {}),
     }));
   }
   const arguments_ = analyzeArguments(
@@ -245,14 +248,7 @@ export function analyzeSourceProfileCall(
   );
   if (result.kind === "unsupported") return result;
   const baseErrorType = selected.row.raises === true ? mojoNativeErrorType() : undefined;
-  const callbackErrorType = callback === undefined ||
-      selected.row.callback?.errorMode !== "propagate"
-    ? undefined
-    : callback.type.errorType ?? mojoNativeErrorType();
-  const operationErrorType = closeMojoErrorType([
-    ...(baseErrorType === undefined ? [] : [baseErrorType]),
-    ...(callbackErrorType === undefined ? [] : [callbackErrorType]),
-  ]);
+  const operationErrorType = baseErrorType;
   return {
     kind: "resolved",
     selection: Object.freeze({

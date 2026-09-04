@@ -478,7 +478,9 @@ function prefixOperator(kind: string | undefined): string | undefined {
 }
 
 function isComparisonOperator(operator: string): boolean {
-  return operator === "KindEqualsEqualsEqualsToken" ||
+  return operator === "KindEqualsEqualsToken" ||
+    operator === "KindEqualsEqualsEqualsToken" ||
+    operator === "KindExclamationEqualsToken" ||
     operator === "KindExclamationEqualsEqualsToken" ||
     operator === "KindLessThanToken" || operator === "KindLessThanEqualsToken" ||
     operator === "KindGreaterThanToken" || operator === "KindGreaterThanEqualsToken";

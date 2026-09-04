@@ -1,6 +1,8 @@
 import type { AstReader, Node } from "@tsonic/tsts";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import {
+  BinaryExpression_Left,
+  BinaryExpression_Right,
   ForStatement_Condition,
   ForStatement_Incrementor,
   ForStatement_Initializer,
@@ -305,7 +307,15 @@ export function validateMojoExecutableRegionSyntax(
         validateExpression(binary?.Left);
         return;
       }
-      if (!supportedBinaryOperators.has(operator)) {
+      const left = BinaryExpression_Left(ast, expression);
+      const right = BinaryExpression_Right(ast, expression);
+      const looseIdentity = (operator === "KindEqualsEqualsToken" ||
+          operator === "KindExclamationEqualsToken") &&
+        left !== undefined && right !== undefined &&
+        expressionTypes.get(left)?.kind === "callable" &&
+        expressionTypes.get(right)?.kind === "callable";
+      if (!supportedBinaryOperators.has(operator) &&
+        typeTests.get(expression) === undefined && !looseIdentity) {
         diagnostics.push(diagnostic(
           "MOJO_BINARY_OPERATOR_UNSUPPORTED",
           `Binary operator '${operator}' has no certified Mojo lowering.`,

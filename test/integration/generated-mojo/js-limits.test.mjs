@@ -24,7 +24,9 @@ test("RegExp-dependent JavaScript operations select the exact ECMAScript runtime
   'aaa'.search(/a+/);
   'aaa'.match(/a+/);
   'aaa'.matchAll(/a+/g);
-  'e\\u0301'.normalize('NFC');`);
+  'e\\u0301'.normalize('NFC');
+  const decomposed = '\u00e9'.normalize('NFD');
+  decomposed.length;`);
   assert.deepEqual(result.diagnostics, []);
   const source = artifactTexts(result).find(({ text }) => text.includes("def tsonic_main"))?.text;
   assert.ok(source);
@@ -36,6 +38,8 @@ test("RegExp-dependent JavaScript operations select the exact ECMAScript runtime
     "string_match_all_pattern",
     "string_normalize",
   ]) assert.match(source, new RegExp(`\\b${operation}\\b`, "u"));
+  assert.match(source, /source_string_length\(decomposed\)/u);
+  assert.doesNotMatch(source, /JsString\([^\n]*decomposed|decomposed\.__len__\(\)/u);
 });
 
 test("unsupported JavaScript semantic families have one deterministic boundary", () => {

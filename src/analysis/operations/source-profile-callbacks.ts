@@ -124,6 +124,5 @@ function callbackTruthinessConversion(
     kind: "js-callback-truthiness",
     targetType,
     source,
-    widenRaises: !sourceType.raises,
   });
 }

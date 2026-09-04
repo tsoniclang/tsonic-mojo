@@ -39,6 +39,7 @@ import {
   planMojoTruthiness,
 } from "./conversion-support.js";
 import { boxNativeStringAsJsValue, isJsArray } from "./js-carriers.js";
+import { planMojoImmediateCallable } from "./immediate-callables.js";
 
 export type MojoValuePlanner = (
   node: Node,
@@ -128,6 +129,17 @@ export function planSelectedArgument(
       spread: false,
       borrowProjection: true,
     });
+  }
+  if (argument.callableConsumption === "immediate") {
+    const plan = planMojoImmediateCallable(argument, context, planValue);
+    return plan === undefined
+      ? undefined
+      : Object.freeze({
+          plan,
+          type: argument.parameterType,
+          ...(argument.position === "keyword" ? { name: argument.nativeName! } : {}),
+          spread: false,
+        });
   }
   const directCallableAdaptation = preparedExpression === undefined &&
     argument.sourceForm === "value" && argument.conversion.kind === "callable-adapt" &&
@@ -657,25 +669,7 @@ export function applyMojoConversion(
     }
     case "js-truthiness":
       return planMojoTruthiness(expression, conversion.conversion, context);
-    case "js-callback-truthiness": {
-      registerMojoTypeImports(conversion.targetType, context);
-      const callable = conversion.widenRaises
-        ? Object.freeze({
-            kind: "call" as const,
-            callee: mojoModuleMemberExpression(context, ["tsonic_runtime"], "widen_callable"),
-            arguments: Object.freeze([{ value: expression }]),
-          })
-        : expression;
-      return Object.freeze({
-        kind: "call",
-        callee: mojoModuleMemberExpression(
-          context,
-          ["tsonic_js"],
-          `adapt_truthy_${conversion.source.replace(/-/gu, "_")}_callback`,
-        ),
-        arguments: Object.freeze([{ value: callable }]),
-      });
-    }
+    case "js-callback-truthiness": return undefined;
     case "js-to-native-string":
       return { kind: "method-call", receiver: expression, name: "to_native_strict", arguments: Object.freeze([]) };
     case "native-error-result-unwrap":

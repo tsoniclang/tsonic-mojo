@@ -408,7 +408,9 @@ function sourceProfilePropertyAccess(
   member: string,
   receiver: MojoTargetTypeRef,
 ): {
-  readonly read: { readonly kind: "member" | "method"; readonly name: string };
+  readonly read:
+    | { readonly kind: "member" | "method"; readonly name: string }
+    | { readonly kind: "function"; readonly modulePath: readonly string[]; readonly name: string };
   readonly write?: { readonly kind: "member" | "method"; readonly name: string };
   readonly resultType?: MojoTargetTypeRef;
   readonly storageType?: MojoTargetTypeRef;
@@ -441,14 +443,26 @@ function sourceProfilePropertyAccess(
     }
   }
   if (profile === "native") {
-    if ((owner === "String" || owner === "Array" || owner === "ReadonlyArray") && member === "length") {
+    if (owner === "String" && member === "length" && receiver.kind === "native-string") {
+      return {
+        read: Object.freeze({
+          kind: "function",
+          modulePath: Object.freeze(["tsonic_runtime"]),
+          name: "source_string_length",
+        }),
+        raises: false,
+      };
+    }
+    if ((owner === "Array" || owner === "ReadonlyArray") && member === "length" &&
+      hasNativeLength(receiver)) {
       return {
         read: Object.freeze({ kind: "method", name: "__len__" }),
         resultType: Object.freeze({ kind: "source-primitive", name: "native-int" }),
         raises: false,
       };
     }
-    if ((owner === "Map" || owner === "ReadonlyMap" || owner === "Set" || owner === "ReadonlySet") && member === "size") {
+    if ((owner === "Map" || owner === "ReadonlyMap" || owner === "Set" || owner === "ReadonlySet") && member === "size" &&
+      hasNativeLength(receiver)) {
       return {
         read: Object.freeze({ kind: "method", name: "__len__" }),
         resultType: Object.freeze({ kind: "source-primitive", name: "native-int" }),
@@ -457,13 +471,47 @@ function sourceProfilePropertyAccess(
     }
     return undefined;
   }
-  if ((owner === "String" || owner === "Array" || owner === "ReadonlyArray") && member === "length") {
+  if (owner === "String" && member === "length" && receiver.kind === "native-string") {
+    return {
+      read: Object.freeze({
+        kind: "function",
+        modulePath: Object.freeze(["tsonic_runtime"]),
+        name: "source_string_length",
+      }),
+      raises: false,
+    };
+  }
+  if ((owner === "Array" || owner === "ReadonlyArray") && member === "length" &&
+    hasNativeLength(receiver)) {
+    return {
+      read: Object.freeze({ kind: "method", name: "__len__" }),
+      resultType: Object.freeze({ kind: "source-primitive", name: "native-int" }),
+      raises: false,
+    };
+  }
+  if ((owner === "String" || owner === "Array" || owner === "ReadonlyArray") && member === "length" &&
+    hasJavaScriptLength(receiver)) {
     return { read: Object.freeze({ kind: "method", name: "js_length" }), raises: false };
   }
-  if ((owner === "Map" || owner === "ReadonlyMap" || owner === "Set" || owner === "ReadonlySet") && member === "size") {
+  if ((owner === "Map" || owner === "ReadonlyMap" || owner === "Set" || owner === "ReadonlySet") && member === "size" &&
+    hasJavaScriptLength(receiver)) {
     return { read: Object.freeze({ kind: "method", name: "js_size" }), raises: false };
   }
   return undefined;
+}
+
+function hasNativeLength(type: MojoTargetTypeRef): boolean {
+  return type.kind === "native-string" || type.kind === "list" || type.kind === "fixed-array" ||
+    type.kind === "tuple" || type.kind === "dictionary";
+}
+
+function hasJavaScriptLength(type: MojoTargetTypeRef): boolean {
+  return type.kind === "target-named" && [
+    "tsonic.mojo.js.JsString",
+    "tsonic.mojo.js.JsArray",
+    "tsonic.mojo.js.JsMap",
+    "tsonic.mojo.js.JsSet",
+  ].includes(type.id);
 }
 
 function sourceProfileConstantName(

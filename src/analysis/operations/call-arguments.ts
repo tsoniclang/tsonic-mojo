@@ -19,6 +19,7 @@ export interface MojoCallArgumentTarget {
   readonly variadic?: boolean;
   readonly variadicCollectionType?: MojoTargetTypeRef;
   readonly passing?: "plain" | "consume";
+  readonly callableConsumption?: "immediate" | "retained";
 }
 
 export function restCallableElementType(
@@ -177,6 +178,9 @@ export function analyzeArguments(
         ...(target.position === "keyword" && target.nativeName !== undefined
           ? { nativeName: target.nativeName }
           : {}),
+        ...(target.callableConsumption === undefined
+          ? {}
+          : { callableConsumption: target.callableConsumption }),
       }));
     }
   }

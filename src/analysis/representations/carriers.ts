@@ -9,10 +9,12 @@ import type {
   MojoAnalyzedTypeAlias,
   MojoCallableExpressionSelection,
 } from "../program/model.js";
+import type { MojoCallSelection } from "../program/call-model.js";
+import { resolveMojoCallableExpressionDependency } from "../callables/expressions.js";
 import type { MojoSourceModuleCatalog } from "../source-modules/model.js";
 import type { TargetPlanningSourceNavigation } from "@tsonic/target-api/analysis";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
-import type { SourceProgramNavigation } from "@tsonic/target-api/source";
+import type { SourceProgramNavigation, TargetSourceProgram } from "@tsonic/target-api/source";
 import { walkSourceTree } from "../../source/syntax/traversal.js";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
@@ -41,9 +43,11 @@ export interface MojoRepresentationCatalogInput {
   readonly authoredTypeAliases: readonly MojoAnalyzedTypeAlias[];
   readonly sourceNavigation: TargetPlanningSourceNavigation;
   readonly callableNavigation: SourceProgramNavigation;
+  readonly source: TargetSourceProgram;
   readonly callableExpressionNodes: ReadonlySet<Node>;
   readonly callableExpressionSelections: WeakMap<Node, MojoCallableExpressionSelection>;
   readonly callableDeclarationByExpression: WeakMap<Node, Node>;
+  readonly callSelections: WeakMap<Node, MojoCallSelection>;
   readonly lifecycle: MojoLifecycleResolver;
   readonly diagnostics: TargetDiagnostic[];
   readonly reservedNames: ReadonlySet<string>;
@@ -61,6 +65,7 @@ export function createMojoRepresentationCatalog(
   const callableDispositions = new WeakMap<Node, MojoCallableDisposition>();
   const bindingDispositions = new WeakMap<Node, MojoBindingDisposition>();
   const directCallableExpressions = new Map<Node, "direct" | "thin">();
+  const requiredErasedCallableExpressions = new Set<Node>();
   const carrierUseCounts = new Map<string, number>();
   const authoredAliasCandidates = Object.freeze(input.authoredTypeAliases.flatMap((alias) => {
     const module = input.sourceModules.forSourceFile(alias.sourceFile);
@@ -72,6 +77,7 @@ export function createMojoRepresentationCatalog(
     const existing = carriersByKey.get(key);
     if (existing !== undefined) return existing;
     for (const child of childTypes(type)) carrierForType(child);
+    for (const support of physicalSupportTypes(type)) carrierForType(support);
     const id = physicalTypeId(key);
     const collision = carriersById.get(id);
     if (collision !== undefined && collision.key !== key) {
@@ -87,6 +93,7 @@ export function createMojoRepresentationCatalog(
     carrierUseCounts.set(key, (carrierUseCounts.get(key) ?? 0) + 1);
     const id = carrierForType(type);
     for (const child of childTypes(type)) recordTypeUse(child);
+    for (const support of physicalSupportTypes(type)) recordTypeUse(support);
     return id;
   };
 
@@ -105,12 +112,48 @@ export function createMojoRepresentationCatalog(
       }
     }
   }
+  for (const sourceFile of input.sourceFiles) {
+    walkSourceTree(sourceFile, input.ast, (node): void => {
+      const call = input.callSelections.get(node);
+      if (call === undefined || !("arguments" in call)) return;
+      for (const argument of call.arguments) {
+        recordTypeUse(argument.sourceType);
+        recordTypeUse(argument.parameterType);
+        if (argument.sourceContainerType !== undefined) {
+          recordTypeUse(argument.sourceContainerType);
+        }
+        if (argument.callableConsumption !== "retained") continue;
+        const expression = resolveMojoCallableExpressionDependency(
+          argument.expression,
+          input.source,
+          input.callableExpressionSelections,
+          input.callableDeclarationByExpression,
+        );
+        if (expression === undefined) {
+          input.diagnostics.push(mojoAnalysisDiagnostic(
+            "MOJO_REQUIRED_ERASED_CALLABLE_UNRESOLVED",
+            "A retained callback parameter requires one exact callable expression before representation sealing.",
+            argument.expression,
+          ));
+          continue;
+        }
+        requiredErasedCallableExpressions.add(expression);
+      }
+    });
+  }
   for (const expression of input.callableExpressionNodes) {
     const selection = input.callableExpressionSelections.get(expression);
     if (selection === undefined) continue;
     const declaration = input.callableDeclarationByExpression.get(expression);
     const directKind = directCallableExpressions.get(expression);
-    const disposition: MojoCallableDisposition = directKind === undefined
+    const disposition: MojoCallableDisposition = requiredErasedCallableExpressions.has(expression)
+      ? Object.freeze({
+          kind: "erased",
+          expression,
+          ...(declaration === undefined ? {} : { declaration }),
+          identityObserved: false,
+        })
+      : directKind === undefined
       ? classifyMojoCallableDisposition(
           expression,
           declaration,
@@ -233,7 +276,15 @@ export function createMojoRepresentationCatalog(
       });
     },
     callable(referenceOrExpression: Node) {
-      return callableDispositions.get(referenceOrExpression);
+      const direct = callableDispositions.get(referenceOrExpression);
+      if (direct !== undefined) return direct;
+      const expression = resolveMojoCallableExpressionDependency(
+        referenceOrExpression,
+        input.source,
+        input.callableExpressionSelections,
+        input.callableDeclarationByExpression,
+      );
+      return expression === undefined ? undefined : callableDispositions.get(expression);
     },
     parameter(declaration: Node) {
       return parameterDispositions.get(declaration);
@@ -397,6 +448,14 @@ function childTypes(type: MojoTargetTypeRef): readonly MojoTargetTypeRef[] {
     case "compiler-expression":
       return Object.freeze([]);
   }
+}
+
+function physicalSupportTypes(type: MojoTargetTypeRef): readonly MojoTargetTypeRef[] {
+  if (type.kind !== "callable") return Object.freeze([]);
+  return Object.freeze([Object.freeze({
+    kind: "tuple",
+    elements: Object.freeze(type.parameters.map((parameter) => parameter.type)),
+  })]);
 }
 
 function genericArgumentTypes(
