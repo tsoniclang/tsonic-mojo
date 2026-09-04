@@ -26,6 +26,7 @@ export function finalizeMojoModuleEffects(
         errorTypesByDeclaration.get(dependency) ?? []),
     )] as const;
   }));
+  const directErrorTypes = new Map(errorTypes);
   const runtimeInitialization = new Map(
     analyzedModules.map((module) => [module, module.runtimeInitializationRequired] as const),
   );
@@ -67,12 +68,17 @@ export function finalizeMojoModuleEffects(
     }
   }
   return Object.freeze(analyzedModules.map((module) => {
+    const directErrorType = closeMojoErrorType(directErrorTypes.get(module) ?? []);
     const errorType = closeMojoErrorType(errorTypes.get(module) ?? []);
     return Object.freeze({
       ...module,
       asynchronous: asynchronous.get(module) === true,
       raises: errorType !== undefined,
       ...(errorType === undefined ? {} : { errorType }),
+      directAsynchronous: module.directAsynchronous,
+      directRaises: directErrorType !== undefined,
+      ...(directErrorType === undefined ? {} : { directErrorType }),
+      directRuntimeInitializationRequired: module.directRuntimeInitializationRequired,
       initializationStateRequired: module.initializationStateRequired,
       runtimeInitializationRequired: runtimeInitialization.get(module) === true,
     });

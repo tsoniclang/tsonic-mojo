@@ -4,6 +4,7 @@ import {
 import type {
   MojoAnalyzedModule,
   MojoAnalyzedModuleBinding,
+  MojoModuleInitializationComponent,
   MojoTargetProgram,
 } from "../../../analysis/program/model.js";
 import type { MojoSourceModuleDefinition } from "../../../analysis/source-modules/model.js";
@@ -52,6 +53,20 @@ export function planMojoModuleState(
     binding.disposition.kind === "direct-function");
   const cellBindings = module.bindings.filter((binding) =>
     binding.disposition.kind === "immutable-runtime" || binding.disposition.kind === "live-cell");
+  const component = program.moduleInitialization.componentForModuleId(module.id);
+  if (component === undefined) {
+    appendPlanningFailure(
+      context,
+      context.diagnostics.length,
+      "MOJO_MODULE_INITIALIZATION_COMPONENT_MISSING",
+      `Source module '${definition.relativeSourcePath}' has no sealed initialization component.`,
+      module.sourceFile,
+    );
+    return undefined;
+  }
+  const ownsInitialization = component.ownerModuleId === module.id;
+  const ownsLifecycle = ownsInitialization && component.directRuntimeInitializationRequired;
+  const stateRequired = cellBindings.length > 0 || ownsLifecycle;
   const declarations: MojoDeclaration[] = [];
   for (const binding of comptimeBindings) {
     const diagnosticCount = context.diagnostics.length;
@@ -83,43 +98,75 @@ export function planMojoModuleState(
     }
     declarations.push(declaration);
   }
-  if (!module.runtimeInitializationRequired && cellBindings.length === 0) {
+  if (!component.runtimeInitializationRequired && cellBindings.length === 0) {
     return Object.freeze(declarations);
   }
 
   let scopedLockType: MojoTargetTypeRef | undefined;
-  if (module.initializationStateRequired) {
+  if (stateRequired) {
     const stateType = moduleStateType(definition, module);
     const lockType = namedType("mojo.std.utils.BlockingSpinLock", ["std", "utils"], "BlockingSpinLock");
-    scopedLockType = namedType("mojo.std.utils.BlockingScopedLock", ["std", "utils"], "BlockingScopedLock");
+    if (ownsLifecycle) {
+      scopedLockType = namedType("mojo.std.utils.BlockingScopedLock", ["std", "utils"], "BlockingScopedLock");
+    }
     registerMojoTypeImports(stateType, context);
-    registerMojoTypeImports(lockType, context);
-    registerMojoTypeImports(scopedLockType, context);
+    if (ownsLifecycle) {
+      registerMojoTypeImports(lockType, context);
+      registerMojoTypeImports(scopedLockType!, context);
+    }
     registerMojoSymbolImport(context, ["std", "collections"], "Optional");
-    declarations.push(moduleStateStruct(module, cellBindings, lockType));
-    declarations.push(moduleStateFactory(module, stateType, cellBindings, lockType));
+    declarations.push(moduleStateStruct(module, cellBindings, ownsLifecycle ? lockType : undefined));
+    declarations.push(moduleStateFactory(
+      module,
+      stateType,
+      cellBindings,
+      ownsLifecycle ? lockType : undefined,
+    ));
     declarations.push(moduleStateCell(module, definition.id, context));
   }
-  const diagnosticCount = context.diagnostics.length;
-  const initializer = planModuleInitializer(program, definition, module, scopedLockType, context);
-  if (initializer === undefined) {
-    appendPlanningFailure(
-      context,
-      diagnosticCount,
-      "MOJO_MODULE_INITIALIZER_NOT_PLANNED",
-      `Source module '${definition.relativeSourcePath}' has no exact runtime initializer plan.`,
-      module.sourceFile,
-    );
-    return undefined;
+  if (module.directRuntimeInitializationRequired) {
+    const diagnosticCount = context.diagnostics.length;
+    const body = planModuleInitializerBody(module, cellBindings.length > 0, context);
+    if (body === undefined) {
+      appendPlanningFailure(
+        context,
+        diagnosticCount,
+        "MOJO_MODULE_INITIALIZER_BODY_NOT_PLANNED",
+        `Source module '${definition.relativeSourcePath}' has no exact runtime initializer body.`,
+        module.sourceFile,
+      );
+      return undefined;
+    }
+    declarations.push(body);
   }
-  declarations.push(initializer);
+  if (ownsLifecycle) {
+    const diagnosticCount = context.diagnostics.length;
+    const initializer = planInitializationComponent(
+      program,
+      component,
+      module,
+      scopedLockType,
+      context,
+    );
+    if (initializer === undefined) {
+      appendPlanningFailure(
+        context,
+        diagnosticCount,
+        "MOJO_MODULE_INITIALIZER_NOT_PLANNED",
+        `Source module '${definition.relativeSourcePath}' has no exact component initializer plan.`,
+        module.sourceFile,
+      );
+      return undefined;
+    }
+    declarations.push(initializer);
+  }
   return Object.freeze(declarations);
 }
 
 function moduleStateStruct(
   module: MojoAnalyzedModule,
   bindings: readonly MojoAnalyzedModuleBinding[],
-  lockType: MojoTargetTypeRef,
+  lockType: MojoTargetTypeRef | undefined,
 ): MojoStructDeclaration {
   return Object.freeze({
     kind: "struct",
@@ -127,12 +174,14 @@ function moduleStateStruct(
     genericParameters: Object.freeze([]),
     conformances: Object.freeze([]),
     fields: Object.freeze([
-      Object.freeze({ name: module.lifecycleLockName, type: lockType, compileTime: false }),
-      Object.freeze({
-        name: module.lifecycleInitializedName,
-        type: Object.freeze({ kind: "source-primitive" as const, name: "bool" as const }),
-        compileTime: false,
-      }),
+      ...(lockType === undefined ? [] : [
+        Object.freeze({ name: module.lifecycleLockName, type: lockType, compileTime: false }),
+        Object.freeze({
+          name: module.lifecycleInitializedName,
+          type: Object.freeze({ kind: "source-primitive" as const, name: "bool" as const }),
+          compileTime: false,
+        }),
+      ]),
       ...bindings.map((binding) => Object.freeze({
         name: binding.name,
         type: optionalType(binding.type),
@@ -148,7 +197,7 @@ function moduleStateFactory(
   module: MojoAnalyzedModule,
   stateType: MojoTargetTypeRef,
   bindings: readonly MojoAnalyzedModuleBinding[],
-  lockType: MojoTargetTypeRef,
+  lockType: MojoTargetTypeRef | undefined,
 ): MojoFunctionDeclaration {
   return Object.freeze({
     kind: "function",
@@ -164,8 +213,10 @@ function moduleStateFactory(
         kind: "construct",
         type: stateType,
         arguments: Object.freeze([
-          Object.freeze({ value: construct(lockType) }),
-          Object.freeze({ value: Object.freeze({ kind: "bool-literal", value: false }) }),
+          ...(lockType === undefined ? [] : [
+            Object.freeze({ value: construct(lockType) }),
+            Object.freeze({ value: Object.freeze({ kind: "bool-literal" as const, value: false }) }),
+          ]),
           ...bindings.map((binding) => Object.freeze({ value: emptyModuleBinding(binding) })),
         ]),
       }),
@@ -197,36 +248,28 @@ function moduleStateCell(
   });
 }
 
-function planModuleInitializer(
-  program: MojoTargetProgram,
-  definition: MojoSourceModuleDefinition,
+function planModuleInitializerBody(
   module: MojoAnalyzedModule,
-  scopedLockType: MojoTargetTypeRef | undefined,
+  stateRequired: boolean,
   context: MojoPlanningContext,
 ): MojoFunctionDeclaration | undefined {
-  if (module.errorType !== undefined) registerMojoTypeImports(module.errorType, context);
-  const moduleContext = withMojoErrorType(context, module.errorType);
-  const dependencyInitialization = planDependencyInitialization(
-    program,
-    definition,
-    module,
-    moduleContext,
-  );
-  if (dependencyInitialization === undefined) return undefined;
-  if (!module.initializationStateRequired) {
+  if (module.directErrorType !== undefined) registerMojoTypeImports(module.directErrorType, context);
+  const moduleContext = withMojoErrorType(context, module.directErrorType);
+  if (!stateRequired) {
+    const statements = planModuleInitializationSteps(module, moduleContext, 0);
+    if (statements === undefined) return undefined;
     return Object.freeze({
       kind: "function",
-      name: module.initializeName,
+      name: module.initializeBodyName,
       genericParameters: Object.freeze([]),
       parameters: Object.freeze([]),
       resultType: Object.freeze({ kind: "unit" }),
-      asynchronous: module.asynchronous,
-      raises: module.raises,
-      ...(module.errorType === undefined ? {} : { errorType: module.errorType }),
-      statements: dependencyInitialization,
+      asynchronous: module.directAsynchronous,
+      raises: module.directRaises,
+      ...(module.directErrorType === undefined ? {} : { errorType: module.directErrorType }),
+      statements,
     });
   }
-  if (scopedLockType === undefined) return undefined;
   const stateName = allocateMojoSyntheticName(context, "state");
   const statePointer = mojoModuleStatePointerExpression(module, context);
   if (statePointer === undefined) {
@@ -234,7 +277,7 @@ function planModuleInitializer(
       context,
       context.diagnostics.length,
       "MOJO_MODULE_STATE_OWNER_NOT_PLANNED",
-      `Source module '${definition.relativeSourcePath}' has no exact module-state owner.`,
+      `Source module '${context.module.relativeSourcePath}' has no exact module-state owner.`,
       module.sourceFile,
     );
     return undefined;
@@ -249,20 +292,60 @@ function planModuleInitializer(
     Object.freeze({ kind: "path", path: stateName }),
     state,
   );
-  const initialization: MojoStatement[] = [...dependencyInitialization];
   const sourceInitialization = planModuleInitializationSteps(module, initializingContext, 0);
   if (sourceInitialization === undefined) return undefined;
-  initialization.push(...sourceInitialization);
-  initialization.push(Object.freeze({
-    kind: "assignment",
-    operator: "=",
-    left: Object.freeze({
-      kind: "member",
-      receiver: state,
-      name: module.lifecycleInitializedName,
-    }),
-    right: Object.freeze({ kind: "bool-literal", value: true }),
-  }));
+  return Object.freeze({
+    kind: "function",
+    name: module.initializeBodyName,
+    genericParameters: Object.freeze([]),
+    parameters: Object.freeze([]),
+    resultType: Object.freeze({ kind: "unit" }),
+    asynchronous: module.directAsynchronous,
+    raises: module.directRaises,
+    ...(module.directErrorType === undefined ? {} : { errorType: module.directErrorType }),
+    statements: Object.freeze([
+      Object.freeze({ kind: "variable", name: stateName, initializer: statePointer }),
+      ...sourceInitialization,
+    ]),
+  });
+}
+
+function planInitializationComponent(
+  program: MojoTargetProgram,
+  component: MojoModuleInitializationComponent,
+  module: MojoAnalyzedModule,
+  scopedLockType: MojoTargetTypeRef | undefined,
+  context: MojoPlanningContext,
+): MojoFunctionDeclaration | undefined {
+  if (component.errorType !== undefined) registerMojoTypeImports(component.errorType, context);
+  const componentContext = withMojoErrorType(context, component.errorType);
+  const initialization = planComponentInitializationSequence(
+    program,
+    component,
+    componentContext,
+  );
+  if (initialization === undefined) return undefined;
+  if (!component.directRuntimeInitializationRequired) {
+    return Object.freeze({
+      kind: "function",
+      name: module.initializeName,
+      genericParameters: Object.freeze([]),
+      parameters: Object.freeze([]),
+      resultType: Object.freeze({ kind: "unit" }),
+      asynchronous: component.asynchronous,
+      raises: component.raises,
+      ...(component.errorType === undefined ? {} : { errorType: component.errorType }),
+      statements: initialization,
+    });
+  }
+  if (scopedLockType === undefined) return undefined;
+  const stateName = allocateMojoSyntheticName(context, "state");
+  const statePointer = mojoModuleStatePointerExpression(module, context);
+  if (statePointer === undefined) return undefined;
+  const state = Object.freeze({
+    kind: "postfix-deref" as const,
+    expression: Object.freeze({ kind: "path" as const, path: stateName }),
+  });
   const lock = Object.freeze({
     kind: "member" as const,
     receiver: state,
@@ -274,9 +357,9 @@ function planModuleInitializer(
     genericParameters: Object.freeze([]),
     parameters: Object.freeze([]),
     resultType: Object.freeze({ kind: "unit" }),
-    asynchronous: module.asynchronous,
-    raises: module.raises,
-    ...(module.errorType === undefined ? {} : { errorType: module.errorType }),
+    asynchronous: component.asynchronous,
+    raises: component.raises,
+    ...(component.errorType === undefined ? {} : { errorType: component.errorType }),
     statements: Object.freeze([
       Object.freeze({ kind: "variable", name: stateName, initializer: statePointer }),
       Object.freeze({
@@ -297,60 +380,111 @@ function planModuleInitializer(
             thenStatements: Object.freeze([Object.freeze({ kind: "return" })]),
           }),
           ...initialization,
+          Object.freeze({
+            kind: "assignment",
+            operator: "=",
+            left: Object.freeze({
+              kind: "member",
+              receiver: state,
+              name: module.lifecycleInitializedName,
+            }),
+            right: Object.freeze({ kind: "bool-literal", value: true }),
+          }),
         ]),
       }),
     ]),
   });
 }
 
-function planDependencyInitialization(
+function planComponentInitializationSequence(
   program: MojoTargetProgram,
-  definition: MojoSourceModuleDefinition,
-  module: MojoAnalyzedModule,
+  component: MojoModuleInitializationComponent,
   context: MojoPlanningContext,
 ): readonly MojoStatement[] | undefined {
   const initialization: MojoStatement[] = [];
-  for (const dependency of definition.dependencies) {
-    const target = program.queries.moduleForId(dependency.target.id);
-    if (target === undefined || !target.runtimeInitializationRequired) continue;
-    const call: MojoExpression = Object.freeze({
-      kind: "call" as const,
-      callee: mojoModuleMemberExpression(
-        context,
-        dependency.target.modulePath,
-        target.initializeName,
-      ),
-      arguments: Object.freeze([]),
-    });
-    const expression: MojoExpression = target.asynchronous
-        ? Object.freeze({
-            kind: "await",
-            expression: Object.freeze({
-              kind: "call",
-              callee: mojoModuleMemberExpression(
-                context,
-                ["tsonic_runtime"],
-                target.raises ? "create_raising_task" : "create_task",
-              ),
-              arguments: Object.freeze([Object.freeze({ value: call })]),
-            }),
-          })
-        : call;
-    const adapted = adaptMojoValueErrorDomain(
-      mojoValue(expression),
-      Object.freeze({ kind: "unit" }),
-      target.errorType,
-      module.errorType,
-      module.sourceFile,
+  for (const dependencyId of component.dependencyComponentIds) {
+    const dependency = program.moduleInitialization.componentForId(dependencyId);
+    if (dependency === undefined || !dependency.runtimeInitializationRequired) continue;
+    const owner = program.queries.moduleForId(dependency.ownerModuleId);
+    const definition = owner === undefined
+      ? undefined
+      : program.modules.forSourceFile(owner.sourceFile);
+    if (owner === undefined || definition === undefined) return undefined;
+    const statements = planInitializationCall(
+      mojoModuleMemberExpression(context, definition.modulePath, owner.initializeName),
+      dependency.asynchronous,
+      dependency.raises,
+      dependency.errorType,
+      component.errorType,
+      owner.sourceFile,
       context,
     );
-    if (adapted === undefined) return undefined;
-    initialization.push(...adapted.before);
-    if (adapted.value.kind !== "tuple" || adapted.value.elements.length !== 0) {
-      initialization.push(Object.freeze({ kind: "expression", expression: adapted.value }));
-    }
+    if (statements === undefined) return undefined;
+    initialization.push(...statements);
+  }
+  for (const memberId of component.memberModuleIds) {
+    const member = program.queries.moduleForId(memberId);
+    if (member === undefined || !member.directRuntimeInitializationRequired) continue;
+    const definition = program.modules.forSourceFile(member.sourceFile);
+    if (definition === undefined) return undefined;
+    const statements = planInitializationCall(
+      mojoModuleMemberExpression(context, definition.modulePath, member.initializeBodyName),
+      member.directAsynchronous,
+      member.directRaises,
+      member.directErrorType,
+      component.errorType,
+      member.sourceFile,
+      context,
+    );
+    if (statements === undefined) return undefined;
+    initialization.push(...statements);
   }
   return Object.freeze(initialization);
+}
+
+function planInitializationCall(
+  callee: MojoExpression,
+  asynchronous: boolean,
+  raises: boolean,
+  sourceErrorType: MojoTargetTypeRef | undefined,
+  targetErrorType: MojoTargetTypeRef | undefined,
+  sourceNode: import("@tsonic/tsts").Node,
+  context: MojoPlanningContext,
+): readonly MojoStatement[] | undefined {
+  const call: MojoExpression = Object.freeze({
+    kind: "call",
+    callee,
+    arguments: Object.freeze([]),
+  });
+  const expression: MojoExpression = asynchronous
+    ? Object.freeze({
+        kind: "await",
+        expression: Object.freeze({
+          kind: "call",
+          callee: mojoModuleMemberExpression(
+            context,
+            ["tsonic_runtime"],
+            raises ? "create_raising_task" : "create_task",
+          ),
+          arguments: Object.freeze([Object.freeze({ value: call })]),
+        }),
+      })
+    : call;
+  const adapted = adaptMojoValueErrorDomain(
+    mojoValue(expression),
+    Object.freeze({ kind: "unit" }),
+    sourceErrorType,
+    targetErrorType,
+    sourceNode,
+    context,
+  );
+  if (adapted === undefined) return undefined;
+  return Object.freeze([
+    ...adapted.before,
+    ...(adapted.value.kind === "tuple" && adapted.value.elements.length === 0
+      ? []
+      : [Object.freeze({ kind: "expression" as const, expression: adapted.value })]),
+  ]);
 }
 
 function planModuleInitializationSteps(

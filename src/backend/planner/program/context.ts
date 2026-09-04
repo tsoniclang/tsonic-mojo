@@ -66,12 +66,24 @@ export function createMojoPlanningContext(
 ): MojoPlanningContext {
   const analyzedModule = program.queries.moduleForId(module.id);
   const importNames = new Set(analyzedModule?.bindings.map((binding) => binding.name) ?? []);
-  if (analyzedModule?.initializationStateRequired === true) {
+  const initializationComponent = program.moduleInitialization.componentForModuleId(module.id);
+  const moduleStateRequired = analyzedModule !== undefined && (
+    analyzedModule.bindings.some((binding) =>
+      binding.disposition.kind === "immutable-runtime" || binding.disposition.kind === "live-cell") ||
+    initializationComponent?.ownerModuleId === analyzedModule.id &&
+      initializationComponent.directRuntimeInitializationRequired
+  );
+  if (moduleStateRequired) {
     importNames.add(analyzedModule.stateName);
     importNames.add(analyzedModule.createStateName);
     importNames.add(analyzedModule.cellName);
   }
-  if (analyzedModule?.runtimeInitializationRequired === true) {
+  if (analyzedModule?.directRuntimeInitializationRequired === true) {
+    importNames.add(analyzedModule.initializeBodyName);
+  }
+  if (analyzedModule !== undefined &&
+    initializationComponent?.ownerModuleId === analyzedModule.id &&
+    initializationComponent.runtimeInitializationRequired) {
     importNames.add(analyzedModule.initializeName);
   }
   for (const declaration of program.declarations) {

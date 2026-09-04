@@ -2,13 +2,18 @@ import { createHash } from "node:crypto";
 import type { MojoRuntimePackagePlan } from "../../../analysis/program/model.js";
 import type { MojoSourcePackageDefinition } from "../../../analysis/source-modules/model.js";
 import type { MojoTargetConfiguration } from "../../../target-model/configuration/model.js";
-import type { MojoOutputComponent, MojoOutputSourceFile } from "./output.js";
+import type {
+  MojoOutputComponent,
+  MojoOutputComponentInitializer,
+  MojoOutputSourceFile,
+} from "./output.js";
 
 export function createMojoOutputComponents(
   packages: readonly MojoSourcePackageDefinition[],
   sources: readonly MojoOutputSourceFile[],
   runtimePackages: readonly MojoRuntimePackagePlan[],
   configuration: MojoTargetConfiguration,
+  initializers: ReadonlyMap<string, MojoOutputComponentInitializer>,
 ): readonly MojoOutputComponent[] {
   const packageById = new Map(packages.map((package_) => [package_.componentId, package_]));
   const keyById = new Map<string, string>();
@@ -50,5 +55,8 @@ export function createMojoOutputComponents(
     root: package_.root,
     dependencies: package_.dependencies,
     artifactKey: componentKey(package_.componentId),
+    ...(initializers.get(package_.componentId) === undefined
+      ? {}
+      : { initializer: initializers.get(package_.componentId)! }),
   })).sort((left, right) => left.packageName.localeCompare(right.packageName, "en")));
 }

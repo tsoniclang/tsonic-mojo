@@ -1,11 +1,9 @@
 import type {
-  MojoAnalyzedModule,
   MojoAnalyzedModuleBinding,
   MojoTargetProgram,
 } from "../../../analysis/program/model.js";
 import type { MojoSourceModuleDefinition } from "../../../analysis/source-modules/model.js";
 import {
-  closeMojoErrorType,
   mojoNativeErrorType,
 } from "../../../target-model/types/error-domains.js";
 import { normalizeMojoIdentifier } from "../../../target-model/names/identifiers.js";
@@ -28,12 +26,9 @@ import {
 import type { MojoPlanningContext } from "./context.js";
 import { registerMojoTypeImports } from "../types/imports.js";
 
-const unitType: MojoTargetTypeRef = Object.freeze({ kind: "unit" });
-
 export function planMojoPublicModuleExports(
   program: MojoTargetProgram,
   definition: MojoSourceModuleDefinition,
-  module: MojoAnalyzedModule,
   context: MojoPlanningContext,
 ): readonly MojoFunctionDeclaration[] | undefined {
   const bindings = new Map<import("@tsonic/tsts").Node, MojoAnalyzedModuleBinding>();
@@ -45,19 +40,10 @@ export function planMojoPublicModuleExports(
         binding?.disposition.kind === "live-cell")) bindings.set(binding.declaration, binding);
   }
   if (bindings.size === 0) return Object.freeze([]);
-  if (module.asynchronous) {
-    appendMojoPlanningDiagnostic(
-      context,
-      "MOJO_ASYNC_PUBLIC_BINDING_MODULE_UNSUPPORTED",
-      "A public runtime binding cannot synchronously expose an asynchronously initialized source module.",
-      module.sourceFile,
-    );
-    return undefined;
-  }
   const declarations: MojoFunctionDeclaration[] = [];
   for (const binding of [...bindings.values()].sort((left, right) =>
     left.name.localeCompare(right.name, "en"))) {
-    const declaration = planPublicCallableBinding(binding, module, context);
+    const declaration = planPublicCallableBinding(binding, context);
     if (declaration === undefined) return undefined;
     declarations.push(declaration);
   }
@@ -66,7 +52,6 @@ export function planMojoPublicModuleExports(
 
 function planPublicCallableBinding(
   binding: MojoAnalyzedModuleBinding,
-  module: MojoAnalyzedModule,
   context: MojoPlanningContext,
 ): MojoFunctionDeclaration | undefined {
   if (binding.type.kind !== "callable") {
@@ -91,38 +76,13 @@ function planPublicCallableBinding(
     );
     return undefined;
   }
-  const moduleErrorType = module.raises
-    ? module.errorType ?? mojoNativeErrorType()
-    : undefined;
   const callableErrorType = callableType.raises
     ? callableType.errorType ?? mojoNativeErrorType()
     : undefined;
-  const errorType = closeMojoErrorType(Object.freeze([
-    ...(moduleErrorType === undefined ? [] : [moduleErrorType]),
-    ...(callableErrorType === undefined ? [] : [callableErrorType]),
-  ]));
+  const errorType = callableErrorType;
   if (errorType !== undefined) registerMojoTypeImports(errorType, context);
   registerMojoTypeImports(callableType, context);
   const statements: MojoStatement[] = [];
-  if (module.runtimeInitializationRequired) {
-    const initialization = adaptMojoValueErrorDomain(
-      mojoValue(Object.freeze({
-        kind: "call",
-        callee: Object.freeze({ kind: "path", path: module.initializeName }),
-        arguments: Object.freeze([]),
-      })),
-      unitType,
-      moduleErrorType,
-      errorType,
-      binding.declaration,
-      context,
-    );
-    if (initialization === undefined) return undefined;
-    statements.push(...initialization.before);
-    if (!isUnitValue(initialization.value)) {
-      statements.push(Object.freeze({ kind: "expression", expression: initialization.value }));
-    }
-  }
   const callable = mojoModuleBindingRead(binding, context);
   if (callable === undefined) {
     appendMojoPlanningDiagnostic(

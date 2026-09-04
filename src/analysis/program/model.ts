@@ -639,6 +639,7 @@ export interface MojoAnalyzedModule {
   readonly createStateName: string;
   readonly cellName: string;
   readonly initializeName: string;
+  readonly initializeBodyName: string;
   readonly lifecycleLockName: string;
   readonly lifecycleInitializedName: string;
   readonly bindings: readonly MojoAnalyzedModuleBinding[];
@@ -646,8 +647,31 @@ export interface MojoAnalyzedModule {
   readonly asynchronous: boolean;
   readonly raises: boolean;
   readonly errorType?: MojoTargetTypeRef;
+  readonly directAsynchronous: boolean;
+  readonly directRaises: boolean;
+  readonly directErrorType?: MojoTargetTypeRef;
+  readonly directRuntimeInitializationRequired: boolean;
   readonly initializationStateRequired: boolean;
   readonly runtimeInitializationRequired: boolean;
+}
+
+export interface MojoModuleInitializationComponent {
+  readonly id: string;
+  readonly ownerModuleId: string;
+  readonly memberModuleIds: readonly string[];
+  readonly dependencyComponentIds: readonly string[];
+  readonly cyclic: boolean;
+  readonly asynchronous: boolean;
+  readonly raises: boolean;
+  readonly errorType?: MojoTargetTypeRef;
+  readonly directRuntimeInitializationRequired: boolean;
+  readonly runtimeInitializationRequired: boolean;
+}
+
+export interface MojoModuleInitializationCatalog {
+  readonly components: readonly MojoModuleInitializationComponent[];
+  componentForId(id: string): MojoModuleInitializationComponent | undefined;
+  componentForModuleId(moduleId: string): MojoModuleInitializationComponent | undefined;
 }
 
 export type MojoPropertySelection =
@@ -1031,6 +1055,8 @@ export interface MojoTargetProgram {
   readonly projectDispatch: MojoProjectDispatchPlan;
   readonly modules: MojoSourceModuleCatalog;
   readonly analyzedModules: readonly MojoAnalyzedModule[];
+  readonly moduleInitialization: MojoModuleInitializationCatalog;
+  readonly binaryEntry?: MojoAnalyzedTopLevelFunction;
   readonly declarations: readonly MojoAnalyzedDeclaration[];
   readonly representations: MojoRepresentationCatalog;
   readonly lifecycle: MojoLifecycleCatalog;

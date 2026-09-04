@@ -17,6 +17,14 @@ export interface MojoOutputComponent {
   readonly root: boolean;
   readonly dependencies: readonly string[];
   readonly artifactKey: string;
+  readonly initializer?: MojoOutputComponentInitializer;
+}
+
+export interface MojoOutputComponentInitializer {
+  readonly modulePath: readonly string[];
+  readonly name: string;
+  readonly asynchronous: boolean;
+  readonly raises: boolean;
 }
 
 export interface MojoOutputSourceFile {

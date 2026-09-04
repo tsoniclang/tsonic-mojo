@@ -60,6 +60,7 @@ export function analyzeMojoModuleBindings(
     const createStateName = input.allocateModuleName(sourceFile, "_createModuleState");
     const cellName = input.allocateModuleName(sourceFile, "_moduleState");
     const initializeName = input.allocateModuleName(sourceFile, "_initializeModule");
+    const initializeBodyName = input.allocateModuleName(sourceFile, "_initializeModuleBody");
     const lifecycleLockName = input.allocateModuleName(sourceFile, "_lifecycleLock");
     const lifecycleInitializedName = input.allocateModuleName(sourceFile, "_lifecycleInitialized");
     const bindings: MojoAnalyzedModuleBinding[] = [];
@@ -395,12 +396,16 @@ export function analyzeMojoModuleBindings(
       createStateName,
       cellName,
       initializeName,
+      initializeBodyName,
       lifecycleLockName,
       lifecycleInitializedName,
       bindings: Object.freeze(bindings),
       initializationSteps: Object.freeze(initializationSteps),
       asynchronous: definition.topLevelAwait,
       raises: false,
+      directAsynchronous: definition.topLevelAwait,
+      directRaises: false,
+      directRuntimeInitializationRequired: initializationSteps.length > 0,
       initializationStateRequired: initializationSteps.length > 0,
       runtimeInitializationRequired: initializationSteps.length > 0,
     }));

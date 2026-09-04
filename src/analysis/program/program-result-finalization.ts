@@ -15,6 +15,7 @@ import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import { mojoNativeErrorType } from "../../target-model/types/error-domains.js";
 import { analyzeMojoRuntimePackages } from "../runtime/references.js";
+import type { MojoSourceModuleCatalog } from "../source-modules/model.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import { analyzeMojoTemplateExpression } from "../operations/template-expressions.js";
 import { closeMojoErrorType } from "./effects.js";
@@ -22,7 +23,7 @@ import { validateMojoFunctionSyntax } from "./syntax-validation.js";
 import { createMojoProgramQueries } from "./queries.js";
 import { finalizeMojoModuleBindingTypes } from "./module-bindings.js";
 import { finalizeMojoModuleEffects } from "./module-effects.js";
-import { diagnoseMojoRuntimeModuleCycles } from "./module-cycles.js";
+import { analyzeMojoModuleInitialization } from "./module-initialization.js";
 import {
   createMojoRepresentationCatalog,
   mojoRepresentationParameters,
@@ -194,7 +195,10 @@ export function finalizeMojoProgramResult(
     bindingTypes,
     diagnostics,
   );
-  diagnostics.push(...diagnoseMojoRuntimeModuleCycles(finalizedModules, modules));
+  const moduleInitialization = analyzeMojoModuleInitialization(finalizedModules, modules);
+  for (const issue of moduleInitialization.issues) {
+    diagnostics.push(diagnostic(issue.code, issue.message, issue.node));
+  }
   for (const module of finalizedModules) {
     for (const binding of module.bindings) {
       moduleBindingByDeclaration.set(binding.declaration, binding);
@@ -207,16 +211,6 @@ export function finalizeMojoProgramResult(
           binding,
         }));
       }
-    }
-  }
-  if (configuration.outputType !== "bin") {
-    for (const module of finalizedModules) {
-      if (!module.asynchronous) continue;
-      diagnostics.push(diagnostic(
-        "MOJO_LIBRARY_TOP_LEVEL_AWAIT_UNSUPPORTED",
-        "Mojo library output cannot publish an asynchronous TypeScript module-initialization contract; select binary output or remove top-level await from the exported module graph.",
-        module.sourceFile,
-      ));
     }
   }
   const finalizedModuleBySourceFile = new WeakMap(
@@ -329,6 +323,13 @@ export function finalizeMojoProgramResult(
     ...enums,
     ...typeAliases,
   ];
+  const binaryEntry = selectMojoBinaryEntry(
+    configuration.outputType,
+    modules,
+    topLevelFunctions,
+    diagnostics,
+  );
+  if (diagnostics.length > 0) return rejectedTargetStage(diagnostics);
   const projectDispatch = createMojoProjectDispatchPlan({
     classes: finalizedClasses,
     interfaces,
@@ -391,6 +392,8 @@ export function finalizeMojoProgramResult(
     projectDispatch,
     modules,
     analyzedModules: finalizedModules,
+    moduleInitialization: moduleInitialization.catalog,
+    ...(binaryEntry === undefined ? {} : { binaryEntry }),
     declarations: Object.freeze(declarations),
     representations,
     lifecycle,
@@ -401,6 +404,29 @@ export function finalizeMojoProgramResult(
       ...new Set([...reservedNames, ...sourceCallableSpecializations.allocatedNames]),
     ].sort((left, right) => left.localeCompare(right, "en"))),
   }));
+}
+
+function selectMojoBinaryEntry(
+  outputType: "bin" | "lib",
+  modules: MojoSourceModuleCatalog,
+  functions: readonly import("./model.js").MojoAnalyzedTopLevelFunction[],
+  diagnostics: TargetDiagnostic[],
+): import("./model.js").MojoAnalyzedTopLevelFunction | undefined {
+  if (outputType !== "bin") return undefined;
+  const exported = modules.entryPoint.exports.filter(({ exportName }) => exportName === "main");
+  const candidates = exported.flatMap((entry) => functions.filter((function_) =>
+    function_.declaration === entry.declaration));
+  const selected = candidates.length === 1 ? candidates[0] : undefined;
+  if (selected === undefined || selected.parameters.length !== 0 ||
+    selected.typeParameters.length !== 0 || selected.resultType.kind !== "unit") {
+    diagnostics.push(diagnostic(
+      "MOJO_BINARY_ENTRYPOINT_UNSUPPORTED",
+      "Binary output requires the configured entry module to export exactly one non-generic 'main' function with no parameters and a void result.",
+      modules.entryPoint.sourceFile,
+    ));
+    return undefined;
+  }
+  return selected;
 }
 
 function addMojoFirstClassFunctionBindings(
@@ -486,6 +512,7 @@ function addMojoFirstClassFunctionBindings(
         ...functionValueSteps,
         ...module.initializationSteps,
       ]),
+      directRuntimeInitializationRequired: true,
       initializationStateRequired: true,
       runtimeInitializationRequired: true,
     });
