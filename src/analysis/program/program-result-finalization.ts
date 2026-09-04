@@ -24,6 +24,7 @@ import { createMojoProgramQueries } from "./queries.js";
 import { finalizeMojoModuleBindingTypes } from "./module-bindings.js";
 import { finalizeMojoModuleEffects } from "./module-effects.js";
 import { analyzeMojoModuleInitialization } from "./module-initialization.js";
+import { finalizeMojoPublicModuleBindingAbis } from "./public-abi.js";
 import {
   createMojoRepresentationCatalog,
   mojoRepresentationParameters,
@@ -184,7 +185,7 @@ export function finalizeMojoProgramResult(
     moduleRegionFacts,
     errorTypesByDeclaration,
   ), bindingTypes);
-  const finalizedModules = addMojoFirstClassFunctionBindings(
+  const firstClassFinalizedModules = addMojoFirstClassFunctionBindings(
     effectFinalizedModules,
     finalizedFunctions.filter(
       (function_): function_ is import("./model.js").MojoAnalyzedTopLevelFunction =>
@@ -193,6 +194,12 @@ export function finalizeMojoProgramResult(
     checkedSource,
     expressionTypes,
     bindingTypes,
+    diagnostics,
+  );
+  const finalizedModules = finalizeMojoPublicModuleBindingAbis(
+    firstClassFinalizedModules,
+    modules,
+    environment.lifecycle,
     diagnostics,
   );
   const moduleInitialization = analyzeMojoModuleInitialization(finalizedModules, modules);

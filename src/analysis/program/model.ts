@@ -607,7 +607,15 @@ export interface MojoAnalyzedModuleBinding {
   readonly type: MojoTargetTypeRef;
   readonly initializer: Node;
   readonly functionValue?: MojoAnalyzedTopLevelFunction;
+  readonly publicAbi?: MojoPublicModuleBindingAbi;
 }
+
+export type MojoPublicModuleBindingAbi =
+  | { readonly kind: "callable" }
+  | {
+      readonly kind: "value";
+      readonly copy: "implicit" | "explicit";
+    };
 
 export type MojoModuleInitializationStep =
   | {

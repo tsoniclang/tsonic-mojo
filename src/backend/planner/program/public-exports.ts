@@ -35,30 +35,63 @@ export function planMojoPublicModuleExports(
   for (const exported of program.modules.entryPoint.exports) {
     if (program.modules.forSourceFile(exported.sourceFile)?.id !== definition.id) continue;
     const binding = program.queries.moduleBinding(exported.declaration);
-    if (binding?.kind !== "function-value" &&
-      (binding?.disposition.kind === "immutable-runtime" ||
-        binding?.disposition.kind === "live-cell")) bindings.set(binding.declaration, binding);
+    if (binding?.publicAbi !== undefined) bindings.set(binding.declaration, binding);
   }
   if (bindings.size === 0) return Object.freeze([]);
   const declarations: MojoFunctionDeclaration[] = [];
   for (const binding of [...bindings.values()].sort((left, right) =>
     left.name.localeCompare(right.name, "en"))) {
-    const declaration = planPublicCallableBinding(binding, context);
+    const declaration = binding.publicAbi?.kind === "value"
+      ? planPublicValueBinding(binding, binding.publicAbi.copy, context)
+      : planPublicCallableBinding(binding, context);
     if (declaration === undefined) return undefined;
     declarations.push(declaration);
   }
   return Object.freeze(declarations);
 }
 
+function planPublicValueBinding(
+  binding: MojoAnalyzedModuleBinding,
+  copy: "implicit" | "explicit",
+  context: MojoPlanningContext,
+): MojoFunctionDeclaration | undefined {
+  const value = mojoModuleBindingRead(binding, context);
+  if (value === undefined) {
+    appendMojoPlanningDiagnostic(
+      context,
+      "MOJO_PUBLIC_RUNTIME_VALUE_STORAGE_MISSING",
+      `Public runtime value '${binding.sourceName}' has no exact initialized module storage.`,
+      binding.declaration,
+    );
+    return undefined;
+  }
+  registerMojoTypeImports(binding.type, context);
+  return Object.freeze({
+    kind: "function",
+    name: binding.name,
+    genericParameters: Object.freeze([]),
+    parameters: Object.freeze([]),
+    resultType: binding.type,
+    asynchronous: false,
+    raises: false,
+    statements: Object.freeze([Object.freeze({
+      kind: "return",
+      expression: copy === "implicit"
+        ? value
+        : Object.freeze({ kind: "copy", expression: value }),
+    })]),
+  });
+}
+
 function planPublicCallableBinding(
   binding: MojoAnalyzedModuleBinding,
   context: MojoPlanningContext,
 ): MojoFunctionDeclaration | undefined {
-  if (binding.type.kind !== "callable") {
+  if (binding.publicAbi?.kind !== "callable" || binding.type.kind !== "callable") {
     appendMojoPlanningDiagnostic(
       context,
-      "MOJO_PUBLIC_RUNTIME_VALUE_ABI_UNSUPPORTED",
-      `Public runtime binding '${binding.sourceName}' requires an explicit Mojo library value ABI.`,
+      "MOJO_PUBLIC_CALLABLE_ABI_MISSING",
+      `Public callable '${binding.sourceName}' has no exact sealed Mojo library callable ABI.`,
       binding.declaration,
     );
     return undefined;
