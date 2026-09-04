@@ -170,6 +170,7 @@ export type MojoCallSelection =
         | {
             readonly kind: "function";
             readonly declaration: Node;
+            readonly adapterDeclaration?: Node;
             readonly name: string;
             readonly modulePath: readonly string[];
           }
@@ -177,6 +178,7 @@ export type MojoCallSelection =
             readonly kind: "method";
             readonly name: string;
             readonly declaration: Node;
+            readonly adapterDeclaration?: Node;
             readonly implementationDeclaration: Node;
             readonly receiver: Node;
             readonly receiverType: MojoTargetTypeRef;
@@ -185,11 +187,16 @@ export type MojoCallSelection =
         | {
             readonly kind: "static-method";
             readonly declaration: Node;
+            readonly adapterDeclaration?: Node;
             readonly implementationDeclaration: Node;
             readonly owner: MojoTargetTypeRef;
             readonly name: string;
           }
-        | { readonly kind: "constructor"; readonly type: MojoTargetTypeRef };
+        | {
+            readonly kind: "constructor";
+            readonly type: MojoTargetTypeRef;
+            readonly adapterDeclaration?: Node;
+          };
       readonly genericArguments: readonly MojoTargetGenericArgument[];
       readonly arguments: readonly MojoAnalyzedCallArgument[];
       readonly resultType: MojoTargetTypeRef;

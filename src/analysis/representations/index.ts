@@ -1,5 +1,6 @@
 export { createMojoRepresentationCatalog } from "./carriers.js";
 export {
+  mojoCallableImplementationAdapterTypes,
   mojoRepresentationParameters,
   mojoRepresentationRootTypes,
 } from "./roots.js";

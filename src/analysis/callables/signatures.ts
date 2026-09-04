@@ -49,6 +49,7 @@ export interface MojoTypeParameterAnalysisInput {
 
 export interface MojoCallableSignatureInput extends MojoTypeParameterAnalysisInput {
   readonly name: string;
+  readonly implementationAdapterName?: string;
   readonly allocateLocalName: (sourceName: string) => string;
   readonly bindingNames: WeakMap<Node, string>;
   readonly bindingTypes: WeakMap<Node, MojoTargetTypeRef>;
@@ -96,7 +97,9 @@ export function analyzeMojoCallableSignature(
     callableType,
     semantics,
     ast,
-  );
+  ) ?? (ast.body(declaration) === undefined
+    ? undefined
+    : selectImplementationCallable(input));
   const callableParameters = callable?.parameters ??
     (input.kind === "getter" || input.kind === "setter"
       ? selectAccessorParameters(input)
@@ -230,6 +233,9 @@ export function analyzeMojoCallableSignature(
     declaration,
     sourceFile,
     name: input.name,
+    ...(input.implementationAdapterName === undefined
+      ? {}
+      : { implementationAdapterName: input.implementationAdapterName }),
     typeParameters,
     parameters: Object.freeze(parameters),
     resultType,
@@ -324,6 +330,58 @@ function selectAccessorParameters(
     }));
   }
   return Object.freeze(parameters);
+}
+
+function selectImplementationCallable(
+  input: MojoCallableSignatureInput,
+): SourceCallableTypeEvidence | undefined {
+  const { ast } = input.source;
+  const semantics = input.source.semantics.forFile(input.sourceFile);
+  const parameters: SourceCallableParameterEvidence[] = [];
+  for (const parameter of ast.parameters(input.declaration)) {
+    const name = parameter === undefined ? undefined : ast.name(parameter);
+    const reference = name === undefined
+      ? undefined
+      : input.source.navigation.sourceReferenceFor(name);
+    const typeNode = parameter === undefined ? undefined : ast.typeNode(parameter);
+    const type = parameter === undefined
+      ? undefined
+      : semantics.declarations.declaredValueType(parameter) ??
+        semantics.declarations.declaredType(parameter) ??
+        (typeNode === undefined ? undefined : semantics.types.authoredType(typeNode));
+    if (parameter === undefined || !ast.is.IsParameterDeclaration(parameter) ||
+      reference?.symbol === undefined || type === undefined) return undefined;
+    const rest = ast.as.AsParameterDeclaration(parameter)!.DotDotDotToken !== undefined;
+    const initializer = Node_Initializer(ast, parameter);
+    const optional = ast.questionToken(parameter) !== undefined || initializer !== undefined;
+    parameters.push(Object.freeze({
+      sourceSymbol: reference.symbol,
+      type,
+      parameterKind: rest ? "rest" : optional ? "optional" : "required",
+      declaration: parameter,
+      omissionKind: rest
+        ? "rest"
+        : initializer !== undefined
+          ? "initializer"
+          : optional
+            ? "undefined"
+            : "required",
+    }));
+  }
+  const resultNode = ast.typeNode(input.declaration);
+  const resultType = resultNode === undefined
+    ? undefined
+    : semantics.types.authoredType(resultNode);
+  return resultType === undefined
+    ? undefined
+    : Object.freeze({
+        parameters: Object.freeze(parameters),
+        result: Object.freeze({
+          selectedType: resultType,
+          authoredTypeNode: resultNode,
+          declaration: input.declaration,
+        }),
+      });
 }
 
 export function analyzeMojoTypeParameters(

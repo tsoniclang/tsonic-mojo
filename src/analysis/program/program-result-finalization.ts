@@ -13,7 +13,7 @@ import {
 } from "@tsonic/target-api/analysis";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
-import { mojoNativeErrorType } from "../../target-model/types/error-domains.js";
+import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 import { analyzeMojoRuntimePackages } from "../runtime/references.js";
 import type { MojoSourceModuleCatalog } from "../source-modules/model.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
@@ -27,11 +27,13 @@ import { analyzeMojoModuleInitialization } from "./module-initialization.js";
 import { finalizeMojoPublicModuleBindingAbis } from "./public-abi.js";
 import {
   createMojoRepresentationCatalog,
+  mojoCallableImplementationAdapterTypes,
   mojoRepresentationParameters,
   mojoRepresentationRootTypes,
 } from "../representations/index.js";
 import { createMojoProjectDispatchPlan } from "../project-types/dispatch.js";
 import { createMojoSourceCallableSpecializationPlan } from "../callables/specializations.js";
+import { analyzeMojoCallableImplementationAdapters } from "../callables/implementation-adapters.js";
 import { mojoParameterConvention } from "../representations/index.js";
 import type { MojoAnalyzedModuleRegionFacts } from "./module-effects.js";
 import type { MojoExecutableRegionAnalysisEnvironment } from "./executable-regions.js";
@@ -57,6 +59,7 @@ export interface MojoProgramResultFinalizationInput {
   readonly environment: MojoExecutableRegionAnalysisEnvironment;
   readonly expressionErrorTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly functions: readonly MojoAnalyzedFunction[];
+  readonly topLevelCallableContracts: readonly import("./model.js").MojoAnalyzedCallableSignature[];
   readonly classes: readonly MojoAnalyzedClass[];
   readonly interfaces: readonly MojoAnalyzedInterface[];
   readonly enums: readonly MojoAnalyzedEnum[];
@@ -85,6 +88,7 @@ export function finalizeMojoProgramResult(
     environment,
     expressionErrorTypes,
     functions,
+    topLevelCallableContracts,
     classes,
     interfaces,
     enums,
@@ -189,13 +193,13 @@ export function finalizeMojoProgramResult(
   ), bindingTypes);
   const firstClassFinalizedModules = addMojoFirstClassFunctionBindings(
     effectFinalizedModules,
-    finalizedFunctions.filter(
-      (function_): function_ is import("./model.js").MojoAnalyzedTopLevelFunction =>
-        function_.kind === "function",
-    ),
+    topLevelCallableContracts,
+    finalizedByDeclaration,
     checkedSource,
     expressionTypes,
     bindingTypes,
+    environment.conversions,
+    environment.projectRelationships,
     diagnostics,
   );
   const finalizedModules = finalizeMojoPublicModuleBindingAbis(
@@ -211,6 +215,9 @@ export function finalizeMojoProgramResult(
   for (const module of finalizedModules) {
     for (const binding of module.bindings) {
       moduleBindingByDeclaration.set(binding.declaration, binding);
+      for (const reference of binding.references ?? []) {
+        moduleBindingByDeclaration.set(reference, binding);
+      }
       if (binding.kind !== "class-static-field") continue;
       const field = fieldByDeclaration.get(binding.declaration);
       if (field?.kind === "static-field") {
@@ -290,6 +297,18 @@ export function finalizeMojoProgramResult(
   for (const issue of sourceCallableSpecializations.issues) {
     diagnostics.push(diagnostic(issue.code, issue.message, issue.node));
   }
+  const callableImplementationAdapterAnalysis = analyzeMojoCallableImplementationAdapters({
+    topLevelContracts: topLevelCallableContracts,
+    classes: finalizedClasses,
+    implementations: finalizedByDeclaration,
+    callableImplementation: (declaration) =>
+      checkedSource.navigation.callableImplementation(declaration),
+    relationships: environment.projectRelationships,
+    specializations: sourceCallableSpecializations,
+  });
+  for (const issue of callableImplementationAdapterAnalysis.issues) {
+    diagnostics.push(diagnostic(issue.code, issue.message, issue.node));
+  }
   if (diagnostics.length > 0) return rejectedTargetStage(diagnostics);
 
   const source = targetSourceSyntaxProgram(checkedSource);
@@ -339,6 +358,7 @@ export function finalizeMojoProgramResult(
     configuration.outputType,
     modules,
     topLevelFunctions,
+    checkedSource.navigation,
     diagnostics,
   );
   if (diagnostics.length > 0) return rejectedTargetStage(diagnostics);
@@ -368,10 +388,16 @@ export function finalizeMojoProgramResult(
     valueRefinements: environment.valueRefinements,
     rootTypes: Object.freeze([
       ...mojoRepresentationRootTypes(declarations, finalizedModules),
+      ...mojoCallableImplementationAdapterTypes(
+        callableImplementationAdapterAnalysis.adapters,
+      ),
       ...sourceCallableSpecializations.representationTypes,
       ...projectDispatch.representationTypes,
     ]),
-    parameters: mojoRepresentationParameters(declarations),
+    parameters: mojoRepresentationParameters(
+      declarations,
+      callableImplementationAdapterAnalysis.adapters,
+    ),
     modules: finalizedModules,
     sourceModules: modules,
     authoredTypeAliases: typeAliases,
@@ -407,6 +433,7 @@ export function finalizeMojoProgramResult(
     moduleInitialization: moduleInitialization.catalog,
     ...(binaryEntry === undefined ? {} : { binaryEntry }),
     declarations: Object.freeze(declarations),
+    callableImplementationAdapters: callableImplementationAdapterAnalysis.adapters,
     representations,
     lifecycle,
     queries,
@@ -422,12 +449,18 @@ function selectMojoBinaryEntry(
   outputType: "bin" | "lib",
   modules: MojoSourceModuleCatalog,
   functions: readonly import("./model.js").MojoAnalyzedTopLevelFunction[],
+  navigation: MojoTargetAnalysisRequest["input"]["source"]["navigation"],
   diagnostics: TargetDiagnostic[],
 ): import("./model.js").MojoAnalyzedTopLevelFunction | undefined {
   if (outputType !== "bin") return undefined;
   const exported = modules.entryPoint.exports.filter(({ exportName }) => exportName === "main");
-  const candidates = exported.flatMap((entry) => functions.filter((function_) =>
-    function_.declaration === entry.declaration));
+  const candidates = [...new Set(exported.flatMap((entry) => {
+    const selected = navigation.callableImplementation(entry.declaration);
+    const declaration = selected.kind === "resolved"
+      ? selected.implementation.declaration
+      : entry.declaration;
+    return functions.filter((function_) => function_.declaration === declaration);
+  }))];
   const selected = candidates.length === 1 ? candidates[0] : undefined;
   if (selected === undefined || selected.parameters.length !== 0 ||
     selected.typeParameters.length !== 0 || selected.resultType.kind !== "unit") {
@@ -443,78 +476,140 @@ function selectMojoBinaryEntry(
 
 function addMojoFirstClassFunctionBindings(
   modules: readonly MojoAnalyzedModule[],
-  functions: readonly import("./model.js").MojoAnalyzedTopLevelFunction[],
+  contracts: readonly import("./model.js").MojoAnalyzedCallableSignature[],
+  implementations: WeakMap<Node, MojoAnalyzedFunction>,
   source: MojoTargetAnalysisRequest["input"]["source"],
   expressionTypes: WeakMap<Node, MojoTargetTypeRef>,
   bindingTypes: WeakMap<Node, MojoTargetTypeRef>,
+  conversions: import("../../policy/conversions/selection.js").MojoConversionIndex,
+  relationships: import("../../target-model/types/project.js").MojoProjectTypeRelationships,
   diagnostics: TargetDiagnostic[],
 ): readonly MojoAnalyzedModule[] {
-  const functionsBySourceFile = new Map<SourceFile, import("./model.js").MojoAnalyzedTopLevelFunction[]>();
-  for (const function_ of functions) {
-    const summary = source.navigation.declarationUseSummary(function_.declaration);
-    if (summary.firstClassUseCount === 0) continue;
-    const current = functionsBySourceFile.get(function_.sourceFile) ?? [];
-    current.push(function_);
-    functionsBySourceFile.set(function_.sourceFile, current);
+  const contractGroups = new Map<Node, {
+    readonly implementation: MojoAnalyzedFunction;
+    readonly contracts: import("./model.js").MojoAnalyzedCallableSignature[];
+  }>();
+  for (const contract of contracts) {
+    const selected = source.navigation.callableImplementation(contract.declaration);
+    const implementation = selected.kind === "resolved"
+      ? implementations.get(selected.implementation.declaration)
+      : implementations.get(contract.declaration);
+    if (implementation === undefined || implementation.kind !== "function") continue;
+    const group = contractGroups.get(implementation.declaration) ?? {
+      implementation,
+      contracts: [],
+    };
+    group.contracts.push(contract);
+    contractGroups.set(implementation.declaration, group);
+  }
+  const uses = new Map<Node, ReturnType<
+    MojoTargetAnalysisRequest["input"]["source"]["navigation"]["declarationUseSummary"]
+  >["uses"][number]>();
+  for (const contract of contracts) {
+    for (const use of source.navigation.declarationUseSummary(contract.declaration).uses) {
+      if (use.kind === "first-class" && !isCallableDeclarationName(use.reference, source)) {
+        uses.set(use.reference, use);
+      }
+    }
+  }
+  const bindingsBySourceFile = new Map<SourceFile, Map<Node, {
+    readonly target: import("./model.js").MojoAnalyzedCallableSignature;
+    readonly type: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
+    readonly references: Node[];
+  }>>();
+  for (const use of uses.values()) {
+    const reference = source.navigation.sourceReferenceFor(use.reference);
+    const selected = reference === undefined
+      ? undefined
+      : source.navigation.callableImplementation(reference.declaration);
+    const group = selected?.kind === "resolved"
+      ? contractGroups.get(selected.implementation.declaration)
+      : undefined;
+    const expected = expressionTypes.get(use.reference);
+    if (group === undefined || expected?.kind !== "callable") {
+      diagnostics.push(diagnostic(
+        "MOJO_FIRST_CLASS_FUNCTION_CARRIER_UNRESOLVED",
+        "A first-class project function reference requires one exact implementation group and callable carrier.",
+        use.reference,
+      ));
+      continue;
+    }
+    const candidates = group.contracts.flatMap((contract) => {
+      const target = functionValueTarget(contract, group.implementation);
+      if (target === undefined) return [];
+      const type = functionValueCallableType(target, group.implementation);
+      const conversion = classifyMojoValueConversion(type, expected, undefined, relationships);
+      return conversion.kind === "resolved"
+        ? [Object.freeze({ target, type, conversion: conversion.conversion })]
+        : [];
+    });
+    const exact = candidates.filter((candidate) => mojoTargetTypeEquals(candidate.type, expected));
+    const selectedCandidates = exact.length > 0 ? exact : candidates;
+    const unique = selectedCandidates.filter((candidate, index, all) =>
+      all.findIndex((other) => mojoTargetTypeEquals(other.type, candidate.type) &&
+        other.target.name === candidate.target.name) === index);
+    const candidate = unique.length === 1 ? unique[0] : undefined;
+    if (candidate === undefined) {
+      diagnostics.push(diagnostic(
+        unique.length === 0
+          ? "MOJO_FIRST_CLASS_FUNCTION_ABI_UNSUPPORTED"
+          : "MOJO_FIRST_CLASS_FUNCTION_OVERLOAD_AMBIGUOUS",
+        unique.length === 0
+          ? "No exact project function overload can satisfy the selected first-class callable ABI."
+          : "More than one project function overload can satisfy the selected first-class callable ABI.",
+        use.reference,
+      ));
+      continue;
+    }
+    const finalized = conversions.finalizeCallable(use.reference, candidate.type, expected);
+    if (finalized.kind === "unsupported") {
+      diagnostics.push(diagnostic(
+        "MOJO_FIRST_CLASS_FUNCTION_CONVERSION_UNPROVEN",
+        finalized.reason,
+        use.reference,
+      ));
+      continue;
+    }
+    expressionTypes.set(use.reference, candidate.type);
+    bindingTypes.set(use.reference, candidate.type);
+    const ownerBindings = bindingsBySourceFile.get(group.implementation.sourceFile) ?? new Map();
+    const existing = ownerBindings.get(candidate.target.declaration);
+    if (existing === undefined) {
+      ownerBindings.set(candidate.target.declaration, {
+        target: candidate.target,
+        type: candidate.type,
+        references: [use.reference],
+      });
+    } else {
+      existing.references.push(use.reference);
+    }
+    bindingsBySourceFile.set(group.implementation.sourceFile, ownerBindings);
   }
   return Object.freeze(modules.map((module) => {
-    const selectedFunctions = functionsBySourceFile.get(module.sourceFile) ?? [];
+    const selectedFunctions = [...(bindingsBySourceFile.get(module.sourceFile)?.values() ?? [])];
     if (selectedFunctions.length === 0) return module;
     const occupiedNames = new Set(module.bindings.map((binding) => binding.name));
     const bindings = [...module.bindings];
     const functionValueSteps: import("./model.js").MojoModuleInitializationStep[] = [];
-    for (const function_ of selectedFunctions) {
-      const summary = source.navigation.declarationUseSummary(function_.declaration);
-      const firstClassUses = summary.uses.filter((use) => use.kind === "first-class");
-      const selectedTypes = firstClassUses.map((use) => expressionTypes.get(use.reference));
-      if (selectedTypes.some((type) => type?.kind !== "callable")) {
-        diagnostics.push(diagnostic(
-          "MOJO_FIRST_CLASS_FUNCTION_CARRIER_UNRESOLVED",
-          `First-class function '${function_.name}' has a use without one exact callable carrier.`,
-          function_.declaration,
-        ));
-        continue;
-      }
-      const callableTypes = selectedTypes as Extract<MojoTargetTypeRef, { readonly kind: "callable" }>[];
-      const callableType = callableTypes[0];
-      if (callableType === undefined || callableTypes.some((candidate) =>
-        !sameFirstClassFunctionShape(callableType, candidate))) {
-        diagnostics.push(diagnostic(
-          "MOJO_FIRST_CLASS_FUNCTION_CARRIER_CONFLICT",
-          `First-class function '${function_.name}' is selected through incompatible callable carriers.`,
-          function_.declaration,
-        ));
-        continue;
-      }
-      if (function_.asynchronous || function_.typeParameters.length !== 0 ||
-        function_.parameters.some((parameter) => {
-          const convention = mojoParameterConvention(parameter.disposition);
-          return convention !== "imm" && convention !== "var";
-        }) || !sameFirstClassFunctionSignature(function_, callableType)) {
-        diagnostics.push(diagnostic(
-          "MOJO_FIRST_CLASS_FUNCTION_ABI_UNSUPPORTED",
-          `First-class function '${function_.name}' has no exact closed erased-callable ABI.`,
-          function_.declaration,
-        ));
-        continue;
-      }
+    for (const selected of selectedFunctions) {
+      const function_ = selected.target;
       const name = allocateFunctionValueName(occupiedNames, `${function_.name}_value`);
       const sourceNameNode = source.ast.name(function_.declaration);
       const binding = Object.freeze({
         kind: "function-value" as const,
-        declaration: function_.declaration,
+        declaration: selected.references[0]!,
         sourceFile: function_.sourceFile,
         sourceName: sourceNameNode === undefined ? function_.name : source.ast.text(sourceNameNode),
         name,
         declarationKind: "const" as const,
         disposition: Object.freeze({ kind: "immutable-runtime" as const }),
-        type: callableType,
-        initializer: function_.declaration,
+        type: selected.type,
+        initializer: selected.references[0]!,
         functionValue: function_,
+        references: Object.freeze(selected.references),
       }) satisfies MojoAnalyzedModuleBinding;
       bindings.push(binding);
       functionValueSteps.push(Object.freeze({ kind: "binding" as const, binding }));
-      bindingTypes.set(function_.declaration, callableType);
     }
     if (bindings.length === module.bindings.length) return module;
     return Object.freeze({
@@ -531,31 +626,54 @@ function addMojoFirstClassFunctionBindings(
   }));
 }
 
-function sameFirstClassFunctionSignature(
-  function_: import("./model.js").MojoAnalyzedTopLevelFunction,
-  callableType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
-): boolean {
-  if (function_.parameters.length !== callableType.parameters.length) return false;
-  return function_.parameters.every((parameter, index) => {
-    const selected = callableType.parameters[index];
-    return selected !== undefined && selected.convention === mojoParameterConvention(parameter.disposition) &&
-      selected.passing === (parameter.disposition.kind === "owned" ? "consume" : "plain") &&
-      selected.omissionKind === parameter.omissionKind &&
-      mojoTargetTypeEquals(selected.type, parameter.callType);
-  }) && mojoTargetTypeEquals(callableType.result, function_.resultType) &&
-    (!function_.raises || callableType.raises && (
-      mojoTargetTypeEquals(
-        function_.errorType ?? mojoNativeErrorType(),
-        callableType.errorType ?? mojoNativeErrorType(),
-      )
-    ));
+function functionValueTarget(
+  contract: import("./model.js").MojoAnalyzedCallableSignature,
+  implementation: MojoAnalyzedFunction,
+): import("./model.js").MojoAnalyzedCallableSignature | undefined {
+  if (contract.asynchronous || contract.typeParameters.length !== 0 ||
+    contract.parameters.some((parameter) => {
+      const convention = mojoParameterConvention(parameter.disposition);
+      return convention !== "imm" && convention !== "var";
+    })) return undefined;
+  if (contract.declaration === implementation.declaration) return implementation;
+  return contract.implementationAdapterName === undefined
+    ? undefined
+    : Object.freeze({
+        ...contract,
+        name: contract.implementationAdapterName,
+        raises: implementation.raises,
+        ...(implementation.errorType === undefined ? {} : { errorType: implementation.errorType }),
+      });
 }
 
-function sameFirstClassFunctionShape(
-  left: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
-  right: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
+function functionValueCallableType(
+  target: import("./model.js").MojoAnalyzedCallableSignature,
+  implementation: MojoAnalyzedFunction,
+): Extract<MojoTargetTypeRef, { readonly kind: "callable" }> {
+  return Object.freeze({
+    kind: "callable",
+    parameters: Object.freeze(target.parameters.map((parameter) => Object.freeze({
+      name: parameter.name,
+      convention: mojoParameterConvention(parameter.disposition),
+      passing: parameter.disposition.kind === "owned" ? "consume" as const : "plain" as const,
+      type: parameter.callType,
+      omissionKind: parameter.omissionKind,
+    }))),
+    result: target.resultType,
+    raises: implementation.raises,
+    ...(implementation.errorType === undefined ? {} : { errorType: implementation.errorType }),
+  });
+}
+
+function isCallableDeclarationName(
+  reference: Node,
+  source: MojoTargetAnalysisRequest["input"]["source"],
 ): boolean {
-  return mojoTargetTypeEquals(left, right);
+  const parent = source.ast.parent(reference);
+  return parent !== undefined && source.ast.name(parent) === reference &&
+    (source.ast.is.IsFunctionDeclaration(parent) ||
+      source.ast.is.IsMethodDeclaration(parent) ||
+      source.ast.is.IsConstructorDeclaration(parent));
 }
 
 function allocateFunctionValueName(occupied: Set<string>, requested: string): string {

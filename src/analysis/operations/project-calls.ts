@@ -78,9 +78,7 @@ export function analyzeProjectCall(
     ? resolve(sourceCall.sourceResultType)
     : undefined;
   const ownerInstance = contract.kind === "constructor" ? constructedType : receiverType;
-  const invocationContract = contract.kind === "constructor" && callable.implementation !== undefined
-    ? callable.implementation
-    : contract;
+  const invocationContract = contract;
   const declaredParameterTypes = invocationContract.parameters.map((parameter) =>
     parameter.omissionKind === "rest" ? parameter.type : parameter.callType);
   const ownerParameterTypes = declaredParameterTypes.map((type) =>
@@ -292,7 +290,16 @@ function projectCallTarget(
   const contract = callable.contract;
   const implementation = callable.implementation;
   if (contract.kind === "constructor") {
-    return { kind: "resolved", target: Object.freeze({ kind: "constructor", type: resultType }) };
+    return {
+      kind: "resolved",
+      target: Object.freeze({
+        kind: "constructor",
+        type: resultType,
+        ...(implementation !== undefined && implementation.declaration !== contract.declaration
+          ? { adapterDeclaration: contract.declaration }
+          : {}),
+      }),
+    };
   }
   if (contract.kind === "function") {
     if (implementation === undefined) {
@@ -307,7 +314,10 @@ function projectCallTarget(
       target: Object.freeze({
         kind: "function",
         declaration: implementation.declaration,
-        name: implementation.name,
+        ...(contract.implementationAdapterName === undefined
+          ? {}
+          : { adapterDeclaration: contract.declaration }),
+        name: contract.implementationAdapterName ?? implementation.name,
         modulePath: Object.freeze([...context.modulePathForSourceFile(implementation.sourceFile)]),
       }),
     };
@@ -325,9 +335,12 @@ function projectCallTarget(
       target: Object.freeze({
         kind: "static-method",
         declaration: contract.declaration,
+        ...(contract.implementationAdapterName === undefined
+          ? {}
+          : { adapterDeclaration: contract.declaration }),
         implementationDeclaration: implementation.declaration,
         owner: implementation.owner.type,
-        name: implementation.name,
+        name: contract.implementationAdapterName ?? implementation.name,
       }),
     };
   }
@@ -343,8 +356,11 @@ function projectCallTarget(
     kind: "resolved",
     target: Object.freeze({
       kind: "method",
-      name: contract.name,
+      name: contract.implementationAdapterName ?? contract.name,
       declaration: contract.declaration,
+      ...(contract.implementationAdapterName === undefined
+        ? {}
+        : { adapterDeclaration: contract.declaration }),
       implementationDeclaration: implementation?.declaration ?? contract.declaration,
       receiver,
       receiverType: resolve(sourceCall.sourceReceiver!.type, sourceCall.sourceReceiver!.authoredTypeNode) ??

@@ -43,7 +43,7 @@ import { substituteMojoTargetType } from "../../target-model/types/substitution.
 import type { MojoTargetTypeSubstitutions } from "../../target-model/types/substitution.js";
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 import { mojoTargetTypeKey } from "../../target-model/types/key.js";
-import { selectMojoProjectDispatchParameterAdapters } from "./parameter-adapters.js";
+import { selectMojoCallableParameterAdapters } from "../callables/parameter-adapters.js";
 import type { MojoSourceCallableSpecializationPlan } from "../callables/specializations.js";
 
 const maximumDispatchEntries = 1_048_576;
@@ -473,7 +473,7 @@ export function createMojoProjectDispatchPlan(input: {
           continue;
         }
         const closedImplementationParameters = implementationParameters as readonly MojoAnalyzedParameter[];
-        const parameterAdapters = selectMojoProjectDispatchParameterAdapters(
+        const parameterAdapters = selectMojoCallableParameterAdapters(
           closedConcreteParameters,
           closedImplementationParameters,
           input.relationships,
@@ -929,7 +929,7 @@ function createObjectLiteralDispatchPlans(input: {
         }
         const closedParameters = parameters as readonly MojoAnalyzedParameter[];
         const closedImplementationParameters = implementationParameters as readonly MojoAnalyzedParameter[];
-        const parameterAdapters = selectMojoProjectDispatchParameterAdapters(
+        const parameterAdapters = selectMojoCallableParameterAdapters(
           closedParameters,
           closedImplementationParameters,
           input.relationships,
@@ -1517,7 +1517,7 @@ function collectDispatchRepresentationTypes(
     }
   };
   const addParameterAdapters = (
-    adapters: readonly import("../program/model.js").MojoProjectDispatchParameterAdapter[],
+    adapters: readonly import("../program/model.js").MojoCallableParameterAdapter[],
   ): void => {
     for (const adapter of adapters) {
       addParameter(adapter.target);

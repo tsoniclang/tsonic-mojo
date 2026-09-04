@@ -5,6 +5,7 @@ import type {
   MojoAnalyzedInterface,
   MojoAnalyzedModule,
   MojoAnalyzedParameter,
+  MojoCallableImplementationAdapter,
 } from "../program/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 
@@ -23,8 +24,9 @@ export function mojoRepresentationRootTypes(
 
 export function mojoRepresentationParameters(
   declarations: readonly MojoAnalyzedDeclaration[],
+  adapters: readonly MojoCallableImplementationAdapter[] = [],
 ): readonly MojoAnalyzedParameter[] {
-  return Object.freeze(declarations.flatMap((declaration) => {
+  return Object.freeze([...declarations.flatMap((declaration) => {
     if (declaration.kind === "function") return declaration.parameters;
     if (declaration.kind === "class") {
       return [
@@ -40,7 +42,27 @@ export function mojoRepresentationParameters(
       ];
     }
     return [];
-  }));
+  }), ...adapters.flatMap((adapter) => [
+    ...adapter.contract.parameters,
+    ...adapter.targetParameters,
+  ])]);
+}
+
+export function mojoCallableImplementationAdapterTypes(
+  adapters: readonly MojoCallableImplementationAdapter[],
+): readonly MojoTargetTypeRef[] {
+  return Object.freeze(adapters.flatMap((adapter) => [
+    adapter.contract.resultType,
+    adapter.implementationResultType,
+    ...adapter.contract.parameters.flatMap(parameterTypes),
+    ...adapter.targetParameters.flatMap(parameterTypes),
+    ...adapter.contract.typeParameters.flatMap((parameter) => parameter.constraints),
+    ...(adapter.errorType === undefined ? [] : [adapter.errorType]),
+  ]));
+}
+
+function parameterTypes(parameter: MojoAnalyzedParameter): readonly MojoTargetTypeRef[] {
+  return Object.freeze([parameter.type, parameter.bodyType, parameter.callType]);
 }
 
 function declarationTypes(declaration: MojoAnalyzedDeclaration): readonly MojoTargetTypeRef[] {

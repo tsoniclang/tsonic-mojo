@@ -8,7 +8,10 @@ import type {
   MojoProjectTypeRelationships,
 } from "../../target-model/types/project.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
-import { analyzeMojoFunctionSignature } from "../callables/signatures.js";
+import {
+  analyzeMojoCallableSignature,
+  analyzeMojoFunctionSignature,
+} from "../callables/signatures.js";
 import { analyzeMojoClass } from "../declarations/classes.js";
 import { analyzeMojoEnum } from "../declarations/enums.js";
 import { analyzeMojoInterface } from "../declarations/interfaces.js";
@@ -16,6 +19,7 @@ import { analyzeMojoTypeAlias } from "../declarations/type-aliases.js";
 import { allocateMojoLocalBindings } from "./local-bindings.js";
 import type { MojoDeclarationDrafts } from "./declaration-drafts.js";
 import type {
+  MojoAnalyzedCallableSignature,
   MojoAnalyzedClass,
   MojoAnalyzedEnum,
   MojoAnalyzedFunction,
@@ -30,6 +34,7 @@ import type { MojoSourceModuleCatalog } from "../source-modules/model.js";
 
 export interface MojoProjectDeclarationAnalysis {
   readonly functions: MojoAnalyzedFunction[];
+  readonly topLevelCallableContracts: readonly MojoAnalyzedCallableSignature[];
   readonly classes: MojoAnalyzedClass[];
   readonly interfaces: MojoAnalyzedInterface[];
   readonly enums: MojoAnalyzedEnum[];
@@ -97,8 +102,9 @@ export function analyzeMojoProjectDeclarations(input: {
     input.bindingTypes.set(draft.declaration, analyzed.value);
   }
 
+  const topLevelCallableContracts: MojoAnalyzedCallableSignature[] = [];
   for (const draft of input.drafts.functions) {
-    const function_ = analyzeMojoFunctionSignature({
+    const signatureInput = {
       source: input.source,
       providerSemantics: input.providerSemantics,
       projectTypes: input.projectTypes,
@@ -111,30 +117,48 @@ export function analyzeMojoProjectDeclarations(input: {
       declaration: draft.declaration,
       sourceFile: draft.sourceFile,
       name: draft.name,
-      body: draft.body,
+      ...(draft.implementationAdapterName === undefined
+        ? {}
+        : { implementationAdapterName: draft.implementationAdapterName }),
       allocateLocalName: draft.localNames,
       bindingNames: input.bindingNames,
       bindingTypes: input.bindingTypes,
       diagnostics: input.diagnostics,
-    });
-    if (function_ === undefined) continue;
-    functions.push(function_);
-    functionByDeclaration.set(draft.declaration, function_);
-    callableByDeclaration.set(draft.declaration, Object.freeze({
-      contract: function_,
-      implementation: function_,
-    }));
-    for (const parameter of function_.parameters) {
+    } as const;
+    const callable = draft.body === undefined
+      ? analyzeMojoCallableSignature(signatureInput)
+      : analyzeMojoFunctionSignature({ ...signatureInput, body: draft.body });
+    if (callable === undefined) continue;
+    topLevelCallableContracts.push(callable);
+    if (draft.body !== undefined) {
+      const function_ = callable as MojoAnalyzedFunction;
+      functions.push(function_);
+      functionByDeclaration.set(draft.declaration, function_);
+      allocateMojoLocalBindings(
+        draft.body,
+        draft.localNames,
+        input.bindingNames,
+        ast,
+        input.diagnostics,
+        input.bindingSourceFiles,
+      );
+    }
+    for (const parameter of callable.parameters) {
       input.bindingSourceFiles.set(parameter.declaration, draft.sourceFile);
     }
-    allocateMojoLocalBindings(
-      draft.body,
-      draft.localNames,
-      input.bindingNames,
-      ast,
-      input.diagnostics,
-      input.bindingSourceFiles,
-    );
+  }
+  for (const contract of topLevelCallableContracts) {
+    const direct = functionByDeclaration.get(contract.declaration);
+    const selected = direct === undefined
+      ? input.source.navigation.callableImplementation(contract.declaration)
+      : undefined;
+    const implementation = direct ?? (selected?.kind === "resolved"
+      ? functionByDeclaration.get(selected.implementation.declaration)
+      : undefined);
+    callableByDeclaration.set(contract.declaration, Object.freeze({
+      contract,
+      ...(implementation === undefined ? {} : { implementation }),
+    }));
   }
 
   for (const draft of input.drafts.interfaces) {
@@ -300,6 +324,7 @@ export function analyzeMojoProjectDeclarations(input: {
   }
   return {
     functions,
+    topLevelCallableContracts: Object.freeze(topLevelCallableContracts),
     classes: [...closed.classes],
     interfaces: [...closed.interfaces],
     enums,

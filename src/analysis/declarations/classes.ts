@@ -161,6 +161,9 @@ export function analyzeMojoClass(
         kind: "method",
         owner,
         static: ast.hasModifierKind(member, "static"),
+        ...(body === undefined
+          ? { implementationAdapterName: classNames(`_${selectedName}Overload`) }
+          : {}),
       } as const;
       const method = body === undefined
         ? analyzeMojoCallableSignature(signatureInput_)
@@ -256,7 +259,7 @@ export function analyzeMojoClass(
   }
 
   if (constructors.length > 1) {
-    append(input, "MOJO_CONSTRUCTOR_OVERLOAD_SET_UNSUPPORTED", "Constructor overloads require one sealed implementation-to-signature dispatch plan.", declaration);
+    append(input, "MOJO_CONSTRUCTOR_IMPLEMENTATION_AMBIGUOUS", "A checked project class exposed more than one constructor implementation body.", declaration);
     return undefined;
   }
   const classTypeParameters = analyzeMojoTypeParameters({

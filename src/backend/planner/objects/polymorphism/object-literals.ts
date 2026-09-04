@@ -42,8 +42,8 @@ import type {
 import {
   planLocationParameterPrelude,
   planMojoFunctionBody,
-  planMojoGenericParameters,
 } from "../../declarations/project.js";
+import { planMojoGenericParameters } from "../../declarations/generic-parameters.js";
 import {
   planMojoParameterDeclaration,
   planMojoParameterPrelude,
@@ -65,7 +65,7 @@ import {
   mojoProjectStaticMember,
 } from "./types.js";
 import { planMojoIndexAdapterMethods } from "./index-adapters.js";
-import { planMojoProjectDispatchArguments } from "./parameter-adapters.js";
+import { planMojoCallableAdapterArguments } from "../../callables/parameter-adapters.js";
 
 export function planMojoPolymorphicObjectLiteral(
   node: Node,
@@ -645,7 +645,7 @@ function planObjectCallableAdapter(
   if (adapter.implementation === undefined) return undefined;
   const parameters = adapter.parameters.map((parameter) =>
     planMojoParameterDeclaration(parameter, context));
-  const adapted = planMojoProjectDispatchArguments(adapter.parameterAdapters, context);
+  const adapted = planMojoCallableAdapterArguments(adapter.parameterAdapters, context);
   if (adapted === undefined) return undefined;
   const arguments_: MojoCallArgument[] = [
     Object.freeze({ value: Object.freeze({ kind: "path", path: "_object" }) }),

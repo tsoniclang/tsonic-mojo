@@ -160,7 +160,19 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
             ast.is.IsTypeAliasDeclaration(statement)
           ? "type"
           : "value";
-        globalNameByDeclaration.set(statement, globalNames(sourceFile)(ast.text(nameNode), role));
+        const implementation = ast.is.IsFunctionDeclaration(statement)
+          ? input.source.navigation.callableImplementation(statement)
+          : undefined;
+        const nameOwner = implementation?.kind === "resolved"
+          ? implementation.implementation.declaration
+          : statement;
+        const nameSourceFile = implementation?.kind === "resolved"
+          ? implementation.implementation.sourceFile
+          : sourceFile;
+        const selectedName = globalNameByDeclaration.get(nameOwner) ??
+          globalNames(nameSourceFile)(ast.text(nameNode), role);
+        globalNameByDeclaration.set(nameOwner, selectedName);
+        globalNameByDeclaration.set(statement, selectedName);
         bindingSourceFiles.set(statement, sourceFile);
       }
     }
@@ -269,6 +281,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
 
   const {
     functions,
+    topLevelCallableContracts,
     classes,
     interfaces,
     enums,
@@ -675,6 +688,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     environment: executableEnvironment,
     expressionErrorTypes,
     functions,
+    topLevelCallableContracts,
     classes,
     interfaces,
     enums,

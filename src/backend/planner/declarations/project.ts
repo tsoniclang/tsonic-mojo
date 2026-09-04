@@ -3,7 +3,6 @@ import type {
   MojoAnalyzedClass,
   MojoAnalyzedEnum,
   MojoAnalyzedFunction,
-  MojoAnalyzedInterface,
   MojoAnalyzedTypeAlias,
 } from "../../../analysis/program/model.js";
 import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
@@ -45,6 +44,12 @@ import {
   specializeMojoFunctionDeclaration,
   substituteMojoDeclaration,
 } from "../types/substitution.js";
+import { planMojoGenericParameters } from "./generic-parameters.js";
+import {
+  constructorAdapterRequiresDeclaration,
+  planMojoConstructorImplementationAdapter,
+  planMojoMemberImplementationAdapter,
+} from "../callables/implementation-adapters.js";
 
 export interface MojoProjectFunctionPlanOptions {
   readonly specialization?: MojoSourceCallableSpecializationVariant;
@@ -175,6 +180,11 @@ export function planMojoProjectClass(
     registerMojoTypeImports(class_.initializationErrorType, context);
   }
   const sourceConstructor = class_.constructors[0];
+  const implementationAdapters = context.program.callableImplementationAdapters.filter(
+    (adapter) => adapter.owner?.definition === class_.definition,
+  );
+  const constructorAdapters = implementationAdapters.filter((adapter) =>
+    adapter.kind === "constructor-overload");
   const stateContext = withMojoErrorType(
     withMojoStateInitialization(
       withMojoLocalNameScope(context),
@@ -228,6 +238,10 @@ export function planMojoProjectClass(
       ...sourceConstructorStatements,
     ]),
   });
+  const stateAdapterConstructors = constructorAdapters
+    .filter(constructorAdapterRequiresDeclaration)
+    .map((adapter) => planMojoConstructorImplementationAdapter(adapter, stateType, stateContext));
+  if (stateAdapterConstructors.some((adapter) => adapter === undefined)) return undefined;
   const state: MojoStructDeclaration = Object.freeze({
     kind: "struct",
     name: class_.stateName,
@@ -238,7 +252,10 @@ export function planMojoProjectClass(
       type: field.type,
       compileTime: false,
     }))),
-    methods: Object.freeze([stateConstructor]),
+    methods: Object.freeze([
+      stateConstructor,
+      ...(stateAdapterConstructors as MojoFunctionDeclaration[]),
+    ]),
   });
   const fieldArguments = (sourceConstructor?.parameters ?? []).map((parameter) => {
     const value = Object.freeze({ kind: "path" as const, path: parameter.incomingName });
@@ -285,8 +302,23 @@ export function planMojoProjectClass(
     self: "out self",
     statements: Object.freeze([initializeState]),
   });
+  const publicConstructors = constructorAdapters.length === 0
+    ? Object.freeze([constructor])
+    : constructorAdapters.map((adapter) => planMojoProjectConstructorForwarder(
+        adapter,
+        stateType,
+        arcType,
+        context,
+      ));
+  if (publicConstructors.some((adapter) => adapter === undefined)) return undefined;
+  const memberAdapters = implementationAdapters
+    .filter((adapter) => adapter.kind === "instance-method-overload" ||
+      adapter.kind === "static-method-overload")
+    .map((adapter) => planMojoMemberImplementationAdapter(adapter, context));
+  if (memberAdapters.some((adapter) => adapter === undefined)) return undefined;
   const methods: MojoFunctionDeclaration[] = [
-    constructor,
+    ...(publicConstructors as MojoFunctionDeclaration[]),
+    ...(memberAdapters as MojoFunctionDeclaration[]),
     mojoReferenceIdentityEqualityMethod(class_.targetType),
     ...(class_.errorRole === "typed"
       ? [mojoReferenceErrorWritableMethod(
@@ -348,6 +380,71 @@ export function planMojoProjectClass(
   });
   return Object.freeze([state, wrapper]);
 }
+
+function planMojoProjectConstructorForwarder(
+  adapter: import("../../../analysis/program/model.js").MojoCallableImplementationAdapter,
+  stateType: MojoTargetTypeRef,
+  storageType: MojoTargetTypeRef,
+  context: MojoPlanningContext,
+): MojoFunctionDeclaration | undefined {
+  const constructorContext = withMojoErrorType(
+    withMojoLocalNameScope(context),
+    adapter.errorType,
+  );
+  const parameterPrelude = planMojoParameterPrelude(
+    adapter.contract.parameters,
+    constructorContext,
+    planMojoValue,
+    true,
+  );
+  if (parameterPrelude === undefined) return undefined;
+  const arguments_ = adapter.contract.parameters.map((parameter) => {
+    const value = Object.freeze({ kind: "path" as const, path: parameter.incomingName });
+    const inputType = parameter.omissionKind === "rest" ? parameter.type : parameter.callType;
+    return Object.freeze({
+      value: mojoParameterConvention(parameter.disposition) === "var"
+        ? consumeMojoValue(value, inputType, context.program.lifecycle)
+        : value,
+      ...(parameter.omissionKind === "rest" ? { spread: true } : {}),
+    });
+  });
+  return Object.freeze({
+    kind: "function",
+    name: "__init__",
+    genericParameters: Object.freeze([]),
+    parameters: Object.freeze(adapter.contract.parameters.map((parameter) =>
+      planMojoParameterDeclaration(parameter, constructorContext))),
+    resultType: Object.freeze({ kind: "unit" }),
+    asynchronous: false,
+    raises: adapter.raises,
+    ...(adapter.errorType === undefined ? {} : { errorType: adapter.errorType }),
+    self: "out self",
+    statements: Object.freeze([
+      ...parameterPrelude,
+      Object.freeze({
+        kind: "assignment",
+        operator: "=",
+        left: Object.freeze({
+          kind: "member",
+          receiver: Object.freeze({ kind: "path", path: "self" }),
+          name: "_state",
+        }),
+        right: Object.freeze({
+          kind: "construct",
+          type: storageType,
+          arguments: Object.freeze([Object.freeze({
+            value: Object.freeze({
+              kind: "construct",
+              type: stateType,
+              arguments: Object.freeze(arguments_),
+            }),
+          })]),
+        }),
+      }),
+    ]),
+  });
+}
+
 
 export function planMojoProjectEnum(enum_: MojoAnalyzedEnum): MojoStructDeclaration {
   const enumType = enum_.targetType;
@@ -440,18 +537,4 @@ export function planLocationParameterPrelude(
     }));
   }
   return Object.freeze(statements);
-}
-
-export function planMojoGenericParameters(
-  declaration: Pick<MojoAnalyzedFunction | MojoAnalyzedClass | MojoAnalyzedInterface | MojoAnalyzedTypeAlias, "typeParameters">,
-) {
-  return Object.freeze(declaration.typeParameters.map((parameter) => Object.freeze({
-    kind: parameter.kind,
-    name: parameter.name,
-    identity: parameter.identity,
-    position: parameter.position,
-    variadic: parameter.variadic,
-    constraints: parameter.constraints,
-    ...(parameter.defaultArgument === undefined ? {} : { defaultArgument: parameter.defaultArgument }),
-  })));
 }

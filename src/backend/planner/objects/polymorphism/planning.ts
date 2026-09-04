@@ -6,8 +6,8 @@ import type { MojoStructDeclaration } from "../../../target-ast/index.js";
 import { mojoStaticMethodDecorators } from "../../../target-ast/index.js";
 import {
   planMojoProjectFunctionVariants,
-  planMojoGenericParameters,
 } from "../../declarations/project.js";
+import { planMojoGenericParameters } from "../../declarations/generic-parameters.js";
 import type { MojoPlanningContext } from "../../program/context.js";
 import { planMojoConcreteDispatchMethods } from "./adapters.js";
 import {
@@ -21,9 +21,10 @@ import {
 } from "./identity.js";
 import { planMojoProjectImplementationVariants } from "./implementations.js";
 import {
-  planMojoPolymorphicClassConstructor,
+  planMojoPolymorphicClassConstructors,
   planMojoPolymorphicClassState,
 } from "./state.js";
+import { planMojoMemberImplementationAdapter } from "../../callables/implementation-adapters.js";
 
 export function planMojoPolymorphicProjectClass(
   class_: MojoAnalyzedClass,
@@ -33,14 +34,21 @@ export function planMojoPolymorphicProjectClass(
   const concrete = context.program.projectDispatch.concreteFor(class_.definition);
   if (view === undefined || concrete === undefined) return undefined;
   const state = planMojoPolymorphicClassState(class_, context);
-  const constructor = planMojoPolymorphicClassConstructor(class_, concrete, context);
+  const constructors = planMojoPolymorphicClassConstructors(class_, concrete, context);
   const forwarders = planMojoProjectViewForwarders(view, context);
   const adapters = planMojoConcreteDispatchMethods(concrete, context);
-  if (state === undefined || constructor === undefined || forwarders === undefined ||
+  const implementationAdapters = context.program.callableImplementationAdapters
+    .filter((adapter) => adapter.owner?.definition === class_.definition &&
+      (adapter.kind === "instance-method-overload" ||
+        adapter.kind === "static-method-overload"))
+    .map((adapter) => planMojoMemberImplementationAdapter(adapter, context));
+  if (state === undefined || constructors === undefined || forwarders === undefined ||
+    implementationAdapters.some((adapter) => adapter === undefined) ||
     adapters === undefined) return undefined;
   const methods = [
     planMojoProjectViewInitializer(view),
-    constructor,
+    ...constructors,
+    ...(implementationAdapters as import("../../../target-ast/index.js").MojoFunctionDeclaration[]),
     mojoProjectIdentityEqualityMethod(class_.targetType),
     ...forwarders,
   ];

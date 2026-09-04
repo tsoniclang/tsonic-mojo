@@ -31,7 +31,11 @@ import {
 import type { MojoPlanningContext } from "../../program/context.js";
 import { planMojoFunctionStatements } from "../../statements/structured.js";
 import { registerMojoTypeImports } from "../../types/imports.js";
-import { planMojoGenericParameters } from "../../declarations/project.js";
+import { planMojoGenericParameters } from "../../declarations/generic-parameters.js";
+import {
+  constructorAdapterRequiresDeclaration,
+  planMojoConstructorImplementationAdapter,
+} from "../../callables/implementation-adapters.js";
 import { mojoConcreteViewConstruction } from "./adapters.js";
 import {
   mojoProjectObjectType,
@@ -61,6 +65,10 @@ export function planMojoPolymorphicClassState(
   for (const entry of methodStorage) registerMojoTypeImports(entry.type, context);
   for (const storage of dispatch.indexStorages) registerMojoTypeImports(storage.type, context);
   const sourceConstructor = class_.constructors[0];
+  const constructorAdapters = context.program.callableImplementationAdapters.filter(
+    (adapter) => adapter.kind === "constructor-overload" &&
+      adapter.owner?.definition === class_.definition,
+  );
   const stateContext = withMojoErrorType(
     withMojoStateInitialization(
       withMojoLocalNameScope(context),
@@ -142,6 +150,10 @@ export function planMojoPolymorphicClassState(
       ...constructorBody,
     ]),
   });
+  const stateAdapterConstructors = constructorAdapters
+    .filter(constructorAdapterRequiresDeclaration)
+    .map((adapter) => planMojoConstructorImplementationAdapter(adapter, stateType, stateContext));
+  if (stateAdapterConstructors.some((adapter) => adapter === undefined)) return undefined;
   return Object.freeze({
     kind: "struct",
     name: class_.stateName,
@@ -167,26 +179,75 @@ export function planMojoPolymorphicClassState(
         compileTime: false,
       })),
     ]),
-    methods: Object.freeze([stateConstructor]),
+    methods: Object.freeze([
+      stateConstructor,
+      ...(stateAdapterConstructors as MojoFunctionDeclaration[]),
+    ]),
   });
 }
 
-export function planMojoPolymorphicClassConstructor(
+export function planMojoPolymorphicClassConstructors(
   class_: MojoAnalyzedClass,
   dispatch: MojoProjectConcreteDispatch,
   context: MojoPlanningContext,
-): MojoFunctionDeclaration | undefined {
+): readonly MojoFunctionDeclaration[] | undefined {
   const ownView = dispatch.views.find((view) => view.view.definition === class_.definition);
   const stateType = mojoProjectStateType(class_);
   if (ownView === undefined || stateType === undefined) return undefined;
   registerMojoTypeImports(stateType, context);
   registerMojoTypeImports(mojoProjectObjectType, context);
   const sourceConstructor = class_.constructors[0];
-  const stateArguments = (sourceConstructor?.parameters ?? []).map((parameter) => {
+  const constructorAdapters = context.program.callableImplementationAdapters.filter(
+    (adapter) => adapter.kind === "constructor-overload" &&
+      adapter.owner?.definition === class_.definition,
+  );
+  if (constructorAdapters.length === 0) {
+    const constructor = planMojoPolymorphicClassConstructor(
+      class_,
+      dispatch,
+      sourceConstructor,
+      sourceConstructor?.raises === true || class_.initializationErrorType !== undefined,
+      sourceConstructor?.errorType ?? class_.initializationErrorType,
+      context,
+    );
+    return constructor === undefined ? undefined : Object.freeze([constructor]);
+  }
+  const constructors = constructorAdapters.map((adapter) =>
+    planMojoPolymorphicClassConstructor(
+      class_,
+      dispatch,
+      adapter.contract,
+      adapter.raises,
+      adapter.errorType,
+      context,
+    ));
+  return constructors.some((constructor) => constructor === undefined)
+    ? undefined
+    : Object.freeze(constructors as MojoFunctionDeclaration[]);
+}
+
+function planMojoPolymorphicClassConstructor(
+  class_: MojoAnalyzedClass,
+  dispatch: MojoProjectConcreteDispatch,
+  signature: import("../../../../analysis/program/model.js").MojoAnalyzedCallableSignature | undefined,
+  raises: boolean,
+  errorType: MojoTargetTypeRef | undefined,
+  context: MojoPlanningContext,
+): MojoFunctionDeclaration | undefined {
+  const ownView = dispatch.views.find((view) => view.view.definition === class_.definition);
+  const stateType = mojoProjectStateType(class_);
+  if (ownView === undefined || stateType === undefined) return undefined;
+  const constructorContext = withMojoErrorType(withMojoLocalNameScope(context), errorType);
+  const parameterPrelude = signature === undefined
+    ? Object.freeze([])
+    : planMojoParameterPrelude(signature.parameters, constructorContext, planMojoValue, true);
+  if (parameterPrelude === undefined) return undefined;
+  const stateArguments = (signature?.parameters ?? []).map((parameter) => {
     const value = Object.freeze({ kind: "path" as const, path: parameter.incomingName });
+    const inputType = parameter.omissionKind === "rest" ? parameter.type : parameter.callType;
     return Object.freeze({
       value: mojoParameterConvention(parameter.disposition) === "var"
-        ? consumeMojoValue(value, parameter.callType, context.program.lifecycle)
+        ? consumeMojoValue(value, inputType, context.program.lifecycle)
         : value,
       ...(parameter.omissionKind === "rest" ? { spread: true } : {}),
     });
@@ -208,21 +269,22 @@ export function planMojoPolymorphicClassConstructor(
     kind: "function",
     name: "__init__",
     genericParameters: Object.freeze([]),
-    parameters: Object.freeze((sourceConstructor?.parameters ?? []).map((parameter) =>
-      planMojoParameterDeclaration(parameter, context))),
+    parameters: Object.freeze((signature?.parameters ?? []).map((parameter) =>
+      planMojoParameterDeclaration(parameter, constructorContext))),
     resultType: Object.freeze({ kind: "unit" }),
     asynchronous: false,
-    raises: sourceConstructor?.raises === true || class_.initializationErrorType !== undefined,
-    ...(sourceConstructor?.errorType === undefined && class_.initializationErrorType === undefined
-      ? {}
-      : { errorType: sourceConstructor?.errorType ?? class_.initializationErrorType }),
+    raises,
+    ...(errorType === undefined ? {} : { errorType }),
     self: "out self",
-    statements: Object.freeze([Object.freeze({
-      kind: "assignment",
-      operator: "=",
-      left: Object.freeze({ kind: "path", path: "self" }),
-      right: construction,
-    })]),
+    statements: Object.freeze([
+      ...parameterPrelude,
+      Object.freeze({
+        kind: "assignment",
+        operator: "=",
+        left: Object.freeze({ kind: "path", path: "self" }),
+        right: construction,
+      }),
+    ]),
   });
 }
 

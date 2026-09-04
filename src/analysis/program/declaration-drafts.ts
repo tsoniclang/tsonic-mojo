@@ -8,7 +8,8 @@ export interface MojoFunctionDraft {
   readonly declaration: Node;
   readonly sourceFile: SourceFile;
   readonly name: string;
-  readonly body: Node;
+  readonly implementationAdapterName?: string;
+  readonly body?: Node;
   readonly localNames: (sourceName: string) => string;
 }
 
@@ -80,14 +81,17 @@ export function collectMojoDeclarationDrafts(input: {
         typeAliases.push(Object.freeze({ declaration: statement, sourceFile, name }));
       } else if (ast.is.IsFunctionDeclaration(statement)) {
         const body = ast.body(statement);
-        if (body === undefined || !ast.is.IsBlock(body)) {
-          reject(input, "MOJO_FUNCTION_SHAPE_UNSUPPORTED", "Mojo functions require a named TypeScript function declaration with a body.", statement);
+        if (body !== undefined && !ast.is.IsBlock(body)) {
+          reject(input, "MOJO_FUNCTION_BODY_INVALID", "A project function implementation requires one exact block body.", statement);
         } else {
           functions.push(Object.freeze({
             declaration: statement,
             sourceFile,
             name,
-            body,
+            ...(body === undefined
+              ? { implementationAdapterName: input.globalNames(sourceFile)(`_${name}Overload`) }
+              : {}),
+            ...(body === undefined ? {} : { body }),
             localNames: input.createNameAllocator(),
           }));
         }
@@ -134,7 +138,7 @@ function declarationShapeCode(node: Node, ast: TargetSourceProgram["ast"]): stri
   if (ast.is.IsInterfaceDeclaration(node)) return "MOJO_INTERFACE_SHAPE_UNSUPPORTED";
   if (ast.is.IsEnumDeclaration(node)) return "MOJO_ENUM_SHAPE_UNSUPPORTED";
   if (ast.is.IsTypeAliasDeclaration(node)) return "MOJO_TYPE_ALIAS_SHAPE_UNSUPPORTED";
-  if (ast.is.IsFunctionDeclaration(node)) return "MOJO_FUNCTION_SHAPE_UNSUPPORTED";
+  if (ast.is.IsFunctionDeclaration(node)) return "MOJO_FUNCTION_NAME_INVALID";
   return "MOJO_TOP_LEVEL_DECLARATION_UNSUPPORTED";
 }
 
@@ -143,7 +147,7 @@ function declarationShapeMessage(node: Node, ast: TargetSourceProgram["ast"]): s
   if (ast.is.IsInterfaceDeclaration(node)) return "Mojo project interfaces require one exact named interface declaration.";
   if (ast.is.IsEnumDeclaration(node)) return "Mojo enums require one exact named enum declaration.";
   if (ast.is.IsTypeAliasDeclaration(node)) return "Mojo type aliases require one exact named alias declaration.";
-  if (ast.is.IsFunctionDeclaration(node)) return "Mojo functions require a named TypeScript function declaration with a body.";
+  if (ast.is.IsFunctionDeclaration(node)) return "A project function requires one exact identifier name.";
   return "Executable project declarations require a supported top-level function, class, interface, or enum form.";
 }
 

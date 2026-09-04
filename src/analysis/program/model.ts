@@ -10,6 +10,7 @@ import type {
 } from "../../providers/packages/model.js";
 import type { MojoTargetConfiguration } from "../../target-model/configuration/model.js";
 import type {
+  MojoTargetGenericArgument,
   MojoTargetTypeRef,
 } from "../../target-model/types/model.js";
 import type {
@@ -114,6 +115,7 @@ export interface MojoAnalyzedCallableSignature {
   readonly declaration: Node;
   readonly sourceFile: SourceFile;
   readonly name: string;
+  readonly implementationAdapterName?: string;
   readonly typeParameters: readonly MojoAnalyzedTypeParameter[];
   readonly parameters: readonly MojoAnalyzedParameter[];
   readonly resultType: MojoTargetTypeRef;
@@ -132,6 +134,26 @@ export interface MojoAnalyzedFunction extends MojoAnalyzedCallableSignature {
 export interface MojoAnalyzedProjectCallable {
   readonly contract: MojoAnalyzedCallableSignature;
   readonly implementation?: MojoAnalyzedFunction;
+}
+
+export interface MojoCallableImplementationAdapter {
+  readonly kind:
+    | "top-level-function-overload"
+    | "instance-method-overload"
+    | "static-method-overload"
+    | "constructor-overload";
+  readonly contract: MojoAnalyzedCallableSignature;
+  readonly implementation: MojoAnalyzedFunction;
+  readonly owner?: MojoAnalyzedClass;
+  readonly sourceFile: SourceFile;
+  readonly name: string;
+  readonly targetGenericArguments: readonly MojoTargetGenericArgument[];
+  readonly targetParameters: readonly MojoAnalyzedParameter[];
+  readonly parameterAdapters: readonly MojoCallableParameterAdapter[];
+  readonly implementationResultType: MojoTargetTypeRef;
+  readonly resultConversion: MojoValueConversion;
+  readonly raises: boolean;
+  readonly errorType?: MojoTargetTypeRef;
 }
 
 export type MojoAnalyzedTopLevelFunction = MojoAnalyzedFunction & {
@@ -339,7 +361,7 @@ export interface MojoProjectDispatchView {
   }[];
 }
 
-export type MojoProjectDispatchParameterAdapter =
+export type MojoCallableParameterAdapter =
   | {
       readonly kind: "value";
       readonly sourceIndex: number;
@@ -377,7 +399,7 @@ export interface MojoProjectDispatchCallableAdapter {
   readonly implementationName: string;
   readonly implementation: MojoAnalyzedFunction;
   readonly implementationOwnerType: MojoTargetTypeRef;
-  readonly parameterAdapters: readonly MojoProjectDispatchParameterAdapter[];
+  readonly parameterAdapters: readonly MojoCallableParameterAdapter[];
   readonly resultConversion: MojoValueConversion;
   readonly methodStorage?: MojoProjectMethodStorage;
   readonly methodCallAdapterName?: string;
@@ -442,7 +464,7 @@ export interface MojoProjectObjectLiteralCallableAdapter {
   readonly resultType: MojoTargetTypeRef;
   readonly raises: boolean;
   readonly errorType?: MojoTargetTypeRef;
-  readonly parameterAdapters: readonly MojoProjectDispatchParameterAdapter[];
+  readonly parameterAdapters: readonly MojoCallableParameterAdapter[];
   readonly resultConversion: MojoValueConversion;
   readonly adapterName: string;
   readonly methodStorage?: MojoProjectObjectLiteralMethodStorage;
@@ -606,7 +628,8 @@ export interface MojoAnalyzedModuleBinding {
   readonly disposition: MojoBindingDisposition;
   readonly type: MojoTargetTypeRef;
   readonly initializer: Node;
-  readonly functionValue?: MojoAnalyzedTopLevelFunction;
+  readonly functionValue?: MojoAnalyzedCallableSignature;
+  readonly references?: readonly Node[];
   readonly publicAbi?: MojoPublicModuleBindingAbi;
 }
 
@@ -1088,6 +1111,7 @@ export interface MojoTargetProgram {
   readonly moduleInitialization: MojoModuleInitializationCatalog;
   readonly binaryEntry?: MojoAnalyzedTopLevelFunction;
   readonly declarations: readonly MojoAnalyzedDeclaration[];
+  readonly callableImplementationAdapters: readonly MojoCallableImplementationAdapter[];
   readonly representations: MojoRepresentationCatalog;
   readonly lifecycle: MojoLifecycleCatalog;
   readonly queries: MojoProgramQueries;

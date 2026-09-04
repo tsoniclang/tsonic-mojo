@@ -269,8 +269,9 @@ export function planMojoCall(
     switch (selection.target.kind) {
       case "function": {
         if (selection.optionalChain) return unsupportedOptionalCall(node, context);
-        const requiresSpecialization = context.program.sourceCallableSpecializations
-          .requiresSpecialization(selection.target.declaration);
+        const requiresSpecialization = selection.target.adapterDeclaration === undefined &&
+          context.program.sourceCallableSpecializations
+            .requiresSpecialization(selection.target.declaration);
         const specialization = requiresSpecialization
           ? context.program.sourceCallableSpecializations.variantForCall(
               selection.target.declaration,
@@ -360,10 +361,12 @@ export function planMojoCall(
               genericArguments,
             );
         const exactName = exactDispatch
-          ? context.program.projectDispatch.implementationName(
-              selection.target.implementationDeclaration,
-              genericArguments,
-            )
+          ? selection.target.adapterDeclaration !== undefined
+            ? selection.target.name
+            : context.program.projectDispatch.implementationName(
+                selection.target.implementationDeclaration,
+                genericArguments,
+              )
           : undefined;
         const requiresSpecialization = context.program.sourceCallableSpecializations
           .requiresSpecialization(selection.target.implementationDeclaration);

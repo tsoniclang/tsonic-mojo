@@ -27,7 +27,7 @@ import {
 } from "./types.js";
 import { planMojoIndexAdapterMethods } from "./index-adapters.js";
 import { planMojoParameterDeclaration } from "../../declarations/parameters.js";
-import { planMojoProjectDispatchArguments } from "./parameter-adapters.js";
+import { planMojoCallableAdapterArguments } from "../../callables/parameter-adapters.js";
 
 export function planMojoConcreteDispatchMethods(
   dispatch: MojoProjectConcreteDispatch,
@@ -217,7 +217,7 @@ function planCallableAdapter(
     callee: mojoProjectStaticMember(dispatch.concrete.targetType, ownerView.conversionAdapterName),
     arguments: Object.freeze([Object.freeze({ value: object })]),
   });
-  const adapted = planMojoProjectDispatchArguments(adapter.parameterAdapters, context);
+  const adapted = planMojoCallableAdapterArguments(adapter.parameterAdapters, context);
   if (adapted === undefined) return undefined;
   let call: MojoExpression = Object.freeze({
     kind: "method-call",

@@ -40,6 +40,7 @@ import { planMojoPhysicalTypeAliases } from "../types/aliases.js";
 import { normalizeMojoDeclarations } from "../../normalization/index.js";
 import { createMojoOutputComponents } from "../../artifact-model/project/components.js";
 import { createMojoNativeBuildPlan } from "../../artifact-model/project/native.js";
+import { planMojoTopLevelImplementationAdapter } from "../callables/implementation-adapters.js";
 
 export function planMojoOutput(
   input: MojoOutputPlanningContext,
@@ -110,6 +111,21 @@ function planSourceModule(
         "MOJO_MODULE_STATE_NOT_PLANNED",
         `Source module '${module.relativeSourcePath}' has no exact sealed module-state plan.`,
         module.sourceFile,
+      ));
+    }
+  }
+  for (const adapter of program.callableImplementationAdapters) {
+    if (adapter.kind !== "top-level-function-overload") continue;
+    if (program.modules.forSourceFile(adapter.sourceFile)?.id !== module.id) continue;
+    const diagnosticCount = context.diagnostics.length;
+    const planned = planMojoTopLevelImplementationAdapter(adapter, context);
+    if (planned !== undefined) {
+      declarations.push(planned);
+    } else if (context.diagnostics.length === diagnosticCount) {
+      context.diagnostics.push(planningDiagnostic(
+        "MOJO_SEALED_CALLABLE_ADAPTER_PLAN_MISSING",
+        `Sealed overload adapter '${adapter.name}' has no mechanical Mojo declaration plan.`,
+        adapter.contract.declaration,
       ));
     }
   }

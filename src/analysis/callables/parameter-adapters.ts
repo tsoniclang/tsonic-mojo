@@ -1,17 +1,17 @@
 import type {
   MojoAnalyzedParameter,
-  MojoProjectDispatchParameterAdapter,
+  MojoCallableParameterAdapter,
 } from "../program/model.js";
 import { mojoParameterConvention } from "../representations/index.js";
 import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 
-export function selectMojoProjectDispatchParameterAdapters(
+export function selectMojoCallableParameterAdapters(
   sources: readonly MojoAnalyzedParameter[],
   targets: readonly MojoAnalyzedParameter[],
   relationships: MojoProjectTypeRelationships,
-): readonly MojoProjectDispatchParameterAdapter[] | undefined {
-  const adapters: MojoProjectDispatchParameterAdapter[] = [];
+): readonly MojoCallableParameterAdapter[] | undefined {
+  const adapters: MojoCallableParameterAdapter[] = [];
   for (const [targetIndex, target] of targets.entries()) {
     if (target.omissionKind === "rest") {
       if (targetIndex !== targets.length - 1) return undefined;

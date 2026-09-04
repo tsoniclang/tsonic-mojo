@@ -1,28 +1,26 @@
 import type {
   MojoAnalyzedParameter,
-  MojoProjectDispatchParameterAdapter,
-} from "../../../../analysis/program/model.js";
-import type { MojoTargetTypeRef } from "../../../../target-model/types/model.js";
+  MojoCallableParameterAdapter,
+} from "../../../analysis/program/model.js";
+import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import type {
   MojoCallArgument,
   MojoExpression,
   MojoStatement,
-} from "../../../target-ast/index.js";
-import {
-  convertMojoValue,
-} from "../../expressions/support.js";
+} from "../../target-ast/index.js";
+import { convertMojoValue } from "../expressions/support.js";
 import {
   consumeMojoValue,
   mojoValue,
-} from "../../expressions/value-plan.js";
+} from "../expressions/value-plan.js";
 import {
   allocateMojoSyntheticName,
-} from "../../program/context.js";
-import type { MojoPlanningContext } from "../../program/context.js";
-import { registerMojoTypeImports } from "../../types/imports.js";
+} from "../program/context.js";
+import type { MojoPlanningContext } from "../program/context.js";
+import { registerMojoTypeImports } from "../types/imports.js";
 
-export function planMojoProjectDispatchArguments(
-  adapters: readonly MojoProjectDispatchParameterAdapter[],
+export function planMojoCallableAdapterArguments(
+  adapters: readonly MojoCallableParameterAdapter[],
   context: MojoPlanningContext,
 ): {
   readonly before: readonly MojoStatement[];
@@ -77,8 +75,8 @@ export function planMojoProjectDispatchArguments(
       element: adapter.target.type,
     });
     registerMojoTypeImports(listType, context);
-    const valuesName = allocateMojoSyntheticName(context, "dispatch_rest_values");
-    const itemName = allocateMojoSyntheticName(context, "dispatch_rest_item");
+    const valuesName = allocateMojoSyntheticName(context, "adapter_rest_values");
+    const itemName = allocateMojoSyntheticName(context, "adapter_rest_item");
     const converted = convertMojoValue(
       mojoValue(Object.freeze({ kind: "path", path: itemName })),
       adapter.elementConversion,

@@ -16,8 +16,8 @@ import type { MojoPlanningContext } from "../../program/context.js";
 import {
   planLocationParameterPrelude,
   planMojoFunctionBody,
-  planMojoGenericParameters,
 } from "../../declarations/project.js";
+import { planMojoGenericParameters } from "../../declarations/generic-parameters.js";
 import { registerMojoTypeImports } from "../../types/imports.js";
 import {
   specializeMojoFunctionDeclaration,
