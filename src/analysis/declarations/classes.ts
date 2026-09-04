@@ -490,7 +490,7 @@ function resolveType(
       : { sourceCallableErrorType: input.sourceCallableErrorType }),
   });
   if (result.kind === "resolved") return result.type;
-  append(input, "MOJO_TARGET_TYPE_UNSUPPORTED", `Selected source type cannot be represented exactly in Mojo: ${result.reason}.`, node);
+  append(input, "MOJO_CLASS_FIELD_CARRIER_UNRESOLVED", `Selected class field type cannot be represented exactly in Mojo: ${result.reason}.`, node);
   return undefined;
 }
 

@@ -65,6 +65,7 @@ import type {
   MojoPlannedMutation,
   MojoPreparedMutation,
 } from "./mutation-plan.js";
+import { planMojoIntrinsicExpression } from "./intrinsic-expressions.js";
 
 const assignmentOperatorText = new Map<string, string>([
   ["KindEqualsToken", "="],
@@ -697,6 +698,8 @@ export function planMojoValue(
     plan = planParenthesized(node, evaluationContext, planMojoValue);
   } else if (ast.is.IsDeleteExpression(node)) {
     plan = planMojoDelete(node, evaluationContext, planMojoValue);
+  } else if (ast.is.IsTypeOfExpression(node) || ast.is.IsVoidExpression(node)) {
+    plan = planMojoIntrinsicExpression(node, evaluationContext, planMojoValue);
   } else if (ast.is.IsBinaryExpression(node)) {
     const assignment = planMojoAssignment(node, evaluationContext, "value");
     plan = assignment === undefined

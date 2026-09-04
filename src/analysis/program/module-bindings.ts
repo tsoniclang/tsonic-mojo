@@ -22,6 +22,7 @@ import type {
   MojoAnalyzedModuleBinding,
   MojoModuleInitializationStep,
 } from "./model.js";
+import { isMojoModuleRuntimeStatement } from "./module-runtime-statements.js";
 
 export interface MojoModuleBindingAnalysisInput {
   readonly source: TargetSourceProgram;
@@ -166,7 +167,7 @@ export function analyzeMojoModuleBindings(
           );
           if (resolved.kind === "unsupported") {
             input.diagnostics.push(diagnostic(
-              "MOJO_TARGET_TYPE_UNSUPPORTED",
+              "MOJO_MODULE_BINDING_CARRIER_UNRESOLVED",
               `Selected top-level binding type cannot be represented exactly in Mojo: ${resolved.reason}.`,
               declaration,
             ));
@@ -325,7 +326,7 @@ export function analyzeMojoModuleBindings(
             });
             if (resolved.kind === "unsupported") {
               input.diagnostics.push(diagnostic(
-                "MOJO_TARGET_TYPE_UNSUPPORTED",
+                "MOJO_CLASS_STATIC_FIELD_CARRIER_UNRESOLVED",
                 `Selected class static field type cannot be represented exactly in Mojo: ${resolved.reason}.`,
                 member,
               ));
@@ -387,6 +388,10 @@ export function analyzeMojoModuleBindings(
             }
           }
         }
+        continue;
+      }
+      if (isMojoModuleRuntimeStatement(statement, ast)) {
+        initializationSteps.push(Object.freeze({ kind: "statement", statement }));
       }
     }
     analyzed.push(Object.freeze({
@@ -616,7 +621,7 @@ function resolveModuleBindingType(
   });
   if (resolved.kind === "resolved") return resolved.type;
   input.diagnostics.push(diagnostic(
-    "MOJO_TARGET_TYPE_UNSUPPORTED",
+    "MOJO_MODULE_BINDING_CARRIER_UNRESOLVED",
     `Selected top-level binding type cannot be represented exactly in Mojo: ${resolved.reason}.`,
     evidence,
   ));

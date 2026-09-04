@@ -2,6 +2,7 @@ import type { Node, SourceFile } from "@tsonic/tsts";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
+import { isMojoModuleRuntimeStatement } from "./module-runtime-statements.js";
 
 export interface MojoFunctionDraft {
   readonly declaration: Node;
@@ -108,7 +109,7 @@ function ignoredTopLevel(node: Node, ast: TargetSourceProgram["ast"]): boolean {
   return ast.is.IsImportDeclaration(node) || ast.is.IsExportDeclaration(node) ||
     ast.is.IsVariableStatement(node) ||
     ast.is.IsExpressionStatement(node) || ast.is.IsExportAssignment(node) ||
-    ast.is.IsEmptyStatement(node);
+    ast.is.IsEmptyStatement(node) || isMojoModuleRuntimeStatement(node, ast);
 }
 
 function namedTypeDraft(

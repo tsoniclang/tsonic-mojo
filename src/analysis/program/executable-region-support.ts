@@ -134,8 +134,8 @@ export function isRuntimeValueOccurrence(
 
 export function targetTypeDiagnostic(node: Node, reason: string): TargetDiagnostic {
   return diagnostic(
-    "MOJO_TARGET_TYPE_UNSUPPORTED",
-    `Selected source type cannot be represented exactly in Mojo: ${reason}.`,
+    "MOJO_LOCAL_BINDING_CARRIER_UNRESOLVED",
+    `Selected local binding type cannot be represented exactly in Mojo: ${reason}.`,
     node,
   );
 }

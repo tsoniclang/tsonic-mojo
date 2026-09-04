@@ -21,13 +21,13 @@ import {
   VariableStatement_DeclarationList,
 } from "@tsonic/target-api/source";
 import type {
-  MojoAnalyzedFunction,
   MojoArrayLiteralSelection,
   MojoBindingPatternSelection,
   MojoCallSelection,
   MojoCallableExpressionSelection,
   MojoElementSelection,
   MojoIterationSelection,
+  MojoIntrinsicExpressionSelection,
   MojoObjectLiteralSelection,
   MojoPropertySelection,
   MojoResourceManagementSelection,
@@ -78,14 +78,16 @@ export function isMojoAssignmentOperator(operator: string): boolean {
   return assignmentOperators.has(operator);
 }
 
-export function validateMojoFunctionSyntax(
-  function_: MojoAnalyzedFunction,
+export function validateMojoExecutableRegionSyntax(
+  root: Node,
+  rootKind: "expression" | "statement" | "declaration",
   ast: AstReader,
   calls: WeakMap<Node, MojoCallSelection>,
   properties: WeakMap<Node, MojoPropertySelection>,
   elements: WeakMap<Node, MojoElementSelection>,
   iterations: WeakMap<Node, MojoIterationSelection>,
   values: WeakMap<Node, MojoValueSelection>,
+  intrinsicExpressions: WeakMap<Node, MojoIntrinsicExpressionSelection>,
   typeTests: WeakMap<Node, MojoTypeTestSelection>,
   arrayLiterals: WeakMap<Node, MojoArrayLiteralSelection>,
   objectLiterals: WeakMap<Node, MojoObjectLiteralSelection>,
@@ -115,8 +117,6 @@ export function validateMojoFunctionSyntax(
   };
   const validateExpression = (expression: Node | undefined): void => {
     if (expression === undefined) return;
-    const expressionType = expressionTypes.get(expression);
-    if (expressionType?.kind === "undefined" || expressionType?.kind === "null") return;
     if (ast.is.IsIdentifier(expression) || ast.kindName(expression) === "KindThisKeyword") {
       if (bindings.get(expression) === undefined && values.get(expression) === undefined) {
         diagnostics.push(diagnostic(
@@ -220,6 +220,29 @@ export function validateMojoFunctionSyntax(
         ));
       }
       validateExpression(operand);
+      return;
+    }
+    if (ast.is.IsRegularExpressionLiteral(expression)) {
+      const expressionType = expressionTypes.get(expression);
+      if (expressionType?.kind !== "target-named" ||
+        expressionType.id !== "tsonic.mojo.js.JsRegExp") {
+        diagnostics.push(diagnostic(
+          "MOJO_REGEXP_LITERAL_CARRIER_UNRESOLVED",
+          "A regular-expression literal has no exact sealed JavaScript RegExp carrier.",
+          expression,
+        ));
+      }
+      return;
+    }
+    if (ast.is.IsTypeOfExpression(expression) || ast.is.IsVoidExpression(expression)) {
+      if (intrinsicExpressions.get(expression) === undefined) {
+        diagnostics.push(diagnostic(
+          "MOJO_INTRINSIC_EXPRESSION_SELECTION_UNRESOLVED",
+          `${ast.is.IsTypeOfExpression(expression) ? "typeof" : "void"} has no exact sealed Mojo operation.`,
+          expression,
+        ));
+      }
+      validateExpression(Node_Expression(ast, expression));
       return;
     }
     if (ast.is.IsPrefixUnaryExpression(expression) || ast.is.IsPostfixUnaryExpression(expression)) {
@@ -335,6 +358,8 @@ export function validateMojoFunctionSyntax(
 
   const validateStatement = (statement: Node | undefined): void => {
     if (statement === undefined) return;
+    if (ast.is.IsEmptyStatement(statement)) return;
+    if (ast.is.IsDebuggerStatement(statement)) return;
     if (ast.is.IsBlock(statement)) {
       for (const child of ast.statements(statement)) validateStatement(child);
       return;
@@ -452,5 +477,12 @@ export function validateMojoFunctionSyntax(
       statement,
     ));
   };
-  validateStatement(function_.body);
+  if (rootKind === "expression") {
+    validateExpression(root);
+  } else if (rootKind === "declaration") {
+    validateResourceDeclaration(root);
+    validateExpression(Node_Initializer(ast, root));
+  } else {
+    validateStatement(root);
+  }
 }

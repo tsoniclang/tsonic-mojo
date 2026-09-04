@@ -1,6 +1,3 @@
-import {
-  Node_Expression,
-} from "@tsonic/target-api/source";
 import type {
   MojoAnalyzedModule,
   MojoAnalyzedModuleBinding,
@@ -27,8 +24,6 @@ import {
   withMojoModuleStateInitialization,
 } from "./context.js";
 import {
-  planMojoAssignment,
-  planMojoUpdate,
   planMojoValue,
 } from "../expressions/value.js";
 import { mojoModuleBindingSlot, mojoModuleStatePointerExpression } from "../bindings/module-bindings.js";
@@ -581,23 +576,7 @@ function planModuleStatement(
   statement: import("@tsonic/tsts").Node,
   context: MojoPlanningContext,
 ): readonly MojoStatement[] | undefined {
-  const { ast } = context.program.source;
-  const sourceExpression = Node_Expression(ast, statement);
-  if (sourceExpression === undefined) return Object.freeze([]);
-  const assignment = planMojoAssignment(sourceExpression, context);
-  if (assignment !== undefined) return Object.freeze([
-    ...assignment.before,
-    assignment.statement,
-  ]);
-  const update = planMojoUpdate(sourceExpression, context);
-  if (update !== undefined) return Object.freeze([
-    ...update.before,
-    update.statement,
-  ]);
-  const value = planMojoValue(sourceExpression, context);
-  return value === undefined
-    ? undefined
-    : Object.freeze([...value.before, Object.freeze({ kind: "expression", expression: value.value })]);
+  return planMojoStatementRegion(Object.freeze([statement]), context);
 }
 
 function planModuleBindingInitialization(

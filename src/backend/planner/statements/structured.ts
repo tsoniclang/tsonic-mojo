@@ -148,6 +148,17 @@ function planStatement(
   flow: MojoFlowPlanningContext,
 ): readonly MojoStatement[] | undefined {
   const { ast } = context.program.source;
+  if (ast.is.IsEmptyStatement(node)) return Object.freeze([]);
+  if (ast.is.IsDebuggerStatement(node)) {
+    return Object.freeze([Object.freeze({
+      kind: "expression",
+      expression: Object.freeze({
+        kind: "call",
+        callee: Object.freeze({ kind: "path", path: "breakpoint" }),
+        arguments: Object.freeze([]),
+      }),
+    })]);
+  }
   if (ast.is.IsBlock(node)) {
     return planBlock(node, scope, context, flow);
   }
@@ -413,8 +424,8 @@ function planStatement(
   }
   appendMojoPlanningDiagnostic(
     context,
-    "MOJO_STATEMENT_PLAN_UNSUPPORTED",
-    `Statement kind '${ast.kindName(node)}' reached planning without a Mojo form.`,
+    "MOJO_SEALED_STATEMENT_PLAN_MISSING",
+    `Statement kind '${ast.kindName(node)}' reached planning without its sealed Mojo form.`,
     node,
   );
   return undefined;

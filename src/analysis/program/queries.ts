@@ -12,6 +12,7 @@ import type {
   MojoCallableExpressionSelection,
   MojoElementSelection,
   MojoIterationSelection,
+  MojoIntrinsicExpressionSelection,
   MojoNullishCoalescingSelection,
   MojoObjectLiteralSelection,
   MojoProgramQueries,
@@ -33,6 +34,7 @@ export interface MojoProgramQueryIndexes {
   readonly callSelections: WeakMap<Node, MojoCallSelection>;
   readonly propertySelections: WeakMap<Node, MojoPropertySelection>;
   readonly valueSelections: WeakMap<Node, MojoValueSelection>;
+  readonly intrinsicExpressionSelections: WeakMap<Node, MojoIntrinsicExpressionSelection>;
   readonly typeTestSelections: WeakMap<Node, MojoTypeTestSelection>;
   readonly nullishCoalescingSelections: WeakMap<Node, MojoNullishCoalescingSelection>;
   readonly elementSelections: WeakMap<Node, MojoElementSelection>;
@@ -82,6 +84,9 @@ export function createMojoProgramQueries(
     },
     valueSelection(expression: Node): MojoValueSelection | undefined {
       return indexes.valueSelections.get(expression);
+    },
+    intrinsicExpressionSelection(expression: Node): MojoIntrinsicExpressionSelection | undefined {
+      return indexes.intrinsicExpressionSelections.get(expression);
     },
     typeTestSelection(expression: Node): MojoTypeTestSelection | undefined {
       return indexes.typeTestSelections.get(expression);

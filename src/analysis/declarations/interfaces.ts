@@ -194,7 +194,7 @@ export function analyzeMojoInterface(
         : { sourceCallableErrorType: input.sourceCallableErrorType }),
     });
     if (resolved.kind === "unsupported") {
-      append(input, "MOJO_TARGET_TYPE_UNSUPPORTED", `Selected interface field type cannot be represented exactly in Mojo: ${resolved.reason}.`, member);
+      append(input, "MOJO_INTERFACE_FIELD_CARRIER_UNRESOLVED", `Selected interface field type cannot be represented exactly in Mojo: ${resolved.reason}.`, member);
       continue;
     }
     const sourceName = ast.text(nameNode);
@@ -318,7 +318,7 @@ function resolveInterfaceType(
       : { sourceCallableErrorType: input.sourceCallableErrorType }),
   });
   if (resolved.kind === "unsupported") {
-    append(input, "MOJO_TARGET_TYPE_UNSUPPORTED", `Selected interface type cannot be represented exactly in Mojo: ${resolved.reason}.`, evidence);
+    append(input, "MOJO_INTERFACE_INDEX_CARRIER_UNRESOLVED", `Selected interface index type cannot be represented exactly in Mojo: ${resolved.reason}.`, evidence);
     return undefined;
   }
   return resolved.type;

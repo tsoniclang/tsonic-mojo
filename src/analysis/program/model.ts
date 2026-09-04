@@ -794,6 +794,27 @@ export interface MojoValueSelection {
   readonly resultConversion: MojoValueConversion;
 }
 
+export type MojoIntrinsicExpressionSelection =
+  | {
+      readonly kind: "typeof";
+      readonly operand: Node;
+      readonly result:
+        | "undefined"
+        | "object"
+        | "boolean"
+        | "number"
+        | "bigint"
+        | "string"
+        | "symbol"
+        | "function";
+      readonly resultType: Extract<MojoTargetTypeRef, { readonly kind: "native-string" }>;
+    }
+  | {
+      readonly kind: "void";
+      readonly operand: Node;
+      readonly resultType: Extract<MojoTargetTypeRef, { readonly kind: "undefined" }>;
+    };
+
 export type MojoTypeTestSelection =
   | {
       readonly kind: "nullish-comparison";
@@ -1011,6 +1032,7 @@ export interface MojoProgramQueries {
   callSelection(call: Node): MojoCallSelection | undefined;
   propertySelection(access: Node): MojoPropertySelection | undefined;
   valueSelection(expression: Node): MojoValueSelection | undefined;
+  intrinsicExpressionSelection(expression: Node): MojoIntrinsicExpressionSelection | undefined;
   typeTestSelection(expression: Node): MojoTypeTestSelection | undefined;
   nullishCoalescingSelection(expression: Node): MojoNullishCoalescingSelection | undefined;
   arrayLiteralSelection(expression: Node): MojoArrayLiteralSelection | undefined;

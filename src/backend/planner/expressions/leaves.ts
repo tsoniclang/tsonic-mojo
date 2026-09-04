@@ -132,8 +132,8 @@ export function planMojoLeafExpression(
   } else {
     appendMojoPlanningDiagnostic(
       context,
-      "MOJO_EXPRESSION_PLAN_UNSUPPORTED",
-      `Expression kind '${ast.kindName(node)}' reached planning without a Mojo form.`,
+      "MOJO_SEALED_EXPRESSION_PLAN_MISSING",
+      `Expression kind '${ast.kindName(node)}' reached planning without its sealed Mojo form.`,
       node,
     );
     return undefined;

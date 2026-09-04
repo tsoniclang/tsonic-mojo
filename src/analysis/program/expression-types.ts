@@ -55,6 +55,7 @@ export function isMojoExpressionNode(node: Node, ast: AstReader): boolean {
     ast.is.IsArrowFunction(node) || ast.is.IsFunctionExpression(node) ||
     ast.is.IsAwaitExpression(node) || ast.is.IsAsExpression(node) || ast.is.IsTypeAssertion(node) ||
     ast.is.IsNonNullExpression(node) || ast.is.IsSatisfiesExpression(node) ||
+    ast.is.IsTypeOfExpression(node) || ast.is.IsVoidExpression(node) ||
     ast.is.IsDeleteExpression(node) ||
     ast.is.IsParenthesizedExpression(node) ||
     ast.kindName(node) === "KindThisKeyword" || ast.kindName(node) === "KindNullKeyword" ||

@@ -19,7 +19,7 @@ import type { MojoSourceModuleCatalog } from "../source-modules/model.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import { analyzeMojoTemplateExpression } from "../operations/template-expressions.js";
 import { closeMojoErrorType } from "./effects.js";
-import { validateMojoFunctionSyntax } from "./syntax-validation.js";
+import { validateMojoExecutableRegionSyntax } from "./syntax-validation.js";
 import { createMojoProgramQueries } from "./queries.js";
 import { finalizeMojoModuleBindingTypes } from "./module-bindings.js";
 import { finalizeMojoModuleEffects } from "./module-effects.js";
@@ -116,6 +116,7 @@ export function finalizeMojoProgramResult(
     propertySelections,
     propertyNodes,
     valueSelections,
+    intrinsicExpressionSelections,
     typeTestSelections,
     nullishCoalescingSelections,
     elementSelections,
@@ -128,6 +129,7 @@ export function finalizeMojoProgramResult(
     returnValueTransfers,
     fieldByDeclaration,
     locationStorageNames,
+    executableRegionRoots,
   } = environment;
   const { ast } = checkedSource;
   const methodPropertyOwners = new Set<import("../../target-model/types/project.js").MojoProjectTypeDefinition>();
@@ -249,15 +251,17 @@ export function finalizeMojoProgramResult(
     }
   }
 
-  for (const function_ of finalizedFunctions) {
-    validateMojoFunctionSyntax(
-      function_,
+  for (const [root, rootKind] of executableRegionRoots) {
+    validateMojoExecutableRegionSyntax(
+      root,
+      rootKind,
       ast,
       callSelections,
       propertySelections,
       elementSelections,
       iterationSelections,
       valueSelections,
+      intrinsicExpressionSelections,
       typeTestSelections,
       arrayLiteralSelections,
       objectLiteralSelections,
@@ -301,6 +305,7 @@ export function finalizeMojoProgramResult(
     callSelections,
     propertySelections,
     valueSelections,
+    intrinsicExpressionSelections,
     typeTestSelections,
     nullishCoalescingSelections,
     elementSelections,

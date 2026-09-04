@@ -21,6 +21,7 @@ import type {
   MojoCallableExpressionSelection,
   MojoElementSelection,
   MojoIterationSelection,
+  MojoIntrinsicExpressionSelection,
   MojoObjectLiteralSelection,
   MojoPropertySelection,
   MojoResourceManagementSelection,
@@ -78,6 +79,10 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     jsEnabled,
   );
   const diagnostics: TargetDiagnostic[] = [];
+  const executableRegionRoots = new Map<
+    Node,
+    "expression" | "statement" | "declaration"
+  >();
   const moduleAnalysis = analyzeMojoSourceModules(input, configuration.packageName, sourceFiles);
   if (moduleAnalysis.kind === "rejected") {
     return rejectedTargetStage(moduleAnalysis.issues.map((issue) => Object.freeze({
@@ -105,6 +110,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
   const resourceManagementSelections = new WeakMap<Node, MojoResourceManagementSelection>();
   const resourceDeclarations = new Set<Node>();
   const valueSelections = new WeakMap<Node, MojoValueSelection>();
+  const intrinsicExpressionSelections = new WeakMap<Node, MojoIntrinsicExpressionSelection>();
   const valueRefinements = new WeakMap<Node, MojoValueRefinementSelection>();
   const typeTestSelections = new WeakMap<Node, MojoTypeTestSelection>();
   const nullishCoalescingSelections = new WeakMap<Node, import("./model.js").MojoNullishCoalescingSelection>();
@@ -353,6 +359,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     jsEnabled,
     ...(sourceCallableErrorType === undefined ? {} : { sourceCallableErrorType }),
     diagnostics,
+    executableRegionRoots,
     bindingNames,
     bindingSourceFiles,
     bindingTypes,
@@ -367,6 +374,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     resourceManagementSelections,
     resourceDeclarations,
     valueSelections,
+    intrinsicExpressionSelections,
     valueRefinements,
     typeTestSelections,
     nullishCoalescingSelections,
@@ -449,11 +457,12 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
   >();
   for (const module of analyzedModules) {
     const roots: Node[] = [];
+    const allocateModuleLocalName = createNameAllocator();
     for (const step of module.initializationSteps) {
-      if (step.kind === "class-static-block") {
+      if (step.kind === "class-static-block" || step.kind === "statement") {
         allocateMojoLocalBindings(
-          step.body,
-          createNameAllocator(),
+          step.kind === "class-static-block" ? step.body : step.statement,
+          allocateModuleLocalName,
           bindingNames,
           ast,
           diagnostics,

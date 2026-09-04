@@ -95,7 +95,7 @@ export function planMojoSourceModuleIdentities(
     const sourceIdentity = sourceModuleSegments(relativeSourcePath);
     if (sourceIdentity === undefined) {
       issues.push(issue(
-        "MOJO_SOURCE_MODULE_IDENTITY_UNSUPPORTED",
+        "MOJO_SOURCE_MODULE_PATH_INVALID",
         `Source file '${fileName}' has no deterministic Mojo module identity.`,
         sourceFile,
       ));

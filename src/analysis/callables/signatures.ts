@@ -124,7 +124,7 @@ export function analyzeMojoCallableSignature(
       append(input, "MOJO_PARAMETER_SHAPE_UNSUPPORTED", "A parameter requires one exact identifier or binding-pattern declaration.", parameter);
       return undefined;
     }
-    const resolved = resolve(input, selected.type, ast.typeNode(parameter));
+    const resolved = resolve(input, selected.type, ast.typeNode(parameter), "parameter");
     if (resolved === undefined) return undefined;
     const rest = ast.as.AsParameterDeclaration(parameter)!.DotDotDotToken !== undefined;
     const parameterType = rest ? restElementType(resolved) : resolved;
@@ -200,13 +200,15 @@ export function analyzeMojoCallableSignature(
         ? resolve(
             input,
             semantics.declarations.declaredValueType(declaration) ??
-              semantics.declarations.declaredType(declaration),
+            semantics.declarations.declaredType(declaration),
             ast.typeNode(declaration),
+            "result",
           )
         : resolve(
             input,
             callable.result.selectedType,
             callable.result.authoredTypeNode ?? ast.typeNode(declaration),
+            "result",
           ));
   if (selectedResultType === undefined) return undefined;
   const asynchronous = ast.hasModifierKind(declaration, "async");
@@ -372,7 +374,7 @@ export function analyzeMojoTypeParameters(
         : [];
     if (constraintNode !== undefined && classified.parameter.kind !== "origin") {
       const selected = input.source.semantics.forFile(input.sourceFile).types.authoredType(constraintNode);
-      const constraint = resolve(input, selected, constraintNode);
+      const constraint = resolve(input, selected, constraintNode, "constraint");
       if (constraint === undefined) return undefined;
       constraints.push(constraint);
     }
@@ -430,7 +432,7 @@ function resolveGenericDefault(
     return Object.freeze({ kind: "origin", origin });
   }
   const selected = input.source.semantics.forFile(input.sourceFile).types.authoredType(node);
-  const type = resolve(input, selected, node);
+  const type = resolve(input, selected, node, "generic-default");
   return type === undefined ? undefined : Object.freeze({ kind: "type", type });
 }
 
@@ -454,10 +456,23 @@ function resolve(
   input: MojoTypeParameterAnalysisInput,
   selectedType: Type | undefined,
   authoredTypeNode: Node | undefined,
+  role: "parameter" | "result" | "constraint" | "generic-default",
 ): MojoTargetTypeRef | undefined {
   const resolved = resolveMojoTargetType(selectedType, authoredTypeNode, typeResolutionContext(input));
   if (resolved.kind === "resolved") return resolved.type;
-  append(input, "MOJO_TARGET_TYPE_UNSUPPORTED", `Selected source type cannot be represented exactly in Mojo: ${resolved.reason}.`, authoredTypeNode ?? input.declaration);
+  const subject = role === "parameter" ? "callable parameter"
+    : role === "result" ? "callable result"
+      : role === "constraint" ? "generic constraint"
+        : "generic default";
+  append(
+    input,
+    role === "parameter" ? "MOJO_CALLABLE_PARAMETER_CARRIER_UNRESOLVED"
+      : role === "result" ? "MOJO_CALLABLE_RESULT_CARRIER_UNRESOLVED"
+        : role === "constraint" ? "MOJO_GENERIC_CONSTRAINT_CARRIER_UNRESOLVED"
+          : "MOJO_GENERIC_DEFAULT_CARRIER_UNRESOLVED",
+    `Selected ${subject} type cannot be represented exactly in Mojo: ${resolved.reason}.`,
+    authoredTypeNode ?? input.declaration,
+  );
   return undefined;
 }
 

@@ -289,7 +289,7 @@ export function planObjectLiteral(
   if (project !== undefined) return project;
   const type = context.program.queries.expressionType(node);
   if (type?.kind !== "dictionary") {
-    appendMojoPlanningDiagnostic(context, "MOJO_OBJECT_LITERAL_SHAPE_UNSUPPORTED", "Object literal has no sealed dictionary or project-object representation.", node);
+    appendMojoPlanningDiagnostic(context, "MOJO_SEALED_OBJECT_LITERAL_PLAN_MISSING", "Object literal reached planning without its sealed dictionary or project-object representation.", node);
     return undefined;
   }
   const keys: MojoExpression[] = [];

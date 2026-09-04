@@ -38,6 +38,7 @@ import type {
   MojoCallableExpressionSelection,
   MojoElementSelection,
   MojoIterationSelection,
+  MojoIntrinsicExpressionSelection,
   MojoNullishCoalescingSelection,
   MojoObjectLiteralSelection,
   MojoPropertySelection,
@@ -77,6 +78,7 @@ import {
   selectReturnValueTransfer,
 } from "./executable-region-flow.js";
 import { analyzeCall, analyzeElement, analyzeProperty } from "./executable-region-operations.js";
+import { analyzeMojoIntrinsicExpression } from "../operations/intrinsic-expressions.js";
 import type { MojoLifecycleAnalysis } from "../lifecycle/model.js";
 import type { MojoValueOwnership } from "../../target-model/lifecycle/model.js";
 
@@ -97,6 +99,7 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly jsEnabled: boolean;
   readonly sourceCallableErrorType?: MojoTargetTypeRef;
   readonly diagnostics: TargetDiagnostic[];
+  readonly executableRegionRoots: Map<Node, "expression" | "statement" | "declaration">;
   readonly bindingNames: WeakMap<Node, string>;
   readonly bindingSourceFiles: WeakMap<Node, SourceFile>;
   readonly bindingTypes: WeakMap<Node, MojoTargetTypeRef>;
@@ -111,6 +114,7 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly resourceManagementSelections: WeakMap<Node, MojoResourceManagementSelection>;
   readonly resourceDeclarations: Set<Node>;
   readonly valueSelections: WeakMap<Node, MojoValueSelection>;
+  readonly intrinsicExpressionSelections: WeakMap<Node, MojoIntrinsicExpressionSelection>;
   readonly valueRefinements: WeakMap<Node, MojoValueRefinementSelection>;
   readonly typeTestSelections: WeakMap<Node, MojoTypeTestSelection>;
   readonly nullishCoalescingSelections: WeakMap<Node, MojoNullishCoalescingSelection>;
@@ -251,6 +255,7 @@ export function analyzeMojoExecutableRegion(
 ): MojoExecutableRegionAnalysis {
   const { source, root, sourceFile } = input;
   const { ast } = source;
+  input.executableRegionRoots.set(root, classifyExecutableRegionRoot(root, ast));
   const semantics = source.semantics.forFile(sourceFile);
   const dependencies = new Set<Node>();
   const iterationNodes: Node[] = [];
@@ -367,6 +372,15 @@ export function analyzeMojoExecutableRegion(
     if (ast.is.IsAsExpression(node) || ast.is.IsTypeAssertion(node) ||
       ast.is.IsNonNullExpression(node)) {
       analyzeErasedValueRefinement(node, input, semantics);
+    }
+    if (ast.is.IsTypeOfExpression(node) || ast.is.IsVoidExpression(node)) {
+      const intrinsic = analyzeMojoIntrinsicExpression(node, ast, input.expressionTypes);
+      if (intrinsic.kind === "unsupported") {
+        input.diagnostics.push(diagnostic(intrinsic.code, intrinsic.reason, node));
+      } else if (intrinsic.kind === "resolved") {
+        input.intrinsicExpressionSelections.set(node, intrinsic.selection);
+        input.expressionTypes.set(node, intrinsic.selection.resultType);
+      }
     }
     if (ast.kindName(node) === "KindTemplateExpression") {
       input.templateExpressionNodes.add(node);
@@ -583,6 +597,25 @@ export function analyzeMojoExecutableRegion(
     errorTypes,
     raises: errorTypes.length > 0,
   });
+}
+
+function classifyExecutableRegionRoot(
+  root: Node,
+  ast: TargetSourceProgram["ast"],
+): "expression" | "statement" | "declaration" {
+  if (ast.is.IsVariableDeclaration(root)) return "declaration";
+  if (ast.is.IsBlock(root) || ast.is.IsReturnStatement(root) ||
+    ast.is.IsExpressionStatement(root) || ast.is.IsThrowStatement(root) ||
+    ast.is.IsVariableStatement(root) || ast.is.IsIfStatement(root) ||
+    ast.is.IsWhileStatement(root) || ast.is.IsDoStatement(root) ||
+    ast.is.IsForStatement(root) || ast.is.IsForOfStatement(root) ||
+    ast.is.IsForInStatement(root) || ast.is.IsSwitchStatement(root) ||
+    ast.is.IsTryStatement(root) || ast.is.IsBreakStatement(root) ||
+    ast.is.IsContinueStatement(root) || ast.is.IsEmptyStatement(root) ||
+    ast.is.IsDebuggerStatement(root) || ast.is.IsLabeledStatement(root)) {
+    return "statement";
+  }
+  return "expression";
 }
 
 function isContextualObjectCallable(
