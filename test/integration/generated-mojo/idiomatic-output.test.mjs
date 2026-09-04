@@ -206,5 +206,8 @@ test("module initializers use collision-safe imports and one local state referen
   assert.doesNotMatch(entry.text, /def _initialize_module\(\):\n\s+_initialize_module\(\)/u);
   assert.match(settings.text, /var _state = _module_state\.get\(\)/u);
   assert.match(settings.text, /_state\[\]\.calls = Optional\[Int32\]/u);
-  assert.equal((settings.text.match(/_module_state\.get\(\)/gu) ?? []).length, 2);
+  assert.equal((settings.text.match(/_module_state\.get\(\)/gu) ?? []).length, 3);
+  assert.match(settings.text, /def _initialize_module_body\(\):\s+var _state = _module_state\.get\(\)/u);
+  assert.match(settings.text, /def _initialize_module\(\):\s+var _state_2 = _module_state\.get\(\)/u);
+  assert.match(settings.text, /def load\(\) -> Int32:\s+_module_state\.get\(\)/u);
 });

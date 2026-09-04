@@ -134,7 +134,7 @@ export function planMojoModuleState(
     }
     declarations.push(body);
   }
-  if (ownsLifecycle) {
+  if (ownsInitialization && component.runtimeInitializationRequired) {
     const diagnosticCount = context.diagnostics.length;
     const initializer = planInitializationComponent(
       program,

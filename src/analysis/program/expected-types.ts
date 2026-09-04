@@ -1,4 +1,4 @@
-import type { Node } from "@tsonic/tsts";
+import type { Node, Type } from "@tsonic/tsts";
 import {
   BinaryExpression_Left,
   BinaryExpression_Right,
@@ -143,4 +143,27 @@ export function callArgumentExpectedType(
         ? selection.operandType
         : undefined;
   }
+}
+
+export function selectedSourceCallArgumentExpectedType(
+  node: Node,
+  input: MojoExecutableRegionAnalysisInput,
+  semantics: ReturnType<MojoExecutableRegionAnalysisInput["source"]["semantics"]["forFile"]>,
+  resolveType: (type: Type) => MojoTargetTypeRef | undefined,
+): MojoTargetTypeRef | undefined {
+  const parent = input.source.ast.parent(node);
+  if (parent === undefined ||
+    (!input.source.ast.is.IsCallExpression(parent) &&
+      !input.source.ast.is.IsNewExpression(parent))) return undefined;
+  const sourceArgumentIndex = input.source.ast.arguments(parent).findIndex((argument) =>
+    argument === node);
+  if (sourceArgumentIndex < 0) return undefined;
+  const selectedCall = semantics.operations.call(parent);
+  if (selectedCall === undefined || selectedCall.sourceSelectedSignatureKind !== "resolved") {
+    return undefined;
+  }
+  const bindings = selectedCall.sourceArgumentBindings.filter((binding) =>
+    binding.sourceArgumentIndex === sourceArgumentIndex);
+  if (bindings.length !== 1) return undefined;
+  return resolveType(bindings[0]!.selectedParameterType);
 }

@@ -28,6 +28,7 @@ import { finalizeMojoPublicModuleBindingAbis } from "./public-abi.js";
 import {
   createMojoRepresentationCatalog,
   mojoCallableImplementationAdapterTypes,
+  mojoObjectLiteralRepresentationTypes,
   mojoRepresentationParameters,
   mojoRepresentationRootTypes,
 } from "../representations/index.js";
@@ -393,6 +394,7 @@ export function finalizeMojoProgramResult(
       ),
       ...sourceCallableSpecializations.representationTypes,
       ...projectDispatch.representationTypes,
+      ...mojoObjectLiteralRepresentationTypes(objectLiteralNodes, objectLiteralSelections),
     ]),
     parameters: mojoRepresentationParameters(
       declarations,

@@ -773,6 +773,12 @@ test("runtime package artifacts retain the exact analyzed Mojo sources", () => {
       module: { modulePath: [], imports: [], typeAliases: [], declarations: [] },
     }],
     runtimePackages: [packagePlan],
+    nativeBuild: {
+      dependencies: [],
+      packages: [],
+      staticLibraries: [],
+      dynamicLibraries: [],
+    },
   });
   assert.deepEqual(
     output.artifacts.filter(({ path }) => path.startsWith("packages/")).map(({ path }) => path),

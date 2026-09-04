@@ -8,6 +8,8 @@ import type {
   MojoCallableImplementationAdapter,
 } from "../program/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import type { Node } from "@tsonic/tsts";
+import type { MojoObjectLiteralSelection } from "../program/model.js";
 
 export function mojoRepresentationRootTypes(
   declarations: readonly MojoAnalyzedDeclaration[],
@@ -59,6 +61,39 @@ export function mojoCallableImplementationAdapterTypes(
     ...adapter.contract.typeParameters.flatMap((parameter) => parameter.constraints),
     ...(adapter.errorType === undefined ? [] : [adapter.errorType]),
   ]));
+}
+
+export function mojoObjectLiteralRepresentationTypes(
+  nodes: ReadonlySet<Node>,
+  selections: WeakMap<Node, MojoObjectLiteralSelection>,
+): readonly MojoTargetTypeRef[] {
+  return Object.freeze([...nodes].flatMap((node) => {
+    const selection = selections.get(node);
+    if (selection === undefined) return [];
+    if (selection.kind === "interface") {
+      return [
+        selection.constructionType,
+        selection.resultType,
+        ...selection.fields.map((field) => field.fieldType),
+        ...selection.indexSignatures.flatMap((signature) => [
+          signature.keyType,
+          signature.valueType,
+          Object.freeze({
+            kind: "dictionary" as const,
+            key: signature.keyType,
+            value: signature.valueType,
+          }),
+        ]),
+      ];
+    }
+    if (selection.kind === "provider-record") {
+      return [selection.targetType, ...selection.fields.map((field) => field.storageType)];
+    }
+    return [
+      selection.definition.type,
+      ...selection.fields.map((field) => field.field.type),
+    ];
+  }));
 }
 
 function parameterTypes(parameter: MojoAnalyzedParameter): readonly MojoTargetTypeRef[] {

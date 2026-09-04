@@ -61,7 +61,10 @@ import {
 } from "./executable-region-support.js";
 import { mergeMojoErrorTypes, mojoOperationErrorTypes } from "./effects.js";
 import { classifyMojoValueRefinement } from "../refinements/value.js";
-import { expectedExpressionType } from "./expected-types.js";
+import {
+  expectedExpressionType,
+  selectedSourceCallArgumentExpectedType,
+} from "./expected-types.js";
 import {
   analyzeErasedValueRefinement,
   analyzeExpressionCarrier,
@@ -318,7 +321,13 @@ export function analyzeMojoExecutableRegion(
       if (inferred !== undefined) input.expressionTypes.set(node, inferred);
     }
     if (!ast.is.IsObjectLiteralExpression(node) || input.objectLiteralSelections.has(node)) return;
-    const expectedType = expectedExpressionType(node, input);
+    const expectedType = expectedExpressionType(node, input) ??
+      selectedSourceCallArgumentExpectedType(
+        node,
+        input,
+        semantics,
+        (type) => resolveType(type, undefined, input, semantics),
+      );
     const contextual = semantics.types.contextualValueSelection(node);
     const contextualType = contextual.kind === "selected"
       ? resolveType(contextual.type, undefined, input, semantics)
@@ -495,7 +504,13 @@ export function analyzeMojoExecutableRegion(
         pendingObjects.delete(node);
         continue;
       }
-      const expectedType = expectedExpressionType(node, input);
+      const expectedType = expectedExpressionType(node, input) ??
+        selectedSourceCallArgumentExpectedType(
+          node,
+          input,
+          semantics,
+          (type) => resolveType(type, undefined, input, semantics),
+        );
       const inferredType = input.expressionTypes.get(node);
       const candidate = expectedType ?? inferredType;
       const projectInterfaceCandidate = candidate !== undefined &&

@@ -53,7 +53,8 @@ test("using preserves abrupt completion and composes disposal failures", () => {
   const source = artifactTexts(result).find(({ text }) => text.includes("def run"));
   assert.ok(source);
   assert.match(source.text, /try:[\s\S]*raise "body"[\s\S]*finally:/u);
-  assert.match(source.text, /tsonic_runtime\.suppressed_error/u);
+  assert.match(source.text, /from tsonic_runtime import suppressed_error/u);
+  assert.match(source.text, /raise suppressed_error\(_cleanup_error, _resource_error\.value\(\)\)/u);
 });
 
 test("await using selects async disposal while accepting exact sync fallback", () => {
@@ -72,7 +73,7 @@ test("await using selects async disposal while accepting exact sync fallback", (
   const source = artifactTexts(result).find(({ text }) => text.includes("async def run"));
   assert.ok(source);
   assert.match(source.text, /first\.dispose\(\)/u);
-  assert.match(source.text, /await tsonic_runtime\.create_task\(second\.disposeAsync\(\)\)/u);
+  assert.match(source.text, /await create_task\(second\.dispose_async\(\)\)/u);
 });
 
 test("resource unions and nullish resources dispatch exact selected alternatives", () => {
@@ -117,10 +118,10 @@ test("top-level using closes before module initialization commits", () => {
     "export function main(): void {}",
   ].join("\n") } });
   assert.deepEqual(result.diagnostics, []);
-  const source = artifactTexts(result).find(({ text }) => text.includes("createTsonicModuleState"));
+  const source = artifactTexts(result).find(({ text }) => text.includes("def _create_module_state"));
   assert.ok(source);
   assert.match(source.text, /\.resource = Optional\[Resource\]\(Resource\(\)\)[\s\S]*try:/u);
-  assert.equal(source.text.indexOf("resource.value().dispose()") < source.text.indexOf("lifecycleInitialized = True"), true);
+  assert.equal(source.text.indexOf("resource.value().dispose()") < source.text.indexOf("_lifecycle_initialized = True"), true);
 });
 
 test("missing selected disposal fails at analysis without planner recovery", () => {

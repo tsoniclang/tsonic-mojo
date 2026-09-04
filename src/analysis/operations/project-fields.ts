@@ -36,7 +36,6 @@ export function analyzeMojoProjectProperty(
       reason: "Deleting a statically declared project field has no Mojo storage operation.",
     };
   }
-  if (source.callCallee) return { kind: "not-project-field" };
   const selectedDeclarations = [
     source.selectedDeclaration,
     source.selectedReadDeclaration,
@@ -49,6 +48,7 @@ export function analyzeMojoProjectProperty(
     .filter((field): field is MojoAnalyzedProjectProperty => field !== undefined);
   const unique = [...new Set(candidates)];
   if (unique.length === 0) {
+    if (source.callCallee) return { kind: "not-project-field" };
     return analyzeProjectMethodProperty(
       source,
       selectedDeclarations,

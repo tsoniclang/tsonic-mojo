@@ -130,8 +130,14 @@ function matchAlias(
     if (argument === undefined) return undefined;
     genericArguments.push(argument);
   }
+  const substitutionTypes = new Map(bindings.types);
+  for (const parameter of alias.typeParameters) {
+    if (parameter.kind !== "type") continue;
+    const argument = bindings.types.get(parameter.name);
+    if (argument !== undefined) substitutionTypes.set(parameter.identity, argument);
+  }
   const substituted = substituteMojoTargetType(alias.value, {
-    types: bindings.types,
+    types: substitutionTypes,
     values: bindings.values,
     origins: bindings.origins,
     packs: new Map(),
