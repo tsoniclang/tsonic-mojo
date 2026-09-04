@@ -61,6 +61,10 @@ export interface MojoCallAnalysisContext {
   readonly locationStorageNames: WeakMap<Node, string>;
   readonly structuralObjects: MojoStructuralObjectCatalog;
   readonly modulePathForSourceFile: (sourceFile: import("@tsonic/tsts").SourceFile) => readonly string[];
+  readonly contextualizeCallableArgument: (
+    expression: Node,
+    targetType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
+  ) => Extract<MojoTargetTypeRef, { readonly kind: "callable" }> | undefined;
 }
 
 export function analyzeMojoCall(
@@ -251,6 +255,7 @@ export function analyzeMojoCall(
     undefined,
     (expression) => context.source.ast.is.IsObjectLiteralExpression(expression),
     context.projectRelationships,
+    context.contextualizeCallableArgument,
   );
   if (arguments_.kind === "unsupported") return arguments_;
   const closedArguments = closeLocationBackedArguments(
@@ -388,6 +393,7 @@ function analyzeCallableValueCall(
     undefined,
     (expression) => context.source.ast.is.IsObjectLiteralExpression(expression),
     context.projectRelationships,
+    context.contextualizeCallableArgument,
   );
   if (arguments_.kind === "unsupported") return arguments_;
   const callableTargets = callableType.parameters.map((parameter) => Object.freeze({

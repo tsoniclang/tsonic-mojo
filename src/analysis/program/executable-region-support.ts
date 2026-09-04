@@ -7,7 +7,6 @@ import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import { analyzeMojoProviderValue } from "../operations/values.js";
 import type { MojoExecutableRegionAnalysisInput } from "./executable-regions.js";
-import type { MojoCallSelection, MojoPropertySelection } from "./model.js";
 import {
   mergeMojoErrorTypes,
   mojoConversionRaises,
@@ -61,33 +60,6 @@ export function declaredOrInitializerType(
     (initializer === undefined ? undefined : semantics.types.expressionType(initializer));
 }
 
-export function providerValueReferenceRole(
-  node: Node,
-  ast: TargetSourceProgram["ast"],
-  calls: WeakMap<Node, MojoCallSelection>,
-  properties: WeakMap<Node, MojoPropertySelection>,
-): boolean {
-  const parent = ast.parent(node);
-  if (parent === undefined) return true;
-  if ((ast.is.IsCallExpression(parent) || ast.is.IsNewExpression(parent)) &&
-    Node_Expression(ast, parent) === node) return false;
-  if (ast.is.IsPropertyAccessExpression(parent)) {
-    const property = properties.get(parent);
-    if ((property?.kind === "provider" || property?.kind === "project-field" ||
-      property?.kind === "structural-field" ||
-      property?.kind === "project-index-property") &&
-      property.receiver === node) return true;
-    const callNode = ast.parent(parent);
-    if ((callNode === undefined || (!ast.is.IsCallExpression(callNode) && !ast.is.IsNewExpression(callNode))) ||
-      Node_Expression(ast, callNode) !== parent) return false;
-    const call = calls.get(callNode);
-    if (call?.kind === "provider") return call.receiver === node;
-    return call?.kind === "project" && call.target.kind === "method" &&
-      call.target.receiver === node;
-  }
-  return true;
-}
-
 export function analyzeExecutableRegionProviderValues(
   root: Node,
   input: MojoExecutableRegionAnalysisInput,
@@ -95,8 +67,7 @@ export function analyzeExecutableRegionProviderValues(
   const ast = input.source.ast;
   walkSourceTree(root, ast, (node): void => {
     if (!ast.is.IsIdentifier(node) || !isRuntimeValueOccurrence(node, input) ||
-      input.bindingNames.get(node) !== undefined || input.valueSelections.get(node) !== undefined ||
-      !providerValueReferenceRole(node, ast, input.callSelections, input.propertySelections)) return;
+      input.bindingNames.get(node) !== undefined || input.valueSelections.get(node) !== undefined) return;
     const selectedType = input.expressionTypes.get(node);
     if (selectedType === undefined) return;
     const value = analyzeMojoProviderValue(
@@ -108,6 +79,7 @@ export function analyzeExecutableRegionProviderValues(
     if (value.kind === "unsupported") {
       input.diagnostics.push(diagnostic(value.code, value.reason, node));
     } else if (value.kind === "resolved") {
+      input.expressionTypes.set(node, value.expressionType);
       input.valueSelections.set(node, value.selection);
     }
   }, (node, regionRoot) => descendWithinExecutableRegion(node, regionRoot, ast));

@@ -21,6 +21,7 @@ import type {
 } from "../program/model.js";
 import {
   analyzeMojoParameterDisposition,
+  mojoParameterConvention,
 } from "../representations/index.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 import {
@@ -57,6 +58,7 @@ export interface MojoCallableSignatureInput extends MojoTypeParameterAnalysisInp
   readonly owner?: MojoAnalyzedCallableSignature["owner"];
   readonly static?: boolean;
   readonly callable?: SourceCallableTypeEvidence;
+  readonly contextualType?: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
   readonly resultType?: MojoTargetTypeRef;
 }
 
@@ -114,6 +116,16 @@ export function analyzeMojoCallableSignature(
     append(input, "MOJO_FUNCTION_PARAMETER_EVIDENCE_MISMATCH", "Function syntax and checker parameter evidence do not align exactly.", declaration);
     return undefined;
   }
+  if (input.contextualType !== undefined &&
+    input.contextualType.parameters.length !== callableParameters.length) {
+    append(
+      input,
+      "MOJO_CONTEXTUAL_CALLABLE_ARITY_MISMATCH",
+      "The exact selected target callback carrier and authored TypeScript callback have different arities.",
+      declaration,
+    );
+    return undefined;
+  }
   const typeParameters = analyzeMojoTypeParameters(input);
   if (typeParameters === undefined) return undefined;
   const parameters: MojoAnalyzedParameter[] = [];
@@ -127,7 +139,9 @@ export function analyzeMojoCallableSignature(
       append(input, "MOJO_PARAMETER_SHAPE_UNSUPPORTED", "A parameter requires one exact identifier or binding-pattern declaration.", parameter);
       return undefined;
     }
-    const resolved = resolve(input, selected.type, ast.typeNode(parameter), "parameter");
+    const contextualParameter = input.contextualType?.parameters[index];
+    const resolved = contextualParameter?.type ??
+      resolve(input, selected.type, ast.typeNode(parameter), "parameter");
     if (resolved === undefined) return undefined;
     const rest = ast.as.AsParameterDeclaration(parameter)!.DotDotDotToken !== undefined;
     const parameterType = rest ? restElementType(resolved) : resolved;
@@ -141,6 +155,21 @@ export function analyzeMojoCallableSignature(
       passingFact?.mode,
       useSummary?.bindingWritten === true,
     );
+    const selectedOmission = selected.omissionKind;
+    const contextualOmission = contextualParameter?.omissionKind ?? "required";
+    if (contextualParameter !== undefined && (
+      contextualOmission !== selectedOmission ||
+      contextualParameter.convention !== mojoParameterConvention(disposition) ||
+      contextualParameter.passing !== (disposition.kind === "owned" ? "consume" : "plain")
+    )) {
+      append(
+        input,
+        "MOJO_CONTEXTUAL_CALLABLE_PARAMETER_ABI_MISMATCH",
+        "The exact selected target callback parameter ABI contradicts the authored TypeScript callback parameter contract.",
+        parameter,
+      );
+      return undefined;
+    }
     if (disposition.kind === "immutable" && disposition.localCopy &&
       input.lifecycle.capabilities(parameterType).copy === "unavailable") {
       append(
@@ -166,7 +195,7 @@ export function analyzeMojoCallableSignature(
         input.diagnostics,
       );
     }
-    const omissionKind = selected.omissionKind;
+    const omissionKind = selectedOmission;
     const omittedType = (omissionKind === "undefined" || omissionKind === "initializer") &&
         resolved.kind !== "optional"
       ? Object.freeze({ kind: "optional" as const, value: resolved })
@@ -196,7 +225,7 @@ export function analyzeMojoCallableSignature(
         : { initializer: Node_Initializer(ast, parameter)! }),
     }));
   }
-  const selectedResultType = input.resultType ??
+  const selectedResultType = input.resultType ?? input.contextualType?.result ??
     (input.kind === "setter"
       ? Object.freeze({ kind: "unit" as const })
       : callable === undefined

@@ -96,6 +96,7 @@ export function analyzeMojoObjectAssign(
     ]),
     undefined,
     context.projectRelationships,
+    context.contextualizeCallableArgument,
   );
   if (arguments_.kind === "unsupported") return arguments_;
   return Object.freeze({
@@ -233,6 +234,7 @@ export function analyzeMojoJsonStringify(
     conversionOverrides,
     undefined,
     context.projectRelationships,
+    context.contextualizeCallableArgument,
   );
   if (arguments_.kind === "unsupported") return arguments_;
   const resultType = resolve(sourceCall.sourceResultType);

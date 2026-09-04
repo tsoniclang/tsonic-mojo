@@ -1,5 +1,5 @@
 # contractVersion=1
-# baselineProductionCount=609
+# baselineProductionCount=612
 code	ownerLayer	classification	auditDisposition	reachableSourceProof	nativeProof	mutationProof	replacementCode
 MOJO_ANALYZED_MODULE_MISSING	planning	internal-invariant	reviewed-other	-	-	-	-
 MOJO_ARRAY_LITERAL_ELEMENT_CONVERSION_UNPROVEN	analysis	internal-invariant	reviewed-other	-	-	-	-
@@ -93,6 +93,8 @@ MOJO_CLASS_TYPE_NOT_CLOSED	analysis	internal-invariant	reviewed-other	-	-	-	-
 MOJO_COMPILER_PROVIDER_DECLARATION_FAILED	toolchain	provider-gap	reviewed-other	-	-	-	-
 MOJO_COMPILER_PROVIDER_IDENTITY_CONFLICT	toolchain	provider-gap	reviewed-other	-	-	-	-
 MOJO_COMPILER_PROVIDER_MODULE_UNOWNED	toolchain	provider-gap	reviewed-other	-	-	-	-
+MOJO_CONTEXTUAL_CALLABLE_ARITY_MISMATCH	analysis	exact-rejection	retain-exact-guard	-	-	-	-
+MOJO_CONTEXTUAL_CALLABLE_PARAMETER_ABI_MISMATCH	analysis	exact-rejection	retain-exact-guard	-	-	-	-
 MOJO_COMPTIME_BINDING_NOT_PLANNED	planning	internal-invariant	reviewed-other	-	-	-	-
 MOJO_COMPTIME_CARRIER_UNCLOSED	analysis	internal-invariant	reviewed-other	-	-	-	-
 MOJO_COMPTIME_EVIDENCE_CONFLICT	analysis	internal-invariant	reviewed-other	-	-	-	-
@@ -450,6 +452,7 @@ MOJO_PROVIDER_STATIC_PROPERTY_WRITE_MISSING	planning	internal-invariant	reviewed
 MOJO_PROVIDER_STATIC_PROPERTY_WRITE_NOT_CLOSED	analysis	internal-invariant	reviewed-other	-	-	-	-
 MOJO_PROVIDER_STATIC_PROPERTY_WRITE_TYPE_NOT_CLOSED	analysis	internal-invariant	reviewed-other	-	-	-	-
 MOJO_PROVIDER_VALUE_CONVERSION_UNPROVEN	analysis	internal-invariant	reviewed-other	-	-	-	-
+MOJO_PROVIDER_VALUE_IDENTITY_AMBIGUOUS	analysis	provider-gap	reviewed-other	-	-	-	-
 MOJO_PROVIDER_VALUE_IDENTITY_INCOMPLETE	analysis	internal-invariant	reviewed-other	-	-	-	-
 MOJO_PROVIDER_VALUE_NOT_CLOSED	analysis	internal-invariant	reviewed-other	-	-	-	-
 MOJO_PROVIDER_VALUE_OPERATION_AMBIGUOUS	analysis	internal-invariant	reviewed-other	-	-	-	-

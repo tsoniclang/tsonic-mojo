@@ -41,6 +41,7 @@ export interface MojoCallableExpressionSignatureInput {
   readonly sourceFile: SourceFile;
   readonly owner?: MojoAnalyzedClassOwner;
   readonly selectedType?: import("@tsonic/tsts").Type;
+  readonly contextualType?: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
   readonly kind?: import("../program/model.js").MojoAnalyzedCallableKind;
   readonly name?: string;
   readonly allowAsynchronous?: boolean;
@@ -95,6 +96,7 @@ export function analyzeMojoCallableExpressionSignature(
     bindingTypes: input.bindingTypes,
     diagnostics: input.diagnostics,
     ...(callableEvidence === undefined ? {} : { callable: callableEvidence }),
+    ...(input.contextualType === undefined ? {} : { contextualType: input.contextualType }),
     ...(input.kind === undefined ? {} : { kind: input.kind }),
     ...(input.owner === undefined ? {} : { owner: input.owner }),
   });
@@ -236,6 +238,7 @@ export interface MojoCallableExpressionAnalysisInput {
   readonly sourceFile: SourceFile;
   readonly owner?: MojoAnalyzedClassOwner;
   readonly selectedType?: import("@tsonic/tsts").Type;
+  readonly contextualType?: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
   readonly kind?: import("../program/model.js").MojoAnalyzedCallableKind;
   readonly name?: string;
   readonly allowAsynchronous?: boolean;
@@ -261,6 +264,7 @@ export function analyzeAndSealMojoCallableExpression(
     sourceFile: input.sourceFile,
     ...(input.owner === undefined ? {} : { owner: input.owner }),
     ...(input.selectedType === undefined ? {} : { selectedType: input.selectedType }),
+    ...(input.contextualType === undefined ? {} : { contextualType: input.contextualType }),
     ...(input.kind === undefined ? {} : { kind: input.kind }),
     ...(input.name === undefined ? {} : { name: input.name }),
     ...(input.allowAsynchronous === true ? { allowAsynchronous: true } : {}),
@@ -421,7 +425,9 @@ export function analyzeAndSealMojoCallableExpression(
     ...(declaration === undefined ? {} : { recursiveDeclaration: declaration }),
     ...(input.captureSelf === false ? { captureSelf: false } : {}),
   });
-  const selectedCarrier = input.selectedType === undefined
+  const selectedCarrier = input.contextualType !== undefined
+    ? { kind: "resolved" as const, type: input.contextualType }
+    : input.selectedType === undefined
     ? undefined
     : resolveMojoTargetType(input.selectedType, undefined, {
         ast: environment.source.ast,
@@ -447,10 +453,10 @@ export function analyzeAndSealMojoCallableExpression(
   }
   const selectedType = callable.kind === "getter" || callable.kind === "setter"
     ? callableExpressionType(callable, raises, environment.sourceCallableErrorType)
-    : input.selectedType === undefined
-      ? environment.expressionTypes.get(input.expression)
-      : selectedCarrier?.kind === "resolved"
-        ? selectedCarrier.type
+    : selectedCarrier?.kind === "resolved"
+      ? selectedCarrier.type
+      : input.selectedType === undefined && input.contextualType === undefined
+        ? environment.expressionTypes.get(input.expression)
         : undefined;
   if (captureAnalysis === undefined || selectedType?.kind !== "callable" ||
     selectedType.parameters.length !== callable.parameters.length) {

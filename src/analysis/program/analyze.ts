@@ -320,6 +320,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     owner: import("./model.js").MojoAnalyzedClassOwner | undefined,
     options: {
       readonly selectedType?: import("@tsonic/tsts").Type;
+      readonly contextualType?: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
       readonly kind?: import("./model.js").MojoAnalyzedCallableKind;
       readonly name?: string;
       readonly allowAsynchronous?: boolean;
@@ -331,6 +332,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
       sourceFile,
       ...(owner === undefined ? {} : { owner }),
       ...(options.selectedType === undefined ? {} : { selectedType: options.selectedType }),
+      ...(options.contextualType === undefined ? {} : { contextualType: options.contextualType }),
       ...(options.kind === undefined ? {} : { kind: options.kind }),
       ...(options.name === undefined ? {} : { name: options.name }),
       ...(options.allowAsynchronous === true ? { allowAsynchronous: true } : {}),

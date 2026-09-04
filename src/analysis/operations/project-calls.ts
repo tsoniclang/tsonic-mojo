@@ -119,6 +119,7 @@ export function analyzeProjectCall(
     undefined,
     (expression) => context.source.ast.is.IsObjectLiteralExpression(expression),
     context.projectRelationships,
+    context.contextualizeCallableArgument,
   );
   if (arguments_.kind === "unsupported") return arguments_;
   const closedArguments = closeLocationBackedArguments(

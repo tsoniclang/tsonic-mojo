@@ -173,6 +173,7 @@ export function analyzeSourceProfileCall(
       : new Map([[callback.parameterIndex, callback.conversion]]),
     undefined,
     context.projectRelationships,
+    context.contextualizeCallableArgument,
   );
   if (arguments_.kind === "unsupported") return arguments_;
   const genericArguments: MojoTargetGenericArgument[] = [];

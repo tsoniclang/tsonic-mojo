@@ -9,6 +9,10 @@ import type {
   MojoPropertyAnalysis,
   MojoProviderPropertyAnalysisContext,
 } from "./properties.js";
+import {
+  classifyMojoSourceResultConversion,
+  mojoConvertedValueType,
+} from "./call-results.js";
 
 export function analyzeStaticProviderProperty(
   source: ResolvedSourcePropertyAccessInfo,
@@ -93,7 +97,7 @@ export function analyzeStaticProviderProperty(
         reason: "Selected static provider read has no exact source carrier.",
       };
     }
-    const conversion = classifyMojoValueConversion(read.operation.resultType, selectedRead);
+    const conversion = classifyMojoSourceResultConversion(read.operation.resultType, selectedRead);
     if (conversion.kind === "unsupported") {
       return {
         kind: "unsupported",
@@ -101,7 +105,7 @@ export function analyzeStaticProviderProperty(
         reason: conversion.reason,
       };
     }
-    expressionType = selectedRead;
+    expressionType = mojoConvertedValueType(read.operation.resultType, conversion.conversion);
     readResultConversion = conversion.conversion;
   }
   if (expressionType === undefined) {

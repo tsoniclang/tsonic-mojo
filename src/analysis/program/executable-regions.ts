@@ -77,6 +77,7 @@ import type { MojoLifecycleAnalysis } from "../lifecycle/model.js";
 import type { MojoValueOwnership } from "../../target-model/lifecycle/model.js";
 import { analyzeMojoExecutableBindingProjection } from "./executable-region-bindings.js";
 import { analyzeMojoIterationAndResources } from "./executable-region-iterations.js";
+import { isDirectCallArgumentCallableExpression } from "../callables/expression-syntax.js";
 
 export {
   analyzeMojoExecutableBindingProjection,
@@ -143,6 +144,7 @@ export interface MojoExecutableRegionAnalysisInput {
     owner: MojoAnalyzedClassOwner | undefined,
     options?: {
       readonly selectedType?: import("@tsonic/tsts").Type;
+      readonly contextualType?: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
       readonly kind?: import("./model.js").MojoAnalyzedCallableKind;
       readonly name?: string;
       readonly allowAsynchronous?: boolean;
@@ -217,8 +219,11 @@ export function analyzeMojoExecutableRegion(
     }
   }, (node, regionRoot) => descendWithinExecutableRegion(node, regionRoot, ast));
 
+  analyzeExecutableRegionProviderValues(root, input);
+
   for (const expression of callableExpressionNodes) {
-    if (!isContextualObjectCallable(expression, source, semantics)) {
+    if (!isContextualObjectCallable(expression, source, semantics) &&
+      !isDirectCallArgumentCallableExpression(expression, source)) {
       input.analyzeCallableExpression(expression, sourceFile, input.owner);
     }
   }
@@ -527,7 +532,6 @@ export function analyzeMojoExecutableRegion(
     semantics,
     input,
   });
-  analyzeExecutableRegionProviderValues(root, input);
   const errorTypes = mergeMojoErrorTypes(
     resourceErrorTypes,
     executableRegionErrorTypes(root, input),

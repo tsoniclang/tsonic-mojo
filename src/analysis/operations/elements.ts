@@ -27,6 +27,7 @@ import {
   sourceProfileRegExpElementType,
   sourceProfileRegExpNamedValueType,
 } from "../../policy/types/js-regexp.js";
+import { classifyMojoSourceResultConversion, mojoConvertedValueType } from "./call-results.js";
 
 export type MojoElementAnalysis =
   | {
@@ -564,11 +565,11 @@ function analyzeProviderElement(
     if (sourceRead === undefined) {
       return unsupported("MOJO_PROVIDER_ELEMENT_READ_CARRIER_NOT_CLOSED", "Selected provider element read has no exact source carrier.");
     }
-    const conversion = classifyMojoValueConversion(readOperation.resultType, sourceRead);
+    const conversion = classifyMojoSourceResultConversion(readOperation.resultType, sourceRead);
     if (conversion.kind === "unsupported") {
       return unsupported("MOJO_PROVIDER_ELEMENT_READ_CONVERSION_UNPROVEN", conversion.reason);
     }
-    expressionType = sourceRead;
+    expressionType = mojoConvertedValueType(readOperation.resultType, conversion.conversion);
     readResultConversion = conversion.conversion;
   } else expressionType = sourceWrite!;
   return {

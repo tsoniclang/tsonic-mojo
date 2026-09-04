@@ -33,6 +33,23 @@ export function unwrapCallableExpression(
   return current;
 }
 
+export function isDirectCallArgumentCallableExpression(
+  expression: Node,
+  source: TargetSourceProgram,
+): boolean {
+  const { ast } = source;
+  let current = expression;
+  let parent = ast.parent(current);
+  while (parent !== undefined && isTransparentExpression(parent, ast) &&
+    Node_Expression(ast, parent) === current) {
+    current = parent;
+    parent = ast.parent(current);
+  }
+  return parent !== undefined &&
+    (ast.is.IsCallExpression(parent) || ast.is.IsNewExpression(parent)) &&
+    ast.arguments(parent).some((argument) => argument === current);
+}
+
 function isTransparentExpression(
   node: Node,
   ast: TargetSourceProgram["ast"],

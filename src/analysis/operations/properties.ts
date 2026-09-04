@@ -21,6 +21,10 @@ import type { MojoSourceProfileRegistry } from "../../policy/types/source-profil
 import { selectedMojoSourceProfileDeclarationIdentity } from "../../policy/operations/source-profile-selection.js";
 import { analyzeStaticProviderProperty } from "./static-provider-properties.js";
 import { sourceProfileRegExpPropertyAccess } from "../../policy/operations/source-profile-regexp-properties.js";
+import {
+  classifyMojoSourceResultConversion,
+  mojoConvertedValueType,
+} from "./call-results.js";
 
 export type MojoPropertyAnalysis =
   | { readonly kind: "resolved"; readonly selection: MojoPropertySelection; readonly expressionType: MojoTargetTypeRef }
@@ -105,12 +109,18 @@ export function analyzeMojoProviderProperty(
         reason: "Selected provider module constant has no exact source carrier.",
       };
     }
-    const conversion = classifyMojoValueConversion(instantiated.operation.resultType, selectedRead);
+    const conversion = classifyMojoSourceResultConversion(
+      instantiated.operation.resultType,
+      selectedRead,
+    );
     return conversion.kind === "unsupported"
       ? { kind: "unsupported", code: "MOJO_PROVIDER_CONSTANT_CONVERSION_UNPROVEN", reason: conversion.reason }
       : {
           kind: "resolved",
-          expressionType: selectedRead,
+          expressionType: mojoConvertedValueType(
+            instantiated.operation.resultType,
+            conversion.conversion,
+          ),
           selection: Object.freeze({
             kind: "provider-constant",
             operation: instantiated.operation,
@@ -208,11 +218,11 @@ export function analyzeMojoProviderProperty(
         reason: "Selected provider property read has no exact source carrier.",
       };
     }
-    const conversion = classifyMojoValueConversion(read.operation.resultType, selectedRead);
+    const conversion = classifyMojoSourceResultConversion(read.operation.resultType, selectedRead);
     if (conversion.kind === "unsupported") {
       return { kind: "unsupported", code: "MOJO_PROVIDER_PROPERTY_READ_CONVERSION_UNPROVEN", reason: conversion.reason };
     }
-    expressionType = selectedRead;
+    expressionType = mojoConvertedValueType(read.operation.resultType, conversion.conversion);
     readResultConversion = conversion.conversion;
   } else expressionType = selectedWrite!;
   return {

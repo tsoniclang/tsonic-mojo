@@ -1,6 +1,5 @@
 import type { AstReader, Node, ResolvedSourceCallInfo, Type } from "@tsonic/tsts";
 import { Node_Expression } from "@tsonic/target-api/source";
-import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
@@ -11,6 +10,7 @@ import type { MojoArgumentDisposition } from "../representations/model.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 import type { MojoValueOwnership } from "../../target-model/lifecycle/model.js";
 import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
+import { classifyMojoSourceResultConversion } from "./call-results.js";
 
 export interface MojoCallArgumentTarget {
   readonly convention: "imm" | "mut" | "var" | "ref" | "out" | "deinit";
@@ -46,6 +46,10 @@ export function analyzeArguments(
   conversionOverrides?: ReadonlyMap<number, MojoValueConversion>,
   contextualAggregate?: (expression: Node, targetType: MojoTargetTypeRef) => boolean,
   projectRelationships?: MojoProjectTypeRelationships,
+  contextualizeCallable?: (
+    expression: Node,
+    targetType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
+  ) => Extract<MojoTargetTypeRef, { readonly kind: "callable" }> | undefined,
 ): { readonly kind: "resolved"; readonly arguments: readonly MojoAnalyzedCallArgument[] } |
   { readonly kind: "unsupported"; readonly code: string; readonly reason: string } {
   if (parameterTypes.length !== targetArguments.length) {
@@ -113,11 +117,15 @@ export function analyzeArguments(
         };
       }
       const selectedBindingType = resolve(binding.selectedArgumentType);
+      const contextualCallableType = binding.sourceForm === "value" &&
+          parameterType.kind === "callable"
+        ? contextualizeCallable?.(sourceExpression, parameterType)
+        : undefined;
       const selectedSourceType = binding.sourceForm === "spread-element"
         ? spreadElementType(sourceContainerType!, binding.spreadElementIndex) ?? selectedBindingType
         : binding.sourceForm === "spread-sequence"
           ? sourceContainerType
-          : expressionTypes.get(sourceExpression) ?? selectedBindingType;
+          : contextualCallableType ?? expressionTypes.get(sourceExpression) ?? selectedBindingType;
       const sourceType = selectedSourceType ??
         (binding.sourceForm === "value" &&
             contextualAggregate?.(sourceExpression, parameterType) === true
@@ -259,7 +267,7 @@ export function closeResultConversion(
   }
   const conversion = sourceFutureShapeMatches(targetResult, sourceCarrier)
     ? { kind: "resolved" as const, conversion: Object.freeze({ kind: "identity" as const }) }
-    : classifyMojoValueConversion(targetResult, sourceCarrier, undefined, projectRelationships);
+    : classifyMojoSourceResultConversion(targetResult, sourceCarrier, projectRelationships);
   return conversion.kind === "unsupported"
     ? { kind: "unsupported", code: "MOJO_CALL_RESULT_CONVERSION_UNPROVEN", reason: conversion.reason }
     : { kind: "resolved", conversion: conversion.conversion };

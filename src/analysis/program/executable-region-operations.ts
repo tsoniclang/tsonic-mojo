@@ -11,6 +11,7 @@ import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import { classifyMojoValueRefinement } from "../refinements/value.js";
 import { resolveExecutableRegionType as resolveType } from "./executable-region-support.js";
 import type { MojoExecutableRegionAnalysisInput } from "./executable-regions.js";
+import { unwrapCallableExpression } from "../callables/expression-syntax.js";
 
 export function analyzeCall(
   node: Node,
@@ -49,6 +50,21 @@ export function analyzeCall(
     structuralObjects: input.structuralObjects,
     modulePathForSourceFile(owner) {
       return input.modules.forSourceFile(owner)?.modulePath ?? Object.freeze([]);
+    },
+    contextualizeCallableArgument(expression, targetType) {
+      const callableExpression = unwrapCallableExpression(expression, input.source);
+      if (!input.source.ast.is.IsArrowFunction(callableExpression) &&
+        !input.source.ast.is.IsFunctionExpression(callableExpression)) return undefined;
+      const selection = input.analyzeCallableExpression(
+        callableExpression,
+        input.sourceFile,
+        input.owner,
+        { contextualType: targetType },
+      );
+      if (selection !== undefined && expression !== callableExpression) {
+        input.expressionTypes.set(expression, selection.callableType);
+      }
+      return selection?.callableType ?? targetType;
     },
   });
   if (analyzed.kind === "unsupported") {

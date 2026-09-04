@@ -16,6 +16,12 @@ export type {
 export type {
   MojoProviderOperationForm,
 } from "../target-model/operations/model.js";
+export type {
+  MojoLifecycleTraitRole,
+} from "../target-model/lifecycle/model.js";
+export {
+  mojoLifecycleTraitTargetType,
+} from "../target-model/lifecycle/contracts.js";
 export {
   mojoCallableTargetType,
   mojoDynamicTargetType,
