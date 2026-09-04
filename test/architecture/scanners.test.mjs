@@ -45,7 +45,10 @@ test("target-model and policy preserve the target dependency direction", async (
 });
 
 test("Mojo uses the shared sealed target-program boundary", () => {
-  const model = readFileSync(join(repoRoot, "src/analysis/program/model.ts"), "utf8");
+  const model = [
+    "src/analysis/program/model.ts",
+    "src/analysis/program/program-model.ts",
+  ].map((path) => readFileSync(join(repoRoot, path), "utf8")).join("\n");
   const construction = [
     "src/analysis/program/analyze.ts",
     "src/analysis/program/program-result-finalization.ts",

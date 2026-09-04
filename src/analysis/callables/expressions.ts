@@ -1,6 +1,6 @@
 import type { Node, SourceFile } from "@tsonic/tsts";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
-import { Node_Expression, Node_Initializer } from "@tsonic/target-api/source";
+import { Node_Initializer } from "@tsonic/target-api/source";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
@@ -28,6 +28,13 @@ import { allocateMojoLocalBindings } from "../program/local-bindings.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 import { resolveMojoTargetType } from "../../policy/types/resolution.js";
 import { mojoParameterConvention } from "../representations/index.js";
+import {
+  callableExpressionDeclaration,
+  captureEligibleDeclaration,
+  isNestedCallable,
+  nodeIsWithin,
+  unwrapCallableExpression,
+} from "./expression-syntax.js";
 
 export interface MojoCallableExpressionSignatureInput {
   readonly expression: Node;
@@ -535,72 +542,4 @@ export function resolveMojoCallableExpressionDependency(
     current = Node_Initializer(source.ast, reference.declaration);
   }
   return undefined;
-}
-
-function callableExpressionDeclaration(
-  expression: Node,
-  source: TargetSourceProgram,
-): Node | undefined {
-  const { ast } = source;
-  let current = expression;
-  while (true) {
-    const parent = ast.parent(current);
-    if (parent === undefined) return undefined;
-    if (Node_Initializer(ast, parent) === current) return parent;
-    if (!isTransparentExpression(parent, ast) || Node_Expression(ast, parent) !== current) {
-      return undefined;
-    }
-    current = parent;
-  }
-}
-
-function unwrapCallableExpression(
-  expression: Node,
-  source: TargetSourceProgram,
-): Node {
-  const { ast } = source;
-  let current = expression;
-  while (isTransparentExpression(current, ast)) {
-    const inner = Node_Expression(ast, current);
-    if (inner === undefined) break;
-    current = inner;
-  }
-  return current;
-}
-
-function isTransparentExpression(
-  node: Node,
-  ast: TargetSourceProgram["ast"],
-): boolean {
-  return ast.is.IsParenthesizedExpression(node) || ast.is.IsAsExpression(node) ||
-    ast.is.IsTypeAssertion(node) || ast.is.IsNonNullExpression(node) ||
-    ast.is.IsSatisfiesExpression(node);
-}
-
-function captureEligibleDeclaration(
-  declaration: Node,
-  ast: TargetSourceProgram["ast"],
-): boolean {
-  return ast.is.IsVariableDeclaration(declaration) ||
-    ast.is.IsParameterDeclaration(declaration) ||
-    ast.is.IsBindingElement(declaration);
-}
-
-function nodeIsWithin(
-  node: Node,
-  ancestor: Node,
-  ast: TargetSourceProgram["ast"],
-): boolean {
-  let current: Node | undefined = node;
-  while (current !== undefined) {
-    if (current === ancestor) return true;
-    current = ast.parent(current);
-  }
-  return false;
-}
-
-function isNestedCallable(node: Node, ast: TargetSourceProgram["ast"]): boolean {
-  return ast.is.IsFunctionExpression(node) || ast.is.IsArrowFunction(node) ||
-    ast.is.IsMethodDeclaration(node) || ast.is.IsGetAccessorDeclaration(node) ||
-    ast.is.IsSetAccessorDeclaration(node);
 }

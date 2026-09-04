@@ -3,10 +3,10 @@ import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 import { mojoModuleMemberExpression } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import {
-  convertMojoValue,
   orderCallArguments,
   planSelectedArguments,
-} from "./support.js";
+} from "./call-support.js";
+import { convertMojoValue } from "./support.js";
 import type { MojoValuePlanner } from "./support.js";
 import { mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";

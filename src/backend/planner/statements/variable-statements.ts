@@ -8,7 +8,9 @@ import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import { appendMojoPlanningDiagnostic } from "../program/context.js";
-import { planMojoAssignment, planMojoValue, planMojoUpdate } from "../expressions/value.js";
+import { planMojoValue } from "../expressions/value.js";
+import { planMojoAssignment } from "../expressions/assignments.js";
+import { planMojoUpdate } from "../expressions/updates.js";
 import { registerMojoTypeImports } from "../types/imports.js";
 import { planMojoBindingPattern } from "../bindings/patterns.js";
 import { planMojoResourceScope } from "./resources.js";
@@ -173,12 +175,12 @@ export function planForInitializer(
   if (ast.is.IsVariableDeclarationList(initializer)) {
     return planVariableDeclarationList(initializer, context);
   }
-  const assignment = planMojoAssignment(initializer, context);
+  const assignment = planMojoAssignment(initializer, context, planMojoValue);
   if (assignment !== undefined) return Object.freeze([
     ...assignment.before,
     assignment.statement,
   ]);
-  const update = planMojoUpdate(initializer, context);
+  const update = planMojoUpdate(initializer, context, planMojoValue);
   if (update !== undefined) return Object.freeze([
     ...update.before,
     update.statement,

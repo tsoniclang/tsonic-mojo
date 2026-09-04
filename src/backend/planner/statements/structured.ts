@@ -22,7 +22,9 @@ import type {
 import type { MojoStatement } from "../../target-ast/index.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import { appendMojoPlanningDiagnostic, withMojoErrorType } from "../program/context.js";
-import { planMojoAssignment, planMojoValue, planMojoUpdate } from "../expressions/value.js";
+import { planMojoValue } from "../expressions/value.js";
+import { planMojoAssignment } from "../expressions/assignments.js";
+import { planMojoUpdate } from "../expressions/updates.js";
 import { consumeMojoValue } from "../expressions/value-plan.js";
 import { planDiscardedMojoExpression } from "./discarded-expression.js";
 import { planForIncrement } from "./for-increment.js";
@@ -191,14 +193,16 @@ function planStatement(
     const sourceExpression = Node_Expression(ast, node);
     const assignment = sourceExpression === undefined
       ? undefined
-      : planMojoAssignment(sourceExpression, context);
+      : planMojoAssignment(sourceExpression, context, planMojoValue);
     if (assignment !== undefined) {
       return Object.freeze([
         ...assignment.before,
         assignment.statement,
       ]);
     }
-    const update = sourceExpression === undefined ? undefined : planMojoUpdate(sourceExpression, context);
+    const update = sourceExpression === undefined
+      ? undefined
+      : planMojoUpdate(sourceExpression, context, planMojoValue);
     if (update !== undefined) return Object.freeze([
       ...update.before,
       update.statement,

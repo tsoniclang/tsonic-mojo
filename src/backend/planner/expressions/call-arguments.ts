@@ -12,10 +12,10 @@ import {
 import type { MojoPlanningContext } from "../program/context.js";
 import { registerMojoTypeImports } from "../types/imports.js";
 import {
-  orderMojoValues,
   planSelectedArgument,
   planSelectedArguments,
-} from "./support.js";
+} from "./call-support.js";
+import { orderMojoValues } from "./support.js";
 import type { MojoValuePlanner, PlannedMojoCallArgument } from "./support.js";
 import { consumeMojoValue, mojoValue, withMojoValue } from "./value-plan.js";
 

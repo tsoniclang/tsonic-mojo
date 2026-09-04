@@ -1,6 +1,5 @@
 import type { Node, SourceFile } from "@tsonic/tsts";
 import {
-  CatchClause_VariableDeclaration,
   Node_Expression,
   Node_Initializer,
   ObjectLiteralProperty_Value,
@@ -11,13 +10,8 @@ import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
-import { analyzeMojoIteration } from "../operations/iterations.js";
-import {
-  analyzeMojoBindingProjection,
-} from "../bindings/patterns.js";
 import type { MojoStructuralObjectCatalog } from "../bindings/structural-objects.js";
 import { analyzeMojoObjectLiteral } from "../objects/object-literals.js";
-import { analyzeMojoResourceManagement } from "../resources/management.js";
 import { analyzeMojoArrayLiteral } from "../aggregates/array-literals.js";
 import { analyzeMojoProviderRecordLiteral } from "../objects/provider-records.js";
 import { analyzeMojoStructuralObjectLiteral } from "../objects/structural-object-literals.js";
@@ -59,8 +53,7 @@ import {
   resolveExecutableRegionType as resolveType,
   targetTypeDiagnostic as typeDiagnostic,
 } from "./executable-region-support.js";
-import { mergeMojoErrorTypes, mojoOperationErrorTypes } from "./effects.js";
-import { classifyMojoValueRefinement } from "../refinements/value.js";
+import { mergeMojoErrorTypes } from "./effects.js";
 import {
   expectedExpressionType,
   selectedSourceCallArgumentExpectedType,
@@ -69,22 +62,26 @@ import {
   analyzeErasedValueRefinement,
   analyzeExpressionCarrier,
   analyzeNullishComparison,
-  analyzeReferencedValueRefinement,
   analyzeTypeTest,
   containsProjectInterface,
   resolveInferredBindingCarrier,
-  selectedOperationReceiverType,
 } from "./executable-region-carriers.js";
 import {
   analyzeNullishCoalescing,
   isMojoIterationBindingDeclaration,
-  publishBindingPatternCarriers,
   selectReturnValueTransfer,
 } from "./executable-region-flow.js";
 import { analyzeCall, analyzeElement, analyzeProperty } from "./executable-region-operations.js";
 import { analyzeMojoIntrinsicExpression } from "../operations/intrinsic-expressions.js";
 import type { MojoLifecycleAnalysis } from "../lifecycle/model.js";
 import type { MojoValueOwnership } from "../../target-model/lifecycle/model.js";
+import { analyzeMojoExecutableBindingProjection } from "./executable-region-bindings.js";
+import { analyzeMojoIterationAndResources } from "./executable-region-iterations.js";
+
+export {
+  analyzeMojoExecutableBindingProjection,
+  sealMojoCatchBindingCarrier,
+} from "./executable-region-bindings.js";
 
 export interface MojoExecutableRegionAnalysisInput {
   readonly root: Node;
@@ -159,99 +156,10 @@ export type MojoExecutableRegionAnalysisEnvironment = Omit<
   "root" | "sourceFile" | "owner" | "rootExpectedType" | "returnType"
 >;
 
-export function analyzeMojoExecutableBindingProjection(
-  declaration: Node,
-  sourceType: MojoTargetTypeRef,
-  sourceSemanticType: import("@tsonic/tsts").Type | undefined,
-  sourceFile: SourceFile,
-  input: MojoExecutableRegionAnalysisEnvironment,
-): MojoBindingProjectionPlan | undefined {
-  const { ast } = input.source;
-  const pattern = ast.name(declaration);
-  if (pattern === undefined || (!ast.is.IsArrayBindingPattern(pattern) &&
-    !ast.is.IsObjectBindingPattern(pattern))) return undefined;
-  const semantics = input.source.semantics.forFile(sourceFile);
-  const executableInput: MojoExecutableRegionAnalysisInput = {
-    ...input,
-    root: declaration,
-    sourceFile,
-  };
-  const projection = analyzeMojoBindingProjection({
-    ast,
-    declaration,
-    pattern,
-    sourceType,
-    sourceSemanticType,
-    semantics,
-    resolveType(type) {
-      return resolveType(type, undefined, executableInput, semantics);
-    },
-    expressionTypes: input.expressionTypes,
-    conversions: input.conversions,
-    bindingNames: input.bindingNames,
-    bindingTypes: input.bindingTypes,
-    classByTypeId: input.classByTypeId,
-    interfaceByTypeId: input.interfaceByTypeId,
-    projectRelationships: input.projectRelationships,
-    structuralObjects: input.structuralObjects,
-    diagnostics: input.diagnostics,
-  });
-  if (projection === undefined) return undefined;
-  input.bindingTypes.set(declaration, sourceType);
-  input.bindingProjections.set(declaration, projection);
-  publishBindingPatternCarriers(projection.elements, input);
-  return projection;
-}
-
 export interface MojoExecutableRegionAnalysis {
   readonly dependencies: ReadonlySet<Node>;
   readonly errorTypes: readonly MojoTargetTypeRef[];
   readonly raises: boolean;
-}
-
-export function sealMojoCatchBindingCarrier(
-  catchClause: Node,
-  catchBlock: Node,
-  errorType: MojoTargetTypeRef,
-  input: MojoExecutableRegionAnalysisEnvironment,
-): void {
-  const declaration = CatchClause_VariableDeclaration(input.source.ast, catchClause);
-  if (declaration === undefined) return;
-  const sourceFile = input.source.ast.getSourceFile(catchClause);
-  if (sourceFile === undefined) return;
-  input.bindingTypes.set(declaration, errorType);
-  input.bindingSourceFiles.set(declaration, sourceFile);
-  const semantics = input.source.semantics.forFile(sourceFile);
-  for (const use of input.source.navigation.declarationUses(declaration)) {
-    if (use.kind === "type-only" || use.kind === "source-linkage") continue;
-    input.valueRefinements.delete(use.reference);
-    const environment = { ...input, root: catchBlock, sourceFile };
-    const selectedReceiverType = selectedOperationReceiverType(use.reference, input);
-    const exactRefinement = selectedReceiverType === undefined
-      ? undefined
-      : classifyMojoValueRefinement(
-          errorType,
-          selectedReceiverType,
-          input.projectRelationships,
-          input.modules,
-        );
-    if (exactRefinement !== undefined) {
-      input.valueRefinements.set(use.reference, exactRefinement);
-    }
-    const refined = exactRefinement?.resultType ?? analyzeReferencedValueRefinement(
-      use.reference,
-      errorType,
-      environment,
-      semantics,
-    );
-    input.expressionTypes.set(use.reference, refined ?? errorType);
-  }
-  walkSourceTreePostOrder(catchBlock, input.source.ast, (node): void => {
-    if (input.source.ast.is.IsBinaryExpression(node) &&
-      input.source.ast.operatorKindName(node) === "KindInstanceOfKeyword") {
-      analyzeTypeTest(node, { ...input, root: catchBlock, sourceFile });
-    }
-  }, (node, regionRoot) => descendWithinExecutableRegion(node, regionRoot, input.source.ast));
 }
 
 export function analyzeMojoExecutableRegion(
@@ -612,82 +520,13 @@ export function analyzeMojoExecutableRegion(
     analyzeBindingPatternDeclaration(declaration, sourceType);
   }
 
-  for (const node of iterationNodes) {
-    const selected = semantics.operations.iteration(node);
-    const iterable = Node_Expression(ast, node);
-    if (selected === undefined || iterable === undefined) {
-      input.diagnostics.push(diagnostic(
-        "MOJO_ITERATION_EVIDENCE_MISSING",
-        "Iteration lowering requires one exact checker-selected iteration operation.",
-        node,
-      ));
-      continue;
-    }
-    const iteration = analyzeMojoIteration({
-      ast,
-      statement: node,
-      iterable,
-      source: selected,
-      bindingNames: input.bindingNames,
-      bindingTypes: input.bindingTypes,
-      resolveType(type) {
-        return resolveType(type, undefined, input, semantics);
-      },
-      sourceTypesIdentical(left, right) {
-        return semantics.types.isIdentical(left, right);
-      },
-      analyzeBindingProjection(declaration, sourceType, sourceSemanticType) {
-        return analyzeMojoExecutableBindingProjection(
-          declaration,
-          sourceType,
-          sourceSemanticType,
-          input.sourceFile,
-          input,
-        );
-      },
-    });
-    if (iteration.kind === "unsupported") {
-      input.diagnostics.push(diagnostic(iteration.code, iteration.reason, node));
-    } else {
-      input.iterationSelections.set(node, iteration.selection);
-    }
-  }
-  const resourceErrorTypes: MojoTargetTypeRef[] = [];
-  for (const declaration of resourceDeclarations) {
-    const sourceInfo = semantics.operations.resourceManagement(declaration);
-    if (sourceInfo === undefined) {
-      input.diagnostics.push(diagnostic(
-        "MOJO_RESOURCE_MANAGEMENT_EVIDENCE_MISSING",
-        "Resource lowering requires one exact checker-selected disposal operation.",
-        declaration,
-      ));
-      continue;
-    }
-    const resource = analyzeMojoResourceManagement({
-      declaration,
-      source: input.source,
-      sourceInfo,
-      providerSemantics: input.providerSemantics,
-      callableByDeclaration: input.callableByDeclaration,
-      bindingNames: input.bindingNames,
-      bindingTypes: input.bindingTypes,
-      resolveType(type) {
-        return resolveType(type, undefined, input, semantics);
-      },
-    });
-    if (resource.kind === "unsupported") {
-      input.diagnostics.push(diagnostic(resource.code, resource.reason, declaration));
-      continue;
-    }
-    input.resourceManagementSelections.set(declaration, resource.selection);
-    for (const alternative of resource.selection.alternatives) {
-      if (alternative.disposal.kind === "project") {
-        dependencies.add(alternative.disposal.dependency);
-      } else {
-        resourceErrorTypes.push(...mojoOperationErrorTypes(alternative.disposal.operation));
-      }
-    }
-  }
+  const resourceErrorTypes = analyzeMojoIterationAndResources({
+    iterationNodes,
+    resourceDeclarations,
+    dependencies,
+    semantics,
+    input,
+  });
   analyzeExecutableRegionProviderValues(root, input);
   const errorTypes = mergeMojoErrorTypes(
     resourceErrorTypes,

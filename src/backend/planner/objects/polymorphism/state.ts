@@ -21,7 +21,7 @@ import { consumeMojoValue } from "../../expressions/value-plan.js";
 import {
   orderCallArguments,
   planSelectedArguments,
-} from "../../expressions/support.js";
+} from "../../expressions/call-support.js";
 import {
   appendMojoPlanningDiagnostic,
   withMojoErrorType,

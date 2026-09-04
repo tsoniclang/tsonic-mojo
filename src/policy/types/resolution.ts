@@ -3,7 +3,6 @@ import {
 } from "@tsonic/tsts";
 import type { AstReader, Node, Type } from "@tsonic/tsts";
 import type { SourceFileSemantics } from "@tsonic/target-api/source";
-import { sourceNodeIdentity } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import type {
   MojoTargetGenericArgument,
@@ -21,7 +20,6 @@ import {
   namedType,
   providerOwnerMatches,
   resolveSourceProfileTypeArguments,
-  resolveTypeParameter,
   resolveUnion,
   typeSubjects,
   uniqueProviderIdentity,
@@ -32,13 +30,9 @@ import {
 } from "../../target-model/types/error-domains.js";
 import { resolveMojoRetainedType } from "./resolution-facts.js";
 import { resolveMojoNonTypeGenericArguments } from "./generic-arguments.js";
-import {
-  classifyMojoSourceGenericParameter,
-  mojoSourceGenericParameterOwner,
-} from "../../source/semantics/generic-parameters.js";
 import { implicitHeapLifecycle, nativeSetLifecycle } from "./lifecycle-contracts.js";
-import { mojoSourceGenericLifecycleRequirements } from "./generic-lifecycle.js";
 import { resolveMojoJsRegExpSourceProfileType } from "./js-regexp.js";
+import { resolveMojoGenericParameterType } from "./generic-parameter-resolution.js";
 
 export { providerOwnerMatches } from "./resolution-helpers.js";
 
@@ -317,79 +311,19 @@ function resolveMojoTargetTypeWithState(
       );
       if (regexp !== undefined) return regexp;
     }
-    const typeParameter = resolveTypeParameter(symbol, context);
-    if (typeParameter !== undefined) {
-      const owner = mojoSourceGenericParameterOwner(typeParameter, context);
-      if (owner === undefined) {
-        return {
-          kind: "unsupported",
-          reason: "source generic parameter has no exact owning declaration",
-        };
-      }
-      const classified = classifyMojoSourceGenericParameter(owner, typeParameter, context);
-      if (classified.kind === "unsupported") {
-        return {
-          kind: "unsupported",
-          reason: classified.reason,
-        };
-      }
-      if (classified.parameter.kind === "origin") {
-        return {
-          kind: "unsupported",
-          reason: `origin parameter '${classified.parameter.name}' cannot be used as a runtime value carrier`,
-        };
-      }
-      if (classified.parameter.kind === "type") {
-        const lifecycleRequirements = new Set<import("../../target-model/lifecycle/model.js").MojoLifecycleTraitRole>(
-          mojoSourceGenericLifecycleRequirements(owner, selectedType, {
-            source: context,
-            semantics: context.semantics,
-          }),
-        );
-        const constraintNode = context.ast.as.AsTypeParameterDeclaration(typeParameter)?.Constraint;
-        if (constraintNode !== undefined) {
-          const constraintType = context.semantics.types.authoredType(constraintNode);
-          const constraint = resolveMojoTargetTypeWithState(
-            constraintType,
-            constraintNode,
-            context,
-            resolving,
-          );
-          if (constraint.kind === "unsupported") return constraint;
-          if (constraint.type.kind === "target-named" &&
-            constraint.type.lifecycleRequirement !== undefined) {
-            lifecycleRequirements.add(constraint.type.lifecycleRequirement);
-          }
-        }
-        const identity = sourceNodeIdentity(context.ast, typeParameter);
-        if (identity === undefined) {
-          return {
-            kind: "unsupported",
-            reason: `source type parameter '${classified.parameter.name}' has no stable declaration identity`,
-          };
-        }
-        return {
-          kind: "resolved",
-          type: Object.freeze({
-            kind: "type-parameter",
-            name: classified.parameter.name,
-            identity,
-            lifecycleRequirements: Object.freeze([...lifecycleRequirements]),
-          }),
-        };
-      }
-      const constraintNode = context.ast.as.AsTypeParameterDeclaration(typeParameter)?.Constraint;
-      const constraintType = constraintNode === undefined
-        ? undefined
-        : context.semantics.types.authoredType(constraintNode);
-      if (constraintType === undefined) {
-        return {
-          kind: "unsupported",
-          reason: `compile-time value parameter '${classified.parameter.name}' has no exact value carrier constraint`,
-        };
-      }
-      return resolveMojoTargetTypeWithState(constraintType, constraintNode, context, resolving);
-    }
+    const genericParameter = resolveMojoGenericParameterType(
+      selectedType,
+      symbol,
+      context,
+      resolving,
+      (nestedType, nestedTypeNode, nestedResolving) => resolveMojoTargetTypeWithState(
+        nestedType,
+        nestedTypeNode,
+        context,
+        nestedResolving,
+      ),
+    );
+    if (genericParameter !== undefined) return genericParameter;
 
     const sourceArguments = types.effectiveTypeArguments(selectedType) ?? types.typeArguments(selectedType);
     const authoredArguments = authoredTypeArguments(authoredTypeNode, context.ast);

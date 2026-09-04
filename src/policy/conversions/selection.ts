@@ -6,6 +6,7 @@ import type { MojoTruthinessConversion } from "../../target-model/conversions/mo
 import type { MojoValueConversionNarrowing } from "../../target-model/conversions/model.js";
 import { mojoTargetTypeKey } from "../../target-model/types/key.js";
 import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
+import { collectionShape, isJsString, isJsValue, jsValueBoxConversion, sameConversion } from "./javascript-conversions.js";
 
 export type MojoConversionClassification =
   | { readonly kind: "resolved"; readonly conversion: MojoValueConversion }
@@ -538,65 +539,4 @@ function isTriviallyCopyableMojoType(type: MojoTargetTypeRef): boolean {
   if (type.kind === "unit" || type.kind === "never" || type.kind === "null" ||
     type.kind === "undefined") return true;
   return type.kind === "tuple" && type.elements.every(isTriviallyCopyableMojoType);
-}
-
-function isJsString(type: MojoTargetTypeRef): boolean {
-  return type.kind === "target-named" && type.id === "tsonic.mojo.js.JsString";
-}
-
-function isJsValue(type: MojoTargetTypeRef): boolean {
-  return type.kind === "dynamic" && type.domain === "js";
-}
-
-function isJsArray(type: MojoTargetTypeRef): boolean {
-  return type.kind === "target-named" && type.id === "tsonic.mojo.js.JsArray";
-}
-
-function collectionShape(type: MojoTargetTypeRef): {
-  readonly kind: "list" | "js-array";
-  readonly element: MojoTargetTypeRef;
-} | undefined {
-  if (type.kind === "list") return Object.freeze({ kind: "list", element: type.element });
-  const element = jsArrayElement(type);
-  return element === undefined
-    ? undefined
-    : Object.freeze({ kind: "js-array", element });
-}
-
-function jsArrayElement(type: MojoTargetTypeRef): MojoTargetTypeRef | undefined {
-  if (!isJsArray(type) || type.kind !== "target-named") return undefined;
-  const argument = type.genericArguments?.[0];
-  return argument?.kind === "type" ? argument.type : undefined;
-}
-
-function jsValueBoxConversion(
-  type: MojoTargetTypeRef,
-  targetType: MojoTargetTypeRef,
-): Extract<MojoValueConversion, { kind: "js-box" }> | undefined {
-  if (type.kind === "source-primitive") {
-    if (type.name === "bool") {
-      return Object.freeze({ kind: "js-box", targetType, source: "bool" });
-    }
-    return type.name === "char" || type.name === "decimal"
-      ? undefined
-      : Object.freeze({ kind: "js-box", targetType, source: "number", sourceType: type });
-  }
-  const source = type.kind === "native-string"
-    ? "native-string" as const
-    : isJsString(type)
-      ? "string" as const
-      : type.kind === "symbol"
-        ? "symbol" as const
-        : type.kind === "null"
-          ? "null" as const
-          : type.kind === "undefined"
-            ? "undefined" as const
-            : undefined;
-  return source === undefined
-    ? undefined
-    : Object.freeze({ kind: "js-box", targetType, source });
-}
-
-function sameConversion(left: MojoValueConversion, right: MojoValueConversion): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
 }
