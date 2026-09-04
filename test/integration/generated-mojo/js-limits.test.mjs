@@ -18,6 +18,8 @@ function assertTargetRejection(result, code) {
 
 test("RegExp-dependent JavaScript operations select the exact ECMAScript runtime", () => {
   const result = compileBody(`
+  const dynamic = new RegExp('a+', 'gi');
+  dynamic.test('AAA');
   /a+/.test('aaa');
   'aaa'.search(/a+/);
   'aaa'.match(/a+/);
@@ -27,6 +29,7 @@ test("RegExp-dependent JavaScript operations select the exact ECMAScript runtime
   const source = artifactTexts(result).find(({ text }) => text.includes("def tsonic_main"))?.text;
   assert.ok(source);
   for (const operation of [
+    "regexp_construct",
     "test_value",
     "string_search_pattern",
     "string_match_pattern",

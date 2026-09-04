@@ -113,3 +113,24 @@ test("open Object.assign and property-list JSON replacers reject at the exact ca
     assert.deepEqual(result.diagnostics.map((diagnostic) => diagnostic.code), [code]);
   }
 });
+
+test("JSON.stringify rejects a non-required toJSON contract without runtime discovery", () => {
+  const result = compileMojo({
+    surfaces: ["js"],
+    files: {
+      "index.ts": [
+        "class WrongJson {",
+        "  toJSON(key: string, suffix: string): string { return key + suffix; }",
+        "}",
+        "export function main(): void {",
+        "  JSON.stringify(new WrongJson());",
+        "}",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.artifacts, []);
+  assert.deepEqual(
+    result.diagnostics.map((diagnostic) => diagnostic.code),
+    ["MOJO_JSON_STRINGIFY_VALUE_UNSUPPORTED"],
+  );
+});
