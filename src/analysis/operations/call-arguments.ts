@@ -141,7 +141,9 @@ export function analyzeArguments(
       if (binding.sourceForm === "value" && expressionTypes.get(sourceExpression) === undefined) {
         expressionTypes.set(sourceExpression, sourceType);
       }
-      const overriddenConversion = conversionOverrides?.get(parameterIndex);
+      const overriddenConversion = contextualCallableType === undefined
+        ? conversionOverrides?.get(parameterIndex)
+        : undefined;
       const conversion = overriddenConversion === undefined
         ? classifyMojoRefinedValueConversion(
             sourceType,
