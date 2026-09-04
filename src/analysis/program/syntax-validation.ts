@@ -113,10 +113,7 @@ export function validateMojoFunctionSyntax(
       if (declaration !== undefined) validateResourceDeclaration(declaration);
     }
   };
-  const validateExpression = (
-    expression: Node | undefined,
-    assignmentAllowed = false,
-  ): void => {
+  const validateExpression = (expression: Node | undefined): void => {
     if (expression === undefined) return;
     const expressionType = expressionTypes.get(expression);
     if (expressionType?.kind === "undefined" || expressionType?.kind === "null") return;
@@ -211,16 +208,24 @@ export function validateMojoFunctionSyntax(
       validateExpression(Node_Expression(ast, expression));
       return;
     }
+    if (ast.is.IsDeleteExpression(expression)) {
+      const operand = Node_Expression(ast, expression);
+      const selection = operand === undefined ? undefined : elements.get(operand);
+      if (selection?.kind !== "js-array-delete" &&
+        !diagnostics.some((entry) => entry.sourceNode === operand)) {
+        diagnostics.push(diagnostic(
+          "MOJO_DELETE_SELECTION_UNRESOLVED",
+          "delete requires one exact sealed JavaScript Array mutation.",
+          expression,
+        ));
+      }
+      validateExpression(operand);
+      return;
+    }
     if (ast.is.IsPrefixUnaryExpression(expression) || ast.is.IsPostfixUnaryExpression(expression)) {
       const operator = ast.operatorKindName(expression);
       const update = operator === "KindPlusPlusToken" || operator === "KindMinusMinusToken";
-      if (update && !assignmentAllowed) {
-        diagnostics.push(diagnostic(
-          "MOJO_UPDATE_POSITION_UNSUPPORTED",
-          "Increment and decrement are supported only where their expression result is discarded.",
-          expression,
-        ));
-      } else if (!update && ast.is.IsPostfixUnaryExpression(expression)) {
+      if (!update && ast.is.IsPostfixUnaryExpression(expression)) {
         diagnostics.push(diagnostic(
           "MOJO_POSTFIX_OPERATOR_UNSUPPORTED",
           `Postfix operator '${operator}' has no certified Mojo lowering.`,
@@ -281,12 +286,6 @@ export function validateMojoFunctionSyntax(
           `Binary operator '${operator}' has no certified Mojo lowering.`,
           expression,
         ));
-      } else if (isMojoAssignmentOperator(operator) && !assignmentAllowed) {
-        diagnostics.push(diagnostic(
-          "MOJO_ASSIGNMENT_POSITION_UNSUPPORTED",
-          "Assignment is supported only as a standalone statement in the current Mojo lowering.",
-          expression,
-        ));
       }
       validateExpression(binary?.Left);
       validateExpression(binary?.Right);
@@ -341,7 +340,7 @@ export function validateMojoFunctionSyntax(
       return;
     }
     if (ast.is.IsReturnStatement(statement) || ast.is.IsExpressionStatement(statement)) {
-      validateExpression(Node_Expression(ast, statement), ast.is.IsExpressionStatement(statement));
+      validateExpression(Node_Expression(ast, statement));
       return;
     }
     if (ast.is.IsThrowStatement(statement)) {
@@ -360,13 +359,6 @@ export function validateMojoFunctionSyntax(
           diagnostics.push(diagnostic(
             "MOJO_BINDING_PATTERN_SELECTION_UNRESOLVED",
             "Binding pattern has no sealed Mojo aggregate projection.",
-            declaration,
-          ));
-        }
-        if (Node_Initializer(ast, declaration) === undefined) {
-          diagnostics.push(diagnostic(
-            "MOJO_UNINITIALIZED_VARIABLE_UNSUPPORTED",
-            "Mojo foundation requires local variables to have an initializer.",
             declaration,
           ));
         }
@@ -417,11 +409,11 @@ export function validateMojoFunctionSyntax(
             validateExpression(Node_Initializer(ast, declaration));
           }
         } else {
-          validateExpression(initializer, true);
+          validateExpression(initializer);
         }
       }
       validateExpression(ForStatement_Condition(ast, statement));
-      validateExpression(ForStatement_Incrementor(ast, statement), true);
+      validateExpression(ForStatement_Incrementor(ast, statement));
       validateStatement(ast.as.AsForStatement(statement)?.Statement);
       return;
     }

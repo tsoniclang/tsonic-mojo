@@ -53,13 +53,6 @@ export function analyzeMojoElementAccess(
   source: ResolvedSourceElementAccessInfo,
   context: MojoElementAnalysisContext,
 ): MojoElementAnalysis {
-  if (source.accessMode === "delete") {
-    return unsupported(
-      "MOJO_ELEMENT_DELETE_UNSUPPORTED",
-      "Selected element access has no exact target delete operation.",
-    );
-  }
-  const accessMode: "read" | "write" | "read-write" = source.accessMode;
   const receiver = context.expressionTypes.get(source.receiver.expression) ??
     context.resolveType(source.receiver.type);
   const index = context.expressionTypes.get(source.argument.expression) ??
@@ -70,6 +63,10 @@ export function analyzeMojoElementAccess(
       "Selected element receiver or index has no exact Mojo carrier.",
     );
   }
+  if (source.accessMode === "delete") {
+    return analyzeSourceProfileDelete(source, receiver, index, context);
+  }
+  const accessMode: "read" | "write" | "read-write" = source.accessMode;
   const project = analyzeProjectIndex(source, accessMode, receiver, index, context);
   if (project !== undefined) return project;
   const identity = selectedProviderDeclarationIdentity(context.source, [
@@ -93,6 +90,52 @@ export function analyzeMojoElementAccess(
   );
   if (sourceProfile !== undefined) return sourceProfile;
   return analyzeNativeElement(source, accessMode, receiver, index, context);
+}
+
+function analyzeSourceProfileDelete(
+  source: ResolvedSourceElementAccessInfo,
+  receiver: MojoTargetTypeRef,
+  index: MojoTargetTypeRef,
+  context: MojoElementAnalysisContext,
+): MojoElementAnalysis {
+  const identity = selectedMojoSourceProfileDeclarationIdentity(
+    context.source,
+    context.sourceProfiles,
+    [source.selectedDeclaration],
+  );
+  if (identity?.profile !== "js" || identity.kind !== "indexer" ||
+    identity.declaringName !== "Array" || receiver.kind !== "target-named" ||
+    receiver.id !== "tsonic.mojo.js.JsArray" || source.optionalChain) {
+    return unsupported(
+      "MOJO_ELEMENT_DELETE_UNSUPPORTED",
+      "delete requires the exact mutable JavaScript Array index signature and a non-optional JsArray carrier.",
+    );
+  }
+  const targetIndex = mojoPrimitiveTargetType("float64");
+  const indexConversion = context.conversions.record(
+    source.argument.expression,
+    index,
+    targetIndex,
+  );
+  if (indexConversion.kind === "unsupported") {
+    return unsupported("MOJO_JS_ARRAY_DELETE_INDEX_CONVERSION_UNPROVEN", indexConversion.reason);
+  }
+  const resultType = mojoPrimitiveTargetType("bool");
+  return Object.freeze({
+    kind: "resolved",
+    expressionType: resultType,
+    selection: Object.freeze({
+      kind: "js-array-delete",
+      receiver: source.receiver.expression,
+      index: source.argument.expression,
+      accessMode: "delete",
+      receiverType: receiver,
+      indexType: targetIndex,
+      indexConversion: indexConversion.conversion,
+      resultType,
+      optionalChain: false,
+    }),
+  });
 }
 
 function analyzeProjectIndex(

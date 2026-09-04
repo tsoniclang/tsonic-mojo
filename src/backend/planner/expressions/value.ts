@@ -19,6 +19,7 @@ import {
 } from "./calls.js";
 import {
   planMojoElement,
+  planMojoDelete,
   planMojoProjectElementWrite,
   projectElementUsesMethodWrite,
   planMojoProviderElementMethodWrite,
@@ -56,6 +57,14 @@ import {
   planObjectLiteral,
   planParenthesized,
 } from "./composite-values.js";
+import {
+  materializeMojoMutation,
+  mutationAsValue,
+} from "./mutation-plan.js";
+import type {
+  MojoPlannedMutation,
+  MojoPreparedMutation,
+} from "./mutation-plan.js";
 
 const assignmentOperatorText = new Map<string, string>([
   ["KindEqualsToken", "="],
@@ -65,14 +74,12 @@ const assignmentOperatorText = new Map<string, string>([
   ["KindSlashEqualsToken", "/="],
 ]);
 
-export interface PlannedMojoAssignment {
-  readonly before: readonly MojoStatement[];
-  readonly statement: MojoStatement;
-}
+export type PlannedMojoAssignment = MojoPlannedMutation;
 
 export function planMojoUpdate(
   node: Node,
   context: MojoPlanningContext,
+  resultUse: "discard" | "value" = "discard",
 ): PlannedMojoAssignment | undefined {
   const { ast } = context.program.source;
   if (!ast.is.IsPrefixUnaryExpression(node) && !ast.is.IsPostfixUnaryExpression(node)) return undefined;
@@ -89,30 +96,68 @@ export function planMojoUpdate(
   if (operand === undefined) return undefined;
   const storage = plannedLocationExpression(operand, context);
   if (storage !== undefined) {
-    return Object.freeze({
-      before: Object.freeze([]),
-      statement: Object.freeze({
-        kind: "expression",
-        expression: Object.freeze({
-          kind: "method-call",
-          receiver: storage,
-          name: "write",
-          arguments: Object.freeze([Object.freeze({
-            value: Object.freeze({
-              kind: "binary",
-              operator: operator.slice(0, -1),
-              left: Object.freeze({
-                kind: "method-call",
-                receiver: storage,
-                name: "read",
-                arguments: Object.freeze([]),
-              }),
-              right: Object.freeze({ kind: "number-literal", text: "1" }),
-            }),
-          })]),
-        }),
-      }),
+    const type = context.program.queries.expressionType(operand);
+    if (type === undefined || type.kind !== "source-primitive" ||
+      type.name === "bool" || type.name === "char") {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_UPDATE_TARGET_UNSUPPORTED",
+        "Increment and decrement require one exact mutable numeric Mojo location.",
+        node,
+      );
+      return undefined;
+    }
+    const current = orderMojoValues([Object.freeze({
+      plan: mojoValue(Object.freeze({
+        kind: "method-call" as const,
+        receiver: storage,
+        name: "read",
+        arguments: Object.freeze([]),
+      })),
+      type,
+      role: "update_previous",
+    })], context, resultUse === "value");
+    const previousValue = current.values[0]!;
+    const assignedValue: MojoExpression = Object.freeze({
+      kind: "binary",
+      operator: operator.slice(0, -1),
+      left: previousValue,
+      right: Object.freeze({ kind: "number-literal", text: "1" }),
     });
+    const prepared: MojoPreparedMutation = Object.freeze({
+      before: current.before,
+      assignedValue,
+      assignedType: type,
+      previousValue,
+      valuePassing: "consume",
+      createWrite(value: MojoExpression): MojoStatement {
+        return Object.freeze({
+          kind: "expression",
+          expression: Object.freeze({
+            kind: "method-call",
+            receiver: storage,
+            name: "write",
+            arguments: Object.freeze([Object.freeze({
+              value: Object.freeze({ kind: "consume", expression: value }),
+            })]),
+          }),
+        });
+      },
+      createDiscardWrite(): MojoStatement {
+        return Object.freeze({
+          kind: "expression",
+          expression: Object.freeze({
+            kind: "method-call",
+            receiver: storage,
+            name: "write",
+            arguments: Object.freeze([Object.freeze({
+              value: Object.freeze({ kind: "consume", expression: assignedValue }),
+            })]),
+          }),
+        });
+      },
+    });
+    return materializeUpdate(prepared, node, operand, resultUse, context);
   }
   const property = context.program.queries.propertySelection(operand);
   const element = context.program.queries.elementSelection(operand);
@@ -132,13 +177,16 @@ export function planMojoUpdate(
       );
       return undefined;
     }
-    return planMojoProjectPropertyWrite(
+    const prepared = planMojoProjectPropertyWrite(
       operand,
       mojoValue(Object.freeze({ kind: "number-literal", text: "1" })),
       operator,
       context,
       planMojoValue,
     );
+    return prepared === undefined
+      ? undefined
+      : materializeUpdate(prepared, node, operand, resultUse, context);
   }
   if (projectElementUsesMethodWrite(element, context)) {
     const type = element?.writeType ?? element?.readType;
@@ -152,13 +200,16 @@ export function planMojoUpdate(
       );
       return undefined;
     }
-    return planMojoProjectElementWrite(
+    const prepared = planMojoProjectElementWrite(
       operand,
       mojoValue(Object.freeze({ kind: "number-literal", text: "1" })),
       operator,
       context,
       planMojoValue,
     );
+    return prepared === undefined
+      ? undefined
+      : materializeUpdate(prepared, node, operand, resultUse, context);
   }
   if (providerElementUsesMethodWrite(element)) {
     const type = element?.writeType ?? element?.readType;
@@ -172,18 +223,46 @@ export function planMojoUpdate(
       );
       return undefined;
     }
-    return planMojoProviderElementMethodWrite(
+    const prepared = planMojoProviderElementMethodWrite(
       operand,
       mojoValue(Object.freeze({ kind: "number-literal", text: "1" })),
       operator,
       context,
       planMojoValue,
     );
+    return prepared === undefined
+      ? undefined
+      : materializeUpdate(prepared, node, operand, resultUse, context);
+  }
+  if (property?.kind === "provider" &&
+    property.writeOperation?.target.kind === "property-write" &&
+    property.writeOperation.target.access.kind === "method") {
+    const type = property.sourceWriteType;
+    if (type === undefined || type.kind !== "source-primitive" ||
+      type.name === "bool" || type.name === "char") {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_UPDATE_TARGET_UNSUPPORTED",
+        "Increment and decrement require one exact mutable numeric Mojo location.",
+        node,
+      );
+      return undefined;
+    }
+    const prepared = planMojoProviderPropertyMethodWrite(
+      operand,
+      mojoValue(Object.freeze({ kind: "number-literal", text: "1" })),
+      operator,
+      context,
+      planMojoValue,
+    );
+    return prepared === undefined
+      ? undefined
+      : materializeUpdate(prepared, node, operand, resultUse, context);
   }
   const left = ast.is.IsPropertyAccessExpression(operand)
-    ? planMojoProperty(operand, context, planMojoValue, "write", false)
+    ? planMojoProperty(operand, context, planMojoValue, "write", resultUse === "value")
     : ast.is.IsElementAccessExpression(operand)
-      ? planMojoElement(operand, context, planMojoValue, "write", false)
+      ? planMojoElement(operand, context, planMojoValue, "write", resultUse === "value")
       : planMojoValue(operand, context);
   const providerProperty = property?.kind === "provider" || property?.kind === "provider-static"
     ? property
@@ -223,20 +302,61 @@ export function planMojoUpdate(
     );
     return undefined;
   }
-  return Object.freeze({
-    before: left.before,
-    statement: Object.freeze({
-      kind: "assignment",
-      operator,
-      left: left.value,
-      right: Object.freeze({ kind: "number-literal", text: "1" }),
-    }),
+  const previous = orderMojoValues([Object.freeze({
+    plan: mojoValue(left.value),
+    type,
+    role: "update_previous",
+  })], context, resultUse === "value");
+  const previousValue = previous.values[0]!;
+  const assignedValue: MojoExpression = Object.freeze({
+    kind: "binary",
+    operator: operator.slice(0, -1),
+    left: previousValue,
+    right: Object.freeze({ kind: "number-literal", text: "1" }),
   });
+  const prepared: MojoPreparedMutation = Object.freeze({
+    before: Object.freeze([...left.before, ...previous.before]),
+    assignedValue,
+    assignedType: type,
+    previousValue,
+    valuePassing: "assign",
+    createWrite(value: MojoExpression): MojoStatement {
+      return Object.freeze({ kind: "assignment", operator: "=", left: left.value, right: value });
+    },
+    createDiscardWrite(): MojoStatement {
+      return Object.freeze({
+        kind: "assignment",
+        operator,
+        left: left.value,
+        right: Object.freeze({ kind: "number-literal", text: "1" }),
+      });
+    },
+  });
+  return materializeUpdate(prepared, node, operand, resultUse, context);
+}
+
+function materializeUpdate(
+  prepared: MojoPreparedMutation,
+  node: Node,
+  operand: Node,
+  resultUse: "discard" | "value",
+  context: MojoPlanningContext,
+): MojoPlannedMutation | undefined {
+  const postfix = context.program.source.ast.is.IsPostfixUnaryExpression(node);
+  const result = resultUse === "discard" ? "discard" : postfix ? "previous" : "assigned";
+  return materializeMojoMutation(
+    prepared,
+    result,
+    context.program.queries.expressionType(node) ?? context.program.queries.expressionType(operand),
+    node,
+    context,
+  );
 }
 
 export function planMojoAssignment(
   node: Node,
   context: MojoPlanningContext,
+  resultUse: "discard" | "value" = "discard",
 ): PlannedMojoAssignment | undefined {
   const { ast } = context.program.source;
   if (!ast.is.IsBinaryExpression(node)) return undefined;
@@ -284,43 +404,56 @@ export function planMojoAssignment(
   const right = planMojoValue(rightNode, context, targetWriteType ?? leftType);
   if (right === undefined) return undefined;
   const targetType = targetWriteType ?? leftType;
+  if (targetType === undefined) {
+    appendMojoPlanningDiagnostic(
+      context,
+      "MOJO_ASSIGNMENT_WRITE_CARRIER_MISSING",
+      "Assignment requires one exact sealed target write carrier.",
+      leftNode,
+    );
+    return undefined;
+  }
   if (projectPropertyUsesMethodWrite(property, context)) {
-    return planMojoProjectPropertyWrite(
+    const prepared = planMojoProjectPropertyWrite(
       leftNode,
       right,
       operator,
       context,
       planMojoValue,
     );
+    return materializeAssignment(prepared, node, resultUse, context);
   }
   if (projectElementUsesMethodWrite(element, context)) {
-    return planMojoProjectElementWrite(
+    const prepared = planMojoProjectElementWrite(
       leftNode,
       right,
       operator,
       context,
       planMojoValue,
     );
+    return materializeAssignment(prepared, node, resultUse, context);
   }
   if (providerElementUsesMethodWrite(element)) {
-    return planMojoProviderElementMethodWrite(
+    const prepared = planMojoProviderElementMethodWrite(
       leftNode,
       right,
       operator,
       context,
       planMojoValue,
     );
+    return materializeAssignment(prepared, node, resultUse, context);
   }
   if (property?.kind === "provider" &&
     property.writeOperation?.target.kind === "property-write" &&
     property.writeOperation.target.access.kind === "method") {
-    return planMojoProviderPropertyMethodWrite(
+    const prepared = planMojoProviderPropertyMethodWrite(
       leftNode,
       right,
       operator,
       context,
       planMojoValue,
     );
+    return materializeAssignment(prepared, node, resultUse, context);
   }
   if (property?.kind === "provider-static") {
     const write = property.writeOperation;
@@ -334,6 +467,7 @@ export function planMojoAssignment(
       );
       return undefined;
     }
+    const target = write.target;
     let value = right.value;
     const before: MojoStatement[] = [];
     if (operator !== "=") {
@@ -363,26 +497,35 @@ export function planMojoAssignment(
     } else {
       before.push(...right.before);
     }
-    return Object.freeze({
+    const prepared: MojoPreparedMutation = Object.freeze({
       before: Object.freeze(before),
-      statement: Object.freeze({
-        kind: "expression",
-        expression: Object.freeze({
-          kind: "call",
-          callee: mojoModuleMemberExpression(
-            context,
-            write.target.modulePath,
-            write.target.name,
-          ),
-          arguments: Object.freeze([Object.freeze({
-            value,
-            ...(write.target.value.position === "keyword"
-              ? { name: write.target.value.nativeName! }
-              : {}),
-          })]),
-        }),
-      }),
+      assignedValue: value,
+      assignedType: write.parameterTypes[0]!,
+      valuePassing: target.value.convention === "var" ? "consume" : "borrow",
+      createWrite(argumentValue: MojoExpression): MojoStatement {
+        const argument = target.value.convention === "var"
+          ? Object.freeze({ kind: "consume" as const, expression: argumentValue })
+          : argumentValue;
+        return Object.freeze({
+          kind: "expression",
+          expression: Object.freeze({
+            kind: "call",
+            callee: mojoModuleMemberExpression(
+              context,
+              target.modulePath,
+              target.name,
+            ),
+            arguments: Object.freeze([Object.freeze({
+              value: argument,
+              ...(target.value.position === "keyword"
+                ? { name: target.value.nativeName! }
+                : {}),
+            })]),
+          }),
+        });
+      },
     });
+    return materializeAssignment(prepared, node, resultUse, context);
   }
   const storage = plannedLocationExpression(leftNode, context);
   if (storage !== undefined) {
@@ -399,20 +542,28 @@ export function planMojoAssignment(
           }),
           right: right.value,
         });
-    return Object.freeze({
+    const prepared: MojoPreparedMutation = Object.freeze({
       before: right.before,
-      statement: Object.freeze({
-        kind: "expression",
-        expression: Object.freeze({
-          kind: "method-call",
-          receiver: storage,
-          name: "write",
-          arguments: Object.freeze([Object.freeze({ value })]),
-        }),
-      }),
+      assignedValue: value,
+      assignedType: targetType,
+      valuePassing: "consume",
+      createWrite(argumentValue: MojoExpression): MojoStatement {
+        return Object.freeze({
+          kind: "expression",
+          expression: Object.freeze({
+            kind: "method-call",
+            receiver: storage,
+            name: "write",
+            arguments: Object.freeze([Object.freeze({
+              value: Object.freeze({ kind: "consume", expression: argumentValue }),
+            })]),
+          }),
+        });
+      },
     });
+    return materializeAssignment(prepared, node, resultUse, context);
   }
-  const stabilizeLocation = right.before.length !== 0;
+  const stabilizeLocation = right.before.length !== 0 || resultUse === "value";
   const left = ast.is.IsPropertyAccessExpression(leftNode)
     ? planMojoProperty(leftNode, context, planMojoValue, "write", stabilizeLocation)
     : ast.is.IsElementAccessExpression(leftNode)
@@ -442,15 +593,48 @@ export function planMojoAssignment(
     });
   }
   before.push(...right.before);
-  return Object.freeze({
+  const prepared: MojoPreparedMutation = Object.freeze({
     before: Object.freeze(before),
-    statement: Object.freeze({
-      kind: "assignment",
-      operator: plannedOperator,
-      left: left.value,
-      right: plannedRight,
-    }),
+    assignedValue: plannedOperator === "="
+      ? plannedRight
+      : Object.freeze({
+          kind: "binary",
+          operator: plannedOperator.slice(0, -1),
+          left: left.value,
+          right: plannedRight,
+        }),
+    assignedType: targetType,
+    valuePassing: "assign",
+    createWrite(value: MojoExpression): MojoStatement {
+      return Object.freeze({ kind: "assignment", operator: "=", left: left.value, right: value });
+    },
+    createDiscardWrite(): MojoStatement {
+      return Object.freeze({
+        kind: "assignment",
+        operator: plannedOperator,
+        left: left.value,
+        right: plannedRight,
+      });
+    },
   });
+  return materializeAssignment(prepared, node, resultUse, context);
+}
+
+function materializeAssignment(
+  prepared: MojoPreparedMutation | undefined,
+  node: Node,
+  resultUse: "discard" | "value",
+  context: MojoPlanningContext,
+): MojoPlannedMutation | undefined {
+  return prepared === undefined
+    ? undefined
+    : materializeMojoMutation(
+        prepared,
+        resultUse === "value" ? "assigned" : "discard",
+        context.program.queries.expressionType(node),
+        node,
+        context,
+      );
 }
 
 function plannedLocationExpression(
@@ -511,10 +695,20 @@ export function planMojoValue(
     plan = planObjectLiteral(node, evaluationContext, planMojoValue);
   } else if (ast.is.IsParenthesizedExpression(node)) {
     plan = planParenthesized(node, evaluationContext, planMojoValue);
+  } else if (ast.is.IsDeleteExpression(node)) {
+    plan = planMojoDelete(node, evaluationContext, planMojoValue);
   } else if (ast.is.IsBinaryExpression(node)) {
-    plan = planBinary(node, evaluationContext, planMojoValue);
-  } else if (ast.is.IsPrefixUnaryExpression(node)) {
-    plan = planPrefixUnary(node, evaluationContext, planMojoValue);
+    const assignment = planMojoAssignment(node, evaluationContext, "value");
+    plan = assignment === undefined
+      ? planBinary(node, evaluationContext, planMojoValue)
+      : mutationAsValue(assignment);
+  } else if (ast.is.IsPrefixUnaryExpression(node) || ast.is.IsPostfixUnaryExpression(node)) {
+    const update = planMojoUpdate(node, evaluationContext, "value");
+    plan = update === undefined && ast.is.IsPrefixUnaryExpression(node)
+      ? planPrefixUnary(node, evaluationContext, planMojoValue)
+      : update === undefined
+        ? undefined
+        : mutationAsValue(update);
   } else if (ast.is.IsConditionalExpression(node)) {
     plan = planConditional(node, evaluationContext, planMojoValue);
   } else if (ast.is.IsAwaitExpression(node)) {

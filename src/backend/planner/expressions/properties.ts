@@ -17,6 +17,7 @@ import {
 import type { MojoValuePlanner } from "./support.js";
 import { consumeMojoValue, mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
+import type { MojoPreparedMutation } from "./mutation-plan.js";
 import { planDictionaryKey } from "./conditional-values.js";
 import { mojoParameterConvention } from "../../../analysis/representations/index.js";
 import { mojoConvertedValueType } from "../../../analysis/operations/call-results.js";
@@ -448,7 +449,7 @@ export function planMojoProjectPropertyWrite(
   operator: string,
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
-): { readonly before: readonly MojoStatement[]; readonly statement: MojoStatement } | undefined {
+): MojoPreparedMutation | undefined {
   const selection = context.program.queries.propertySelection(node);
   if (selection?.kind !== "project-method" && selection?.kind !== "project-accessor" &&
     selection?.kind !== "project-field" && selection?.kind !== "project-index-property") {
@@ -520,15 +521,16 @@ export function planMojoProjectPropertyWrite(
     planValue,
   );
   if (receiver === undefined) return undefined;
-  const ordered = orderMojoValues([
+  const location = orderMojoValues([
     Object.freeze({ plan: receiver.plan, type: selection.receiverType, role: "accessor_write_receiver" }),
-    Object.freeze({ plan: value, type: writeType, role: "property_write_value" }),
   ], context, true);
   const key = selection.kind === "project-index-property"
     ? planDictionaryKey(selection.key, selection.keyType, context)
     : undefined;
   if (selection.kind === "project-index-property" && key === undefined) return undefined;
-  let assigned = ordered.values[1]!;
+  let before: readonly MojoStatement[];
+  let assigned: MojoExpression;
+  let previousValue: MojoExpression | undefined;
   if (operator !== "=") {
     if (selection.kind === "project-method") {
       appendMojoPlanningDiagnostic(
@@ -549,37 +551,58 @@ export function planMojoProjectPropertyWrite(
       );
       return undefined;
     }
+    const current: MojoExpression = Object.freeze({
+      kind: "method-call",
+      receiver: location.values[0]!,
+      name: readName,
+      arguments: Object.freeze(key === undefined
+        ? []
+        : [Object.freeze({ value: key })]),
+    });
+    const ordered = orderMojoValues([
+      Object.freeze({ plan: mojoValue(current), type: readType, role: "property_write_current" }),
+      Object.freeze({ plan: value, type: writeType, role: "property_write_value" }),
+    ], context, true);
+    before = Object.freeze([...location.before, ...ordered.before]);
+    previousValue = ordered.values[0]!;
     assigned = Object.freeze({
       kind: "binary",
       operator: operator.slice(0, -1),
-      left: Object.freeze({
-        kind: "method-call",
-        receiver: ordered.values[0]!,
-        name: readName,
-        arguments: Object.freeze(key === undefined
-          ? []
-          : [Object.freeze({ value: key })]),
-      }),
-      right: assigned,
+      left: previousValue,
+      right: ordered.values[1]!,
     });
+  } else {
+    const ordered = orderMojoValues([
+      Object.freeze({ plan: value, type: writeType, role: "property_write_value" }),
+    ], context, true);
+    before = Object.freeze([...location.before, ...ordered.before]);
+    assigned = ordered.values[0]!;
   }
-  const argument = writeDisposition !== undefined && mojoParameterConvention(writeDisposition) === "var"
-    ? consumeMojoValue(assigned, writeType, context.program.lifecycle)
-    : assigned;
   return Object.freeze({
-    before: ordered.before,
-    statement: Object.freeze({
-      kind: "expression",
-      expression: Object.freeze({
-        kind: "method-call",
-        receiver: ordered.values[0]!,
-        name: writeName,
-        arguments: Object.freeze([
-          ...(key === undefined ? [] : [Object.freeze({ value: key })]),
-          Object.freeze({ value: argument }),
-        ]),
-      }),
-    }),
+    before,
+    assignedValue: assigned,
+    assignedType: writeType,
+    ...(previousValue === undefined ? {} : { previousValue }),
+    valuePassing: writeDisposition !== undefined && mojoParameterConvention(writeDisposition) === "var"
+      ? "consume"
+      : "borrow",
+    createWrite(argumentValue: MojoExpression): MojoStatement {
+      const argument = writeDisposition !== undefined && mojoParameterConvention(writeDisposition) === "var"
+        ? consumeMojoValue(argumentValue, writeType, context.program.lifecycle)
+        : argumentValue;
+      return Object.freeze({
+        kind: "expression",
+        expression: Object.freeze({
+          kind: "method-call",
+          receiver: location.values[0]!,
+          name: writeName,
+          arguments: Object.freeze([
+            ...(key === undefined ? [] : [Object.freeze({ value: key })]),
+            Object.freeze({ value: argument }),
+          ]),
+        }),
+      });
+    },
   });
 }
 
@@ -601,12 +624,15 @@ export function planMojoProviderPropertyMethodWrite(
   operator: string,
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
-): { readonly before: readonly MojoStatement[]; readonly statement: MojoStatement } | undefined {
+): MojoPreparedMutation | undefined {
   const selection = context.program.queries.propertySelection(node);
   if (selection?.kind !== "provider") return undefined;
   const write = selection.writeOperation;
-  if (write?.target.kind !== "property-write" || write.target.access.kind !== "method" ||
-    write.receiverType === undefined || write.parameterTypes.length !== 1) return undefined;
+  if (write?.target.kind !== "property-write" || write.receiverType === undefined ||
+    write.parameterTypes.length !== 1) return undefined;
+  const target = write.target;
+  if (target.access.kind !== "method") return undefined;
+  const writeName = target.access.name;
   if (selection.optionalChain) {
     appendMojoPlanningDiagnostic(
       context,
@@ -632,6 +658,7 @@ export function planMojoProviderPropertyMethodWrite(
   ], context, true);
   let before: readonly MojoStatement[] = location.before;
   let assigned: MojoExpression;
+  let previousValue: MojoExpression | undefined;
   const orderedValue = orderMojoValues([
     Object.freeze({ plan: value, type: write.parameterTypes[0]!, role: "property_write_value" }),
   ], context, true);
@@ -674,10 +701,11 @@ export function planMojoProviderPropertyMethodWrite(
       ...orderedCurrent.before,
       ...orderedValue.before,
     ]);
+    previousValue = orderedCurrent.values[0]!;
     assigned = Object.freeze({
       kind: "binary",
       operator: operator.slice(0, -1),
-      left: orderedCurrent.values[0]!,
+      left: previousValue,
       right: orderedValue.values[0]!,
     });
   } else {
@@ -686,19 +714,28 @@ export function planMojoProviderPropertyMethodWrite(
   }
   return Object.freeze({
     before,
-    statement: Object.freeze({
-      kind: "expression",
-      expression: Object.freeze({
-        kind: "method-call",
-        receiver: location.values[0]!,
-        name: write.target.access.name,
-        arguments: Object.freeze([Object.freeze({
-          value: assigned,
-          ...(write.target.value.position === "keyword"
-            ? { name: write.target.value.nativeName! }
-            : {}),
-        })]),
-      }),
-    }),
+    assignedValue: assigned,
+    assignedType: write.parameterTypes[0]!,
+    ...(previousValue === undefined ? {} : { previousValue }),
+    valuePassing: target.value.convention === "var" ? "consume" : "borrow",
+    createWrite(argumentValue: MojoExpression): MojoStatement {
+      const argument = target.value.convention === "var"
+        ? consumeMojoValue(argumentValue, write.parameterTypes[0]!, context.program.lifecycle)
+        : argumentValue;
+      return Object.freeze({
+        kind: "expression",
+        expression: Object.freeze({
+          kind: "method-call",
+          receiver: location.values[0]!,
+          name: writeName,
+          arguments: Object.freeze([Object.freeze({
+            value: argument,
+            ...(target.value.position === "keyword"
+              ? { name: target.value.nativeName! }
+              : {}),
+          })]),
+        }),
+      });
+    },
   });
 }

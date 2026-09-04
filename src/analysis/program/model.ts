@@ -878,6 +878,19 @@ export type MojoElementSelection = {
   readonly targetWriteType?: MojoTargetTypeRef;
   readonly readResultConversion?: MojoValueConversion;
   readonly optionalChain: boolean;
+} | {
+  readonly kind: "js-array-delete";
+  readonly receiver: Node;
+  readonly index: Node;
+  readonly accessMode: "delete";
+  readonly receiverType: MojoTargetTypeRef;
+  readonly indexType: MojoTargetTypeRef;
+  readonly indexConversion: MojoValueConversion;
+  readonly resultType: MojoTargetTypeRef;
+  readonly readType?: undefined;
+  readonly writeType?: undefined;
+  readonly readResultConversion?: undefined;
+  readonly optionalChain: false;
 };
 
 interface MojoIterationSelectionBase {
