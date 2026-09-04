@@ -635,6 +635,7 @@ function planComptimeBinding(
     binding.initializer,
     context,
     planMojoValue,
+    binding.type,
   );
   if (value === undefined || value.before.length !== 0) return undefined;
   registerMojoTypeImports(binding.type, context);

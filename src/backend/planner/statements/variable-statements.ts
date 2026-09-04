@@ -93,7 +93,7 @@ function planVariableDeclaration(
   }
   const compileTimeInitializer = sourceInitializer === undefined
     ? undefined
-    : planMojoCompileTimeInitializer(sourceInitializer, context, planMojoValue);
+    : planMojoCompileTimeInitializer(sourceInitializer, context, planMojoValue, type);
   const initializer = sourceInitializer === undefined
     ? undefined
     : compileTimeInitializer ?? planMojoValue(sourceInitializer, context, type);

@@ -1,9 +1,12 @@
 import type { Node } from "@tsonic/tsts";
 import type { MojoCallSelection } from "../../../analysis/program/call-model.js";
+import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import type { MojoValuePlanner } from "../expressions/support.js";
+import { convertMojoValue, requiredConversion } from "../expressions/support.js";
 import { mojoValue } from "../expressions/value-plan.js";
 import type { MojoValuePlan } from "../expressions/value-plan.js";
+import { mojoTargetTypeEquals } from "../../../target-model/types/equality.js";
 
 type MojoSourceIntrinsicSelection = Extract<MojoCallSelection, { readonly kind: "source-intrinsic" }>;
 
@@ -19,6 +22,7 @@ export function planMojoCompileTimeInitializer(
   node: Node,
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
+  expectedType: MojoTargetTypeRef,
 ): MojoValuePlan | undefined {
   const selection = mojoSourceIntrinsicSelection(node, context);
   if (selection?.operation === "comptime-type") {
@@ -26,9 +30,17 @@ export function planMojoCompileTimeInitializer(
       ? undefined
       : mojoValue(Object.freeze({ kind: "generic-argument-value", value: selection.value }));
   }
-  return selection?.operation === "comptime-value" && selection.operand !== undefined
-    ? planValue(selection.operand, context, selection.resultType)
-    : undefined;
+  if (selection?.operation !== "comptime-value" || selection.operand === undefined) {
+    return undefined;
+  }
+  const operand = planValue(selection.operand, context, selection.resultType);
+  if (operand === undefined || mojoTargetTypeEquals(selection.resultType, expectedType)) {
+    return operand;
+  }
+  const conversion = requiredConversion(node, expectedType, context);
+  return conversion === undefined
+    ? undefined
+    : convertMojoValue(operand, conversion, context);
 }
 
 export function isMojoCompileTimeCondition(
