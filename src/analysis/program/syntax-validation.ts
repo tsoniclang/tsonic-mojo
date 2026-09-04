@@ -22,6 +22,7 @@ import {
 } from "@tsonic/target-api/source";
 import type {
   MojoAnalyzedFunction,
+  MojoArrayLiteralSelection,
   MojoBindingPatternSelection,
   MojoCallSelection,
   MojoCallableExpressionSelection,
@@ -86,6 +87,7 @@ export function validateMojoFunctionSyntax(
   iterations: WeakMap<Node, MojoIterationSelection>,
   values: WeakMap<Node, MojoValueSelection>,
   typeTests: WeakMap<Node, MojoTypeTestSelection>,
+  arrayLiterals: WeakMap<Node, MojoArrayLiteralSelection>,
   objectLiterals: WeakMap<Node, MojoObjectLiteralSelection>,
   callableExpressions: WeakMap<Node, MojoCallableExpressionSelection>,
   bindingPatterns: WeakMap<Node, MojoBindingPatternSelection>,
@@ -147,17 +149,16 @@ export function validateMojoFunctionSyntax(
       return;
     }
     if (ast.is.IsArrayLiteralExpression(expression)) {
-      for (const element of ast.elements(expression)) {
-        if (element === undefined) continue;
-        if (ast.is.IsSpreadElement(element)) {
-          diagnostics.push(diagnostic(
-            "MOJO_ARRAY_SPREAD_UNSUPPORTED",
-            "Array spread requires an exact sealed expansion plan.",
-            element,
-          ));
-        } else {
-          validateExpression(element);
-        }
+      const selection = arrayLiterals.get(expression);
+      if (selection === undefined && !diagnostics.some((entry) => entry.sourceNode === expression)) {
+        diagnostics.push(diagnostic(
+          "MOJO_ARRAY_LITERAL_SELECTION_UNRESOLVED",
+          "An array literal has no exact sealed aggregate plan.",
+          expression,
+        ));
+      }
+      for (const contribution of selection?.contributions ?? []) {
+        validateExpression(contribution.expression);
       }
       return;
     }

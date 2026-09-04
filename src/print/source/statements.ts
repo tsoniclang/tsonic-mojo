@@ -22,7 +22,7 @@ export function printMojoStatementDocument(
       ? text("return")
       : group(concat(text("return "), printMojoExpressionDocument(statement.expression, context)));
     case "variable": return group(concat(
-      text(`${statement.compileTime === true ? "comptime" : "var"} ${statement.name}`),
+      text(`${statement.compileTime === true ? "comptime" : statement.reference === true ? "ref" : "var"} ${statement.name}`),
       statement.type === undefined
         ? emptyDocument
         : concat(text(": "), requiredMojoTypeDocument(statement.type, context)),

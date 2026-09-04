@@ -14,6 +14,7 @@ import { createMojoSourceProfileRegistry } from "../../policy/types/source-profi
 import { resolveMojoTargetType } from "../../policy/types/resolution.js";
 import type {
   MojoAnalyzedProjectProperty,
+  MojoArrayLiteralSelection,
   MojoBindingPatternSelection,
   MojoBindingProjectionPlan,
   MojoCallSelection,
@@ -108,6 +109,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
   const typeTestSelections = new WeakMap<Node, MojoTypeTestSelection>();
   const nullishCoalescingSelections = new WeakMap<Node, import("./model.js").MojoNullishCoalescingSelection>();
   const objectLiteralSelections = new WeakMap<Node, MojoObjectLiteralSelection>();
+  const arrayLiteralSelections = new WeakMap<Node, MojoArrayLiteralSelection>();
   const objectLiteralNodes = new Set<Node>();
   const callableExpressionSelections = new WeakMap<Node, MojoCallableExpressionSelection>();
   const callableExpressionNodes = new Set<Node>();
@@ -369,6 +371,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     typeTestSelections,
     nullishCoalescingSelections,
     objectLiteralSelections,
+    arrayLiteralSelections,
     objectLiteralNodes,
     templateExpressionNodes,
     bindingPatternSelections,
@@ -461,15 +464,18 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
         (step.binding.declarationKind === "using" || step.binding.declarationKind === "await using");
       const root = step.kind === "binding"
         ? resourceBinding ? step.binding.declaration : step.binding.initializer
-        : step.kind === "statement" ? step.statement
-        : step.body;
+        : step.kind === "binding-pattern" ? step.initializer
+          : step.kind === "statement" ? step.statement
+            : step.body;
       roots.push(root);
       analyzeMojoExecutableRegion({
         root,
         sourceFile: module.sourceFile,
         ...(step.kind === "binding" && !resourceBinding
           ? { rootExpectedType: step.binding.type }
-          : {}),
+          : step.kind === "binding-pattern"
+            ? { rootExpectedType: step.sourceType }
+            : {}),
         ...executableEnvironment,
       });
       recordMojoExecutableRegionConversionUses(
@@ -486,6 +492,33 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
         conversions,
         diagnostics,
       );
+      if (step.kind === "binding-pattern") {
+        analyzeMojoExecutableBindingProjection(
+          step.declaration,
+          step.sourceType,
+          input.source.semantics.forFile(module.sourceFile).types.expressionType(step.initializer),
+          module.sourceFile,
+          executableEnvironment,
+        );
+        const actual = expressionTypes.get(step.initializer);
+        if (actual === undefined) {
+          diagnostics.push(diagnostic(
+            "MOJO_MODULE_PATTERN_INITIALIZER_CARRIER_NOT_CLOSED",
+            "A module binding pattern initializer has no sealed Mojo carrier.",
+            step.initializer,
+          ));
+        } else {
+          const conversion = conversions.record(step.initializer, actual, step.sourceType);
+          if (conversion.kind === "unsupported") {
+            diagnostics.push(diagnostic(
+              "MOJO_VALUE_CONVERSION_UNPROVEN",
+              conversion.reason,
+              step.initializer,
+            ));
+          }
+        }
+        continue;
+      }
       if (step.kind !== "binding") continue;
       const actual = expressionTypes.get(step.binding.initializer);
       if (actual === undefined) {

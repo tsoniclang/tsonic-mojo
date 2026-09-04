@@ -14,6 +14,7 @@ export type MojoStatement =
       readonly type?: MojoTargetTypeRef;
       readonly initializer?: MojoExpression;
       readonly compileTime?: boolean;
+      readonly reference?: boolean;
     }
   | {
       readonly kind: "tuple-variable";

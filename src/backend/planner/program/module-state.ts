@@ -35,10 +35,11 @@ import { registerMojoTypeImports } from "../types/imports.js";
 import { planMojoStatementRegion } from "../statements/structured.js";
 import { planMojoResourceScope } from "../statements/resources.js";
 import { adaptMojoValueErrorDomain } from "../expressions/error-domains.js";
-import { mojoValue } from "../expressions/value-plan.js";
+import { consumeMojoValue, mojoValue } from "../expressions/value-plan.js";
 import { planMojoProjectFunction } from "../declarations/project.js";
 import { planMojoCompileTimeInitializer } from "../compile-time/values.js";
 import { planMojoFunctionValue } from "./function-values.js";
+import { planMojoBindingProjection } from "../bindings/patterns.js";
 
 export function planMojoModuleState(
   program: MojoTargetProgram,
@@ -362,6 +363,8 @@ function planModuleInitializationSteps(
   const diagnosticCount = context.diagnostics.length;
   const current = step.kind === "binding"
     ? planModuleBindingInitialization(step.binding, context)
+    : step.kind === "binding-pattern"
+      ? planModuleBindingPatternInitialization(step, context)
     : step.kind === "statement"
       ? planModuleStatement(step.statement, context)
       : planMojoStatementRegion(step.statements, context);
@@ -372,9 +375,13 @@ function planModuleInitializationSteps(
       "MOJO_MODULE_INITIALIZATION_STEP_NOT_PLANNED",
       step.kind === "binding"
         ? `Top-level binding '${step.binding.sourceName}' has no exact runtime initialization plan.`
+        : step.kind === "binding-pattern"
+          ? "A top-level binding pattern has no exact runtime projection plan."
         : "A top-level executable statement has no exact Mojo initialization plan.",
       step.kind === "binding"
         ? step.binding.initializer
+        : step.kind === "binding-pattern"
+          ? step.initializer
         : step.kind === "statement"
           ? step.statement
           : step.statements[0] ?? module.sourceFile,
@@ -389,6 +396,51 @@ function planModuleInitializationSteps(
   }
   const scoped = planMojoResourceScope(step.binding.declaration, remainder, context);
   return scoped === undefined ? undefined : Object.freeze([...current, ...scoped]);
+}
+
+function planModuleBindingPatternInitialization(
+  step: Extract<import("../../../analysis/program/model.js").MojoModuleInitializationStep, {
+    readonly kind: "binding-pattern";
+  }>,
+  context: MojoPlanningContext,
+): readonly MojoStatement[] | undefined {
+  const projection = context.program.queries.bindingProjection(step.declaration);
+  const source = planMojoValue(step.initializer, context, step.sourceType);
+  if (projection === undefined || source === undefined) return undefined;
+  const projected = planMojoBindingProjection(
+    projection,
+    source,
+    "stabilized",
+    context,
+    planMojoValue,
+  );
+  if (projected === undefined) return undefined;
+  const assignments: MojoStatement[] = [...projected];
+  for (const binding of step.bindings) {
+    if (binding.disposition.kind !== "immutable-runtime" && binding.disposition.kind !== "live-cell") {
+      return undefined;
+    }
+    const slot = mojoModuleBindingSlot(binding, context);
+    if (slot === undefined) return undefined;
+    registerMojoTypeImports(binding.type, context);
+    assignments.push(Object.freeze({
+      kind: "assignment",
+      operator: "=",
+      left: slot,
+      right: Object.freeze({
+        kind: "construct",
+        type: optionalType(binding.type),
+        arguments: Object.freeze([Object.freeze({
+          value: consumeMojoValue(
+            Object.freeze({ kind: "path", path: binding.name }),
+            binding.type,
+            context.program.lifecycle,
+          ),
+        })]),
+      }),
+    }));
+  }
+  return Object.freeze(assignments);
 }
 
 function planModuleStatement(

@@ -99,10 +99,33 @@ export function analyzeMojoModuleBindings(
         }
         for (const declaration of declarations as readonly Node[]) {
           const nameNode = ast.name(declaration);
+          if (nameNode !== undefined && (ast.is.IsArrayBindingPattern(nameNode) ||
+            ast.is.IsObjectBindingPattern(nameNode))) {
+            if (declarationKind === "using" || declarationKind === "await using") {
+              input.diagnostics.push(diagnostic(
+                "MOJO_MODULE_RESOURCE_BINDING_PATTERN_UNSUPPORTED",
+                "Top-level resource management requires one exact resource binding rather than a destructured aggregate.",
+                declaration,
+              ));
+              continue;
+            }
+            const pattern = analyzeModuleBindingPattern(
+              declaration,
+              nameNode,
+              declarationKind,
+              sourceFile,
+              semantics,
+              input,
+            );
+            if (pattern === undefined) continue;
+            bindings.push(...pattern.bindings);
+            initializationSteps.push(pattern);
+            continue;
+          }
           if (nameNode === undefined || !ast.is.IsIdentifier(nameNode)) {
             input.diagnostics.push(diagnostic(
-              "MOJO_MODULE_BINDING_PATTERN_UNSUPPORTED",
-              "Top-level destructuring requires the sealed binding-pattern plan.",
+              "MOJO_MODULE_BINDING_NAME_UNSUPPORTED",
+              "A top-level binding requires one exact identifier or binding pattern.",
               declaration,
             ));
             continue;
@@ -397,15 +420,202 @@ export function finalizeMojoModuleBindingTypes(
     const bindingByDeclaration = new Map(
       bindings.map((binding) => [binding.declaration, binding] as const),
     );
-    const initializationSteps = Object.freeze(module.initializationSteps.map((step) =>
-      step.kind !== "binding"
-        ? step
-        : Object.freeze({
-            kind: "binding" as const,
-            binding: bindingByDeclaration.get(step.binding.declaration) ?? step.binding,
-          })));
+    const initializationSteps = Object.freeze(module.initializationSteps.map((step) => {
+      if (step.kind === "binding") {
+        return Object.freeze({
+          kind: "binding" as const,
+          binding: bindingByDeclaration.get(step.binding.declaration) ?? step.binding,
+        });
+      }
+      if (step.kind !== "binding-pattern") return step;
+      return Object.freeze({
+        ...step,
+        bindings: Object.freeze(step.bindings.map((binding) =>
+          bindingByDeclaration.get(binding.declaration) ?? binding)),
+      });
+    }));
     return Object.freeze({ ...module, bindings, initializationSteps });
   }));
+}
+
+function analyzeModuleBindingPattern(
+  declaration: Node,
+  pattern: Node,
+  declarationKind: "const" | "let" | "var",
+  sourceFile: SourceFile,
+  semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
+  input: MojoModuleBindingAnalysisInput,
+): Extract<MojoModuleInitializationStep, { readonly kind: "binding-pattern" }> | undefined {
+  const { ast } = input.source;
+  const initializer = Node_Initializer(ast, declaration);
+  if (initializer === undefined) {
+    input.diagnostics.push(diagnostic(
+      "MOJO_MODULE_BINDING_INITIALIZER_REQUIRED",
+      "A top-level binding pattern requires one explicit aggregate initializer.",
+      declaration,
+    ));
+    return undefined;
+  }
+  if (isExplicitCompileTimeInitializer(initializer, input.source)) {
+    input.diagnostics.push(diagnostic(
+      "MOJO_MODULE_COMPTIME_BINDING_PATTERN_UNSUPPORTED",
+      "An explicit compile-time aggregate must be named before its values are destructured.",
+      declaration,
+    ));
+    return undefined;
+  }
+  const sourceType = resolveModuleBindingType(
+    semantics.types.expressionType(initializer),
+    undefined,
+    declaration,
+    semantics,
+    input,
+  );
+  if (sourceType === undefined) return undefined;
+  input.bindType(declaration, sourceType);
+  input.bindSourceFile(declaration, sourceFile);
+  const bindings: MojoAnalyzedModuleBinding[] = [];
+  if (!collectModuleBindingPatternLeaves(
+    pattern,
+    initializer,
+    declarationKind,
+    sourceFile,
+    semantics,
+    input,
+    bindings,
+  )) return undefined;
+  return Object.freeze({
+    kind: "binding-pattern",
+    declaration,
+    initializer,
+    sourceType,
+    bindings: Object.freeze(bindings),
+  });
+}
+
+function collectModuleBindingPatternLeaves(
+  pattern: Node,
+  initializer: Node,
+  declarationKind: "const" | "let" | "var",
+  sourceFile: SourceFile,
+  semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
+  input: MojoModuleBindingAnalysisInput,
+  bindings: MojoAnalyzedModuleBinding[],
+): boolean {
+  const { ast } = input.source;
+  let valid = true;
+  for (const element of ast.elements(pattern)) {
+    if (element === undefined || ast.is.IsOmittedExpression(element)) continue;
+    if (!ast.is.IsBindingElement(element)) {
+      input.diagnostics.push(diagnostic(
+        "MOJO_MODULE_BINDING_ELEMENT_INVALID",
+        "A top-level binding pattern contains a non-binding element.",
+        element,
+      ));
+      valid = false;
+      continue;
+    }
+    const nameNode = ast.name(element);
+    if (nameNode === undefined) {
+      input.diagnostics.push(diagnostic(
+        "MOJO_MODULE_BINDING_NAME_MISSING",
+        "A top-level binding element has no exact authored target.",
+        element,
+      ));
+      valid = false;
+      continue;
+    }
+    if (ast.is.IsArrayBindingPattern(nameNode) || ast.is.IsObjectBindingPattern(nameNode)) {
+      valid = collectModuleBindingPatternLeaves(
+        nameNode,
+        initializer,
+        declarationKind,
+        sourceFile,
+        semantics,
+        input,
+        bindings,
+      ) && valid;
+      continue;
+    }
+    if (!ast.is.IsIdentifier(nameNode)) {
+      input.diagnostics.push(diagnostic(
+        "MOJO_MODULE_BINDING_NAME_UNSUPPORTED",
+        "A top-level binding element requires one exact identifier or nested pattern.",
+        nameNode,
+      ));
+      valid = false;
+      continue;
+    }
+    const type = resolveModuleBindingType(
+      semantics.declarations.declaredValueType(element) ??
+        semantics.declarations.declaredType(element),
+      undefined,
+      element,
+      semantics,
+      input,
+    );
+    if (type === undefined) {
+      valid = false;
+      continue;
+    }
+    const sourceName = ast.text(nameNode);
+    const name = input.allocateModuleName(sourceFile, sourceName);
+    const binding = Object.freeze({
+      kind: "module-binding" as const,
+      declaration: element,
+      sourceFile,
+      sourceName,
+      name,
+      declarationKind,
+      disposition: classifyMojoBindingDisposition({
+        declaration: element,
+        initializer,
+        declarationKind,
+        type,
+        comptime: false,
+        source: input.source,
+      }),
+      type,
+      initializer,
+    }) satisfies MojoAnalyzedModuleBinding;
+    bindings.push(binding);
+    input.bindName(element, name);
+    input.bindName(nameNode, name);
+    input.bindSourceFile(element, sourceFile);
+    input.bindSourceFile(nameNode, sourceFile);
+    input.bindType(element, type);
+    input.bindType(nameNode, type);
+  }
+  return valid;
+}
+
+function resolveModuleBindingType(
+  selectedType: import("@tsonic/tsts").Type | undefined,
+  authoredTypeNode: Node | undefined,
+  evidence: Node,
+  semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
+  input: MojoModuleBindingAnalysisInput,
+): MojoTargetTypeRef | undefined {
+  const resolved = resolveMojoTargetType(selectedType, authoredTypeNode, {
+    ast: input.source.ast,
+    navigation: input.source.navigation,
+    semantics,
+    sourceFacts: input.source.sourceFacts,
+    providerSemantics: input.providerSemantics,
+    projectTypes: input.projectTypes,
+    sourceProfiles: input.sourceProfiles,
+    jsEnabled: input.jsEnabled,
+    ...(input.sourceCallableErrorType === undefined
+      ? {}
+      : { sourceCallableErrorType: input.sourceCallableErrorType }),
+  });
+  if (resolved.kind === "resolved") return resolved.type;
+  input.diagnostics.push(diagnostic(
+    "MOJO_TARGET_TYPE_UNSUPPORTED",
+    `Selected top-level binding type cannot be represented exactly in Mojo: ${resolved.reason}.`,
+    evidence,
+  ));
+  return undefined;
 }
 
 function isExplicitCompileTimeInitializer(

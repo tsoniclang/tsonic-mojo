@@ -84,21 +84,9 @@ export function recordMojoExecutableRegionConversionUses(
       return;
     }
     if (ast.is.IsArrayLiteralExpression(expression)) {
-      const type = expressionTypes.get(expression);
-      const elements = ast.elements(expression);
-      const expected = type?.kind === "list" || type?.kind === "fixed-array"
-        ? elements.map(() => type.element)
-        : type?.kind === "tuple"
-          ? type.elements
-          : type?.kind === "target-named" && type.id === "tsonic.mojo.js.JsArray"
-            ? elements.map(() => type.genericArguments?.[0]?.kind === "type"
-                ? type.genericArguments[0].type
-                : undefined)
-            : [];
-      for (const [index, element] of elements.entries()) {
-        const target = expected[index];
-        if (element !== undefined && target !== undefined && !ast.is.IsSpreadElement(element)) record(element, target);
-        visitExpression(element);
+      for (const element of ast.elements(expression)) {
+        if (element === undefined) continue;
+        visitExpression(ast.is.IsSpreadElement(element) ? Node_Expression(ast, element) : element);
       }
       return;
     }

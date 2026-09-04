@@ -30,6 +30,15 @@ import type { MojoLifecycleCatalog } from "../lifecycle/model.js";
 import type { MojoParameterDisposition } from "../representations/model.js";
 import type { MojoBindingDisposition } from "../representations/model.js";
 import type { MojoCallSelection } from "./call-model.js";
+import type { MojoArrayLiteralSelection } from "../aggregates/model.js";
+export type {
+  MojoArrayLiteralContribution,
+  MojoArrayLiteralFixedSpreadSelection,
+  MojoArrayLiteralFixedSpreadValue,
+  MojoArrayLiteralSelection,
+  MojoArrayLiteralSequenceSpreadSelection,
+  MojoArrayLiteralValueSelection,
+} from "../aggregates/model.js";
 import type {
   MojoCallableCapture,
   MojoCallableExpressionSelection,
@@ -606,6 +615,13 @@ export type MojoModuleInitializationStep =
       readonly binding: MojoAnalyzedModuleBinding;
     }
   | {
+      readonly kind: "binding-pattern";
+      readonly declaration: Node;
+      readonly initializer: Node;
+      readonly sourceType: MojoTargetTypeRef;
+      readonly bindings: readonly MojoAnalyzedModuleBinding[];
+    }
+  | {
       readonly kind: "statement";
       readonly statement: Node;
     }
@@ -952,6 +968,7 @@ export interface MojoProgramQueries {
   valueSelection(expression: Node): MojoValueSelection | undefined;
   typeTestSelection(expression: Node): MojoTypeTestSelection | undefined;
   nullishCoalescingSelection(expression: Node): MojoNullishCoalescingSelection | undefined;
+  arrayLiteralSelection(expression: Node): MojoArrayLiteralSelection | undefined;
   elementSelection(access: Node): MojoElementSelection | undefined;
   iterationSelection(statement: Node): MojoIterationSelection | undefined;
   resourceManagementSelection(declaration: Node): MojoResourceManagementSelection | undefined;

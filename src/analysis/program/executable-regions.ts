@@ -18,6 +18,7 @@ import {
 import type { MojoStructuralObjectCatalog } from "../bindings/structural-objects.js";
 import { analyzeMojoObjectLiteral } from "../objects/object-literals.js";
 import { analyzeMojoResourceManagement } from "../resources/management.js";
+import { analyzeMojoArrayLiteral } from "../aggregates/array-literals.js";
 import { analyzeMojoProviderRecordLiteral } from "../objects/provider-records.js";
 import type {
   MojoProjectTypeCatalog,
@@ -28,6 +29,7 @@ import { inferMojoExpressionType, isMojoExpressionNode } from "./expression-type
 import type {
   MojoAnalyzedClass,
   MojoAnalyzedClassOwner,
+  MojoArrayLiteralSelection,
   MojoBindingProjectionPlan,
   MojoBindingPatternSelection,
   MojoAnalyzedFunction,
@@ -113,6 +115,7 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly typeTestSelections: WeakMap<Node, MojoTypeTestSelection>;
   readonly nullishCoalescingSelections: WeakMap<Node, MojoNullishCoalescingSelection>;
   readonly objectLiteralSelections: WeakMap<Node, MojoObjectLiteralSelection>;
+  readonly arrayLiteralSelections: WeakMap<Node, MojoArrayLiteralSelection>;
   readonly objectLiteralNodes: Set<Node>;
   readonly templateExpressionNodes: Set<Node>;
   readonly bindingPatternSelections: WeakMap<Node, MojoBindingPatternSelection>;
@@ -371,6 +374,32 @@ export function analyzeMojoExecutableRegion(
     if (!isMojoExpressionNode(node, ast) || !isRuntimeValueOccurrence(node, input)) return;
     const inferred = inferMojoExpressionType(node, ast, input.expressionTypes);
     if (inferred !== undefined) input.expressionTypes.set(node, inferred);
+    if (ast.is.IsArrayLiteralExpression(node)) {
+      const resultType = input.expressionTypes.get(node);
+      if (resultType === undefined) {
+        input.diagnostics.push(diagnostic(
+          "MOJO_ARRAY_LITERAL_RESULT_NOT_CLOSED",
+          "An array literal requires one exact sealed result carrier.",
+          node,
+        ));
+      } else {
+        const array = analyzeMojoArrayLiteral({
+          ast,
+          expression: node,
+          resultType,
+          expressionTypes: input.expressionTypes,
+          conversions: input.conversions,
+          projectRelationships: input.projectRelationships,
+          lifecycle: input.lifecycle,
+          valueOwnership: input.valueOwnership,
+        });
+        if (array.kind === "unsupported") {
+          input.diagnostics.push(diagnostic(array.code, array.reason, array.node));
+        } else {
+          input.arrayLiteralSelections.set(node, array.selection);
+        }
+      }
+    }
   }, (node, regionRoot) => descendWithinExecutableRegion(node, regionRoot, ast));
 
   const pendingObjects = new Set(objectLiteralNodes);

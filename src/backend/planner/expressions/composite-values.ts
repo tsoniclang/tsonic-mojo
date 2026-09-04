@@ -7,7 +7,15 @@ import {
   ObjectLiteralProperty_Value,
 } from "@tsonic/target-api/source";
 import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
-import type { MojoDictionaryEntry, MojoExpression } from "../../target-ast/index.js";
+import type {
+  MojoArrayLiteralFixedSpreadSelection,
+  MojoArrayLiteralSelection,
+} from "../../../analysis/program/model.js";
+import type {
+  MojoDictionaryEntry,
+  MojoExpression,
+  MojoStatement,
+} from "../../target-ast/index.js";
 import {
   allocateMojoSyntheticName,
   appendMojoPlanningDiagnostic,
@@ -25,11 +33,12 @@ import {
   planNullishCoalescing,
 } from "./conditional-values.js";
 import {
+  convertMojoValue,
   orderMojoValues,
 } from "./support.js";
 import { isJsArray, jsArrayElement } from "./js-carriers.js";
 import type { OrderedMojoValue } from "./support.js";
-import { withMojoValue } from "./value-plan.js";
+import { consumeMojoValue, mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 
 export type MojoCompositeValuePlanner = (
@@ -54,37 +63,66 @@ export function planArrayLiteral(
   context: MojoPlanningContext,
   planNested: MojoCompositeValuePlanner,
 ): MojoValuePlan | undefined {
-  const type = context.program.queries.expressionType(node);
-  if (type === undefined) return undefined;
-  const sourceElements = context.program.source.ast.elements(node);
-  if (sourceElements.some((element) => element === undefined || context.program.source.ast.is.IsSpreadElement(element))) {
-    appendMojoPlanningDiagnostic(context, "MOJO_ARRAY_SPREAD_PLAN_UNSUPPORTED", "Array spread requires a sealed expansion plan.", node);
+  const selection = context.program.queries.arrayLiteralSelection(node);
+  if (selection === undefined) {
+    appendMojoPlanningDiagnostic(
+      context,
+      "MOJO_ARRAY_LITERAL_PLAN_NOT_SEALED",
+      "An array literal reached planning without its exact sealed aggregate plan.",
+      node,
+    );
     return undefined;
   }
-  const expected = type.kind === "list" || type.kind === "fixed-array"
-    ? sourceElements.map(() => type.element)
-    : type.kind === "tuple"
-      ? type.elements
-      : isJsArray(type)
-        ? sourceElements.map(() => jsArrayElement(type)!)
-        : undefined;
-  if (expected === undefined || expected.length !== sourceElements.length || expected.some((entry) => entry === undefined)) {
-    appendMojoPlanningDiagnostic(context, "MOJO_ARRAY_LITERAL_TYPE_UNSUPPORTED", "Array literal has no exact Mojo element carrier list.", node);
-    return undefined;
+  return selection.contributions.some((contribution) => contribution.kind === "sequence-spread")
+    ? planDynamicArrayLiteral(selection, context, planNested)
+    : planFixedArrayLiteral(selection, context, planNested);
+}
+
+function planFixedArrayLiteral(
+  selection: MojoArrayLiteralSelection,
+  context: MojoPlanningContext,
+  planNested: MojoCompositeValuePlanner,
+): MojoValuePlan | undefined {
+  const values: OrderedMojoValue[] = [];
+  let pendingBefore: MojoStatement[] = [];
+  for (const contribution of selection.contributions) {
+    if (contribution.kind === "sequence-spread") return undefined;
+    if (contribution.kind === "value") {
+      const plan = planNested(contribution.expression, context, contribution.targetType);
+      if (plan === undefined) return undefined;
+      values.push(Object.freeze({
+        plan: withMojoValue([...pendingBefore, ...plan.before], plan.value),
+        type: contribution.targetType,
+        role: "array_element",
+      }));
+      pendingBefore = [];
+      continue;
+    }
+    const spread = planFixedSpread(contribution, context, planNested);
+    if (spread === undefined) return undefined;
+    if (spread.values.length === 0) {
+      pendingBefore.push(...spread.before);
+      continue;
+    }
+    for (const [index, value] of spread.values.entries()) {
+      values.push(Object.freeze({
+        plan: index === 0
+          ? withMojoValue([...pendingBefore, ...spread.before, ...value.before], value.value)
+          : value,
+        type: contribution.values[index]!.targetType,
+        role: "array_spread_element",
+      }));
+    }
+    pendingBefore = [];
   }
-  const elementPlans = (sourceElements as readonly Node[]).map((element, index) =>
-    planNested(element, context, expected[index]));
-  if (elementPlans.some((element) => element === undefined)) return undefined;
   const ordered = orderMojoValues(
-    (elementPlans as MojoValuePlan[]).map((plan, index) => ({
-      plan,
-      type: expected[index]!,
-      role: "array_element",
-    })),
+    values,
     context,
+    pendingBefore.length !== 0,
   );
-  const before = ordered.before;
+  const before = Object.freeze([...ordered.before, ...pendingBefore]);
   const elements = ordered.values;
+  const type = selection.resultType;
   const literal: MojoExpression = type.kind === "tuple"
     ? { kind: "tuple", elements: Object.freeze(elements as MojoExpression[]) }
     : { kind: "list", elements: Object.freeze(elements as MojoExpression[]) };
@@ -101,6 +139,143 @@ export function planArrayLiteral(
     return withMojoValue(before, { kind: "construct", type, arguments: Object.freeze([{ value: literal }]) });
   }
   return withMojoValue(before, literal);
+}
+
+function planDynamicArrayLiteral(
+  selection: MojoArrayLiteralSelection,
+  context: MojoPlanningContext,
+  planNested: MojoCompositeValuePlanner,
+): MojoValuePlan | undefined {
+  const resultElement = selection.resultType.kind === "list"
+    ? selection.resultType.element
+    : jsArrayElement(selection.resultType);
+  if (resultElement === undefined) return undefined;
+  const listType: MojoTargetTypeRef = Object.freeze({ kind: "list", element: resultElement });
+  registerMojoTypeImports(listType, context);
+  const resultName = allocateMojoSyntheticName(context, "array_result");
+  const resultPath: MojoExpression = Object.freeze({ kind: "path", path: resultName });
+  const before: MojoStatement[] = [Object.freeze({
+    kind: "variable",
+    name: resultName,
+    type: listType,
+    initializer: Object.freeze({ kind: "list", elements: Object.freeze([]) }),
+  })];
+  for (const contribution of selection.contributions) {
+    if (contribution.kind === "value") {
+      const value = planNested(contribution.expression, context, contribution.targetType);
+      if (value === undefined) return undefined;
+      before.push(...value.before, appendArrayValue(
+        resultPath,
+        value.value,
+        contribution.targetType,
+        context,
+      ));
+      continue;
+    }
+    if (contribution.kind === "fixed-spread") {
+      const spread = planFixedSpread(contribution, context, planNested);
+      if (spread === undefined) return undefined;
+      before.push(...spread.before);
+      for (const [index, value] of spread.values.entries()) {
+        before.push(
+          ...value.before,
+          appendArrayValue(resultPath, value.value, contribution.values[index]!.targetType, context),
+        );
+      }
+      continue;
+    }
+    const source = planNested(contribution.expression, context, contribution.sourceType);
+    if (source === undefined) return undefined;
+    before.push(...source.before);
+    const itemName = allocateMojoSyntheticName(context, "array_spread_item");
+    const itemPath: MojoExpression = Object.freeze({ kind: "path", path: itemName });
+    const selectedValue = contribution.copy
+      ? Object.freeze({ kind: "copy" as const, expression: itemPath })
+      : itemPath;
+    const converted = convertMojoValue(mojoValue(selectedValue), contribution.conversion, context);
+    if (converted === undefined) return undefined;
+    const iterable: MojoExpression = contribution.iteration === "native"
+      ? source.value
+      : Object.freeze({
+          kind: "method-call",
+          receiver: source.value,
+          name: "iter_values",
+          arguments: Object.freeze([]),
+        });
+    before.push(Object.freeze({
+      kind: "for",
+      binding: itemName,
+      iterable,
+      statements: Object.freeze([
+        ...converted.before,
+        appendArrayValue(resultPath, converted.value, contribution.targetType, context),
+      ]),
+    }));
+  }
+  if (!isJsArray(selection.resultType)) return withMojoValue(before, resultPath);
+  registerMojoTypeImports(selection.resultType, context);
+  return withMojoValue(before, Object.freeze({
+    kind: "construct",
+    type: selection.resultType,
+    arguments: Object.freeze([Object.freeze({
+      value: consumeMojoValue(resultPath, listType, context.program.lifecycle),
+    })]),
+  }));
+}
+
+function planFixedSpread(
+  selection: MojoArrayLiteralFixedSpreadSelection,
+  context: MojoPlanningContext,
+  planNested: MojoCompositeValuePlanner,
+): { readonly before: readonly MojoStatement[]; readonly values: readonly MojoValuePlan[] } | undefined {
+  const source = planNested(selection.expression, context, selection.sourceType);
+  if (source === undefined) return undefined;
+  registerMojoTypeImports(selection.sourceType, context);
+  const sourceName = allocateMojoSyntheticName(context, "array_spread");
+  const sourcePath: MojoExpression = Object.freeze({ kind: "path", path: sourceName });
+  const before: MojoStatement[] = [
+    ...source.before,
+    Object.freeze({
+      kind: "variable",
+      name: sourceName,
+      ...(selection.sourceOwnership === "fresh" ? { type: selection.sourceType } : { reference: true }),
+      initializer: source.value,
+    }),
+  ];
+  const values: MojoValuePlan[] = [];
+  for (const value of selection.values) {
+    const projected: MojoExpression = Object.freeze({
+      kind: "element",
+      receiver: sourcePath,
+      index: Object.freeze({ kind: "number-literal", text: String(value.index) }),
+    });
+    const copied = value.copy
+      ? Object.freeze({ kind: "copy" as const, expression: projected })
+      : projected;
+    const converted = convertMojoValue(mojoValue(copied), value.conversion, context);
+    if (converted === undefined) return undefined;
+    values.push(converted);
+  }
+  return Object.freeze({ before: Object.freeze(before), values: Object.freeze(values) });
+}
+
+function appendArrayValue(
+  result: MojoExpression,
+  value: MojoExpression,
+  type: MojoTargetTypeRef,
+  context: MojoPlanningContext,
+): MojoStatement {
+  return Object.freeze({
+    kind: "expression",
+    expression: Object.freeze({
+      kind: "method-call",
+      receiver: result,
+      name: "append",
+      arguments: Object.freeze([Object.freeze({
+        value: consumeMojoValue(value, type, context.program.lifecycle),
+      })]),
+    }),
+  });
 }
 
 export function planObjectLiteral(
