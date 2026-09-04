@@ -326,6 +326,7 @@ export function planMojoProjectClass(
           class_.fields.find((field) => field.sourceName === "message" &&
             (field.type.kind === "native-string" ||
               (field.type.kind === "target-named" && field.type.id === "tsonic.mojo.js.JsString")))?.name,
+          Object.freeze({ storage: class_.stateStorage, stateType }),
         )]
       : []),
   ];

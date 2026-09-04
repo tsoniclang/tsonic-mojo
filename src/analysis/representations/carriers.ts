@@ -10,7 +10,10 @@ import type {
   MojoCallableExpressionSelection,
 } from "../program/model.js";
 import type { MojoCallSelection } from "../program/call-model.js";
-import { resolveMojoCallableExpressionDependency } from "../callables/expressions.js";
+import {
+  resolveMojoAuthoredCallableExpressionSyntax,
+  resolveMojoCallableExpressionDependency,
+} from "../callables/expressions.js";
 import type { MojoSourceModuleCatalog } from "../source-modules/model.js";
 import type { TargetPlanningSourceNavigation } from "@tsonic/target-api/analysis";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
@@ -65,6 +68,7 @@ export function createMojoRepresentationCatalog(
   const callableDispositions = new WeakMap<Node, MojoCallableDisposition>();
   const bindingDispositions = new WeakMap<Node, MojoBindingDisposition>();
   const directCallableExpressions = new Map<Node, "direct" | "thin">();
+  const sealedErasedCallableReferences = new Set<Node>();
   const requiredErasedCallableExpressions = new Set<Node>();
   const carrierUseCounts = new Map<string, number>();
   const authoredAliasCandidates = Object.freeze(input.authoredTypeAliases.flatMap((alias) => {
@@ -110,6 +114,12 @@ export function createMojoRepresentationCatalog(
           binding.disposition.callableKind,
         );
       }
+      if (binding.kind === "function-value") {
+        sealedErasedCallableReferences.add(binding.declaration);
+        for (const reference of binding.references ?? []) {
+          sealedErasedCallableReferences.add(reference);
+        }
+      }
     }
   }
   for (const sourceFile of input.sourceFiles) {
@@ -123,6 +133,7 @@ export function createMojoRepresentationCatalog(
           recordTypeUse(argument.sourceContainerType);
         }
         if (argument.callableConsumption !== "retained") continue;
+        if (sealedErasedCallableReferences.has(argument.expression)) continue;
         const expression = resolveMojoCallableExpressionDependency(
           argument.expression,
           input.source,
@@ -130,11 +141,17 @@ export function createMojoRepresentationCatalog(
           input.callableDeclarationByExpression,
         );
         if (expression === undefined) {
-          input.diagnostics.push(mojoAnalysisDiagnostic(
-            "MOJO_REQUIRED_ERASED_CALLABLE_UNRESOLVED",
-            "A retained callback parameter requires one exact callable expression before representation sealing.",
+          const authored = resolveMojoAuthoredCallableExpressionSyntax(
             argument.expression,
-          ));
+            input.source,
+          );
+          if (authored !== undefined) {
+            input.diagnostics.push(mojoAnalysisDiagnostic(
+              "MOJO_REQUIRED_ERASED_CALLABLE_UNRESOLVED",
+              "A retained authored callback requires one exact callable selection before representation sealing.",
+              authored,
+            ));
+          }
           continue;
         }
         requiredErasedCallableExpressions.add(expression);

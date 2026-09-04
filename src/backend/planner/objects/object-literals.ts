@@ -14,6 +14,7 @@ import { withMojoValue } from "../expressions/value-plan.js";
 import type { MojoValuePlan } from "../expressions/value-plan.js";
 import { planDictionaryKey } from "../expressions/conditional-values.js";
 import { planMojoPolymorphicObjectLiteral } from "./polymorphism/object-literals.js";
+import { mojoProjectStateValue } from "../declarations/state-storage.js";
 
 export function planMojoProjectObjectLiteral(
   node: Node,
@@ -85,13 +86,20 @@ export function planMojoProjectObjectLiteral(
     if (plan === undefined) return undefined;
     before.push(...plan.before);
     const spread = stabilize(plan.value, contribution.sourceType, "object_spread", before, context);
+    const spreadState = mojoProjectStateValue(spread, contribution.sourceType, context);
+    if (spreadState === undefined) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_OBJECT_SPREAD_STATE_NOT_SEALED",
+        "A project object spread has no exact sealed state projection.",
+        contribution.element,
+      );
+      return undefined;
+    }
     for (const entry of contribution.fields) {
       const value: MojoExpression = Object.freeze({
         kind: "member",
-        receiver: Object.freeze({
-          kind: "postfix-deref",
-          expression: Object.freeze({ kind: "member", receiver: spread, name: "_state" }),
-        }),
+        receiver: spreadState,
         name: entry.field.name,
       });
       values.set(
@@ -104,10 +112,7 @@ export function planMojoProjectObjectLiteral(
       if (destination === undefined) return undefined;
       const sourceDictionary: MojoExpression = Object.freeze({
         kind: "member",
-        receiver: Object.freeze({
-          kind: "postfix-deref",
-          expression: Object.freeze({ kind: "member", receiver: spread, name: "_state" }),
-        }),
+        receiver: spreadState,
         name: entry.indexSignature.storageName,
       });
       const keyName = allocateMojoSyntheticName(context, "object_index_key");

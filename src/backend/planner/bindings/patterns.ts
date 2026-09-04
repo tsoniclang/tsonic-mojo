@@ -12,6 +12,7 @@ import type { MojoPlanningContext } from "../program/context.js";
 import type { MojoValuePlanner } from "../expressions/support.js";
 import { registerMojoTypeImports } from "../types/imports.js";
 import type { MojoValuePlan } from "../expressions/value-plan.js";
+import { mojoProjectStateValue } from "../declarations/state-storage.js";
 
 export function planMojoBindingPattern(
   selection: MojoBindingPatternSelection,
@@ -73,7 +74,7 @@ function planElements(
 ): boolean {
   for (const element of elements) {
     registerMojoTypeImports(element.projectedType, context);
-    const projected = projectionExpression(source, sourceType, element);
+    const projected = projectionExpression(source, sourceType, element, context);
     if (projected === undefined) return false;
     const targetType = element.target.type;
     registerMojoTypeImports(targetType, context);
@@ -160,6 +161,7 @@ function projectionExpression(
   source: MojoExpression,
   sourceType: MojoTargetTypeRef,
   element: MojoBindingPatternElementSelection,
+  context: MojoPlanningContext,
 ): MojoExpression | undefined {
   const projection = element.projection;
   switch (projection.kind) {
@@ -190,12 +192,14 @@ function projectionExpression(
         whenFalse: Object.freeze({ kind: "none-literal" }),
       });
     }
-    case "project-field":
-      return Object.freeze({
+    case "project-field": {
+      const state = mojoProjectStateValue(source, sourceType, context);
+      return state === undefined ? undefined : Object.freeze({
         kind: "member",
-        receiver: dereferencedState(source),
+        receiver: state,
         name: projection.name,
       });
+    }
     case "structural-field":
       return indexed(dereferencedState(source), projection.storageIndex);
     case "dictionary-key":
@@ -225,7 +229,13 @@ function projectionExpression(
             })]),
           });
     case "object-rest":
-      return planObjectRest(source, element.projectedType, projection.fields);
+      return planObjectRest(
+        source,
+        sourceType,
+        element.projectedType,
+        projection.fields,
+        context,
+      );
   }
 }
 
@@ -256,10 +266,12 @@ function planFixedArrayRest(
 
 function planObjectRest(
   source: MojoExpression,
+  sourceType: MojoTargetTypeRef,
   targetType: MojoTargetTypeRef,
   fields: Extract<MojoBindingPatternElementSelection["projection"], {
     readonly kind: "object-rest";
   }>["fields"],
+  context: MojoPlanningContext,
 ): MojoExpression | undefined {
   if (targetType.kind !== "target-named") return undefined;
   const ordered = [...fields].sort((left, right) => left.targetStorageIndex - right.targetStorageIndex);
@@ -269,7 +281,12 @@ function planObjectRest(
   if (storageType.elements.length !== ordered.length ||
     ordered.some((field, index) => field.targetStorageIndex !== index ||
       !mojoTargetTypeEquals(field.sourceType, storageType.elements[index]!))) return undefined;
-  const values = ordered.map((field) => projectionValue(source, field.source));
+  const values = ordered.map((field) => projectionValue(
+    source,
+    sourceType,
+    field.source,
+    context,
+  ));
   if (values.some((value) => value === undefined)) return undefined;
   return Object.freeze({
     kind: "construct",
@@ -285,16 +302,21 @@ function planObjectRest(
 
 function projectionValue(
   source: MojoExpression,
+  sourceType: MojoTargetTypeRef,
   projection: MojoBindingValueProjection,
+  context: MojoPlanningContext,
 ): MojoExpression | undefined {
   switch (projection.kind) {
     case "element": return indexed(source, projection.index);
     case "list-element": return projection.checked ? undefined : indexed(source, projection.index);
-    case "project-field": return Object.freeze({
-      kind: "member",
-      receiver: dereferencedState(source),
-      name: projection.name,
-    });
+    case "project-field": {
+      const state = mojoProjectStateValue(source, sourceType, context);
+      return state === undefined ? undefined : Object.freeze({
+        kind: "member",
+        receiver: state,
+        name: projection.name,
+      });
+    }
     case "structural-field": return indexed(dereferencedState(source), projection.storageIndex);
     case "dictionary-key": return Object.freeze({
       kind: "element",

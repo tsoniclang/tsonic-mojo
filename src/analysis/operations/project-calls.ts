@@ -105,6 +105,9 @@ export function analyzeProjectCall(
     passing: mojoParameterArgumentDisposition(parameter.disposition).kind === "transfer"
       ? "consume" as const
       : "plain" as const,
+    ...(parameterTypes[index]?.kind === "callable"
+      ? { callableConsumption: "retained" as const }
+      : {}),
   }));
   const arguments_ = analyzeArguments(
     context.source.ast,

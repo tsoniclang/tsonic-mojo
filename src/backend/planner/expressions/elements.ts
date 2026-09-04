@@ -17,6 +17,7 @@ import { consumeMojoValue, mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import type { MojoPreparedMutation } from "./mutation-plan.js";
 import { applyValueRefinement } from "./leaves.js";
+import { mojoProjectStateValue } from "../declarations/state-storage.js";
 
 export function planMojoDelete(
   node: Node,
@@ -167,14 +168,23 @@ export function planMojoElement(
     );
     return undefined;
   }
+  const projectState = selection.kind === "project-index" && projectIndex === undefined
+    ? mojoProjectStateValue(ordered.values[0]!, selection.receiverType, context)
+    : undefined;
+  if (selection.kind === "project-index" && projectIndex === undefined && projectState === undefined) {
+    appendMojoPlanningDiagnostic(
+      context,
+      "MOJO_PROJECT_INDEX_STATE_NOT_SEALED",
+      "A project index access has no exact sealed state projection.",
+      node,
+    );
+    return undefined;
+  }
   const indexedReceiver: MojoExpression = selection.kind !== "project-index" || projectIndex !== undefined
     ? ordered.values[0]!
     : {
         kind: "member",
-        receiver: {
-          kind: "postfix-deref",
-          expression: { kind: "member", receiver: ordered.values[0]!, name: "_state" },
-        },
+        receiver: projectState!,
         name: selection.storageName,
       };
   const access: MojoExpression = projectIndex !== undefined

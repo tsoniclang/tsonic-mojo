@@ -208,7 +208,7 @@ test("JavaScript core collection date and math operations use sealed runtime row
     },
   }));
   for (const operation of [
-    "map_new", "set_new", "date_new", "date_parse", "date_utc", "date_now",
+    "map_new", "set_new", "date_new", "date_parse_native", "date_utc", "date_now",
     "math_abs", "math_acos", "math_acosh", "math_asin", "math_asinh", "math_atan",
     "math_atan2", "math_atanh", "math_cbrt", "math_ceil", "math_clz32", "math_cos",
     "math_cosh", "math_exp", "math_expm1", "math_floor", "math_fround", "math_hypot",
@@ -226,12 +226,16 @@ test("JavaScript core collection date and math operations use sealed runtime row
   for (const method of [
     "set", "get", "has", "keys", "values", "entries", "delete", "clear", "add",
     "union", "intersection", "difference", "symmetric_difference", "is_subset_of",
-    "is_superset_of", "is_disjoint_from", "get_time", "get_utc_full_year", "to_iso_string",
+    "is_superset_of", "is_disjoint_from", "get_time", "get_utc_full_year",
     "get_utc_month", "get_utc_date", "get_utc_day", "get_utc_hours", "get_utc_minutes",
     "get_utc_seconds", "get_utc_milliseconds", "set_time", "set_utc_milliseconds",
     "set_utc_seconds", "set_utc_minutes", "set_utc_hours", "set_utc_date", "set_utc_month",
-    "set_utc_full_year", "to_json", "to_utc_string", "to_string", "value_of",
+    "set_utc_full_year", "value_of",
   ]) assert.match(source, new RegExp(`\\.${method}\\(`, "u"));
+  for (const operation of [
+    "date_to_iso_string_native", "date_to_json_native", "date_to_utc_string_native",
+    "date_to_string_native",
+  ]) assert.match(source, new RegExp(`\\b${operation}\\b`, "u"));
 });
 
 test("JavaScript radix formatting requires an exact integral receiver", () => {
@@ -278,15 +282,21 @@ test("JavaScript string and array operations retain exact source-profile selecti
   }));
   for (const method of [
     "push", "pop", "shift", "unshift", "splice", "reverse", "sort", "fill",
-    "copy_within", "includes", "index_of", "last_index_of", "join", "slice", "at",
-    "to_upper_case", "to_lower_case", "starts_with", "ends_with", "char_at",
-    "char_code_at", "code_point_at", "pad_start", "pad_end", "repeat", "trim",
-    "trim_start", "trim_end", "substring", "substr",
-    "concat", "value_of",
+    "copy_within", "includes", "index_of", "last_index_of", "slice", "at",
   ]) assert.match(source, new RegExp(`\\.${method}\\(`, "u"));
+  for (const operation of [
+    "array_join_native", "native_string_to_upper_case", "native_string_to_lower_case",
+    "native_string_includes", "native_string_starts_with", "native_string_ends_with",
+    "native_string_index_of", "native_string_last_index_of", "native_string_slice",
+    "native_string_at", "native_string_char_at", "native_string_char_code_at",
+    "native_string_code_point_at", "native_string_pad_start", "native_string_pad_end",
+    "native_string_repeat", "native_string_trim", "native_string_trim_start",
+    "native_string_trim_end", "native_string_trim_left", "native_string_trim_right",
+    "native_string_substring", "native_string_substr", "native_string_concat",
+    "native_string_value_of", "native_string_from_char_code", "native_string_from_code_point",
+  ]) assert.match(source, new RegExp(`\\b${operation}\\b`, "u"));
   assert.match(source, /\bstring_split_pattern\b/u);
   assert.match(source, /\bstring_replace_pattern\b/u);
   assert.match(source, /\bstring_replace_all_pattern\b/u);
-  assert.match(source, /\bstring_from_char_code\b/u);
-  assert.match(source, /\bstring_from_code_point\b/u);
+  assert.doesNotMatch(source, /\.join\(|\.trim\(|\.to_upper_case\(/u);
 });

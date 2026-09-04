@@ -549,3 +549,29 @@ export function resolveMojoCallableExpressionDependency(
   }
   return undefined;
 }
+
+export function resolveMojoAuthoredCallableExpressionSyntax(
+  expression: Node,
+  source: TargetSourceProgram,
+): Node | undefined {
+  const visitedDeclarations = new Set<Node>();
+  let current: Node | undefined = expression;
+  while (current !== undefined) {
+    current = unwrapCallableExpression(current, source);
+    if (source.ast.is.IsArrowFunction(current) || source.ast.is.IsFunctionExpression(current)) {
+      return current;
+    }
+    const reference = source.navigation.sourceReferenceFor(current);
+    if (reference?.project !== true || visitedDeclarations.has(reference.declaration)) {
+      return undefined;
+    }
+    const symbol = reference.symbol;
+    if (symbol === undefined || source.sourceFiles.some((sourceFile) => sourceFile !== undefined &&
+      source.navigation.bindingWritesWithin(symbol, sourceFile).length > 0)) {
+      return undefined;
+    }
+    visitedDeclarations.add(reference.declaration);
+    current = Node_Initializer(source.ast, reference.declaration);
+  }
+  return undefined;
+}

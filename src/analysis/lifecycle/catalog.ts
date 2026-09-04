@@ -110,11 +110,11 @@ function resolveCapabilities(
     case "future":
       return moveOnlyLifecycle;
     case "list":
-      return aggregateLifecycle([resolve(type.element)], false);
+      return heapCollectionLifecycle([resolve(type.element)]);
     case "fixed-array":
       return aggregateLifecycle([resolve(type.element)], false);
     case "dictionary":
-      return aggregateLifecycle([resolve(type.key), resolve(type.value)], false);
+      return heapCollectionLifecycle([resolve(type.key), resolve(type.value)]);
     case "optional":
       return aggregateLifecycle([resolve(type.value)], true);
     case "union":
@@ -305,6 +305,19 @@ function aggregateLifecycle(
     members.every((member) => member.deinitializable),
     registerPassing,
     explicitDestruction,
+  );
+}
+
+function heapCollectionLifecycle(
+  members: readonly MojoLifecycleCapabilities[],
+): MojoLifecycleCapabilities {
+  const aggregate = aggregateLifecycle(members, false);
+  return lifecycle(
+    aggregate.copy,
+    aggregate.movable,
+    aggregate.deinitializable,
+    "unavailable",
+    aggregate.explicitDestruction,
   );
 }
 

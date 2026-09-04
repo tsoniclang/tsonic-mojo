@@ -79,6 +79,12 @@ export interface MojoProgramQueries {
     readonly name: string;
     readonly valueType: MojoTargetTypeRef;
   } | undefined;
+  projectState(type: MojoTargetTypeRef): MojoProjectStateProjection | undefined;
+}
+
+export interface MojoProjectStateProjection {
+  readonly storage: "direct" | "erased";
+  readonly stateType: MojoTargetTypeRef;
 }
 
 export interface MojoRuntimePackagePlan {

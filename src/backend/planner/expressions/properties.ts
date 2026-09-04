@@ -20,6 +20,10 @@ import { mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { planDictionaryKey } from "./conditional-values.js";
 import { selectedMojoDispatchField } from "./property-writes.js";
+import {
+  mojoProjectStateValue,
+  mojoStateValue,
+} from "../declarations/state-storage.js";
 
 export function planMojoProperty(
   node: Node,
@@ -119,35 +123,44 @@ export function planMojoProperty(
       Object.freeze({ plan: receiver.plan, type: selection.receiverType, role: "union_property_receiver" }),
     ], context, true);
     const receiverValue = ordered.values[0]!;
-    const readField = (field: (typeof selection.fields)[number]): MojoExpression => Object.freeze({
+    const fields = selection.fields.map((field) => Object.freeze({
+      field,
+      state: context.program.queries.projectState(field.receiverType),
+    }));
+    if (fields.some(({ state }) => state === undefined)) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROJECT_UNION_STATE_NOT_SEALED",
+        "A project-union property has no exact sealed state projection.",
+        node,
+      );
+      return undefined;
+    }
+    const readField = (entry: (typeof fields)[number]): MojoExpression => Object.freeze({
       kind: "member",
-      receiver: Object.freeze({
-        kind: "postfix-deref",
-        expression: Object.freeze({
-          kind: "member",
-          receiver: Object.freeze({
-            kind: "type-element",
-            receiver: receiverValue,
-            type: field.receiverType,
-          }),
-          name: "_state",
-        }),
-      }),
-      name: field.fieldName,
+      receiver: mojoStateValue(Object.freeze({
+        kind: "type-element",
+        receiver: receiverValue,
+        type: entry.field.receiverType,
+      }), entry.state!),
+      name: entry.field.fieldName,
     });
-    let expression = readField(selection.fields[selection.fields.length - 1]!);
-    for (let index = selection.fields.length - 2; index >= 0; index -= 1) {
-      const field = selection.fields[index]!;
+    let expression = readField(fields[fields.length - 1]!);
+    for (let index = fields.length - 2; index >= 0; index -= 1) {
+      const entry = fields[index]!;
       expression = Object.freeze({
         kind: "conditional",
         condition: Object.freeze({
           kind: "method-call",
           receiver: receiverValue,
           name: "isa",
-          genericArguments: Object.freeze([Object.freeze({ kind: "type", type: field.receiverType })]),
+          genericArguments: Object.freeze([Object.freeze({
+            kind: "type",
+            type: entry.field.receiverType,
+          })]),
           arguments: Object.freeze([]),
         }),
-        whenTrue: readField(field),
+        whenTrue: readField(entry),
         whenFalse: expression,
       });
     }
@@ -252,15 +265,24 @@ export function planMojoProperty(
           (value, name) => Object.freeze({ kind: "member", receiver: value, name }),
           ordered.values[0]!,
         );
+    const stateReceiver = directState || dispatch !== undefined
+      ? undefined
+      : mojoProjectStateValue(ordered.values[0]!, selection.receiverType, context);
+    if (!directState && dispatch === undefined && stateReceiver === undefined) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROJECT_FIELD_STATE_NOT_SEALED",
+        "A project field has no exact sealed state projection.",
+        node,
+      );
+      return undefined;
+    }
     const operation = withMojoValue(ordered.before, dispatch === undefined || directState
       ? {
           kind: "member",
           receiver: directState
             ? directReceiver!
-            : {
-                kind: "postfix-deref",
-                expression: { kind: "member", receiver: ordered.values[0]!, name: "_state" },
-              },
+            : stateReceiver!,
           name: directPath?.[directPath.length - 1] ?? selection.fieldName,
         }
       : Object.freeze({
@@ -350,15 +372,24 @@ export function planMojoProperty(
       );
       return undefined;
     }
+    const stateReceiver = dispatch === undefined
+      ? mojoProjectStateValue(ordered.values[0]!, selection.receiverType, context)
+      : undefined;
+    if (dispatch === undefined && stateReceiver === undefined) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROJECT_INDEX_PROPERTY_STATE_NOT_SEALED",
+        "A project index property has no exact sealed state projection.",
+        node,
+      );
+      return undefined;
+    }
     const operation = withMojoValue(ordered.before, dispatch === undefined
       ? Object.freeze({
           kind: "element" as const,
           receiver: Object.freeze({
             kind: "member" as const,
-            receiver: Object.freeze({
-              kind: "postfix-deref" as const,
-              expression: Object.freeze({ kind: "member" as const, receiver: ordered.values[0]!, name: "_state" }),
-            }),
+            receiver: stateReceiver!,
             name: selection.storageName,
           }),
           index: key,

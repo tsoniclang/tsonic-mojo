@@ -131,6 +131,7 @@ if (selection.kind === "native-pointer") {
 if (selection.kind === "raw-pointer") {
   if (selection.operation === "bind") {
     const identity = planValue(selection.identityExpression, context, selection.identityType);
+    const state = context.program.queries.projectState(selection.identityType);
     return identity === undefined
       ? undefined
       : withMojoValue(identity.before, Object.freeze({
@@ -138,7 +139,9 @@ if (selection.kind === "raw-pointer") {
           callee: mojoModuleMemberExpression(
             context,
             ["tsonic_runtime"],
-            "raw_pointer_from_arc",
+            state?.storage === "erased"
+              ? "raw_pointer_from_shared_reference"
+              : "raw_pointer_from_arc",
           ),
           arguments: Object.freeze([Object.freeze({
             value: Object.freeze({ kind: "member", receiver: identity.value, name: "_state" }),

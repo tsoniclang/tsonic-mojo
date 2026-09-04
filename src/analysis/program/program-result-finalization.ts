@@ -236,6 +236,12 @@ export function finalizeMojoProgramResult(
   const finalizedModuleById = new Map(
     finalizedModules.map((module) => [module.id, module] as const),
   );
+  const stateDeclarationsById = new Map<string, MojoAnalyzedClass | MojoAnalyzedInterface>();
+  for (const declaration of [...finalizedClasses, ...interfaces]) {
+    if (declaration.targetType.kind === "target-named") {
+      stateDeclarationsById.set(declaration.targetType.id, declaration);
+    }
+  }
 
   const typedErrorTypeIds = new Set(finalizedClasses.flatMap((class_) =>
     class_.errorRole === "typed" && class_.targetType.kind === "target-named"
@@ -343,6 +349,7 @@ export function finalizeMojoProgramResult(
     moduleById: finalizedModuleById,
     moduleBindingByDeclaration,
     locationStorageNames,
+    stateDeclarationsById,
   });
   const topLevelFunctions = finalizedFunctions.filter(
     (function_): function_ is import("./model.js").MojoAnalyzedTopLevelFunction =>

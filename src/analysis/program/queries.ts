@@ -3,6 +3,8 @@ import type { TargetPlanningSourceNavigation } from "@tsonic/target-api/analysis
 import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type {
+  MojoAnalyzedClass,
+  MojoAnalyzedInterface,
   MojoAnalyzedModule,
   MojoAnalyzedModuleBinding,
   MojoArrayLiteralSelection,
@@ -17,6 +19,7 @@ import type {
   MojoObjectLiteralSelection,
   MojoProgramQueries,
   MojoPropertySelection,
+  MojoProjectStateProjection,
   MojoResourceManagementSelection,
   MojoTemplateExpressionSelection,
   MojoTypeTestSelection,
@@ -52,6 +55,10 @@ export interface MojoProgramQueryIndexes {
   readonly moduleById: ReadonlyMap<string, MojoAnalyzedModule>;
   readonly moduleBindingByDeclaration: WeakMap<Node, MojoAnalyzedModuleBinding>;
   readonly locationStorageNames: WeakMap<Node, string>;
+  readonly stateDeclarationsById: ReadonlyMap<
+    string,
+    MojoAnalyzedClass | MojoAnalyzedInterface
+  >;
 }
 
 export function createMojoProgramQueries(
@@ -151,6 +158,24 @@ export function createMojoProgramQueries(
       return name === undefined || valueType === undefined
         ? undefined
         : Object.freeze({ declaration, name, valueType });
+    },
+    projectState(type: MojoTargetTypeRef): MojoProjectStateProjection | undefined {
+      const instance = type.kind === "optional" ? type.value : type;
+      if (instance.kind !== "target-named") return undefined;
+      const declaration = indexes.stateDeclarationsById.get(instance.id);
+      if (declaration === undefined) return undefined;
+      return Object.freeze({
+        storage: declaration.stateStorage,
+        stateType: Object.freeze({
+          kind: "target-named" as const,
+          id: `${instance.id}:state`,
+          modulePath: Object.freeze([]),
+          name: declaration.stateName,
+          ...((instance.genericArguments?.length ?? 0) === 0
+            ? {}
+            : { genericArguments: instance.genericArguments }),
+        }),
+      });
     },
   });
 }
