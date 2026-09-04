@@ -136,7 +136,13 @@ export function analyzeMojoJsonStringify(
       "JSON.stringify requires one exact source value carrier.",
     );
   }
-  const valueConversion = selectMojoJsonValueConversion(valueType, context.structuralObjects);
+  const valueConversion = selectMojoJsonValueConversion(valueType, {
+    source: context.source,
+    structuralObjects: context.structuralObjects,
+    projectRelationships: context.projectRelationships,
+    lifecycle: context.lifecycle,
+    callableByDeclaration: context.callableByDeclaration,
+  });
   if (valueConversion.kind === "unsupported") {
     return unsupported(
       "MOJO_JSON_STRINGIFY_VALUE_UNSUPPORTED",

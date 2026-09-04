@@ -371,7 +371,8 @@ export function convertMojoValue(
 ): MojoValuePlan | undefined {
   if (conversion.kind === "js-structural-object-box" ||
     conversion.kind === "js-sequence-box" || conversion.kind === "js-tuple-box" ||
-    conversion.kind === "js-optional-box" || conversion.kind === "js-union-box") {
+    conversion.kind === "js-optional-box" || conversion.kind === "js-union-box" ||
+    conversion.kind === "js-selected-to-json") {
     return convertMojoJsonValue(plan, conversion, context, convertMojoValue);
   }
   if (conversion.kind === "js-truthiness") {
@@ -721,6 +722,7 @@ export function applyMojoConversion(
     case "js-tuple-box":
     case "js-optional-box":
     case "js-union-box":
+    case "js-selected-to-json":
       return undefined;
     case "primitive-cast":
     case "reference-copy":

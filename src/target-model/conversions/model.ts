@@ -101,6 +101,17 @@ export type MojoValueConversion =
         readonly conversion: MojoValueConversion;
       }[];
     }
+  | {
+      readonly kind: "js-selected-to-json";
+      readonly sourceType: MojoTargetTypeRef;
+      readonly targetType: MojoTargetTypeRef;
+      readonly declaration: import("@tsonic/tsts").Node;
+      readonly methodName: string;
+      readonly passesPropertyKey: boolean;
+      readonly resultType: MojoTargetTypeRef;
+      readonly resultConversion: MojoValueConversion;
+      readonly sourceCopy: "implicit" | "explicit";
+    }
   | { readonly kind: "native-to-js-string"; readonly targetType: MojoTargetTypeRef }
   | { readonly kind: "js-to-native-string" }
   | {

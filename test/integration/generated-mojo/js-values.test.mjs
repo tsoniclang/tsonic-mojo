@@ -75,6 +75,31 @@ test("closed structural objects support identity-preserving assign and JSON repl
   assert.match(source, /js_value_from_object_entries/u);
 });
 
+test("JSON.stringify retains an exact project toJSON projection until serialization", () => {
+  const source = generatedSource(compileMojo({
+    surfaces: ["js"],
+    files: {
+      "index.ts": [
+        "class Box {",
+        "  value: string;",
+        "  constructor(value: string) { this.value = value; }",
+        "  toJSON(key: string): string {",
+        "    return `${key}:${this.value}`;",
+        "  }",
+        "}",
+        "export function main(): void {",
+        "  JSON.stringify({ nested: new Box('value') },",
+        "    (_key, value) => value);",
+        "}",
+      ].join("\n"),
+    },
+  }));
+  assert.match(source, /struct _json_projection/u);
+  assert.match(source, /\.to_json\(/u);
+  assert.match(source, /\bjs_value_from_json_projection\b/u);
+  assert.match(source, /\bjson_stringify_with_replacer\b/u);
+});
+
 test("open Object.assign and property-list JSON replacers reject at the exact call boundary", () => {
   for (const [body, code] of [
     ["Object.assign({ value: 1 }, { other: 2 });", "MOJO_OBJECT_ASSIGN_FIELD_RELATION_UNPROVEN"],

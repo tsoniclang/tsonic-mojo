@@ -28,6 +28,7 @@ export function mojoConversionRaises(conversion: MojoValueConversion): boolean {
     case "js-tuple-box":
     case "js-optional-box":
     case "js-union-box": return true;
+    case "js-selected-to-json": return true;
     case "js-to-native-string": return true;
     case "native-error-result-unwrap": return true;
     case "collection-map":
