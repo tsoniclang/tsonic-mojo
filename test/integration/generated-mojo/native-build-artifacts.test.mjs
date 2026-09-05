@@ -58,7 +58,7 @@ test("library precompilation publishes native link inputs without passing linker
   assert.match(project.text, /mojo precompile/u);
   assert.doesNotMatch(project.text, /mojo precompile[^\n]*-Xlinker/u);
   assert.deepEqual(JSON.parse(native.text), {
-    schemaVersion: 1,
+    schemaVersion: 2,
     toolchain: {
       kind: "pixi-mojo",
       compilerVersion: "1.1.0.dev2026083005",
@@ -67,6 +67,12 @@ test("library precompilation publishes native link inputs without passing linker
       commandEnvironment: "posix",
       cCompiler: "cc",
     },
+    components: [{
+      id: "native-fixture", packageName: "native_fixture", root: true,
+      artifactKey: "0".repeat(64), dependencies: [], kind: "library",
+      sourcePath: "src/native_fixture", artifactPath: "build/native_fixture.mojoc",
+      includeDirectories: ["src"],
+    }],
     dependencies: [{ name: "example-native", version: "==1.0.0" }],
     packages: [{
       packageName: "native_runtime",
@@ -82,6 +88,18 @@ test("library precompilation publishes native link inputs without passing linker
     staticLibraries: [{ environmentVariable: "CONDA_PREFIX", path: "lib/libexample.a" }],
     dynamicLibraries: ["pthread"],
   });
+});
+
+test("user-owned projects receive the same complete native component contract without a Pixi project", () => {
+  const plan = outputPlan("lib");
+  plan.configuration.project = { kind: "user-owned", manifestPath: "/workspace/pixi.toml" };
+  plan.nativeBuild = { dependencies: [], packages: [], staticLibraries: [], dynamicLibraries: [] };
+  const artifacts = materializeMojoOutputPlan(plan).artifacts;
+  assert.equal(artifacts.some(({ path }) => path === "pixi.toml"), false);
+  const manifest = JSON.parse(artifacts.find(({ path }) => path === "mojo-native-build.json").text);
+  assert.equal(manifest.components[0].sourcePath, "src/native_fixture");
+  assert.equal(manifest.components[0].artifactPath, "build/native_fixture.mojoc");
+  assert.deepEqual(manifest.packages, []);
 });
 
 test("binary builds consume the same native inputs at their final link", () => {

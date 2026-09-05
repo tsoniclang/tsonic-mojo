@@ -12,6 +12,7 @@ import {
   hardLine,
   ifBreak,
   indent,
+  join,
   line,
   text,
 } from "../document/builders.js";
@@ -87,12 +88,7 @@ function printExpressionAtPrecedence(
       /^[A-Za-z]/u.test(expression.operator) ? text(" ") : emptyDocument,
       printMojoExpressionDocument(expression.operand, context, unaryPrecedence),
     ));
-    case "binary": return parenthesizeWhenBroken(concat(
-      printMojoExpressionDocument(expression.left, context, precedence),
-      line,
-      text(`${expression.operator} `),
-      printMojoExpressionDocument(expression.right, context, precedence + 1),
-    ));
+    case "binary": return printBinaryDocument(expression, context, precedence);
     case "conditional": return parenthesizeWhenBroken(concat(
       printMojoExpressionDocument(expression.whenTrue, context, conditionalPrecedence + 1),
       line,
@@ -216,6 +212,33 @@ function printExpressionAtPrecedence(
       ));
     }
   }
+}
+
+function printBinaryDocument(
+  expression: Extract<MojoExpression, { readonly kind: "binary" }>,
+  context: MojoPrintContext,
+  precedence: number,
+): MojoDocument {
+  if (expression.operator === "and" || expression.operator === "or") {
+    const operands: MojoExpression[] = [];
+    let current: MojoExpression = expression;
+    while (current.kind === "binary" && current.operator === expression.operator) {
+      operands.push(current.right);
+      current = current.left;
+    }
+    operands.push(current);
+    operands.reverse();
+    return parenthesizeWhenBroken(join(
+      concat(line, text(`${expression.operator} `)),
+      operands.map((operand) => printMojoExpressionDocument(operand, context, precedence + 1)),
+    ));
+  }
+  return parenthesizeWhenBroken(concat(
+    printMojoExpressionDocument(expression.left, context, precedence === 40 ? precedence + 1 : precedence),
+    line,
+    text(`${expression.operator} `),
+    printMojoExpressionDocument(expression.right, context, precedence + 1),
+  ));
 }
 
 function parenthesizeWhenBroken(document: MojoDocument): MojoDocument {

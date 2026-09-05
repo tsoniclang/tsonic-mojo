@@ -2,6 +2,24 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
 
+test("nullish checks omit inert sentinel temporaries but preserve effectful unused operands", () => {
+  const result = compileMojo({
+    files: { "index.ts": [
+      "let calls = 0;",
+      "function missing(): undefined { calls += 1; return undefined; }",
+      "export function plain(value: string | undefined): boolean { return value !== undefined; }",
+      "export function effectful(value: string | undefined): boolean { return value !== missing(); }",
+      "export function main(): void {}",
+    ].join("\n") },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("def plain"));
+  assert.ok(source);
+  const plain = source.text.slice(source.text.indexOf("def plain"), source.text.indexOf("def effectful"));
+  assert.doesNotMatch(plain, /_comparison_right|Undefined\(\)/u);
+  assert.match(source.text, /var _comparison_right: Undefined = missing\(\)/u);
+});
+
 test("ordinary declarations use native names, immutable parameters, and no module state", () => {
   const result = compileMojo({
     files: {

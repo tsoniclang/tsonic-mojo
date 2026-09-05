@@ -90,8 +90,8 @@ test("resource unions and nullish resources dispatch exact selected alternatives
   assert.ok(source);
   assert.match(source.text, /if active\.isa\[First\]\(\):/u);
   assert.match(source.text, /\.isa\[First\]\(\)/u);
-  assert.match(source.text, /\[First\]\.dispose\(\)/u);
-  assert.match(source.text, /\[Second\]\.dispose\(\)/u);
+  assert.match(source.text, /active\.unsafe_get\[First\]\(\)\.dispose\(\)/u);
+  assert.match(source.text, /active\.unsafe_get\[Second\]\(\)\.dispose\(\)/u);
 });
 
 test("using in loop initializers and bindings has the exact lexical lifetime", () => {

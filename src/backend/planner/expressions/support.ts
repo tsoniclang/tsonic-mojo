@@ -127,9 +127,11 @@ export function isTriviallyPureMojoValue(expression: MojoExpression): boolean {
     case "none-literal":
     case "string-literal":
     case "type-value": return true;
-    case "construct": return expression.type.kind === "source-primitive" &&
-      expression.arguments.every((argument) => argument.name === undefined &&
-        argument.spread !== true && isTriviallyPureMojoValue(argument.value));
+    case "construct": return (expression.type.kind === "null" || expression.type.kind === "undefined")
+      ? expression.arguments.length === 0
+      : expression.type.kind === "source-primitive" &&
+        expression.arguments.every((argument) => argument.name === undefined &&
+          argument.spread !== true && isTriviallyPureMojoValue(argument.value));
     default: return false;
   }
 }

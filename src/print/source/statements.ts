@@ -51,19 +51,7 @@ export function printMojoStatementDocument(
       text("_ = "),
       printMojoExpressionDocument(statement.expression, context),
     ));
-    case "if": {
-      const result: MojoDocument[] = [block(
-        group(concat(
-          text(statement.compileTime === true ? "comptime if " : "if "),
-          printMojoExpressionDocument(statement.condition, context),
-        )),
-        printMojoBodyDocument(statement.thenStatements, context),
-      )];
-      if (statement.elseStatements !== undefined) {
-        result.push(hardLine, block(text("else"), printMojoBodyDocument(statement.elseStatements, context)));
-      }
-      return concat(...result);
-    }
+    case "if": return printConditionalDocument(statement, context, false);
     case "while": return block(
       group(concat(text("while "), printMojoExpressionDocument(statement.condition, context))),
       printMojoBodyDocument(statement.statements, context),
@@ -104,6 +92,27 @@ export function printMojoStatementDocument(
       printMojoBodyDocument(statement.statements, context),
     );
   }
+}
+
+function printConditionalDocument(
+  statement: Extract<MojoStatement, { readonly kind: "if" }>,
+  context: MojoPrintContext,
+  continuation: boolean,
+): MojoDocument {
+  const keyword = continuation ? "elif " : statement.compileTime === true ? "comptime if " : "if ";
+  const result: MojoDocument[] = [block(
+    group(concat(text(keyword), printMojoExpressionDocument(statement.condition, context))),
+    printMojoBodyDocument(statement.thenStatements, context),
+  )];
+  const otherwise = statement.elseStatements;
+  if (otherwise !== undefined) {
+    const nested = otherwise.length === 1 ? otherwise[0] : undefined;
+    result.push(hardLine, nested?.kind === "if" &&
+      (nested.compileTime === true) === (statement.compileTime === true)
+      ? printConditionalDocument(nested, context, true)
+      : block(text("else"), printMojoBodyDocument(otherwise, context)));
+  }
+  return concat(...result);
 }
 
 export function printMojoBodyDocument(

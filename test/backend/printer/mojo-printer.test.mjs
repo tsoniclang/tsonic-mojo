@@ -3,6 +3,48 @@ import test from "node:test";
 import { printMojoModule } from "../../../dist/print/source/index.js";
 import { mojoTargetTypeKey } from "../../../dist/target-model/types/key.js";
 
+function statementModule(statements) {
+  return {
+    modulePath: [], imports: [], typeAliases: [],
+    declarations: [{
+      kind: "function", name: "choose", genericParameters: [], parameters: [],
+      resultType: { kind: "source-primitive", name: "bool" },
+      asynchronous: false, raises: false, statements,
+    }],
+  };
+}
+
+test("printer preserves branch regions while spelling a single conditional tail as elif", () => {
+  const tail = {
+    kind: "if", condition: { kind: "path", path: "second" },
+    thenStatements: [{ kind: "pass" }], elseStatements: [{ kind: "pass" }],
+  };
+  const branch = {
+    kind: "if", condition: { kind: "path", path: "first" },
+    thenStatements: [{ kind: "pass" }], elseStatements: [tail],
+  };
+  assert.match(printMojoModule(statementModule([branch])), /    elif second:\n        pass\n    else:/u);
+  const scoped = { ...branch, elseStatements: [{ kind: "pass" }, tail] };
+  assert.match(printMojoModule(statementModule([scoped])), /    else:\n        pass\n        if second:/u);
+  const mixed = { ...branch, elseStatements: [{ ...tail, compileTime: true }] };
+  assert.match(printMojoModule(statementModule([mixed])), /    else:\n        comptime if second:/u);
+});
+
+test("printer groups boolean chains once without reassociating arithmetic or comparisons", () => {
+  const path = (name) => ({ kind: "path", path: name });
+  const binary = (operator, left, right) => ({ kind: "binary", operator, left, right });
+  const chain = ["first_long_condition", "second_long_condition", "third_long_condition", "fourth_long_condition"]
+    .map(path).reduce((left, right) => binary("or", left, right));
+  assert.match(printMojoModule(statementModule([{ kind: "return", expression: chain }])),
+    /return \(\n        first_long_condition\n        or second_long_condition\n        or third_long_condition\n        or fourth_long_condition\n    \)/u);
+  const subtraction = binary("-", path("first"), binary("-", path("second"), path("third")));
+  assert.match(printMojoModule(statementModule([{ kind: "return", expression: subtraction }])),
+    /return first - \(second - third\)/u);
+  const comparison = binary("==", binary("<", path("first"), path("second")), path("third"));
+  assert.match(printMojoModule(statementModule([{ kind: "return", expression: comparison }])),
+    /return \(first < second\) == third/u);
+});
+
 test("printer emits assignment as a statement and keeps expressions structured", () => {
   const module = {
     modulePath: [],

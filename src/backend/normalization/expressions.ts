@@ -106,6 +106,11 @@ function normalizeConstruction(
       onlyArgument.spread !== true
     ? onlyArgument.value
     : undefined;
+  if (inner?.kind === "conditional" && expression.type.kind === "source-primitive" &&
+    /^(?:u?int(?:8|16|32|64|128)|native-u?int)$/u.test(expression.type.name)) {
+    const conditional = normalizeIntegerAlternatives(inner, expression.type);
+    if (conditional !== undefined) return conditional;
+  }
   const nestedArgument = inner?.kind === "construct" && inner.arguments.length === 1
     ? inner.arguments[0]
     : undefined;
@@ -122,6 +127,33 @@ function normalizeConstruction(
     });
   }
   return Object.freeze({ ...expression, arguments: arguments_ });
+}
+
+function normalizeIntegerAlternatives(
+  expression: MojoExpression,
+  type: Extract<MojoExpression, { readonly kind: "construct" }>["type"],
+): MojoExpression | undefined {
+  if (expression.kind === "conditional") {
+    const whenTrue = normalizeIntegerAlternatives(expression.whenTrue, type);
+    const whenFalse = normalizeIntegerAlternatives(expression.whenFalse, type);
+    return whenTrue === undefined || whenFalse === undefined
+      ? undefined
+      : Object.freeze({ ...expression, whenTrue, whenFalse });
+  }
+  const negative = expression.kind === "unary" && expression.operator === "-";
+  const value = negative ? expression.operand : expression;
+  if (value.kind !== "construct" || value.type.kind !== "source-primitive" ||
+    value.type.name !== "float64" || value.arguments.length !== 1) return undefined;
+  const argument = value.arguments[0]!;
+  if (argument.name !== undefined || argument.spread === true ||
+    argument.value.kind !== "number-literal" ||
+    !mojoNumericLiteralCanInitialize(argument.value.text, type)) return undefined;
+  if (negative && type.kind === "source-primitive" &&
+    (type.name.startsWith("uint") || type.name === "native-uint")) return undefined;
+  const literal: MojoExpression = negative
+    ? Object.freeze({ kind: "unary", operator: "-", operand: argument.value })
+    : argument.value;
+  return Object.freeze({ kind: "construct", type, arguments: Object.freeze([{ value: literal }]) });
 }
 
 function normalizeArguments(arguments_: readonly MojoCallArgument[]): readonly MojoCallArgument[] {

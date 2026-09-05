@@ -1,16 +1,11 @@
 import type { MojoOutputPlan } from "../../backend/artifact-model/project/output.js";
+import { createMojoComponentBuilds } from "../../backend/artifact-model/project/component-builds.js";
 
 export const mojoNativeBuildManifestPath = "mojo-native-build.json";
 
-export function hasMojoNativeBuild(plan: MojoOutputPlan): boolean {
-  return plan.nativeBuild.packages.some((package_) => package_.translationUnits.length !== 0) ||
-    plan.nativeBuild.staticLibraries.length !== 0 ||
-    plan.nativeBuild.dynamicLibraries.length !== 0;
-}
-
 export function printMojoNativeBuildManifest(plan: MojoOutputPlan): string {
   const manifest = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     toolchain: {
       kind: plan.configuration.toolchain.kind,
       compilerVersion: plan.configuration.toolchain.compilerVersion,
@@ -19,6 +14,7 @@ export function printMojoNativeBuildManifest(plan: MojoOutputPlan): string {
       commandEnvironment: plan.configuration.toolchain.commandEnvironment,
       cCompiler: plan.configuration.toolchain.cCompiler,
     },
+    components: createMojoComponentBuilds(plan),
     dependencies: plan.nativeBuild.dependencies,
     packages: plan.nativeBuild.packages
       .filter((package_) => package_.translationUnits.length !== 0)

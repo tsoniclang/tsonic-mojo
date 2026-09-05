@@ -97,3 +97,27 @@ test("normalization preserves floating and non-exact numeric conversions", () =>
   assert.deepEqual(normalizeMojoExpression(decimal), decimal);
   assert.deepEqual(normalizeMojoExpression(unsafeInteger), unsafeInteger);
 });
+
+test("normalization puts exact integer alternatives in their selected carrier without floating intermediates", () => {
+  const int32 = { kind: "source-primitive", name: "int32" };
+  const floating = (text) => numericConstruction(int32, text).arguments[0].value;
+  const conditional = {
+    kind: "conditional", condition: { kind: "path", path: "before" },
+    whenTrue: { kind: "unary", operator: "-", operand: floating("1") },
+    whenFalse: {
+      kind: "conditional", condition: { kind: "path", path: "after" },
+      whenTrue: floating("1"), whenFalse: floating("0"),
+    },
+  };
+  const source = { kind: "construct", type: int32, arguments: [{ value: conditional }] };
+  const result = normalizeMojoExpression(source);
+  assert.equal(result.kind, "conditional");
+  assert.equal(result.whenTrue.type.name, "int32");
+  assert.equal(result.whenTrue.arguments[0].value.operator, "-");
+  assert.equal(result.whenFalse.whenFalse.arguments[0].value.text, "0");
+  assert.doesNotMatch(JSON.stringify(result), /float64/u);
+  for (const replacement of [floating("0.1"), { kind: "call", callee: { kind: "path", path: "read" }, arguments: [] }]) {
+    const retained = { ...source, arguments: [{ value: { ...conditional, whenFalse: replacement } }] };
+    assert.deepEqual(normalizeMojoExpression(retained), retained);
+  }
+});

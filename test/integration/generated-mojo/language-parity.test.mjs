@@ -456,7 +456,7 @@ test("collection conversions seal their intermediate lifecycle carriers", () => 
   const source = artifactTexts(result).find(({ text }) => text.includes("struct State"));
   assert.ok(source);
   assert.match(source.text, /var _conversion_result: List\[Int32\] = \[\]/u);
-  assert.match(source.text, /JsArray\[Int32\]\(_conversion_result\)/u);
+  assert.match(source.text, /JsArray\[Int32\]\(_conversion_result\^\)/u);
 });
 
 test("all native Mojo and shared fixed-width primitive aliases retain authored carriers", () => {
@@ -554,9 +554,10 @@ test("expression callables retain exact erased parameter result and direct-call 
   assert.match(source.text, /transform: RaisingCallable\[Tuple\[Int32\], Int32, Error\]/u);
   assert.match(source.text, /widen_callable\[Tuple\[Int32\], Int32, Error\]\(double\)/u);
   assert.match(source.text, /transform\.call\(\(value,\)\)/u);
-  assert.match(source.text, /def _callable\(value: Int32\) -> Int32:/u);
+  assert.match(source.text, /struct _callable_environment:/u);
+  assert.match(source.text, /var \(value,\) = _callable_environment_arguments/u);
   assert.match(source.text, /return value \+ value/u);
-  assert.doesNotMatch(source.text, /allocate_callable_environment|_callable_environment/u);
+  assert.equal((source.text.match(/= allocate_callable_environment\(/gu) ?? []).length, 1);
 });
 
 test("expression callables retain exact immutable captures", () => {
@@ -892,8 +893,8 @@ test("discriminated project unions select one exact object constituent and commo
   assert.ok(generated);
   assert.match(generated.text, /area\(Shape\(Circle\("circle", Int32\(2\)\)\)\)/u);
   assert.match(generated.text, /\.isa\[Circle\]\(\)/u);
-  assert.match(generated.text, /shape\[Circle\].*\.radius/u);
-  assert.match(generated.text, /shape\[Square\].*\.side/u);
+  assert.match(generated.text, /shape\.unsafe_get\[Circle\]\(\).*\.radius/u);
+  assert.match(generated.text, /shape\.unsafe_get\[Square\]\(\).*\.side/u);
 
   const divergent = compileMojo({
     files: {

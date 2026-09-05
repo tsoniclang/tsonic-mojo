@@ -2,7 +2,6 @@ import type { TargetCompileOutput, TargetSourceFile } from "@tsonic/target-api/a
 import type { MojoOutputPlan } from "../artifact-model/project/output.js";
 import { printPixiProject } from "../../print/project/pixi-project.js";
 import {
-  hasMojoNativeBuild,
   mojoNativeBuildManifestPath,
   printMojoNativeBuildManifest,
 } from "../../print/project/native-build-manifest.js";
@@ -50,12 +49,10 @@ export function materializeMojoOutputPlan(plan: MojoOutputPlan): TargetCompileOu
       text: printPixiProject(plan),
     }));
   }
-  if (hasMojoNativeBuild(plan)) {
-    artifacts.push(Object.freeze({
-      kind: "project",
-      path: mojoNativeBuildManifestPath,
-      text: printMojoNativeBuildManifest(plan),
-    }));
-  }
+  artifacts.push(Object.freeze({
+    kind: "project",
+    path: mojoNativeBuildManifestPath,
+    text: printMojoNativeBuildManifest(plan),
+  }));
   return Object.freeze({ artifacts: Object.freeze(artifacts) });
 }
