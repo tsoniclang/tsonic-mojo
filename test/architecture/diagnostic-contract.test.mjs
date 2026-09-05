@@ -59,7 +59,7 @@ test("every production Mojo diagnostic has one classified contract row", async (
     "replacementCode",
   ]);
   assert.equal(Number.isSafeInteger(baselineProductionCount), true);
-  assert.equal(baselineProductionCount, 612);
+  assert.equal(baselineProductionCount, 618);
 
   const rowsByCode = new Map();
   for (const row of rows) {

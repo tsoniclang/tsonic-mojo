@@ -3,6 +3,7 @@ import type {
 } from "../../../analysis/program/model.js";
 import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import type {
+  MojoDeclaration,
   MojoFunctionDeclaration,
   MojoStatement,
   MojoStructDeclaration,
@@ -15,11 +16,15 @@ import {
 } from "./reference-wrapper.js";
 import { mojoStateStorageType } from "./state-storage.js";
 import { consumeMojoValue } from "../expressions/value-plan.js";
+import {
+  mojoConstructionFactory,
+  mojoErasedStateWrapperInitializer,
+} from "./construction-factories.js";
 
 export function planMojoInterface(
   interface_: MojoAnalyzedInterface,
   context: MojoPlanningContext,
-): readonly MojoStructDeclaration[] {
+): readonly MojoDeclaration[] {
   const genericParameters = Object.freeze(interface_.typeParameters.map((parameter) => Object.freeze({
     kind: "type" as const,
     name: parameter.name,
@@ -152,9 +157,31 @@ export function planMojoInterface(
       compileTime: false,
     })]),
     methods: Object.freeze([
-      constructor,
+      interface_.stateStorage === "direct"
+        ? constructor
+        : mojoErasedStateWrapperInitializer(arcType),
       mojoReferenceIdentityEqualityMethod(interface_.targetType),
     ]),
   });
-  return Object.freeze([state, wrapper]);
+  if (interface_.stateStorage === "direct") return Object.freeze([state, wrapper]);
+  const factory = mojoConstructionFactory({
+    name: interface_.constructorFactoryName,
+    genericParameters,
+    parameters: constructor.parameters,
+    resultType: interface_.targetType,
+    raises: false,
+    statements: Object.freeze([]),
+    result: Object.freeze({
+      kind: "construct",
+      type: interface_.targetType,
+      arguments: Object.freeze([Object.freeze({
+        value: Object.freeze({
+          kind: "construct",
+          type: arcType,
+          arguments: Object.freeze([Object.freeze({ value: stateConstruction })]),
+        }),
+      })]),
+    }),
+  });
+  return Object.freeze([state, wrapper, factory]);
 }

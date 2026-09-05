@@ -19,6 +19,7 @@ import {
 } from "../representations/index.js";
 import { resolveMojoValueGenericArgument } from "../../policy/types/generic-arguments.js";
 import { resolveMojoSourceOrigin } from "../../policy/types/origins.js";
+import { selectMojoProjectConstruction } from "../project-types/construction.js";
 
 export function analyzeProjectCall(
   sourceCall: ResolvedSourceCallInfo,
@@ -221,12 +222,20 @@ export function analyzeImplicitProjectConstruction(
   }
   const result = closeCanonicalProjectResult(sourceResult);
   if (result.kind === "unsupported") return result;
+  const construction = selectMojoProjectConstruction(class_, sourceResult);
+  if (construction === undefined) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_PROJECT_CONSTRUCTION_NOT_SEALED",
+      reason: "Implicit project construction has no exact sealed Mojo construction route.",
+    };
+  }
   return {
     kind: "resolved",
     dependency: class_.declaration,
     selection: Object.freeze({
       kind: "project",
-      target: Object.freeze({ kind: "constructor", type: sourceResult }),
+      target: Object.freeze({ kind: "constructor", construction }),
       genericArguments: Object.freeze([]),
       arguments: Object.freeze([]),
       resultType: sourceResult,
@@ -294,11 +303,24 @@ function projectCallTarget(
   const contract = callable.contract;
   const implementation = callable.implementation;
   if (contract.kind === "constructor") {
+    const class_ = resultType.kind === "target-named"
+      ? context.classByTypeId.get(resultType.id)
+      : undefined;
+    const construction = class_ === undefined
+      ? undefined
+      : selectMojoProjectConstruction(class_, resultType);
+    if (construction === undefined) {
+      return {
+        kind: "unsupported",
+        code: "MOJO_PROJECT_CONSTRUCTION_NOT_SEALED",
+        reason: "A selected project constructor has no exact sealed Mojo construction route.",
+      };
+    }
     return {
       kind: "resolved",
       target: Object.freeze({
         kind: "constructor",
-        type: resultType,
+        construction,
         ...(implementation !== undefined && implementation.declaration !== contract.declaration
           ? { adapterDeclaration: contract.declaration }
           : {}),

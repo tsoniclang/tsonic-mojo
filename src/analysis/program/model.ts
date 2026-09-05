@@ -198,6 +198,7 @@ export interface MojoAnalyzedClass {
   readonly sourceFile: SourceFile;
   readonly name: string;
   readonly stateName: string;
+  readonly constructorFactoryName: string;
   readonly typeParameters: readonly MojoAnalyzedTypeParameter[];
   readonly fields: readonly MojoAnalyzedClassField[];
   readonly methods: readonly MojoAnalyzedFunction[];
@@ -220,6 +221,7 @@ export interface MojoAnalyzedInterface {
   readonly sourceFile: SourceFile;
   readonly name: string;
   readonly stateName: string;
+  readonly constructorFactoryName: string;
   readonly typeParameters: readonly MojoAnalyzedTypeParameter[];
   readonly fields: readonly MojoAnalyzedInterfaceField[];
   readonly indexSignatures: readonly MojoAnalyzedInterfaceIndexSignature[];
@@ -277,5 +279,6 @@ export type MojoAnalyzedDeclaration =
   | MojoAnalyzedTypeAlias;
 
 export type * from "./module-model.js";
+export type * from "./construction-model.js";
 export type * from "./operation-model.js";
 export type * from "./program-model.js";

@@ -136,10 +136,11 @@ export function planMojoProperty(
       );
       return undefined;
     }
+    for (const { state } of fields) registerMojoTypeImports(state!.stateType, context);
     const readField = (entry: (typeof fields)[number]): MojoExpression => Object.freeze({
       kind: "member",
       receiver: mojoStateValue(Object.freeze({
-        kind: "type-element",
+        kind: "proven-union-member",
         receiver: receiverValue,
         type: entry.field.receiverType,
       }), entry.state!),

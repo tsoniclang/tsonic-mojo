@@ -50,7 +50,12 @@ export type MojoProviderOperationForm =
       readonly kind: "index-read";
       readonly access:
         | { readonly kind: "element" }
-        | { readonly kind: "method"; readonly name: string };
+        | { readonly kind: "method"; readonly name: string }
+        | {
+            readonly kind: "function";
+            readonly modulePath: readonly string[];
+            readonly name: string;
+          };
       readonly receiver: MojoCallArgumentConvention;
       readonly index: MojoProviderTargetArgument;
     }

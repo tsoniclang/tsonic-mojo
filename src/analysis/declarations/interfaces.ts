@@ -38,6 +38,7 @@ export interface MojoInterfaceAnalysisInput {
   readonly sourceFile: SourceFile;
   readonly name: string;
   readonly stateName: string;
+  readonly constructorFactoryName: string;
   readonly bindingNames: WeakMap<Node, string>;
   readonly bindingTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly diagnostics: TargetDiagnostic[];
@@ -238,6 +239,7 @@ export function analyzeMojoInterface(
     sourceFile: input.sourceFile,
     name: input.name,
     stateName: input.stateName,
+    constructorFactoryName: input.constructorFactoryName,
     typeParameters,
     fields: Object.freeze(fields),
     indexSignatures: Object.freeze(indexSignatures),

@@ -246,7 +246,7 @@ export function convertMojoUnionToOptional(
   const branches = conversion.presentMembers.map((member) => {
     registerMojoTypeImports(member.sourceType, context);
     const converted = convertNested(mojoValue(Object.freeze({
-      kind: "type-element",
+      kind: "proven-union-member",
       receiver: source,
       type: member.sourceType,
     })), member.conversion, context);
@@ -359,7 +359,7 @@ function convertMojoUnionMembers(
   const branches = members.map((member) => {
     registerMojoTypeImports(member.sourceType, context);
     const converted = convertNested(mojoValue(Object.freeze({
-      kind: "type-element",
+      kind: "proven-union-member",
       receiver: source,
       type: member.sourceType,
     })), member.conversion, context);
@@ -502,7 +502,7 @@ export function planMojoTruthiness(
         const member = conversion.members[index]!;
         registerMojoTypeImports(member.type, context);
         const selected = planMojoTruthiness(Object.freeze({
-          kind: "type-element",
+          kind: "proven-union-member",
           receiver: expression,
           type: member.type,
         }), member.conversion, context);

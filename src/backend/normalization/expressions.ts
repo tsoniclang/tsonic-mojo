@@ -61,7 +61,7 @@ export function normalizeMojoExpression(expression: MojoExpression): MojoExpress
       receiver: normalizeMojoExpression(expression.receiver),
       index: normalizeMojoExpression(expression.index),
     });
-    case "type-element": return Object.freeze({
+    case "proven-union-member": return Object.freeze({
       ...expression,
       receiver: normalizeMojoExpression(expression.receiver),
     });

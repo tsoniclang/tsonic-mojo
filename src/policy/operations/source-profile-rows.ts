@@ -401,15 +401,15 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     }),
   }),
   ...[
-    ["encodeURIComponent", "encode_uri_component"],
-    ["decodeURIComponent", "decode_uri_component"],
+    ["encodeURIComponent", "encode_uri_component_native"],
+    ["decodeURIComponent", "decode_uri_component_native"],
   ].map(([member, name]): MojoSourceProfileCallRow => Object.freeze({
     profile: "js",
     kind: "call",
     owner: "Global",
     member: member!,
     argumentCount: 1,
-    parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["js-string"]),
+    parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["native-string"]),
     target: Object.freeze({
       kind: "function",
       modulePath: Object.freeze(["tsonic_js"]),

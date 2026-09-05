@@ -44,7 +44,7 @@ export type MojoExpression =
   | { readonly kind: "member"; readonly receiver: MojoExpression; readonly name: string }
   | { readonly kind: "element"; readonly receiver: MojoExpression; readonly index: MojoExpression }
   | {
-      readonly kind: "type-element";
+      readonly kind: "proven-union-member";
       readonly receiver: MojoExpression;
       readonly type: MojoTargetTypeRef;
     }

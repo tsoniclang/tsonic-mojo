@@ -2,7 +2,7 @@ import type {
   MojoAnalyzedClass,
   MojoAnalyzedInterface,
 } from "../../../../analysis/program/model.js";
-import type { MojoStructDeclaration } from "../../../target-ast/index.js";
+import type { MojoDeclaration, MojoStructDeclaration } from "../../../target-ast/index.js";
 import { mojoStaticMethodDecorators } from "../../../target-ast/index.js";
 import {
   planMojoProjectFunctionVariants,
@@ -29,7 +29,7 @@ import { planMojoMemberImplementationAdapter } from "../../callables/implementat
 export function planMojoPolymorphicProjectClass(
   class_: MojoAnalyzedClass,
   context: MojoPlanningContext,
-): readonly MojoStructDeclaration[] | undefined {
+): readonly MojoDeclaration[] | undefined {
   const view = context.program.projectDispatch.viewForType(class_.targetType);
   const concrete = context.program.projectDispatch.concreteFor(class_.definition);
   if (view === undefined || concrete === undefined) return undefined;
@@ -47,7 +47,7 @@ export function planMojoPolymorphicProjectClass(
     adapters === undefined) return undefined;
   const methods = [
     planMojoProjectViewInitializer(view),
-    ...constructors,
+    ...constructors.initializers,
     ...(implementationAdapters as import("../../../target-ast/index.js").MojoFunctionDeclaration[]),
     mojoProjectIdentityEqualityMethod(class_.targetType),
     ...forwarders,
@@ -114,7 +114,7 @@ export function planMojoPolymorphicProjectClass(
     fields: mojoProjectViewFields(view, context),
     methods: Object.freeze(methods),
   });
-  return Object.freeze([state, wrapper]);
+  return Object.freeze([state, wrapper, ...constructors.factories]);
 }
 
 export function planMojoPolymorphicInterface(

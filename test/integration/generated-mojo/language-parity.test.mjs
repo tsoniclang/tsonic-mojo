@@ -580,7 +580,7 @@ test("expression callables retain exact immutable captures", () => {
   assert.doesNotMatch(source.text, /allocate_callable_environment|_callable_environment/u);
 });
 
-test("native closures use local declarations when exact conversions require statements", () => {
+test("retained closures preserve statement conversions inside their erased callable environment", () => {
   const result = compileMojo({
     files: {
       "index.ts": [
@@ -598,10 +598,12 @@ test("native closures use local declarations when exact conversions require stat
   assert.deepEqual(result.diagnostics, []);
   const source = artifactTexts(result).find(({ text }) => text.includes("def select"));
   assert.ok(source);
-  assert.match(source.text, /def _closure\(_message: String\) raises Error \{imm line\} -> Optional\[Float64\]:/u);
-  assert.match(source.text, /var _optional_source: Optional\[Int32\] = line/u);
+  assert.match(source.text, /struct _callable_environment:/u);
+  assert.match(source.text, /RaisingCallable\[/u);
+  assert.match(source.text, /def invoke\([\s\S]*\) raises Error -> Optional\[Float64\]:/u);
+  assert.match(source.text, /var _optional_source: Optional\[[\s\S]*Int32,[\s\S]*\] = _callable_environment_pointer\[\]\.line/u);
   assert.match(source.text, /return _optional_result/u);
-  assert.doesNotMatch(source.text, /allocate_callable_environment|_callable_environment/u);
+  assert.match(source.text, /allocate_callable_environment/u);
 });
 
 test("capture-free block-bodied callable expressions lower to one direct function", () => {
@@ -1012,7 +1014,7 @@ test("assertions consume the checker-selected narrowed union route", () => {
   assert.deepEqual(result.diagnostics, []);
   const source = artifactTexts(result).find(({ text }) => text.includes("def name"));
   assert.ok(source);
-  assert.match(source.text, /return pet\[Dog\]\._state\[\]\.name/u);
+  assert.match(source.text, /return pet\.unsafe_get\[Dog\]\(\)\._state\[\]\.name/u);
 });
 
 test("assertions preserve checker narrowing for repeated property access", () => {
@@ -1035,5 +1037,61 @@ test("assertions preserve checker narrowing for repeated property access", () =>
   assert.deepEqual(result.diagnostics, []);
   const source = artifactTexts(result).find(({ text }) => text.includes("def read"));
   assert.ok(source);
-  assert.match(source.text, /field\._state\[\]\.value\[NumberValue\]/u);
+  assert.match(source.text, /field\._state\[\]\.value\.unsafe_get\[NumberValue\]\(\)/u);
+});
+
+test("cross-module project state access imports the exact owning state type", () => {
+  const result = compileMojo({
+    files: {
+      "model.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        "export class Box {",
+        "  value: i32;",
+        "  constructor(value: i32) { this.value = value; }",
+        "}",
+      ].join("\n"),
+      "index.ts": [
+        'import type { i32 } from "@tsonic/mojo/types.js";',
+        'import { Box } from "./model.js";',
+        "export function read(box: Box): i32 { return box.value; }",
+        "export function main(): void { read(new Box(7)); }",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("def read"));
+  assert.ok(source);
+  assert.match(source.text, /from .*model import Box, _BoxState|from .*model import _BoxState, Box/u);
+  assert.match(source.text, /box\._state\[\]\.value/u);
+});
+
+test("recursive class and interface state use finite construction factories", () => {
+  const result = compileMojo({
+    files: {
+      "index.ts": [
+        "class Leaf {",
+        "  text: string;",
+        "  constructor(text: string) { this.text = text; }",
+        "}",
+        "class Branch {",
+        "  children: TreeNode[];",
+        "  constructor(children: TreeNode[]) { this.children = children; }",
+        "}",
+        "type TreeNode = Leaf | Branch;",
+        "interface Tree { children: Tree[]; }",
+        "function branch(children: TreeNode[]): TreeNode { return new Branch(children); }",
+        "function tree(children: Tree[]): Tree { return { children }; }",
+        "export function main(): void { branch([]); tree([]); }",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = artifactTexts(result).find(({ text }) => text.includes("struct Branch"));
+  assert.ok(source);
+  assert.match(source.text, /struct Branch[\s\S]*var _state: SharedReference/u);
+  assert.match(source.text, /def __init__\(out self, state: SharedReference\)/u);
+  assert.match(source.text, /def _create_branch[\s\S]*-> Branch/u);
+  assert.match(source.text, /def _create_tree[\s\S]*-> Tree/u);
+  assert.match(source.text, /_create_branch\(children\)/u);
+  assert.match(source.text, /return _create_tree\(/u);
 });

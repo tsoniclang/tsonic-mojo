@@ -127,11 +127,11 @@ function printExpressionAtPrecedence(
       printMojoExpressionDocument(expression.index, context),
       text("]"),
     );
-    case "type-element": return concat(
+    case "proven-union-member": return concat(
       printMojoExpressionDocument(expression.receiver, context, postfixPrecedence),
-      text("["),
+      text(".unsafe_get["),
       requiredMojoTypeDocument(expression.type, context),
-      text("]"),
+      text("]()"),
     );
     case "slice": return concat(
       printMojoExpressionDocument(expression.receiver, context, postfixPrecedence),
@@ -278,7 +278,7 @@ function expressionPrecedence(expression: MojoExpression): number {
     case "method-call":
     case "member":
     case "element":
-    case "type-element":
+    case "proven-union-member":
     case "slice":
     case "construct":
     case "copy":

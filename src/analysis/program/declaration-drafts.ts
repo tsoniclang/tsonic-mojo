@@ -18,6 +18,7 @@ export interface MojoNamedTypeDraft {
   readonly sourceFile: SourceFile;
   readonly name: string;
   readonly stateName: string;
+  readonly constructorFactoryName: string;
 }
 
 export interface MojoEnumDraft {
@@ -130,6 +131,7 @@ function namedTypeDraft(
     sourceFile,
     name,
     stateName: globalNames(sourceFile)(`_${name}State`, "type"),
+    constructorFactoryName: globalNames(sourceFile)(`_create_${name}`),
   });
 }
 

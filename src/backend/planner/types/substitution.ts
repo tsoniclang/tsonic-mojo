@@ -340,7 +340,7 @@ function substituteExpression(
     case "member": return Object.freeze({ ...expression, receiver: nested(expression.receiver) });
     case "element":
       return Object.freeze({ ...expression, receiver: nested(expression.receiver), index: nested(expression.index) });
-    case "type-element":
+    case "proven-union-member":
       return Object.freeze({
         ...expression,
         receiver: nested(expression.receiver),

@@ -187,6 +187,7 @@ export type MojoObjectLiteralSelection =
       readonly kind: "interface";
       readonly interface: MojoAnalyzedInterface;
       readonly constructionType: MojoTargetTypeRef;
+      readonly construction: import("./construction-model.js").MojoProjectConstruction;
       readonly resultType: MojoTargetTypeRef;
       readonly resultConversion: MojoValueConversion;
       readonly fields: readonly {

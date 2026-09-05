@@ -45,6 +45,7 @@ export interface MojoClassAnalysisInput {
   readonly sourceFile: SourceFile;
   readonly name: string;
   readonly stateName: string;
+  readonly constructorFactoryName: string;
   readonly bindingNames: WeakMap<Node, string>;
   readonly bindingTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly diagnostics: TargetDiagnostic[];
@@ -273,6 +274,7 @@ export function analyzeMojoClass(
     sourceFile: input.sourceFile,
     name: input.name,
     stateName: input.stateName,
+    constructorFactoryName: input.constructorFactoryName,
     typeParameters: classTypeParameters,
     fields: Object.freeze(fields),
     methods: Object.freeze(methods),

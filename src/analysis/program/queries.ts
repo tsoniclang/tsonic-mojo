@@ -169,7 +169,7 @@ export function createMojoProgramQueries(
         stateType: Object.freeze({
           kind: "target-named" as const,
           id: `${instance.id}:state`,
-          modulePath: Object.freeze([]),
+          modulePath: instance.modulePath,
           name: declaration.stateName,
           ...((instance.genericArguments?.length ?? 0) === 0
             ? {}

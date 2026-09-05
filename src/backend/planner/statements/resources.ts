@@ -86,7 +86,7 @@ function disposalStatements(
     const alternative = selection.alternatives[index]!;
     registerMojoTypeImports(alternative.resourceType, context);
     const memberReceiver: MojoExpression = Object.freeze({
-      kind: "type-element",
+      kind: "proven-union-member",
       receiver,
       type: alternative.resourceType,
     });

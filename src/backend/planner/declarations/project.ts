@@ -8,6 +8,7 @@ import type {
 import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import { mojoTargetTypeKey } from "../../../target-model/types/key.js";
 import type {
+  MojoDeclaration,
   MojoFunctionDeclaration,
   MojoStatement,
   MojoStructDeclaration,
@@ -50,6 +51,14 @@ import {
   planMojoConstructorImplementationAdapter,
   planMojoMemberImplementationAdapter,
 } from "../callables/implementation-adapters.js";
+import {
+  mojoConstructionFactory,
+  mojoErasedStateWrapperInitializer,
+} from "./construction-factories.js";
+import {
+  planMojoProjectConstructorFactory,
+  planMojoProjectConstructorForwarder,
+} from "./project-constructors.js";
 
 export interface MojoProjectFunctionPlanOptions {
   readonly specialization?: MojoSourceCallableSpecializationVariant;
@@ -163,7 +172,7 @@ export function planMojoFunctionBody(
 export function planMojoProjectClass(
   class_: MojoAnalyzedClass,
   context: MojoPlanningContext,
-): readonly MojoStructDeclaration[] | undefined {
+): readonly MojoDeclaration[] | undefined {
   const genericParameters_ = planMojoGenericParameters(class_);
   const genericArguments = class_.typeParameters.map(mojoGenericParameterReference);
   const stateType: MojoTargetTypeRef = Object.freeze({
@@ -302,15 +311,46 @@ export function planMojoProjectClass(
     self: "out self",
     statements: Object.freeze([initializeState]),
   });
-  const publicConstructors = constructorAdapters.length === 0
-    ? Object.freeze([constructor])
-    : constructorAdapters.map((adapter) => planMojoProjectConstructorForwarder(
-        adapter,
-        stateType,
-        arcType,
-        context,
-      ));
+  const publicConstructors = class_.stateStorage === "erased"
+    ? Object.freeze([mojoErasedStateWrapperInitializer(arcType)])
+    : constructorAdapters.length === 0
+      ? Object.freeze([constructor])
+      : constructorAdapters.map((adapter) => planMojoProjectConstructorForwarder(
+          adapter,
+          stateType,
+          arcType,
+          context,
+        ));
   if (publicConstructors.some((adapter) => adapter === undefined)) return undefined;
+  const constructionFactories = class_.stateStorage !== "erased"
+    ? Object.freeze([])
+    : constructorAdapters.length === 0
+      ? Object.freeze([mojoConstructionFactory({
+          name: class_.constructorFactoryName,
+          genericParameters: genericParameters_,
+          parameters: Object.freeze((sourceConstructor?.parameters ?? []).map((parameter) =>
+            planMojoParameterDeclaration(parameter, context))),
+          resultType: class_.targetType,
+          raises: sourceConstructor?.raises === true || class_.initializationErrorType !== undefined,
+          ...(sourceConstructor?.errorType === undefined && class_.initializationErrorType === undefined
+            ? {}
+            : { errorType: sourceConstructor?.errorType ?? class_.initializationErrorType }),
+          statements: Object.freeze([]),
+          result: Object.freeze({
+            kind: "construct",
+            type: class_.targetType,
+            arguments: Object.freeze([Object.freeze({ value: arcConstruction })]),
+          }),
+        })])
+      : constructorAdapters.map((adapter) => planMojoProjectConstructorFactory(
+          class_,
+          adapter,
+          genericParameters_,
+          stateType,
+          arcType,
+          context,
+        ));
+  if (constructionFactories.some((factory) => factory === undefined)) return undefined;
   const memberAdapters = implementationAdapters
     .filter((adapter) => adapter.kind === "instance-method-overload" ||
       adapter.kind === "static-method-overload")
@@ -379,72 +419,13 @@ export function planMojoProjectClass(
     })]),
     methods: Object.freeze(methods),
   });
-  return Object.freeze([state, wrapper]);
+  return Object.freeze([
+    state,
+    wrapper,
+    ...(constructionFactories as MojoFunctionDeclaration[]),
+  ]);
 }
 
-function planMojoProjectConstructorForwarder(
-  adapter: import("../../../analysis/program/model.js").MojoCallableImplementationAdapter,
-  stateType: MojoTargetTypeRef,
-  storageType: MojoTargetTypeRef,
-  context: MojoPlanningContext,
-): MojoFunctionDeclaration | undefined {
-  const constructorContext = withMojoErrorType(
-    withMojoLocalNameScope(context),
-    adapter.errorType,
-  );
-  const parameterPrelude = planMojoParameterPrelude(
-    adapter.contract.parameters,
-    constructorContext,
-    planMojoValue,
-    true,
-  );
-  if (parameterPrelude === undefined) return undefined;
-  const arguments_ = adapter.contract.parameters.map((parameter) => {
-    const value = Object.freeze({ kind: "path" as const, path: parameter.incomingName });
-    const inputType = parameter.omissionKind === "rest" ? parameter.type : parameter.callType;
-    return Object.freeze({
-      value: mojoParameterConvention(parameter.disposition) === "var"
-        ? consumeMojoValue(value, inputType, context.program.lifecycle)
-        : value,
-      ...(parameter.omissionKind === "rest" ? { spread: true } : {}),
-    });
-  });
-  return Object.freeze({
-    kind: "function",
-    name: "__init__",
-    genericParameters: Object.freeze([]),
-    parameters: Object.freeze(adapter.contract.parameters.map((parameter) =>
-      planMojoParameterDeclaration(parameter, constructorContext))),
-    resultType: Object.freeze({ kind: "unit" }),
-    asynchronous: false,
-    raises: adapter.raises,
-    ...(adapter.errorType === undefined ? {} : { errorType: adapter.errorType }),
-    self: "out self",
-    statements: Object.freeze([
-      ...parameterPrelude,
-      Object.freeze({
-        kind: "assignment",
-        operator: "=",
-        left: Object.freeze({
-          kind: "member",
-          receiver: Object.freeze({ kind: "path", path: "self" }),
-          name: "_state",
-        }),
-        right: Object.freeze({
-          kind: "construct",
-          type: storageType,
-          arguments: Object.freeze([Object.freeze({
-            value: Object.freeze({
-              kind: "construct",
-              type: stateType,
-              arguments: Object.freeze(arguments_),
-            }),
-          })]),
-        }),
-      }),
-    ]),
-  });
-}
 
 
 export function planMojoProjectEnum(enum_: MojoAnalyzedEnum): MojoStructDeclaration {

@@ -2,6 +2,7 @@ import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import type { MojoExpression } from "../../target-ast/index.js";
 import type { MojoProjectStateProjection } from "../../../analysis/program/model.js";
 import type { MojoPlanningContext } from "../program/context.js";
+import { registerMojoTypeImports } from "../types/imports.js";
 
 export function mojoStateStorageType(
   stateType: MojoTargetTypeRef,
@@ -49,5 +50,7 @@ export function mojoProjectStateValue(
   context: MojoPlanningContext,
 ): MojoExpression | undefined {
   const state = context.program.queries.projectState(receiverType);
-  return state === undefined ? undefined : mojoStateValue(receiver, state);
+  if (state === undefined) return undefined;
+  registerMojoTypeImports(state.stateType, context);
+  return mojoStateValue(receiver, state);
 }

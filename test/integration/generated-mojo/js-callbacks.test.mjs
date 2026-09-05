@@ -267,6 +267,7 @@ test("JavaScript string and array operations retain exact source-profile selecti
         "  values.copyWithin(1, 0, 1); values.includes(7); values.indexOf(7);",
         "  values.lastIndexOf(7); values.join(\",\"); values.slice(0, 2); values.at(-1);",
         "  const text = \"  Alpha beta Alpha  \";",
+        "  const first = text[0];",
         "  text.toUpperCase(); text.toLowerCase(); text.includes(\"beta\");",
         "  text.startsWith(\"  Alpha\"); text.endsWith(\"Alpha  \");",
         "  text.indexOf(\"Alpha\"); text.lastIndexOf(\"Alpha\"); text.slice(2, 7);",
@@ -298,5 +299,44 @@ test("JavaScript string and array operations retain exact source-profile selecti
   assert.match(source, /\bstring_split_pattern\b/u);
   assert.match(source, /\bstring_replace_pattern\b/u);
   assert.match(source, /\bstring_replace_all_pattern\b/u);
+  assert.match(source, /native_string_char_at\(text, Float64\(0\)\)/u);
   assert.doesNotMatch(source, /\.join\(|\.trim\(|\.to_upper_case\(/u);
+});
+
+test("global URI operations preserve native strings across the explicit JS boundary", () => {
+  const result = compileMojo({
+    surfaces: ["js"],
+    files: {
+      "index.ts": [
+        "export function roundTrip(value: string): string {",
+        "  return decodeURIComponent(encodeURIComponent(value));",
+        "}",
+        "export function main(): void { roundTrip('a b'); }",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = generatedSource(result);
+  assert.match(source, /decode_uri_component_native\(encode_uri_component_native\(value\)\)/u);
+  assert.doesNotMatch(source, /decode_uri_component_js|encode_uri_component_js/u);
+});
+
+test("optional native-string helper calls preserve the complete optional chain", () => {
+  const result = compileMojo({
+    surfaces: ["js"],
+    files: {
+      "index.ts": [
+        "export function normalize(value: string | undefined): string | undefined {",
+        "  return value?.trim().toLowerCase();",
+        "}",
+        "export function main(): void { normalize(undefined); normalize(' value '); }",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = generatedSource(result);
+  assert.match(source, /if _optional_receiver/u);
+  assert.match(source, /native_string_trim\(_optional_receiver\.value\(\)\)/u);
+  assert.match(source, /native_string_to_lower_case/u);
+  assert.doesNotMatch(source, /\.trim\(|\.to_lower_case\(/u);
 });

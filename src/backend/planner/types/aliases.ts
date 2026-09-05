@@ -166,7 +166,7 @@ function visitExpression(expression: MojoExpression, visitType: (type: MojoTarge
       visitExpression(expression.receiver, visitType);
       visitExpression(expression.index, visitType);
       return;
-    case "type-element":
+    case "proven-union-member":
       visitExpression(expression.receiver, visitType);
       visitType(expression.type);
       return;

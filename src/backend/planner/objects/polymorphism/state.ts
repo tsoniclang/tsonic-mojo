@@ -36,6 +36,7 @@ import {
   constructorAdapterRequiresDeclaration,
   planMojoConstructorImplementationAdapter,
 } from "../../callables/implementation-adapters.js";
+import { mojoConstructionFactory } from "../../declarations/construction-factories.js";
 import { mojoConcreteViewConstruction } from "./adapters.js";
 import {
   mojoProjectObjectType,
@@ -190,7 +191,10 @@ export function planMojoPolymorphicClassConstructors(
   class_: MojoAnalyzedClass,
   dispatch: MojoProjectConcreteDispatch,
   context: MojoPlanningContext,
-): readonly MojoFunctionDeclaration[] | undefined {
+): {
+  readonly initializers: readonly MojoFunctionDeclaration[];
+  readonly factories: readonly MojoFunctionDeclaration[];
+} | undefined {
   const ownView = dispatch.views.find((view) => view.view.definition === class_.definition);
   const stateType = mojoProjectStateType(class_);
   if (ownView === undefined || stateType === undefined) return undefined;
@@ -210,7 +214,10 @@ export function planMojoPolymorphicClassConstructors(
       sourceConstructor?.errorType ?? class_.initializationErrorType,
       context,
     );
-    return constructor === undefined ? undefined : Object.freeze([constructor]);
+    if (constructor === undefined) return undefined;
+    return class_.stateStorage === "erased"
+      ? Object.freeze({ initializers: Object.freeze([]), factories: Object.freeze([constructor]) })
+      : Object.freeze({ initializers: Object.freeze([constructor]), factories: Object.freeze([]) });
   }
   const constructors = constructorAdapters.map((adapter) =>
     planMojoPolymorphicClassConstructor(
@@ -221,9 +228,11 @@ export function planMojoPolymorphicClassConstructors(
       adapter.errorType,
       context,
     ));
-  return constructors.some((constructor) => constructor === undefined)
-    ? undefined
-    : Object.freeze(constructors as MojoFunctionDeclaration[]);
+  if (constructors.some((constructor) => constructor === undefined)) return undefined;
+  const declarations = Object.freeze(constructors as MojoFunctionDeclaration[]);
+  return class_.stateStorage === "erased"
+    ? Object.freeze({ initializers: Object.freeze([]), factories: declarations })
+    : Object.freeze({ initializers: declarations, factories: Object.freeze([]) });
 }
 
 function planMojoPolymorphicClassConstructor(
@@ -265,6 +274,19 @@ function planMojoPolymorphicClassConstructor(
   });
   const construction = mojoConcreteViewConstruction(dispatch, ownView, object);
   if (construction === undefined) return undefined;
+  if (class_.stateStorage === "erased") {
+    return mojoConstructionFactory({
+      name: class_.constructorFactoryName,
+      genericParameters: planMojoGenericParameters(class_),
+      parameters: Object.freeze((signature?.parameters ?? []).map((parameter) =>
+        planMojoParameterDeclaration(parameter, constructorContext))),
+      resultType: class_.targetType,
+      raises,
+      ...(errorType === undefined ? {} : { errorType }),
+      statements: parameterPrelude,
+      result: construction,
+    });
+  }
   return Object.freeze({
     kind: "function",
     name: "__init__",
@@ -348,7 +370,7 @@ function planBaseInitialization(
   if (explicitSuper !== undefined) {
     const selection = context.program.queries.callSelection(explicitSuper);
     if (selection?.kind !== "project" || selection.target.kind !== "constructor" ||
-      !mojoTargetTypeEquals(selection.target.type, baseStateOwnerType(baseStateType, base))) {
+      !mojoTargetTypeEquals(selection.target.construction.type, baseStateOwnerType(baseStateType, base))) {
       appendMojoPlanningDiagnostic(
         context,
         "MOJO_PROJECT_BASE_CONSTRUCTOR_SELECTION_MISSING",

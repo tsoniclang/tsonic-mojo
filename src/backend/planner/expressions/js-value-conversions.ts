@@ -216,7 +216,7 @@ function convertUnion(
   const result = Object.freeze({ kind: "path", path: resultName }) satisfies MojoExpression;
   const branches = conversion.members.map((member) => {
     const converted = convert(mojoValue(Object.freeze({
-      kind: "type-element",
+      kind: "proven-union-member",
       receiver: stable.value,
       type: member.sourceType,
     })), member.conversion, context);

@@ -170,7 +170,7 @@ function planStringification(
         const member = conversion.members[index]!;
         registerMojoTypeImports(member.type, context);
         const selected = planStringification(
-          Object.freeze({ kind: "type-element", receiver: expression, type: member.type }),
+          Object.freeze({ kind: "proven-union-member", receiver: expression, type: member.type }),
           member.type,
           member.conversion,
           resultType,

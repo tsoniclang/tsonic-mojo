@@ -123,7 +123,7 @@ function rethrowInErrorDomain(
     const raised = Object.freeze({
       kind: "raise" as const,
       expression: constructErrorDomain(target, Object.freeze({
-        kind: "type-element" as const,
+        kind: "proven-union-member" as const,
         receiver: error,
         type: member,
       })),

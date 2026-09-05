@@ -30,6 +30,7 @@ import {
   planMojoJsonStringify,
   planMojoObjectAssign,
 } from "./source-profile-special-calls.js";
+import { planMojoProjectConstruction } from "./project-construction.js";
 
 export function planMojoCall(
   node: Node,
@@ -241,10 +242,13 @@ export function planMojoCall(
       }
       case "constructor": {
         if (selection.optionalChain) return unsupportedOptionalCall(node, context);
-        registerMojoTypeImports(selection.target.type, context);
         const ordered = orderCallArguments(plannedArguments, context);
         before = ordered.before;
-        call = { kind: "construct", type: selection.target.type, arguments: ordered.arguments };
+        call = planMojoProjectConstruction(
+          selection.target.construction,
+          ordered.arguments,
+          context,
+        );
         break;
       }
     }
@@ -346,9 +350,8 @@ export function planMojoCall(
   if (plannedArguments === undefined) return undefined;
   let call: MojoExpression;
   let before: readonly MojoStatement[];
+  let preparedFunctionReceiver: ReturnType<typeof prepareMojoReceiver> = undefined;
   if (target.kind === "function-call") {
-    if (selection.optionalChain) return unsupportedOptionalCall(node, context);
-    let receiver: ReturnType<typeof prepareMojoReceiver>;
     let convertedReceiver: MojoValuePlan | undefined;
     if (target.receiver !== undefined) {
       if (selection.receiver === undefined || selection.sourceReceiverType === undefined ||
@@ -361,17 +364,19 @@ export function planMojoCall(
         );
         return undefined;
       }
-      receiver = prepareMojoReceiver(
+      preparedFunctionReceiver = prepareMojoReceiver(
         selection.receiver,
         selection.sourceReceiverType,
-        false,
+        selection.optionalChain,
         context,
         planValue,
       );
-      convertedReceiver = receiver === undefined
+      convertedReceiver = preparedFunctionReceiver === undefined
         ? undefined
-        : convertMojoValue(receiver.plan, selection.receiverConversion, context);
-      if (receiver === undefined || convertedReceiver === undefined) return undefined;
+        : convertMojoValue(preparedFunctionReceiver.plan, selection.receiverConversion, context);
+      if (preparedFunctionReceiver === undefined || convertedReceiver === undefined) return undefined;
+    } else if (selection.optionalChain) {
+      return unsupportedOptionalCall(node, context);
     }
     const ordered = orderCallArguments(
       plannedArguments,
@@ -449,5 +454,13 @@ export function planMojoCall(
     if (converted === undefined) return undefined;
     return finishOptionalMojoOperation(node, preparedReceiver, converted, context);
   }
-  return convertMojoValue(withMojoValue(before, call), selection.resultConversion, context);
+  const converted = convertMojoValue(
+    withMojoValue(before, call),
+    selection.resultConversion,
+    context,
+  );
+  if (converted === undefined) return undefined;
+  return preparedFunctionReceiver !== undefined
+    ? finishOptionalMojoOperation(node, preparedFunctionReceiver, converted, context)
+    : converted;
 }

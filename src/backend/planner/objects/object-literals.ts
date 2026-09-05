@@ -15,6 +15,7 @@ import type { MojoValuePlan } from "../expressions/value-plan.js";
 import { planDictionaryKey } from "../expressions/conditional-values.js";
 import { planMojoPolymorphicObjectLiteral } from "./polymorphism/object-literals.js";
 import { mojoProjectStateValue } from "../declarations/state-storage.js";
+import { planMojoProjectConstruction } from "../expressions/project-construction.js";
 
 export function planMojoProjectObjectLiteral(
   node: Node,
@@ -176,14 +177,14 @@ export function planMojoProjectObjectLiteral(
     );
     return undefined;
   }
-  const constructed = Object.freeze({
-    kind: "construct",
-    type: selection.constructionType,
-    arguments: Object.freeze([
+  const constructed = planMojoProjectConstruction(
+    selection.construction,
+    Object.freeze([
       ...(arguments_ as { readonly value: MojoExpression }[]),
       ...(indexArguments as { readonly value: MojoExpression }[]),
     ]),
-  }) satisfies MojoExpression;
+    context,
+  );
   const converted = applyMojoConversion(constructed, selection.resultConversion, context);
   return converted === undefined ? undefined : withMojoValue(before, converted);
 }

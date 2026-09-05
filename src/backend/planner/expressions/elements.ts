@@ -4,6 +4,7 @@ import { mojoTargetTypeEquals } from "../../../target-model/types/equality.js";
 import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 import {
   appendMojoPlanningDiagnostic,
+  mojoModuleMemberExpression,
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import {
@@ -194,14 +195,27 @@ export function planMojoElement(
         name: projectIndex.read.name,
         arguments: Object.freeze([Object.freeze({ value: indexExpression })]),
       }
-    : selection.kind === "provider" &&
-      operation?.target.kind === "index-read" && operation.target.access.kind === "method"
-    ? {
-        kind: "method-call",
-        receiver: indexedReceiver,
-        name: operation.target.access.name,
-        arguments: Object.freeze([Object.freeze({ value: indexExpression })]),
-      }
+    : selection.kind === "provider" && operation?.target.kind === "index-read" &&
+        operation.target.access.kind !== "element"
+    ? operation.target.access.kind === "method"
+      ? {
+          kind: "method-call",
+          receiver: indexedReceiver,
+          name: operation.target.access.name,
+          arguments: Object.freeze([Object.freeze({ value: indexExpression })]),
+        }
+      : {
+          kind: "call",
+          callee: mojoModuleMemberExpression(
+            context,
+            operation.target.access.modulePath,
+            operation.target.access.name,
+          ),
+          arguments: Object.freeze([
+            Object.freeze({ value: indexedReceiver }),
+            Object.freeze({ value: indexExpression }),
+          ]),
+        }
     : {
         kind: "element",
         receiver: indexedReceiver,
@@ -319,12 +333,25 @@ export function planMojoProviderElementMethodWrite(
           receiver: location.values[0]!,
           index: location.values[1]!,
         })
-      : Object.freeze({
-          kind: "method-call",
-          receiver: location.values[0]!,
-          name: read.target.access.name,
-          arguments: Object.freeze([Object.freeze({ value: location.values[1]! })]),
-        });
+      : read.target.access.kind === "method"
+        ? Object.freeze({
+            kind: "method-call",
+            receiver: location.values[0]!,
+            name: read.target.access.name,
+            arguments: Object.freeze([Object.freeze({ value: location.values[1]! })]),
+          })
+        : Object.freeze({
+            kind: "call",
+            callee: mojoModuleMemberExpression(
+              context,
+              read.target.access.modulePath,
+              read.target.access.name,
+            ),
+            arguments: Object.freeze([
+              Object.freeze({ value: location.values[0]! }),
+              Object.freeze({ value: location.values[1]! }),
+            ]),
+          });
     const current = convertMojoValue(
       mojoValue(rawRead),
       selection.readResultConversion,

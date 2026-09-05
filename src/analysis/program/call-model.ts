@@ -195,7 +195,7 @@ export type MojoCallSelection =
           }
         | {
             readonly kind: "constructor";
-            readonly type: MojoTargetTypeRef;
+            readonly construction: import("./construction-model.js").MojoProjectConstruction;
             readonly adapterDeclaration?: Node;
           };
       readonly genericArguments: readonly MojoTargetGenericArgument[];

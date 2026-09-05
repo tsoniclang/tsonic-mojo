@@ -28,6 +28,7 @@ import {
   uniqueAccessorProperties,
   uniqueCallableContracts,
 } from "./object-literal-closure.js";
+import { selectMojoProjectConstruction } from "../project-types/construction.js";
 
 export interface MojoObjectLiteralAnalysisInput {
   readonly source: TargetSourceProgram;
@@ -79,6 +80,16 @@ export function analyzeMojoObjectLiteral(
     ? input.interfaceByTypeId.get(constructionType.id)
     : undefined;
   if (resultType === undefined || constructionType === undefined || interface_ === undefined) return undefined;
+  const construction = selectMojoProjectConstruction(interface_, constructionType);
+  if (construction === undefined) {
+    reject(
+      input,
+      "MOJO_OBJECT_CONSTRUCTION_NOT_SEALED",
+      "Object literal lowering has no exact sealed Mojo construction route.",
+      expression,
+    );
+    return undefined;
+  }
   const resultConversion = classifyMojoValueConversion(constructionType, resultType);
   if (resultConversion.kind === "unsupported") {
     reject(input, "MOJO_OBJECT_RESULT_CONVERSION_UNPROVEN", resultConversion.reason, expression);
@@ -359,6 +370,7 @@ export function analyzeMojoObjectLiteral(
     kind: "interface",
     interface: interface_,
     constructionType,
+    construction,
     resultType,
     resultConversion: resultConversion.conversion,
     fields: instantiatedFields,

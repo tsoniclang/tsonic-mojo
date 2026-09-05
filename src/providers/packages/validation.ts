@@ -310,12 +310,21 @@ function validateOperation(
       `Provider function call '${operation.exportId}' must declare both or neither of its helper receiver ABI and receiver carrier.`,
     );
   }
-  if (operation.target.kind === "function-call" || operation.target.kind === "constant" ||
-    operation.target.kind === "function-read" || operation.target.kind === "function-write") {
-    if (operation.target.modulePath.length === 0) {
+  const helperAccess = (operation.target.kind === "property-read" ||
+      operation.target.kind === "index-read") && operation.target.access.kind === "function"
+    ? operation.target.access
+    : undefined;
+  const directModulePath = operation.target.kind === "function-call" ||
+      operation.target.kind === "constant" || operation.target.kind === "function-read" ||
+      operation.target.kind === "function-write"
+    ? operation.target.modulePath
+    : undefined;
+  const modulePath = helperAccess?.modulePath ?? directModulePath;
+  if (modulePath !== undefined) {
+    if (modulePath.length === 0) {
       throw new Error(`Provider operation '${operation.exportId}' has an empty Mojo module path.`);
     }
-    for (const segment of operation.target.modulePath) {
+    for (const segment of modulePath) {
       if (!identifierPattern.test(segment)) {
         throw new Error(`Provider operation '${operation.exportId}' has invalid Mojo module segment '${segment}'.`);
       }
