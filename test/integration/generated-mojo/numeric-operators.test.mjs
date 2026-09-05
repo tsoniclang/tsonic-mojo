@@ -50,6 +50,21 @@ test("explicit integral bitwise operations retain native carriers", () => {
   assert.match(generated, /<</u);
 });
 
+for (const primitive of ["float16", "float32", "float64"]) {
+  test(`${primitive} bitwise operands use source-number rather than native integer operations`, () => {
+    const generated = compile(`
+import type { ${primitive} } from "@tsonic/core/types.js";
+export function complement(value: ${primitive}): number { return ~value; }
+export function shift(value: ${primitive}): number { return value >>> 1; }
+export function compound(value: ${primitive}): ${primitive} { return value <<= 1; }
+`);
+    for (const operation of ["bitwise_not", "unsigned_shift_right", "shift_left"]) {
+      assert.match(generated, new RegExp(`source_number_${operation}\\(`, "u"));
+    }
+    assert.doesNotMatch(generated, /~value|value <<|value >>/u);
+  });
+}
+
 test("mixed source number and int32 operands retain source-number semantics", () => {
   const generated = compile([
     'import type { int32 } from "@tsonic/core/types.js";',
@@ -79,4 +94,15 @@ test("bitwise numeric operands are not accepted through an open carrier", () => 
   assert.throws(() => compileMojo({ files: {
     "index.ts": "export function invalid(value: unknown): number { return value << 1; }",
   } }), /TS18046: 'value' is of type 'unknown'/u);
+});
+
+test("mixed bigint and number carriers reject at exact bitwise selection", () => {
+  const result = compileMojo({ files: {
+    "index.ts": `
+export function complement(value: bigint | number): bigint | number { return ~value; }
+export function main(): void {}
+`,
+  } });
+  assert.equal(result.artifacts.length, 0);
+  assert.ok(result.diagnostics.some(({ code }) => code === "MOJO_BITWISE_OPERANDS_NOT_CLOSED"));
 });
