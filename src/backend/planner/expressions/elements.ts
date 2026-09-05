@@ -301,7 +301,7 @@ export function planMojoProviderElementMethodWrite(
     return undefined;
   }
   const location = orderMojoValues([
-    Object.freeze({ plan: convertedReceiver, type: write.receiverType, role: "element_write_receiver" }),
+    Object.freeze({ plan: convertedReceiver, type: write.receiverType, role: "element_write_receiver", use: "location" as const }),
     Object.freeze({ plan: convertedIndex, type: write.parameterTypes[0]!, role: "element_write_index" }),
   ], context, true);
   let before: readonly MojoStatement[] = location.before;

@@ -21,8 +21,18 @@ export function printMojoModule(
   const aliasesByTypeKey = new Map(module.typeAliases.map((alias) =>
     [alias.typeKey, alias] as const));
   const importedSymbols = new Map<string, string>();
+  const importedModules = new Map<string, string>();
   for (const import_ of module.imports) {
-    if (import_.kind !== "symbols") continue;
+    if (import_.kind === "module") {
+      const key = import_.modulePath.join(".");
+      const localName = import_.alias ?? key;
+      const previous = importedModules.get(key);
+      if (previous !== undefined && previous !== localName) {
+        throw new Error(`Mojo imported module '${key}' has conflicting local names.`);
+      }
+      importedModules.set(key, localName);
+      continue;
+    }
     for (const symbol of import_.symbols) {
       const key = `${import_.modulePath.join(".")}\0${symbol.name}`;
       const localName = symbol.alias ?? symbol.name;
@@ -37,6 +47,7 @@ export function printMojoModule(
     modulePath: module.modulePath ?? [],
     aliasesByTypeKey,
     importedSymbols,
+    importedModules,
   });
   const imports = module.imports.length === 0
     ? emptyDocument

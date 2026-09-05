@@ -39,6 +39,28 @@ test("closed JSON values retain exact parse stringify and Object operations", ()
   ]) assert.match(source, new RegExp(`\\b${operation}\\b`, "u"));
 });
 
+test("selected constructor-only generic types retain their exact foreign imports", () => {
+  const source = generatedSource(compileMojo({ surfaces: ["js"], files: {
+    "value.ts": "export class Value { code: number = 1; }",
+    "index.ts": "import type { Value } from './value.js'; export function main(): void { new Map<string, Value>(); }",
+  } }));
+  assert.match(source, /from [\w.]+\.value import Value/u);
+  assert.match(source, /map_new\[String, Value\]\(\)/u);
+});
+
+test("template lowering preserves immediate conversion and avoids empty concatenation", () => {
+  const source = generatedSource(compileMojo({ surfaces: ["js"], files: {
+    "index.ts": [
+      "function native(value: string): string { return `${value}`; }",
+      "function dynamic(value: unknown, next: () => string): string { return `${value}${next()}`; }",
+      "export function main(): void { native('value'); dynamic(JSON.parse('true'), () => 'tail'); }",
+    ].join("\n"),
+  } }));
+  assert.match(source, /def native\(value: String\) -> String:\n    return value/u);
+  assert.doesNotMatch(source, /"" \+|\+ ""/u);
+  assert.match(source, /var \w+: String = js_value_to_string\(\s*value,?\s*\)\.to_native_strict\(\)\n    return \w+ \+ next\.call\(\(\)\)/u);
+});
+
 test("dynamic and finalized catch values use exact closed template stringification", () => {
   const source = generatedSource(compileMojo({
     surfaces: ["js"],

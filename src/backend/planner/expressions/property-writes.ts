@@ -247,7 +247,7 @@ export function planMojoProviderPropertyMethodWrite(
     : convertMojoValue(prepared.plan, selection.receiverConversion, context);
   if (prepared === undefined || converted === undefined) return undefined;
   const location = orderMojoValues([
-    Object.freeze({ plan: converted, type: write.receiverType, role: "property_write_receiver" }),
+    Object.freeze({ plan: converted, type: write.receiverType, role: "property_write_receiver", use: "location" as const }),
   ], context, true);
   let before: readonly MojoStatement[] = location.before;
   let assigned: MojoExpression;
@@ -342,4 +342,3 @@ export function planMojoProviderPropertyMethodWrite(
     },
   });
 }
-

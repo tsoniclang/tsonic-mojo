@@ -45,6 +45,7 @@ export interface OrderedMojoValue {
   readonly type: MojoTargetTypeRef;
   readonly role: string;
   readonly stabilize?: boolean;
+  readonly use?: "value" | "location";
 }
 
 export interface PlannedMojoCallArgument {
@@ -90,16 +91,21 @@ export function orderMojoValues(
   stabilizeAll = false,
 ): { readonly before: readonly MojoStatement[]; readonly values: readonly MojoExpression[] } {
   let finalPreludeIndex = -1;
+  let finalEffectIndex = -1;
   for (const [index, value] of values.entries()) {
     if (value.plan.before.length !== 0) finalPreludeIndex = index;
+    if (!isReadOnlyMojoValue(value.plan.value)) finalEffectIndex = index;
   }
   const before: MojoStatement[] = [];
   const expressions: MojoExpression[] = [];
   for (const [index, value] of values.entries()) {
     before.push(...value.plan.before);
+    const stable = value.use === "location"
+      ? isStableMojoLocation(value.plan.value)
+      : value.plan.value.kind === "path";
     if (value.stabilize !== false &&
-      (value.stabilize === true || stabilizeAll || index < finalPreludeIndex) &&
-      !isStableMojoLocation(value.plan.value) &&
+      ((value.stabilize === true || stabilizeAll || index < finalEffectIndex) && !stable ||
+        index < finalPreludeIndex && (value.use !== "location" || !stable)) &&
       !isTriviallyPureMojoValue(value.plan.value)) {
       registerMojoTypeImports(value.type, context);
       const name = allocateMojoSyntheticName(context, value.role);
@@ -107,7 +113,10 @@ export function orderMojoValues(
         kind: "variable",
         name,
         type: value.type,
-        initializer: value.plan.value,
+        initializer: isStableMojoLocation(value.plan.value) &&
+          context.program.lifecycle.capabilities(value.type).copy === "explicit"
+          ? Object.freeze({ kind: "copy", expression: value.plan.value })
+          : value.plan.value,
       }));
       expressions.push(Object.freeze({ kind: "path", path: name }));
     } else {
@@ -118,6 +127,24 @@ export function orderMojoValues(
     before: Object.freeze(before),
     values: Object.freeze(expressions),
   });
+}
+
+function isReadOnlyMojoValue(expression: MojoExpression): boolean {
+  if (isTriviallyPureMojoValue(expression)) return true;
+  switch (expression.kind) {
+    case "path":
+    case "qualified-path": return true;
+    case "member": return isReadOnlyMojoValue(expression.receiver);
+    case "element": return isReadOnlyMojoValue(expression.receiver) &&
+      isReadOnlyMojoValue(expression.index);
+    case "postfix-deref":
+    case "parenthesized": return isReadOnlyMojoValue(expression.expression);
+    case "proven-union-member": return isReadOnlyMojoValue(expression.receiver);
+    case "construct": return expression.type.kind === "source-primitive" &&
+      expression.arguments.every((argument) => argument.name === undefined &&
+        argument.spread !== true && isReadOnlyMojoValue(argument.value));
+    default: return false;
+  }
 }
 
 export function isTriviallyPureMojoValue(expression: MojoExpression): boolean {

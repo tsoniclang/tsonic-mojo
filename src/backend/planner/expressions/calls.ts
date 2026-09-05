@@ -60,6 +60,9 @@ export function planMojoCall(
       selection.genericArguments,
       context,
     );
+    for (const argument of genericArguments) {
+      if (argument.kind === "type") registerMojoTypeImports(argument.type, context);
+    }
     const plannedArguments = planSelectedArguments(selection.arguments, context, planValue);
     if (plannedArguments === undefined) return undefined;
     let call: MojoExpression;
@@ -337,6 +340,10 @@ export function planMojoCall(
       : finishOptionalMojoOperation(node, callee, converted, context);
   }
   const target = selection.operation.target;
+  const genericArguments = mojoTargetGenericArgumentsInContext(selection.operation.genericArguments, context);
+  for (const argument of genericArguments) {
+    if (argument.kind === "type") registerMojoTypeImports(argument.type, context);
+  }
   if (target.kind !== "function-call" && target.kind !== "instance-call") {
     appendMojoPlanningDiagnostic(
       context,
@@ -397,9 +404,9 @@ export function planMojoCall(
         target.modulePath,
         Object.freeze([...(target.ownerPath ?? []), target.name]),
       ),
-      ...(selection.operation.genericArguments.length === 0
+      ...(genericArguments.length === 0
         ? {}
-        : { genericArguments: selection.operation.genericArguments }),
+        : { genericArguments }),
       arguments: target.receiver === undefined
         ? ordered.arguments
         : Object.freeze([
@@ -433,7 +440,7 @@ export function planMojoCall(
       plan: receiver,
       type: selection.operation.receiverType,
       role: "call_receiver",
-      ...(target.receiver === "mut" ? { stabilize: true } : {}),
+      ...(target.receiver === "mut" ? { stabilize: true, use: "location" as const } : {}),
     }));
     before = ordered.before;
     call = {
@@ -445,9 +452,9 @@ export function planMojoCall(
         context,
       ),
       name: target.name,
-      ...(selection.operation.genericArguments.length === 0
+      ...(genericArguments.length === 0
         ? {}
-        : { genericArguments: selection.operation.genericArguments }),
+        : { genericArguments }),
       arguments: ordered.arguments,
     };
     const converted = convertMojoValue(withMojoValue(before, call), selection.resultConversion, context);

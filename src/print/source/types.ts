@@ -51,10 +51,15 @@ export function printMojoTypeDocument(
     );
     case "source-primitive": return printSourcePrimitive(type.name);
     case "target-named": {
-      const base = sameModulePath(type.modulePath, context.modulePath)
+      const base = type.modulePath.length === 0 || sameModulePath(type.modulePath, context.modulePath)
         ? type.name
         : context.importedSymbols.get(`${type.modulePath.join(".")}\0${type.name}`) ??
-          [...type.modulePath, type.name].join(".");
+          (context.importedModules.has(type.modulePath.join("."))
+            ? `${context.importedModules.get(type.modulePath.join("."))}.${type.name}`
+            : undefined);
+      if (base === undefined) {
+        throw new Error(`Mojo type '${type.modulePath.join(".")}.${type.name}' has no selected symbol import.`);
+      }
       return type.genericArguments === undefined || type.genericArguments.length === 0
         ? text(base)
         : concat(text(base), printGenericArguments(type.genericArguments, context));

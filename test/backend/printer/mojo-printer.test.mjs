@@ -14,6 +14,14 @@ function statementModule(statements) {
   };
 }
 
+test("printer separates a terminal nested try from its containing finally", () => {
+  const inner = { kind: "try", statements: [{ kind: "pass" }], catches: [{ statements: [{ kind: "pass" }] }] };
+  const outer = { kind: "try", statements: [inner], catches: [], finallyStatements: [{ kind: "pass" }] };
+  assert.match(printMojoModule(statementModule([outer])), /        except:\n            pass\n        pass\n    finally:/u);
+  const separated = { ...outer, statements: [inner, { kind: "pass" }] };
+  assert.equal(printMojoModule(statementModule([outer])), printMojoModule(statementModule([separated])));
+});
+
 test("printer preserves branch regions while spelling a single conditional tail as elif", () => {
   const tail = {
     kind: "if", condition: { kind: "path", path: "second" },
@@ -110,6 +118,10 @@ test("printer emits explicit JS string construction", () => {
     }],
   };
   assert.match(printMojoModule(module), /return tsonic_js\.JsString\("hello"\)/u);
+  assert.throws(() => printMojoModule({ ...module, imports: [] }), /has no selected symbol import/u);
+  assert.match(printMojoModule({ ...module, imports: [
+    { kind: "module", modulePath: ["tsonic_js"], alias: "js" },
+  ] }), /return js\.JsString\("hello"\)/u);
 });
 
 test("printer emits typed declarations and structured control flow", () => {

@@ -71,7 +71,11 @@ export function printMojoStatementDocument(
       ? text("raise")
       : group(concat(text("raise "), printMojoExpressionDocument(statement.expression, context)));
     case "try": {
-      const result: MojoDocument[] = [block(text("try"), printMojoBodyDocument(statement.statements, context))];
+      const trailing = statement.statements[statement.statements.length - 1];
+      const body = statement.finallyStatements !== undefined && trailing?.kind === "try"
+        ? Object.freeze([...statement.statements, Object.freeze({ kind: "pass" as const })])
+        : statement.statements;
+      const result: MojoDocument[] = [block(text("try"), printMojoBodyDocument(body, context))];
       for (const catch_ of statement.catches) {
         result.push(hardLine, printCatchDocument(catch_, context));
       }
