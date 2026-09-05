@@ -8,9 +8,11 @@ const binaryOperations = [
 ];
 
 function compile(source, surfaces = []) {
-  const result = compileMojo({ surfaces, files: { "index.ts": source } });
+  const result = compileMojo({ surfaces, files: { "index.ts": `${source}\nexport function main(): void {}` } });
   assert.deepEqual(result.diagnostics, []);
-  return artifactTexts(result).map(({ text }) => text).join("\n");
+  const generated = artifactTexts(result).find(({ text }) => text.includes("def tsonic_main("));
+  assert.ok(generated);
+  return generated.text;
 }
 
 for (const surfaces of [[], ["js"]]) {
@@ -74,6 +76,7 @@ export function compound(cell: Cell): number { return cell.value <<= next(cell);
 });
 
 test("bitwise numeric operands are not accepted through an open carrier", () => {
-  const result = compileMojo({ files: { "index.ts": "export function invalid(value: unknown): number { return value << 1; }" } });
-  assert.notEqual(result.diagnostics.length, 0);
+  assert.throws(() => compileMojo({ files: {
+    "index.ts": "export function invalid(value: unknown): number { return value << 1; }",
+  } }), /TS18046: 'value' is of type 'unknown'/u);
 });

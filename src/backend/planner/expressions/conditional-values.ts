@@ -476,7 +476,6 @@ function prefixOperator(kind: string | undefined): string | undefined {
     case "KindPlusToken": return "+";
     case "KindMinusToken": return "-";
     case "KindExclamationToken": return "not";
-    case "KindTildeToken": return "~";
     default: return undefined;
   }
 }

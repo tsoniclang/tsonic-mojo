@@ -101,8 +101,6 @@ export function callArgumentExpectedType(
   }
   if (selection.kind === "raw-pointer") {
     switch (selection.operation) {
-      case "bind":
-        return selection.identityExpression === expression ? selection.identityType : undefined;
       case "equal":
         if (selection.leftExpression === expression) return selection.leftType;
         return selection.rightExpression === expression ? selection.rightType : undefined;

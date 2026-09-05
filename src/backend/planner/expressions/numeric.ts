@@ -1,6 +1,7 @@
 import type { Node } from "@tsonic/tsts";
 import type { MojoExpression } from "../../target-ast/index.js";
 import type { MojoNumericConversion, MojoNumericOperation } from "../../../target-model/operations/numeric.js";
+import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import { mojoModuleMemberExpression } from "../program/context.js";
 import { registerMojoTypeImports } from "../types/imports.js";
@@ -81,8 +82,23 @@ export function planMojoCompoundValue(
 ): MojoExpression {
   const selection = context.program.queries.intrinsicExpressionSelection(node);
   if (selection?.kind !== "numeric") {
+    if (operator !== "+=" && operator !== "-=" && operator !== "*=" && operator !== "/=") {
+      throw new Error("A bitwise compound operation cannot be printed without sealed numeric evidence.");
+    }
     return Object.freeze({ kind: "binary", operator: operator.slice(0, -1), left, right });
   }
   const value = planMojoNumericValue(selection.operation, left, right, context);
   return selection.writeConversion === undefined ? value : planMojoNumericConversion(value, selection.writeConversion, context);
+}
+
+export function mojoCompoundRightType(
+  node: Node,
+  writeType: MojoTargetTypeRef,
+  context: MojoPlanningContext,
+): MojoTargetTypeRef {
+  const selection = context.program.queries.intrinsicExpressionSelection(node);
+  if (selection?.kind !== "numeric") return writeType;
+  const type = selection.right === undefined ? undefined : context.program.queries.expressionType(selection.right);
+  if (type === undefined) throw new Error("A sealed compound numeric operation must have an exact right operand carrier.");
+  return type;
 }

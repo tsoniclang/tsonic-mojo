@@ -52,7 +52,7 @@ export function selectMojoNumericOperation(
   const numberOperation = isFloating(left) ||
     (right !== undefined && isFloating(right) && !nativeLiteralRight);
   const operandType = numberOperation ? sourceNumber : left;
-  const resultType = numberOperation ? sourceNumber : result;
+  const resultType = numberOperation ? sourceNumber : left;
   const leftConversion = classifyMojoValueConversion(left, operandType);
   const rightConversion = right === undefined ? undefined : classifyMojoValueConversion(right, operandType);
   if (leftConversion.kind !== "resolved" || rightConversion?.kind === "unsupported") return undefined;

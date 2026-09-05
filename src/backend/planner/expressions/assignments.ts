@@ -106,7 +106,7 @@ export function planMojoAssignment(
   const rightType = numeric?.kind === "numeric"
     ? context.program.queries.expressionType(rightNode)
     : targetWriteType ?? leftType;
-  const right = planValue(rightNode, context, rightType);
+  const right = planValue(rightNode, context, numeric?.kind === "numeric" ? undefined : rightType);
   if (right === undefined) return undefined;
   const targetType = targetWriteType ?? leftType;
   if (targetType === undefined) {
@@ -194,7 +194,7 @@ export function planMojoAssignment(
       if (current === undefined) return undefined;
       const ordered = orderMojoValues([
         Object.freeze({ plan: current, type: leftType, role: "static_property_read" }),
-        Object.freeze({ plan: right, type: targetType, role: "static_property_right" }),
+        Object.freeze({ plan: right, type: rightType ?? targetType, role: "static_property_right" }),
       ], context, true);
       before.push(...ordered.before);
       value = planMojoCompoundValue(node, operator, ordered.values[0]!, ordered.values[1]!, context);

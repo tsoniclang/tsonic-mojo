@@ -872,24 +872,26 @@ test("raw pointer identity is closed only from exact source-core facts", () => {
   const result = compileMojo({
     files: {
       "index.ts": [
-        'import { bindRawPointer, equalRawPointer, hashRawPointer } from "@tsonic/core/lang.js";',
-        'import type { float64 } from "@tsonic/core/types.js";',
-        "class Box { value: float64 = 1; }",
-        "export function main(): void {",
-        "  const box = new Box();",
-        "  const first = bindRawPointer(box);",
-        "  const second = bindRawPointer(box);",
-        "  const same = equalRawPointer(first, second);",
-        "  const hash = hashRawPointer(first);",
-        "  if (!same || hash < 0) return;",
+        'import { equalRawPointer as equal, hashRawPointer } from "@tsonic/core/lang.js";',
+        'import * as core from "@tsonic/core/lang.js";',
+        'import type { RawPointer, float64 } from "@tsonic/core/types.js";',
+        "export function same(first: RawPointer | undefined, second: RawPointer | undefined): boolean {",
+        "  return equal(first, second);",
         "}",
+        "export function hash(pointer: RawPointer | undefined): float64 {",
+        "  return hashRawPointer(pointer);",
+        "}",
+        "export function absent(): boolean {",
+        "  return core.equalRawPointer(undefined, undefined);",
+        "}",
+        "export function main(): void {}",
       ].join("\n"),
     },
   });
   assert.deepEqual(result.diagnostics, []);
-  const generated = artifactTexts(result).find(({ text }) => text.includes("struct Box"));
+  const generated = artifactTexts(result).find(({ text }) => text.includes("def same"));
   assert.ok(generated);
-  assert.match(generated.text, /raw_pointer_from_arc\(box\._state\)/u);
+  assert.match(generated.text, /Optional\[RawPointer\]/u);
   assert.match(generated.text, /equal_raw_pointer\(/u);
   assert.match(generated.text, /hash_raw_pointer\(/u);
   assert.doesNotMatch(generated.text, /bindRawPointer|equalRawPointer|hashRawPointer/u);

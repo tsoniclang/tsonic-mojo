@@ -57,8 +57,6 @@ const binaryOperatorText = new Map<string, string>([
   ["KindLessThanEqualsToken", "<="], ["KindGreaterThanToken", ">"],
   ["KindGreaterThanEqualsToken", ">="], ["KindAmpersandAmpersandToken", "and"],
   ["KindBarBarToken", "or"], ["KindAsteriskAsteriskToken", "**"],
-  ["KindAmpersandToken", "&"], ["KindBarToken", "|"], ["KindCaretToken", "^"],
-  ["KindLessThanLessThanToken", "<<"], ["KindGreaterThanGreaterThanToken", ">>"],
 ]);
 
 export function planArrayLiteral(

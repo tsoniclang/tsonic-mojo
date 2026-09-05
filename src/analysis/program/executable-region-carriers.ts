@@ -1,4 +1,4 @@
-import { pointerOperationFactKey, rawPointerOperationFactKey } from "@tsonic/tsts";
+import { pointerOperationFactKey } from "@tsonic/tsts";
 import type { AstReader, Node } from "@tsonic/tsts";
 import {
   BinaryExpression_Left,
@@ -10,7 +10,6 @@ import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 import { mojoLocationTargetType } from "../operations/typed-locations.js";
-import { mojoRawPointerTargetType } from "../operations/raw-pointers.js";
 import { classifyMojoValueRefinement } from "../refinements/value.js";
 import { expectedExpressionType } from "./expected-types.js";
 import { resolveExecutableRegionType as resolveType } from "./executable-region-support.js";
@@ -263,8 +262,6 @@ export function resolveInferredBindingCarrier(
   input: MojoExecutableRegionAnalysisInput,
   semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
 ): MojoTargetTypeRef | undefined {
-  const rawPointer = input.source.sourceFacts.getFact(initializer, rawPointerOperationFactKey);
-  if (rawPointer?.operation === "bind-raw-pointer") return mojoRawPointerTargetType();
   const pointer = input.source.sourceFacts.getFact(initializer, pointerOperationFactKey);
   if (pointer?.operation === "address-of" || pointer?.operation === "allocate") {
     const exactOperand = pointer.operation === "address-of"

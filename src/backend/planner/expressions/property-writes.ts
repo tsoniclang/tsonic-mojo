@@ -1,5 +1,5 @@
 import type { Node } from "@tsonic/tsts";
-import { planMojoCompoundValue } from "./numeric.js";
+import { mojoCompoundRightType, planMojoCompoundValue } from "./numeric.js";
 import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 import {
   appendMojoPlanningDiagnostic,
@@ -156,7 +156,7 @@ export function planMojoProjectPropertyWrite(
     });
     const ordered = orderMojoValues([
       Object.freeze({ plan: mojoValue(current), type: readType, role: "property_write_current" }),
-      Object.freeze({ plan: value, type: writeType, role: "property_write_value" }),
+      Object.freeze({ plan: value, type: mojoCompoundRightType(operationNode, writeType, context), role: "property_write_value" }),
     ], context, true);
     before = Object.freeze([...location.before, ...ordered.before]);
     previousValue = ordered.values[0]!;
@@ -251,7 +251,7 @@ export function planMojoProviderPropertyMethodWrite(
   let assigned: MojoExpression;
   let previousValue: MojoExpression | undefined;
   const orderedValue = orderMojoValues([
-    Object.freeze({ plan: value, type: write.parameterTypes[0]!, role: "property_write_value" }),
+    Object.freeze({ plan: value, type: mojoCompoundRightType(operationNode, write.parameterTypes[0]!, context), role: "property_write_value" }),
   ], context, true);
   if (operator !== "=") {
     const read = selection.readOperation;
