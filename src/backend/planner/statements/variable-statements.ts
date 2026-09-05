@@ -110,6 +110,10 @@ function planVariableDeclaration(
   }
   const locationStorage = context.program.queries.locationStorage(declaration);
   if (locationStorage === undefined) {
+    const callable = sourceInitializer === undefined
+      ? undefined
+      : context.program.representations.callable(sourceInitializer);
+    const inferredCallable = callable !== undefined && callable.kind !== "erased";
     registerMojoTypeImports(type, context);
     const defaultValue = sourceInitializer === undefined
       ? uninitializedLocalValue(type)
@@ -119,7 +123,7 @@ function planVariableDeclaration(
       {
         kind: "variable",
         name,
-        type,
+        ...(inferredCallable ? {} : { type }),
         ...(compileTimeInitializer === undefined ? {} : { compileTime: true }),
         ...(initializer === undefined && defaultValue === undefined
           ? {}

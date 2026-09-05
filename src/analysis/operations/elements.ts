@@ -49,8 +49,11 @@ export function analyzeMojoElementAccess(
   source: ResolvedSourceElementAccessInfo,
   context: MojoElementAnalysisContext,
 ): MojoElementAnalysis {
-  const receiver = context.expressionTypes.get(source.receiver.expression) ??
+  const actualReceiver = context.expressionTypes.get(source.receiver.expression) ??
     context.resolveType(source.receiver.type);
+  const receiver = source.optionalChain && actualReceiver?.kind === "optional"
+    ? actualReceiver.value
+    : actualReceiver;
   const index = context.expressionTypes.get(source.argument.expression) ??
     context.resolveType(source.argument.type);
   if (receiver === undefined || index === undefined) {

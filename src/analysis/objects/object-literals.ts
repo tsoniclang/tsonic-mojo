@@ -67,7 +67,8 @@ export function analyzeMojoObjectLiteral(
     ? input.resolveType(contextualSelection.type)
     : undefined;
   const inferredType = input.expressionTypes.get(expression);
-  const resultType = input.expectedType ?? contextualType ?? inferredType;
+  const expectedResult = input.expectedType ?? contextualType ?? inferredType;
+  const resultType = expectedResult?.kind === "optional" ? expectedResult.value : expectedResult;
   const constructionType = selectConstructionType(
     resultType,
     contextualType,

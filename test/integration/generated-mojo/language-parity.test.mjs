@@ -645,7 +645,8 @@ test("capture-free block-bodied callable expressions lower to one direct functio
   assert.deepEqual(result.diagnostics, []);
   const source = artifactTexts(result).find(({ text }) => text.includes("def _callable"));
   assert.ok(source);
-  assert.match(source.text, /Callable\[Tuple\[\], Int32\]/u);
+  assert.match(source.text, /var value = _callable/u);
+  assert.doesNotMatch(source.text, /var value: Callable/u);
   assert.match(source.text, /def _callable\(\) -> Int32:[\s\S]*return Int32\(1\)/u);
   assert.match(source.text, /_ = value\(\)/u);
   assert.doesNotMatch(source.text, /allocate_callable_environment|_callable_environment/u);

@@ -110,7 +110,7 @@ export function analyzeMojoCall(
     callNode,
     sourceCall,
     context.source,
-    resolve,
+    context.expressionTypes,
   );
   if (explicitSafety.kind === "unsupported") return explicitSafety;
   if (explicitSafety.kind === "resolved") {

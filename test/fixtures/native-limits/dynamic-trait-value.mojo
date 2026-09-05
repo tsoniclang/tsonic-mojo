@@ -1,7 +1,7 @@
 trait Counter:
-    fn next(self) -> Int:
+    def next(self) -> Int:
         ...
 
 
-fn invoke(value: Counter) -> Int:
+def invoke(value: Counter) -> Int:
     return value.next()

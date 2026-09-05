@@ -1,6 +1,7 @@
 import type { Node, Type } from "@tsonic/tsts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import { mojoOptionalTargetType } from "../../target-model/types/constructors.js";
 import { analyzeMojoCall } from "../operations/calls.js";
 import { mojoCallResultType } from "../operations/call-results.js";
 import { analyzeMojoElementAccess } from "../operations/elements.js";
@@ -75,7 +76,10 @@ export function analyzeCall(
   if (analyzed.dependency !== undefined) input.callDependencies.set(node, analyzed.dependency);
   input.callSelections.set(node, analyzed.selection);
   input.callNodes.add(node);
-  input.expressionTypes.set(node, mojoCallResultType(analyzed.selection));
+  input.expressionTypes.set(node, optionalOperationResult(
+    mojoCallResultType(analyzed.selection),
+    selectedCall.optionalChain,
+  ));
 }
 
 export function analyzeProperty(
@@ -96,7 +100,8 @@ export function analyzeProperty(
   const selectedReceiverType = resolve(selected.receiver.type);
   const exactReceiverType = input.expressionTypes.get(selected.receiver.expression) ??
     selectedReceiverType;
-  if (exactReceiverType !== undefined && selectedReceiverType !== undefined) {
+  if (!selected.optionalChain && exactReceiverType !== undefined &&
+    selectedReceiverType !== undefined) {
     const refinement = classifyMojoValueRefinement(
       exactReceiverType,
       selectedReceiverType,
@@ -191,9 +196,19 @@ export function analyzeElement(
     input.diagnostics.push(diagnostic(element.code, element.reason, node));
   } else {
     input.elementSelections.set(node, element.selection);
-    input.expressionTypes.set(node, element.expressionType);
+    input.expressionTypes.set(node, optionalOperationResult(
+      element.expressionType,
+      selected.optionalChain,
+    ));
     if (element.valueRefinement !== undefined) {
       input.valueRefinements.set(node, element.valueRefinement);
     }
   }
+}
+
+function optionalOperationResult(
+  type: MojoTargetTypeRef,
+  optionalChain: boolean,
+): MojoTargetTypeRef {
+  return optionalChain && type.kind !== "optional" ? mojoOptionalTargetType(type) : type;
 }
