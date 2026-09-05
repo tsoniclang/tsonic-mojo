@@ -22,7 +22,10 @@ import type {
 import type { MojoStatement } from "../../target-ast/index.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import { appendMojoPlanningDiagnostic, withMojoErrorType } from "../program/context.js";
-import { planMojoAssignment, planMojoValue, planMojoUpdate } from "../expressions/value.js";
+import { planMojoValue } from "../expressions/value.js";
+import { planMojoAssignment } from "../expressions/assignments.js";
+import { planMojoUpdate } from "../expressions/updates.js";
+import { consumeMojoValue } from "../expressions/value-plan.js";
 import { planDiscardedMojoExpression } from "./discarded-expression.js";
 import { planForIncrement } from "./for-increment.js";
 import { planMojoResourceScope } from "./resources.js";
@@ -38,6 +41,13 @@ import {
   planVariableDeclarationList,
   resourceDeclarationList,
 } from "./variable-statements.js";
+import {
+  isMojoCompileTimeCondition,
+  isMojoCompileTimeIteration,
+  planMojoCompileTimeCondition,
+} from "../compile-time/values.js";
+import { planMojoBindingProjection } from "../bindings/patterns.js";
+import { mojoValue } from "../expressions/value-plan.js";
 
 export function planMojoFunctionStatements(
   function_: MojoAnalyzedFunction,
@@ -140,6 +150,17 @@ function planStatement(
   flow: MojoFlowPlanningContext,
 ): readonly MojoStatement[] | undefined {
   const { ast } = context.program.source;
+  if (ast.is.IsEmptyStatement(node)) return Object.freeze([]);
+  if (ast.is.IsDebuggerStatement(node)) {
+    return Object.freeze([Object.freeze({
+      kind: "expression",
+      expression: Object.freeze({
+        kind: "call",
+        callee: Object.freeze({ kind: "path", path: "breakpoint" }),
+        arguments: Object.freeze([]),
+      }),
+    })]);
+  }
   if (ast.is.IsBlock(node)) {
     return planBlock(node, scope, context, flow);
   }
@@ -160,8 +181,8 @@ function planStatement(
     if (sourceExpression !== undefined && expression === undefined) return undefined;
     const returnedExpression = expression === undefined
       ? undefined
-      : context.program.queries.returnValueTransfer(sourceExpression!)
-        ? Object.freeze({ kind: "consume" as const, expression: expression.value })
+      : context.program.queries.exitValueTransfer(sourceExpression!)
+        ? consumeMojoValue(expression.value, scope.resultType, context.program.lifecycle)
         : expression.value;
     return Object.freeze([
       ...(expression?.before ?? []),
@@ -172,14 +193,16 @@ function planStatement(
     const sourceExpression = Node_Expression(ast, node);
     const assignment = sourceExpression === undefined
       ? undefined
-      : planMojoAssignment(sourceExpression, context);
+      : planMojoAssignment(sourceExpression, context, planMojoValue);
     if (assignment !== undefined) {
       return Object.freeze([
         ...assignment.before,
         assignment.statement,
       ]);
     }
-    const update = sourceExpression === undefined ? undefined : planMojoUpdate(sourceExpression, context);
+    const update = sourceExpression === undefined
+      ? undefined
+      : planMojoUpdate(sourceExpression, context, planMojoValue);
     if (update !== undefined) return Object.freeze([
       ...update.before,
       update.statement,
@@ -191,9 +214,12 @@ function planStatement(
   if (ast.is.IsThrowStatement(node)) {
     const sourceExpression = Node_Expression(ast, node);
     const expression = sourceExpression === undefined ? undefined : planMojoValue(sourceExpression, context);
-    return expression === undefined
-      ? undefined
-      : Object.freeze([...expression.before, { kind: "raise", expression: expression.value }]);
+    const type = sourceExpression === undefined ? undefined : context.program.queries.expressionType(sourceExpression);
+    if (expression === undefined || type === undefined) return undefined;
+    const raised = context.program.queries.exitValueTransfer(sourceExpression!)
+      ? consumeMojoValue(expression.value, type, context.program.lifecycle)
+      : expression.value;
+    return Object.freeze([...expression.before, { kind: "raise", expression: raised }]);
   }
   if (ast.is.IsVariableStatement(node)) {
     return planVariableDeclarationList(VariableStatement_DeclarationList(ast, node), context);
@@ -202,9 +228,13 @@ function planStatement(
     const conditionNode = Node_Expression(ast, node);
     const thenNode = ast.as.AsIfStatement(node)?.ThenStatement;
     const elseNode = ast.as.AsIfStatement(node)?.ElseStatement;
+    const compileTime = conditionNode !== undefined &&
+      isMojoCompileTimeCondition(conditionNode, context);
     const condition = conditionNode === undefined
       ? undefined
-      : planMojoValue(conditionNode, context, { kind: "source-primitive", name: "bool" });
+      : compileTime
+        ? planMojoCompileTimeCondition(conditionNode, context, planMojoValue)
+        : planMojoValue(conditionNode, context, { kind: "source-primitive", name: "bool" });
     const thenStatements = thenNode === undefined ? undefined : planStatementBody(thenNode, scope, context, flow);
     const elseStatements = elseNode === undefined ? undefined : planStatementBody(elseNode, scope, context, flow);
     if (condition === undefined) {
@@ -222,6 +252,7 @@ function planStatement(
       condition: condition.value,
       thenStatements,
       ...(elseStatements === undefined ? {} : { elseStatements }),
+      ...(compileTime ? { compileTime: true } : {}),
     }]);
   }
   if (ast.is.IsWhileStatement(node)) {
@@ -334,15 +365,33 @@ function planStatement(
           arguments: Object.freeze([]),
         });
     let statements = planStatementBody(body, scope, context, loopFlowContext(Object.freeze([])));
+    if (statements !== undefined && selection.binding.kind === "pattern") {
+      const projected = planMojoBindingProjection(
+        selection.binding.projection,
+        mojoValue(Object.freeze({ kind: "path", path: selection.binding.name })),
+        "direct",
+        context,
+        planMojoValue,
+      );
+      if (projected === undefined) return undefined;
+      statements = Object.freeze([...projected, ...statements]);
+    }
     if (statements !== undefined) {
-      const bindingKind = ast.variableDeclarationKind(selection.bindingDeclaration);
+      const bindingKind = ast.variableDeclarationKind(selection.binding.declaration);
       if (bindingKind === "using" || bindingKind === "await using") {
-        statements = planMojoResourceScope(selection.bindingDeclaration, statements, context);
+        statements = planMojoResourceScope(selection.binding.declaration, statements, context);
       }
     }
+    const compileTime = isMojoCompileTimeIteration(selection.iterable, context);
     return statements === undefined
       ? undefined
-      : Object.freeze([...sourceIterable.before, { kind: "for", binding: selection.bindingName, iterable, statements }]);
+      : Object.freeze([...sourceIterable.before, {
+          kind: "for",
+          binding: selection.binding.name,
+          iterable,
+          statements,
+          ...(compileTime ? { compileTime: true } : {}),
+        }]);
   }
   if (ast.is.IsSwitchStatement(node)) {
     return planMojoSwitchStatement(node, scope, context, flow, planStatementNodes);
@@ -382,8 +431,8 @@ function planStatement(
   }
   appendMojoPlanningDiagnostic(
     context,
-    "MOJO_STATEMENT_PLAN_UNSUPPORTED",
-    `Statement kind '${ast.kindName(node)}' reached planning without a Mojo form.`,
+    "MOJO_SEALED_STATEMENT_PLAN_MISSING",
+    `Statement kind '${ast.kindName(node)}' reached planning without its sealed Mojo form.`,
     node,
   );
   return undefined;

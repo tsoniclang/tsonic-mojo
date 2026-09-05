@@ -6,6 +6,11 @@ import type {
 
 export type MojoProviderOperationForm =
   | {
+      readonly kind: "unsupported";
+      readonly code: string;
+      readonly reason: string;
+    }
+  | {
       readonly kind: "function-call";
       readonly modulePath: readonly string[];
       readonly ownerPath?: readonly string[];
@@ -25,7 +30,12 @@ export type MojoProviderOperationForm =
       readonly kind: "property-read";
       readonly access:
         | { readonly kind: "member"; readonly name: string }
-        | { readonly kind: "method"; readonly name: string };
+        | { readonly kind: "method"; readonly name: string }
+        | {
+            readonly kind: "function";
+            readonly modulePath: readonly string[];
+            readonly name: string;
+          };
       readonly receiver: MojoCallArgumentConvention;
     }
   | {
@@ -40,13 +50,20 @@ export type MojoProviderOperationForm =
       readonly kind: "index-read";
       readonly access:
         | { readonly kind: "element" }
-        | { readonly kind: "method"; readonly name: string };
+        | { readonly kind: "method"; readonly name: string }
+        | {
+            readonly kind: "function";
+            readonly modulePath: readonly string[];
+            readonly name: string;
+          };
       readonly receiver: MojoCallArgumentConvention;
       readonly index: MojoProviderTargetArgument;
     }
   | {
       readonly kind: "index-write";
-      readonly access: { readonly kind: "element" };
+      readonly access:
+        | { readonly kind: "element" }
+        | { readonly kind: "method"; readonly name: string };
       readonly receiver: MojoCallArgumentConvention;
       readonly index: MojoProviderTargetArgument;
       readonly value: MojoProviderTargetArgument;

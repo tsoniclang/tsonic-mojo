@@ -33,11 +33,11 @@ export interface MojoSourceModuleDefinition {
   readonly packageName: string;
   readonly moduleSegments: readonly string[];
   readonly modulePath: readonly string[];
+  readonly artifactRole: "module" | "package-initializer";
   readonly artifactPath: string;
   readonly dependencies: readonly MojoSourceModuleDependency[];
   readonly exports: readonly MojoSourceModuleExport[];
   readonly topLevelAwait: boolean;
-  readonly runtimeInitializationRequired: boolean;
   readonly entryPoint: boolean;
 }
 
@@ -45,6 +45,7 @@ export interface MojoSourcePackageDefinition {
   readonly componentId: string;
   readonly packageName: string;
   readonly root: boolean;
+  readonly dependencies: readonly string[];
   readonly moduleDirectories: readonly (readonly string[])[];
 }
 

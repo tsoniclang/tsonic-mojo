@@ -26,7 +26,7 @@ import {
 import type { MojoExecutableRegionAnalysisEnvironment } from "./executable-regions.js";
 import type { MojoAnalyzedClass, MojoAnalyzedFunction, MojoAnalyzedModule } from "./model.js";
 import type { MojoAnalyzedModuleRegionFacts } from "./module-effects.js";
-import { walkSourceTree } from "./traversal.js";
+import { walkSourceTree } from "../../source/syntax/traversal.js";
 
 export interface MojoProgramEffectsFinalizationInput {
   readonly sourceFiles: readonly SourceFile[];
@@ -44,7 +44,7 @@ export interface MojoProgramEffectsFinalizationInput {
   readonly callableExpressionSelections: WeakMap<Node, import("./model.js").MojoCallableExpressionSelection>;
   readonly callableExpressionByDeclaration: WeakMap<Node, Node>;
   readonly callableDeclarationByExpression: WeakMap<Node, Node>;
-  readonly moduleRegionFacts: WeakMap<MojoAnalyzedModule, MojoAnalyzedModuleRegionFacts>;
+  readonly moduleRegionFacts: WeakMap<SourceFile, MojoAnalyzedModuleRegionFacts>;
 }
 
 export type MojoProgramEffectsFinalization =
@@ -88,6 +88,7 @@ export function finalizeMojoProgramEffects(
     callNodes,
     callDependencies,
     propertySelections,
+    propertyNodes,
     elementSelections,
     resourceManagementSelections,
     resourceDeclarations,
@@ -120,6 +121,30 @@ export function finalizeMojoProgramEffects(
       callableExpressionByDeclaration,
     );
     if (dependency !== undefined) callDependencies.set(callNode, dependency);
+  }
+
+  const dynamicMethodErrors = new Map<Node, MojoTargetTypeRef[]>();
+  for (const propertyNode of propertyNodes) {
+    const selection = propertySelections.get(propertyNode);
+    if (selection?.kind !== "project-method" ||
+      (selection.accessMode !== "write" && selection.accessMode !== "read-write") ||
+      !selection.callableType.raises) continue;
+    const errorType = selection.callableType.errorType ?? mojoNativeErrorType();
+    const current = dynamicMethodErrors.get(selection.declaration) ?? [];
+    if (!current.some((candidate) => mojoTargetTypeEquals(candidate, errorType))) {
+      current.push(errorType);
+    }
+    dynamicMethodErrors.set(selection.declaration, current);
+  }
+  for (const callNode of callNodes) {
+    const selection = callSelections.get(callNode);
+    if (selection?.kind !== "project" || selection.target.kind !== "method") continue;
+    const dynamicDispatchErrorType = closeMojoErrorType(Object.freeze(
+      dynamicMethodErrors.get(selection.target.declaration) ?? [],
+    ));
+    if (dynamicDispatchErrorType !== undefined) {
+      callSelections.set(callNode, Object.freeze({ ...selection, dynamicDispatchErrorType }));
+    }
   }
 
   const errorRegionIndexes = Object.freeze({
@@ -270,6 +295,22 @@ export function finalizeMojoProgramEffects(
     const declaration = callableDeclarationByExpression.get(expression);
     if (declaration !== undefined) sealCallableDeclaration(declaration, callableType);
   }
+  for (const sourceFile of sourceFiles) {
+    walkSourceTree(sourceFile, ast, (node): void => {
+      const initializer = Node_Initializer(ast, node);
+      if (initializer === undefined) return;
+      const dependency = resolveMojoCallableExpressionDependency(
+        initializer,
+        source,
+        callableExpressionSelections,
+        callableExpressionByDeclaration,
+      );
+      const callable = dependency === undefined
+        ? undefined
+        : callableExpressionSelections.get(dependency);
+      if (callable !== undefined) sealCallableDeclaration(node, callable.callableType);
+    });
+  }
   const finalizeCallableArgument = (
     argument: MojoAnalyzedCallArgument,
   ): MojoAnalyzedCallArgument => {
@@ -286,10 +327,7 @@ export function finalizeMojoProgramEffects(
     let conversion: MojoValueConversion | undefined;
     let incompatibilityReason: string | undefined;
     if (argument.conversion.kind === "js-callback-truthiness") {
-      conversion = Object.freeze({
-        ...argument.conversion,
-        widenRaises: !callable.callableType.raises,
-      });
+      conversion = argument.conversion;
     } else {
       const classified = classifyMojoValueConversion(
         callable.callableType,
@@ -356,7 +394,6 @@ export function finalizeMojoProgramEffects(
       ? Object.freeze({
           ...argument.conversion,
           targetType,
-          widenRaises: !argument.sourceType.raises,
         })
       : classified?.kind === "resolved"
         ? classified.conversion
@@ -378,13 +415,19 @@ export function finalizeMojoProgramEffects(
       entry === argument ? finalizedArgument : entry));
     const parameterTypes = Object.freeze(selection.operation.parameterTypes.map((type, index) =>
       index === parameterIndex ? targetType : type));
+    const operationErrorType = closeMojoErrorType([
+      ...(selection.propagatedCallbackBaseErrorType === undefined
+        ? []
+        : [selection.propagatedCallbackBaseErrorType]),
+      callbackErrorType,
+    ]);
     return Object.freeze({
       ...selection,
       operation: Object.freeze({
         ...selection.operation,
         parameterTypes,
-        raises: true,
-        errorType: callbackErrorType,
+        raises: operationErrorType !== undefined,
+        ...(operationErrorType === undefined ? {} : { errorType: operationErrorType }),
       }),
       arguments: finalizedArguments,
     });
@@ -393,7 +436,7 @@ export function finalizeMojoProgramEffects(
     const selection = callSelections.get(callNode);
     if (selection === undefined || selection.kind === "explicit-safety" ||
       selection.kind === "native-pointer" || selection.kind === "raw-pointer" ||
-      selection.kind === "typed-location") continue;
+      selection.kind === "typed-location" || selection.kind === "source-intrinsic") continue;
     const replacements = new Map<MojoAnalyzedCallArgument, MojoAnalyzedCallArgument>();
     const arguments_ = selection.arguments.map((argument) => {
       const finalized = finalizeCallableArgument(argument);
@@ -431,6 +474,18 @@ export function finalizeMojoProgramEffects(
       sealCallableDeclaration(reference.declaration, callable.callableType);
     }
   }
+  for (const callNode of callNodes) {
+    const selection = callSelections.get(callNode);
+    if (selection?.kind !== "project") continue;
+    const dependency = callDependencies.get(callNode);
+    const invocationErrorType = closeMojoErrorType([
+      ...(dependency === undefined ? [] : errorTypesByDeclaration.get(dependency) ?? []),
+      ...(selection.dynamicDispatchErrorType === undefined ? [] : [selection.dynamicDispatchErrorType]),
+    ]);
+    if (invocationErrorType !== undefined) {
+      callSelections.set(callNode, Object.freeze({ ...selection, invocationErrorType }));
+    }
+  }
   const evaluationErrorTypeCache = new WeakMap<Node, readonly MojoTargetTypeRef[]>();
   for (const sourceFile of sourceFiles) {
     walkSourceTree(sourceFile, ast, (node): void => {
@@ -451,7 +506,7 @@ export function finalizeMojoProgramEffects(
         errorRegionIndexes,
         errorTypesByDeclaration,
       )));
-    moduleRegionFacts.set(module, Object.freeze({
+    moduleRegionFacts.set(module.sourceFile, Object.freeze({
       dependencies: new Set<Node>(),
       directErrorTypes,
     }));

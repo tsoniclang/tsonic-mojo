@@ -3,18 +3,20 @@ import type { MojoExpression } from "../../target-ast/index.js";
 import {
   appendMojoPlanningDiagnostic,
   mojoBindingPlanOverride,
-  mojoQualifiedModuleMember,
-  registerMojoModuleImport,
+  mojoModuleMemberExpression,
+  mojoSelfExpression,
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
-import { isJsString } from "./support.js";
+import { isJsString } from "./js-carriers.js";
 import { mojoModuleBindingRead } from "../bindings/module-bindings.js";
-import { registerMojoTypeImports } from "../types/render.js";
-import type { MojoValueRefinementSelection } from "../../../analysis/program/model.js";
+import { registerMojoTypeImports } from "../types/imports.js";
+import type { MojoNarrowingView } from "../../../analysis/representations/model.js";
+import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 
 export function planMojoLeafExpression(
   node: Node,
   context: MojoPlanningContext,
+  numericTargetType?: MojoTargetTypeRef,
 ): MojoExpression | undefined {
   const { ast } = context.program.source;
   const actualType = context.program.queries.expressionType(node);
@@ -22,6 +24,8 @@ export function planMojoLeafExpression(
   if (actualType?.kind === "null" || actualType?.kind === "undefined") {
     registerMojoTypeImports(actualType, context);
     planned = { kind: "construct", type: actualType, arguments: Object.freeze([]) };
+  } else if (ast.kindName(node) === "KindThisKeyword" && context.selfType !== undefined) {
+    planned = mojoSelfExpression(context);
   } else if (ast.is.IsIdentifier(node) || ast.kindName(node) === "KindThisKeyword") {
     const override = mojoBindingPlanOverride(node, context);
     if (override !== undefined) {
@@ -69,23 +73,45 @@ export function planMojoLeafExpression(
           const ownerModule = context.program.modules.forSourceFile(
             context.program.queries.bindingSourceFile(node),
           );
-          planned = {
-            kind: "path",
-            path: ownerModule === undefined
-              ? name
-              : mojoQualifiedModuleMember(context, ownerModule.modulePath, name),
-          };
+          planned = ownerModule === undefined
+            ? { kind: "path", path: name }
+            : mojoModuleMemberExpression(context, ownerModule.modulePath, name);
         }
       }
     }
   } else if (ast.is.IsStringLiteral(node) || ast.is.IsNoSubstitutionTemplateLiteral(node)) {
     planned = { kind: "string-literal", value: ast.text(node) };
+  } else if (ast.is.IsRegularExpressionLiteral(node)) {
+    const literal = ast.regularExpressionLiteral(node);
+    if (literal === undefined || actualType?.kind !== "target-named" ||
+      actualType.id !== "tsonic.mojo.js.JsRegExp") {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_REGEXP_LITERAL_NOT_SEALED",
+        "A regular-expression literal requires exact syntax and one sealed JavaScript RegExp carrier.",
+        node,
+      );
+      return undefined;
+    }
+    planned = Object.freeze({
+      kind: "call",
+      callee: mojoModuleMemberExpression(context, ["tsonic_js"], "regexp_construct"),
+      arguments: Object.freeze([
+        Object.freeze({
+          value: Object.freeze({ kind: "string-literal", value: literal.pattern }),
+        }),
+        Object.freeze({
+          value: Object.freeze({ kind: "string-literal", value: literal.flags }),
+        }),
+      ]),
+    });
   } else if (ast.is.IsNumericLiteral(node)) {
     const literal = Object.freeze({ kind: "number-literal" as const, text: ast.text(node) });
-    planned = actualType?.kind === "source-primitive"
+    const targetType = numericTargetType ?? actualType;
+    planned = targetType?.kind === "source-primitive"
       ? Object.freeze({
           kind: "construct",
-          type: actualType,
+          type: targetType,
           arguments: Object.freeze([Object.freeze({ value: literal })]),
         })
       : literal;
@@ -106,28 +132,55 @@ export function planMojoLeafExpression(
   } else {
     appendMojoPlanningDiagnostic(
       context,
-      "MOJO_EXPRESSION_PLAN_UNSUPPORTED",
-      `Expression kind '${ast.kindName(node)}' reached planning without a Mojo form.`,
+      "MOJO_SEALED_EXPRESSION_PLAN_MISSING",
+      `Expression kind '${ast.kindName(node)}' reached planning without its sealed Mojo form.`,
       node,
     );
     return undefined;
   }
   if ((ast.is.IsStringLiteral(node) || ast.is.IsNoSubstitutionTemplateLiteral(node)) &&
     actualType !== undefined && isJsString(actualType)) {
-    registerMojoModuleImport(context, ["tsonic_js"]);
+    registerMojoTypeImports(actualType, context);
     planned = { kind: "construct", type: actualType, arguments: Object.freeze([{ value: planned }]) };
   }
-  return applyValueRefinement(planned, context.program.queries.valueRefinement(node), context);
+  return applyValueRefinement(planned, context.program.representations.narrowing(node), context);
 }
 
 export function applyValueRefinement(
   expression: MojoExpression,
-  refinement: MojoValueRefinementSelection | undefined,
+  refinement: MojoNarrowingView | undefined,
   context: MojoPlanningContext,
-): MojoExpression {
+): MojoExpression | undefined {
   if (refinement === undefined) return expression;
-  registerMojoTypeImports(refinement.sourceType, context);
-  registerMojoTypeImports(refinement.resultType, context);
+  const sourceCarrier = context.program.representations.carrier(refinement.carrier);
+  if (sourceCarrier !== undefined) registerMojoTypeImports(sourceCarrier.type, context);
+  if (refinement.kind === "union-member") registerMojoTypeImports(refinement.member.type, context);
+  if (refinement.kind === "project-downcast") {
+    const route = context.program.projectDispatch.downcastFor(
+      refinement.dispatchType,
+      refinement.target.type,
+    );
+    if (route === undefined) return undefined;
+    const source = sourceCarrier?.type.kind === "optional"
+      ? Object.freeze({
+          kind: "method-call" as const,
+          receiver: expression,
+          name: "value",
+          arguments: Object.freeze([]),
+        })
+      : expression;
+    return Object.freeze({
+      kind: "method-call",
+      receiver: Object.freeze({
+        kind: "method-call",
+        receiver: source,
+        name: route.name,
+        arguments: Object.freeze([]),
+      }),
+      name: "value",
+      arguments: Object.freeze([]),
+    });
+  }
   return refinement.kind === "optional-present"
     ? Object.freeze({
         kind: "method-call",
@@ -136,42 +189,6 @@ export function applyValueRefinement(
         arguments: Object.freeze([]),
       })
     : refinement.kind === "union-member"
-      ? Object.freeze({ kind: "type-element", receiver: expression, type: refinement.resultType })
-      : planUnionSubsetRefinement(expression, refinement, context);
-}
-
-function planUnionSubsetRefinement(
-  expression: MojoExpression,
-  refinement: Extract<MojoValueRefinementSelection, { readonly kind: "union-subset" }>,
-  context: MojoPlanningContext,
-): MojoExpression {
-  let result: MojoExpression | undefined;
-  for (let index = refinement.resultType.members.length - 1; index >= 0; index -= 1) {
-    const member = refinement.resultType.members[index]!;
-    registerMojoTypeImports(member, context);
-    const projected: MojoExpression = Object.freeze({
-      kind: "construct",
-      type: refinement.resultType,
-      arguments: Object.freeze([{ value: Object.freeze({
-        kind: "type-element",
-        receiver: expression,
-        type: member,
-      }) }]),
-    });
-    result = result === undefined
-      ? projected
-      : Object.freeze({
-          kind: "conditional",
-          condition: Object.freeze({
-            kind: "method-call",
-            receiver: expression,
-            name: "isa",
-            genericArguments: Object.freeze([{ kind: "type" as const, type: member }]),
-            arguments: Object.freeze([]),
-          }),
-          whenTrue: projected,
-          whenFalse: result,
-        });
-  }
-  return result!;
+      ? Object.freeze({ kind: "proven-union-member", receiver: expression, type: refinement.member.type })
+      : expression;
 }

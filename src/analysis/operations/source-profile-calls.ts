@@ -1,7 +1,7 @@
 import type { Node, ResolvedSourceCallInfo, Type } from "@tsonic/tsts";
 import type { MojoTargetGenericArgument, MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
-import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
+import { classifyMojoRefinedValueConversion } from "../refinements/value.js";
 import { selectMojoSourceProfileCallRow } from "../../policy/operations/source-profile-selection.js";
 import type {
   MojoSourceProfileCallRow,
@@ -20,19 +20,44 @@ import {
   restCallableElementType,
 } from "./call-arguments.js";
 import { selectMojoSourceProfileCallback } from "./source-profile-callbacks.js";
+import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
+import {
+  mojoNativeErrorType,
+} from "../../target-model/types/error-domains.js";
+import { mojoRegExpNativeResultType } from "../../policy/types/js-regexp.js";
+import { analyzeSourceProfileRegExpProtocolCall } from "./source-profile-regexp-protocols.js";
+import {
+  analyzeMojoJsonStringify,
+  analyzeMojoObjectAssign,
+} from "./source-profile-special-calls.js";
 
 export function analyzeSourceProfileCall(
   sourceCall: ResolvedSourceCallInfo,
   resolve: (type: Type, authoredTypeNode?: Node) => MojoTargetTypeRef | undefined,
   context: MojoCallAnalysisContext,
 ): MojoCallAnalysis | undefined {
+  const protocol = analyzeSourceProfileRegExpProtocolCall(
+    sourceCall,
+    resolve,
+    context,
+  );
+  if (protocol !== undefined) return protocol;
+  const sourceArgumentTypes = sourceCall.sourceArguments.map((argument) =>
+    context.expressionTypes.get(argument.expression) ?? resolve(argument.type));
   const selected = selectMojoSourceProfileCallRow(
     context.source,
     sourceCall,
     context.sourceProfiles,
+    sourceArgumentTypes,
   );
   if (selected.kind === "not-source-profile") return undefined;
   if (selected.kind === "unsupported") return selected;
+  if ("specialOperation" in selected.row) {
+    if (selected.row.specialOperation === "object-assign") {
+      return analyzeMojoObjectAssign(sourceCall, resolve, context);
+    }
+    return analyzeMojoJsonStringify(sourceCall, resolve, context);
+  }
   if (sourceCall.sourceSelectedSignatureKind !== "resolved") {
     return {
       kind: "unsupported",
@@ -46,6 +71,7 @@ export function analyzeSourceProfileCall(
     readonly position: "positional-or-keyword";
     readonly variadic: boolean;
     readonly passing: "plain";
+    readonly callableConsumption?: "immediate";
   }[] = [];
   const parameterContract = selected.row.parameterContract;
   const parameterContractMode = selected.row.parameterContractMode ?? "exact";
@@ -127,17 +153,27 @@ export function analyzeSourceProfileCall(
       variadic: parameter.rest,
       ...(variadicCollectionType === undefined ? {} : { variadicCollectionType }),
       passing: "plain",
+      ...(callback?.parameterIndex === parameterIndex
+        ? { callableConsumption: "immediate" as const }
+        : {}),
     }));
   }
   const arguments_ = analyzeArguments(
+    context.source.ast,
     sourceCall,
     parameterTypes,
     targetArguments,
     resolve,
     context.expressionTypes,
+    context.valueRefinements,
+    context.lifecycle,
+    context.valueOwnership,
     callback?.conversion === undefined
       ? undefined
       : new Map([[callback.parameterIndex, callback.conversion]]),
+    undefined,
+    context.projectRelationships,
+    context.contextualizeCallableArgument,
   );
   if (arguments_.kind === "unsupported") return arguments_;
   const genericArguments: MojoTargetGenericArgument[] = [];
@@ -189,7 +225,14 @@ export function analyzeSourceProfileCall(
       };
     }
     receiver = sourceReceiver.expression;
-    const conversion = classifyMojoValueConversion(sourceReceiverType, sourceReceiverType);
+    const conversion = classifyMojoRefinedValueConversion(
+      sourceReceiverType,
+      sourceReceiverType,
+      sourceCall.sourceReceiver === undefined
+        ? undefined
+        : context.valueRefinements.get(sourceCall.sourceReceiver.expression),
+      context.projectRelationships,
+    );
     if (conversion.kind === "unsupported") return {
       kind: "unsupported",
       code: "MOJO_SOURCE_PROFILE_RECEIVER_CONVERSION_UNPROVEN",
@@ -205,6 +248,8 @@ export function analyzeSourceProfileCall(
     context,
   );
   if (result.kind === "unsupported") return result;
+  const baseErrorType = selected.row.raises === true ? mojoNativeErrorType() : undefined;
+  const operationErrorType = baseErrorType;
   return {
     kind: "resolved",
     selection: Object.freeze({
@@ -216,15 +261,17 @@ export function analyzeSourceProfileCall(
         resultType: result.type,
         genericArguments: Object.freeze(genericArguments),
         genericParameters: Object.freeze([]),
-        raises: selected.row.raises === true,
-        ...(selected.row.raises !== true || callback?.type.errorType === undefined
-          ? {}
-          : { errorType: callback.type.errorType }),
+        raises: operationErrorType !== undefined,
+        ...(operationErrorType === undefined ? {} : { errorType: operationErrorType }),
       }),
       arguments: arguments_.arguments,
       ...(callback === undefined || selected.row.callback?.errorMode !== "propagate"
         ? {}
         : { propagatedCallbackParameterIndex: callback.parameterIndex }),
+      ...(callback === undefined || selected.row.callback?.errorMode !== "propagate" ||
+          baseErrorType === undefined
+        ? {}
+        : { propagatedCallbackBaseErrorType: baseErrorType }),
       ...(receiver === undefined ? {} : { receiver }),
       ...(sourceReceiverType === undefined ? {} : { sourceReceiverType }),
       ...(receiverConversion === undefined ? {} : { receiverConversion }),
@@ -333,6 +380,55 @@ function closeSourceProfileResult(
       reason: "The selected source-profile call result has no exact Mojo carrier.",
     };
   }
+  if (row.runtimeResultContract?.kind === "native-error-result") {
+    const runtimeType = mojoRegExpNativeResultType(selectedResult);
+    return Object.freeze({
+      kind: "resolved",
+      type: runtimeType,
+      conversion: Object.freeze({
+        kind: "native-error-result-unwrap" as const,
+        sourceType: runtimeType,
+        targetType: selectedResult,
+      }),
+    });
+  }
+  if (row.runtimeResultContract?.kind === "optional-source-union") {
+    const absence = row.runtimeResultContract.absence;
+    if (selectedResult.kind !== "union") {
+      return {
+        kind: "unsupported",
+        code: "MOJO_SOURCE_PROFILE_RUNTIME_RESULT_CONTRACT_INVALID",
+        reason: "An optional source-profile runtime result requires one exact source union.",
+      };
+    }
+    const absent = selectedResult.members.filter((member) =>
+      member.kind === absence);
+    const present = selectedResult.members.filter((member) =>
+      member.kind !== absence);
+    if (absent.length !== 1 || present.length !== 1) {
+      return {
+        kind: "unsupported",
+        code: "MOJO_SOURCE_PROFILE_RUNTIME_RESULT_CONTRACT_INVALID",
+        reason: `The selected source-profile result is not one value plus ${absence}.`,
+      };
+    }
+    const runtimeType = Object.freeze({
+      kind: "optional" as const,
+      value: present[0]!,
+    });
+    const conversion = classifyMojoValueConversion(runtimeType, selectedResult);
+    return conversion.kind === "unsupported"
+      ? {
+          kind: "unsupported",
+          code: "MOJO_SOURCE_PROFILE_RUNTIME_RESULT_CONVERSION_UNPROVEN",
+          reason: conversion.reason,
+        }
+      : Object.freeze({
+          kind: "resolved",
+          type: runtimeType,
+          conversion: conversion.conversion,
+        });
+  }
   if (row.resultContract?.kind === "constructed-explicit-arguments") {
     const explicitNodes = context.source.ast.typeArguments(sourceCall.call)
       .filter((node): node is Node => node !== undefined);
@@ -380,6 +476,7 @@ function closeSourceProfileResult(
     selectedResult,
     sourceCall.sourceResultType,
     resolve,
+    context.projectRelationships,
   );
   return conversion.kind === "unsupported"
     ? conversion

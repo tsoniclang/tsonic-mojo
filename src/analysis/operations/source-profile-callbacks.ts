@@ -112,6 +112,7 @@ function callbackTruthinessConversion(
   const result = sourceType.result;
   let source: Extract<MojoValueConversion, { readonly kind: "js-callback-truthiness" }>["source"];
   if (result.kind === "source-primitive" && result.name === "float64") source = "number";
+  else if (result.kind === "native-string") source = "native-string";
   else if (result.kind === "target-named" && result.id === "tsonic.mojo.js.JsString") source = "string";
   else if (result.kind === "dynamic" && result.domain === "js") source = "dynamic";
   else if (result.kind === "null" || result.kind === "undefined" || result.kind === "unit") source = "always-false";
@@ -123,6 +124,5 @@ function callbackTruthinessConversion(
     kind: "js-callback-truthiness",
     targetType,
     source,
-    widenRaises: !sourceType.raises,
   });
 }

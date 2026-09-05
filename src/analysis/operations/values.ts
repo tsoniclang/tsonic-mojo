@@ -2,15 +2,22 @@ import type { Node } from "@tsonic/tsts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
-import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 import type { MojoValueSelection } from "../program/model.js";
 import { providerOwnerMatches } from "../../policy/types/resolution.js";
 import { instantiateMojoProviderConstantOperation } from "../../policy/operations/provider-instantiation.js";
 import { selectedProviderDeclarationIdentity } from "../../policy/operations/provider-selection.js";
+import {
+  classifyMojoSourceResultConversion,
+  mojoConvertedValueType,
+} from "./call-results.js";
 
 export type MojoValueAnalysis =
   | { readonly kind: "not-provider" }
-  | { readonly kind: "resolved"; readonly selection: MojoValueSelection }
+  | {
+      readonly kind: "resolved";
+      readonly selection: MojoValueSelection;
+      readonly expressionType: MojoTargetTypeRef;
+    }
   | { readonly kind: "unsupported"; readonly code: string; readonly reason: string };
 
 export function analyzeMojoProviderValue(
@@ -32,6 +39,17 @@ export function analyzeMojoProviderValue(
       reason: "Selected provider value has no exact module-export identity.",
     };
   }
+  const exportedValues = providerSemantics.exports.filter((row) =>
+    providerOwnerMatches(row, identity) && row.exportId === identity.exportId &&
+    row.declarationKind === "value");
+  if (exportedValues.length === 0) return { kind: "not-provider" };
+  if (exportedValues.length !== 1) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_PROVIDER_VALUE_IDENTITY_AMBIGUOUS",
+      reason: `Selected provider value has ${exportedValues.length} exact module-export identities.`,
+    };
+  }
   const rows = providerSemantics.operations.filter((row) =>
     providerOwnerMatches(row, identity) && row.exportId === identity.exportId &&
     row.memberId === undefined && row.signatureId === undefined && row.operationKind === "property" &&
@@ -47,11 +65,18 @@ export function analyzeMojoProviderValue(
   if (instantiated.kind === "unsupported") {
     return { kind: "unsupported", code: "MOJO_PROVIDER_VALUE_NOT_CLOSED", reason: instantiated.reason };
   }
-  const conversion = classifyMojoValueConversion(instantiated.operation.resultType, selectedType);
+  const conversion = classifyMojoSourceResultConversion(
+    instantiated.operation.resultType,
+    selectedType,
+  );
   return conversion.kind === "unsupported"
     ? { kind: "unsupported", code: "MOJO_PROVIDER_VALUE_CONVERSION_UNPROVEN", reason: conversion.reason }
     : {
         kind: "resolved",
+        expressionType: mojoConvertedValueType(
+          instantiated.operation.resultType,
+          conversion.conversion,
+        ),
         selection: Object.freeze({
           kind: "provider-constant",
           operation: instantiated.operation,

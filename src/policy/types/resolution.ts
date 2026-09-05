@@ -1,21 +1,17 @@
 import {
-  pointerFactKey,
   providerVirtualDeclarationFactKey,
-  rawPointerFactKey,
-  sourcePrimitiveFactKey,
 } from "@tsonic/tsts";
 import type { AstReader, Node, Type } from "@tsonic/tsts";
-import { tsonicFixedArrayFactKey } from "@tsonic/source-core/facts";
 import type { SourceFileSemantics } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import type {
+  MojoTargetGenericArgument,
   MojoTargetTypeRef,
 } from "../../target-model/types/model.js";
 import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
 import type { MojoSourceProfileRegistry } from "./source-profile.js";
 import { mojoParameterAbi } from "../callables/parameter-abi.js";
 import { argumentPassingFactKey } from "@tsonic/tsts";
-import { resolveMojoSourcePrimitive } from "./source-primitives.js";
 import { instantiateMojoProviderType } from "./provider-instantiation.js";
 import {
   authoredTupleElements,
@@ -24,22 +20,25 @@ import {
   namedType,
   providerOwnerMatches,
   resolveSourceProfileTypeArguments,
-  resolveTypeParameter,
   resolveUnion,
   typeSubjects,
-  uniqueFact,
-  uniqueFixedArrayFact,
   uniqueProviderIdentity,
 } from "./resolution-helpers.js";
 import {
   mojoNativeErrorType,
   mojoSourceErrorType,
 } from "../../target-model/types/error-domains.js";
+import { resolveMojoRetainedType } from "./resolution-facts.js";
+import { resolveMojoNonTypeGenericArguments } from "./generic-arguments.js";
+import { implicitHeapLifecycle, nativeSetLifecycle } from "./lifecycle-contracts.js";
+import { resolveMojoJsRegExpSourceProfileType } from "./js-regexp.js";
+import { resolveMojoGenericParameterType } from "./generic-parameter-resolution.js";
 
 export { providerOwnerMatches } from "./resolution-helpers.js";
 
 export interface MojoTypeResolutionContext {
   readonly ast: AstReader;
+  readonly navigation: import("@tsonic/target-api/source").TargetSourceProgram["navigation"];
   readonly semantics: SourceFileSemantics;
   readonly sourceFacts: import("@tsonic/tsts").ReadonlySourceFactResolver;
   readonly providerSemantics: MojoProviderSemantics;
@@ -73,88 +72,19 @@ function resolveMojoTargetTypeWithState(
   if (resolving.has(selectedType)) {
     return { kind: "unsupported", reason: "the selected TypeScript type is recursively self-referential" };
   }
+  const retained = resolveMojoRetainedType(
+    selectedType,
+    authoredTypeNode,
+    context,
+    (nestedType, nestedTypeNode) => resolveMojoTargetTypeWithState(
+      nestedType,
+      nestedTypeNode,
+      context,
+      resolving,
+    ),
+  );
+  if (retained !== undefined) return retained;
   const subjects = typeSubjects(selectedType, authoredTypeNode, context);
-  const rawPointer = uniqueFact(
-    subjects.map((subject) => context.sourceFacts.getFact(subject, rawPointerFactKey)),
-  );
-  if (rawPointer.kind === "conflict") {
-    return { kind: "unsupported", reason: "selected raw-pointer facts conflict" };
-  }
-  if (rawPointer.value !== undefined) {
-    return rawPointer.value.representation === "opaque-identity"
-      ? {
-          kind: "resolved",
-          type: Object.freeze({
-            kind: "target-named",
-            id: "tsonic.mojo.runtime.RawPointer",
-            modulePath: Object.freeze(["tsonic_runtime"]),
-            name: "RawPointer",
-          }),
-        }
-      : { kind: "unsupported", reason: "selected raw-pointer representation is not opaque identity" };
-  }
-  const pointer = uniqueFact(
-    subjects.map((subject) => context.sourceFacts.getFact(subject, pointerFactKey)),
-  );
-  if (pointer.kind === "conflict") {
-    return { kind: "unsupported", reason: "selected typed-location facts conflict" };
-  }
-  if (pointer.value !== undefined) {
-    const selectedPointee = context.semantics.types.authoredType(pointer.value.pointee);
-    const pointee = resolveMojoTargetTypeWithState(
-      selectedPointee,
-      pointer.value.pointee,
-      context,
-      resolving,
-    );
-    return pointee.kind === "unsupported"
-      ? pointee
-      : {
-          kind: "resolved",
-          type: Object.freeze({
-            kind: "target-named",
-            id: "tsonic.mojo.runtime.Location",
-            modulePath: Object.freeze(["tsonic_runtime"]),
-            name: "Location",
-            genericArguments: Object.freeze([Object.freeze({ kind: "type", type: pointee.type })]),
-          }),
-        };
-  }
-  const primitive = uniqueFact(
-    subjects.map((subject) => context.sourceFacts.getFact(subject, sourcePrimitiveFactKey)),
-  );
-  if (primitive.kind === "conflict") {
-    return { kind: "unsupported", reason: "selected source primitive facts conflict" };
-  }
-  if (primitive.value !== undefined) return resolveMojoSourcePrimitive(primitive.value);
-
-  const fixedArray = uniqueFixedArrayFact(subjects.map((subject) =>
-    context.sourceFacts.getFact(subject, tsonicFixedArrayFactKey)));
-  if (fixedArray.kind === "conflict") {
-    return { kind: "unsupported", reason: "selected fixed-array facts conflict" };
-  }
-  if (fixedArray.value !== undefined) {
-    const elementType = context.semantics.types.authoredType(fixedArray.value.elementType);
-    const element = resolveMojoTargetTypeWithState(
-      elementType,
-      fixedArray.value.elementType,
-      context,
-      resolving,
-    );
-    return element.kind === "unsupported"
-      ? element
-      : {
-          kind: "resolved",
-          type: Object.freeze({
-            kind: "fixed-array",
-            element: element.type,
-            length: Object.freeze({
-              kind: "integer",
-              value: String(fixedArray.value.length),
-            }),
-          }),
-        };
-  }
 
   const substitutionBase = context.semantics.types.substitutionBaseType(selectedType);
   if (substitutionBase !== undefined) {
@@ -218,12 +148,7 @@ function resolveMojoTargetTypeWithState(
       return { kind: "resolved", type: { kind: "source-primitive", name: "float64" } };
     }
     if (sourceProfile?.name === "String") {
-      return context.jsEnabled
-        ? {
-            kind: "resolved",
-            type: namedType("tsonic.mojo.js.JsString", ["tsonic_js"], "JsString"),
-          }
-        : { kind: "resolved", type: { kind: "native-string" } };
+      return { kind: "resolved", type: { kind: "native-string" } };
     }
     if (sourceProfile?.name === "Error") {
       return { kind: "resolved", type: mojoSourceErrorType() };
@@ -273,6 +198,7 @@ function resolveMojoTargetTypeWithState(
               ["tsonic_js"],
               "JsMap",
               arguments_.types,
+              implicitHeapLifecycle,
             ),
           }
         : {
@@ -301,6 +227,7 @@ function resolveMojoTargetTypeWithState(
               ["tsonic_js"],
               "JsSet",
               arguments_.types,
+              implicitHeapLifecycle,
             ),
           }
         : {
@@ -310,6 +237,7 @@ function resolveMojoTargetTypeWithState(
               ["std", "collections"],
               "Set",
               arguments_.types,
+              nativeSetLifecycle,
             ),
           };
     }
@@ -330,6 +258,7 @@ function resolveMojoTargetTypeWithState(
               ["tsonic_js"],
               "JsArray",
               [arguments_.types[0]!],
+              implicitHeapLifecycle,
             ),
           }
         : { kind: "resolved", type: { kind: "list", element: arguments_.types[0]! } };
@@ -343,26 +272,121 @@ function resolveMojoTargetTypeWithState(
       return sourceProfile.profile === "js"
         ? {
             kind: "resolved",
-            type: namedType("tsonic.mojo.js.JsDate", ["tsonic_js"], "JsDate"),
+            type: namedType(
+              "tsonic.mojo.js.JsDate",
+              ["tsonic_js"],
+              "JsDate",
+              [],
+              implicitHeapLifecycle,
+            ),
           }
         : {
             kind: "unsupported",
             reason: "Date values require the explicit JavaScript source profile",
           };
     }
-    if (sourceProfile?.name === "RegExp") {
-      return {
-        kind: "unsupported",
-        reason: sourceProfile.profile === "js"
-          ? "the pinned Mojo runtime has no exact ECMAScript RegExp engine"
-          : "RegExp values require the explicit JavaScript source profile",
-      };
+    if (sourceProfile !== undefined) {
+      if (sourceProfile.profile !== "js" && sourceProfile.name.startsWith("RegExp")) {
+        return {
+          kind: "unsupported",
+          reason: "RegExp values require the explicit JavaScript source profile",
+        };
+      }
+      const sourceArguments = types.effectiveTypeArguments(selectedType) ??
+        types.typeArguments(selectedType);
+      const targetArguments: MojoTargetTypeRef[] = [];
+      for (const sourceArgument of sourceArguments) {
+        const argument = resolveMojoTargetTypeWithState(
+          sourceArgument,
+          undefined,
+          context,
+          resolving,
+        );
+        if (argument.kind === "unsupported") return argument;
+        targetArguments.push(argument.type);
+      }
+      const regexp = resolveMojoJsRegExpSourceProfileType(
+        sourceProfile.name,
+        targetArguments,
+      );
+      if (regexp !== undefined) return regexp;
     }
-    const typeParameter = resolveTypeParameter(symbol, context);
-    if (typeParameter !== undefined) return { kind: "resolved", type: typeParameter };
+    const genericParameter = resolveMojoGenericParameterType(
+      selectedType,
+      symbol,
+      context,
+      resolving,
+      (nestedType, nestedTypeNode, nestedResolving) => resolveMojoTargetTypeWithState(
+        nestedType,
+        nestedTypeNode,
+        context,
+        nestedResolving,
+      ),
+    );
+    if (genericParameter !== undefined) return genericParameter;
 
     const sourceArguments = types.effectiveTypeArguments(selectedType) ?? types.typeArguments(selectedType);
     const authoredArguments = authoredTypeArguments(authoredTypeNode, context.ast);
+    const projectDefinition = context.projectTypes.definitionForSymbol(
+      symbol,
+      context.semantics.declarations.symbolDeclarations,
+    );
+    if (projectDefinition !== undefined) {
+      if (sourceArguments.length !== projectDefinition.typeParameters.length) {
+        return {
+          kind: "unsupported",
+          reason: `project type '${projectDefinition.sourceName}' has ${sourceArguments.length} source arguments for ${projectDefinition.typeParameters.length} parameters`,
+        };
+      }
+      const targetArguments: MojoTargetGenericArgument[] = [];
+      for (const [index, parameter] of projectDefinition.typeParameters.entries()) {
+        const sourceArgument = sourceArguments[index]!;
+        const authoredArgument = authoredArguments.length === sourceArguments.length
+          ? authoredArguments[index]
+          : undefined;
+        if (parameter.kind === "type") {
+          const argument = resolveMojoTargetTypeWithState(
+            sourceArgument,
+            authoredArgument,
+            context,
+            resolving,
+          );
+          if (argument.kind === "unsupported") return argument;
+          targetArguments.push(Object.freeze({ kind: "type", type: argument.type }));
+          continue;
+        }
+        if (authoredArgument === undefined) {
+          return {
+            kind: "unsupported",
+            reason: `project ${parameter.kind} parameter '${parameter.name}' has no exact authored argument`,
+          };
+        }
+        const argument = resolveMojoNonTypeGenericArguments({
+          kind: parameter.kind,
+          name: parameter.name,
+          position: "positional-or-keyword",
+          variadic: false,
+          constraints: Object.freeze([]),
+        }, authoredArgument, context);
+        const targetArgument = argument?.length === 1 ? argument[0] : undefined;
+        if (targetArgument === undefined ||
+          !genericArgumentMatchesKind(targetArgument, parameter.kind)) {
+          return {
+            kind: "unsupported",
+            reason: `project ${parameter.kind} parameter '${parameter.name}' has no exact closed target argument`,
+          };
+        }
+        targetArguments.push(targetArgument);
+      }
+      const projectType = context.projectTypes.targetTypeForDefinition(projectDefinition, targetArguments);
+      return projectType === undefined
+        ? {
+            kind: "unsupported",
+            reason: `project type '${projectDefinition.sourceName}' has incompatible target generic arguments`,
+          }
+        : { kind: "resolved", type: projectType };
+    }
+
     const targetArguments: MojoTargetTypeRef[] = [];
     for (const [index, sourceArgument] of sourceArguments.entries()) {
       const argument = resolveMojoTargetTypeWithState(
@@ -373,19 +397,6 @@ function resolveMojoTargetTypeWithState(
       );
       if (argument.kind === "unsupported") return argument;
       targetArguments.push(argument.type);
-    }
-    const projectDefinition = context.projectTypes.definitionForSymbol(
-      symbol,
-      context.semantics.declarations.symbolDeclarations,
-    );
-    if (projectDefinition !== undefined) {
-      const projectType = context.projectTypes.targetTypeForDefinition(projectDefinition, targetArguments);
-      return projectType === undefined
-        ? {
-            kind: "unsupported",
-            reason: `project type '${projectDefinition.sourceName}' has ${targetArguments.length} target arguments for ${projectDefinition.typeParameterNames.length} parameters`,
-          }
-        : { kind: "resolved", type: projectType };
     }
 
     const callable = types.callable(selectedType);
@@ -439,8 +450,14 @@ function resolveMojoTargetTypeWithState(
     if (types.isUnion(selectedType)) {
       return resolveUnion(
         selectedType,
+        authoredTypeNode,
         context,
-        (member) => resolveMojoTargetTypeWithState(member, undefined, context, resolving),
+        (member, authoredMember) => resolveMojoTargetTypeWithState(
+          member,
+          authoredMember,
+          context,
+          resolving,
+        ),
       );
     }
     if (types.isTuple(selectedType)) {
@@ -482,12 +499,7 @@ function resolveMojoTargetTypeWithState(
       return { kind: "resolved", type: { kind: "source-primitive", name: "bool" } };
     }
     if (types.isStringLike(selectedType)) {
-      return context.jsEnabled
-        ? {
-            kind: "resolved",
-            type: namedType("tsonic.mojo.js.JsString", ["tsonic_js"], "JsString"),
-          }
-        : { kind: "resolved", type: { kind: "native-string" } };
+      return { kind: "resolved", type: { kind: "native-string" } };
     }
     if (types.isNumberLike(selectedType)) {
       return { kind: "resolved", type: { kind: "source-primitive", name: "float64" } };
@@ -508,6 +520,7 @@ function resolveMojoTargetTypeWithState(
               ["tsonic_js"],
               "JsArray",
               [targetArguments[0]!],
+              implicitHeapLifecycle,
             ),
           }
         : { kind: "resolved", type: { kind: "list", element: targetArguments[0]! } };
@@ -533,4 +546,13 @@ function resolveMojoTargetTypeWithState(
   } finally {
     resolving.delete(selectedType);
   }
+}
+
+function genericArgumentMatchesKind(
+  argument: MojoTargetGenericArgument,
+  kind: "type" | "value" | "origin",
+): boolean {
+  if (kind === "type") return argument.kind === "type";
+  if (kind === "origin") return argument.kind === "origin";
+  return argument.kind !== "type" && argument.kind !== "origin" && argument.kind !== "unbound";
 }

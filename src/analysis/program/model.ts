@@ -1,32 +1,24 @@
 import type { Node, SourceFile } from "@tsonic/tsts";
 import type { TargetCompileInput } from "@tsonic/target-api";
-import type {
-  TargetPlanningSourceNavigation,
-  TargetSourceSyntaxProgram,
-} from "@tsonic/target-api/analysis";
-import type {
-  MojoProviderBinaryEpilogue,
-  MojoProviderSemantics,
-} from "../../providers/packages/model.js";
+import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import type { MojoTargetConfiguration } from "../../target-model/configuration/model.js";
 import type {
+  MojoTargetGenericArgument,
   MojoTargetTypeRef,
 } from "../../target-model/types/model.js";
 import type {
-  MojoSelectedProviderOperation,
-} from "../../target-model/operations/selection.js";
-import type {
   MojoValueConversion,
 } from "../../target-model/conversions/model.js";
-import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
-import type { MojoSourceModuleCatalog } from "../source-modules/model.js";
-import type { MojoCallSelection } from "./call-model.js";
-import type {
-  MojoCallableExpressionSelection,
-  MojoTemplateExpressionSelection,
-  MojoBindingPatternSelection,
-  MojoObjectLiteralSelection,
-} from "./binding-and-object-model.js";
+export type { MojoValueRefinementSelection } from "../refinements/model.js";
+import type { MojoParameterDisposition } from "../representations/model.js";
+export type {
+  MojoArrayLiteralContribution,
+  MojoArrayLiteralFixedSpreadSelection,
+  MojoArrayLiteralFixedSpreadValue,
+  MojoArrayLiteralSelection,
+  MojoArrayLiteralSequenceSpreadSelection,
+  MojoArrayLiteralValueSelection,
+} from "../aggregates/model.js";
 export type {
   MojoCallableCapture,
   MojoRecursiveCallableBinding,
@@ -36,12 +28,15 @@ export type {
   MojoBindingValueProjection,
   MojoBindingProjection,
   MojoBindingNormalization,
+  MojoBindingProjectionPlan,
   MojoBindingPatternElementSelection,
   MojoBindingPatternSelection,
   MojoObjectLiteralContribution,
   MojoObjectLiteralSelection,
 } from "./binding-and-object-model.js";
 export type { MojoAnalyzedCallArgument, MojoCallSelection } from "./call-model.js";
+import type { MojoCallableParameterAdapter } from "./dispatch-model.js";
+import type { MojoAnalyzedModuleBinding } from "./module-model.js";
 
 export interface MojoTargetAnalysisRequest {
   readonly input: TargetCompileInput;
@@ -57,16 +52,21 @@ export interface MojoAnalyzedParameter {
   readonly type: MojoTargetTypeRef;
   readonly bodyType: MojoTargetTypeRef;
   readonly callType: MojoTargetTypeRef;
-  readonly convention: "imm" | "mut" | "var" | "ref" | "out";
-  readonly passing: "plain" | "consume";
+  readonly disposition: MojoParameterDisposition;
   readonly omissionKind: "required" | "undefined" | "initializer" | "rest";
   readonly initializer?: Node;
+  readonly bindingPatternNode?: Node;
 }
 
 export interface MojoAnalyzedTypeParameter {
   readonly declaration: Node;
+  readonly identity: string;
+  readonly kind: "type" | "value" | "origin";
   readonly name: string;
+  readonly position: "positional" | "positional-or-keyword" | "keyword" | "inferred";
+  readonly variadic: boolean;
   readonly constraints: readonly MojoTargetTypeRef[];
+  readonly defaultArgument?: import("../../target-model/types/model.js").MojoTargetGenericArgument;
 }
 
 export interface MojoAnalyzedClassOwner {
@@ -75,15 +75,22 @@ export interface MojoAnalyzedClassOwner {
   readonly type: MojoTargetTypeRef;
 }
 
-export interface MojoAnalyzedFunction {
-  readonly kind: "function" | "method" | "constructor" | "getter" | "setter";
+export type MojoAnalyzedCallableKind =
+  | "function"
+  | "method"
+  | "constructor"
+  | "getter"
+  | "setter";
+
+export interface MojoAnalyzedCallableSignature {
+  readonly kind: MojoAnalyzedCallableKind;
   readonly declaration: Node;
   readonly sourceFile: SourceFile;
   readonly name: string;
+  readonly implementationAdapterName?: string;
   readonly typeParameters: readonly MojoAnalyzedTypeParameter[];
   readonly parameters: readonly MojoAnalyzedParameter[];
   readonly resultType: MojoTargetTypeRef;
-  readonly body: Node;
   readonly asynchronous: boolean;
   readonly asyncDomain?: "native" | "js";
   readonly raises: boolean;
@@ -92,6 +99,39 @@ export interface MojoAnalyzedFunction {
   readonly owner?: MojoAnalyzedClassOwner;
 }
 
+export interface MojoAnalyzedFunction extends MojoAnalyzedCallableSignature {
+  readonly body: Node;
+}
+
+export interface MojoAnalyzedProjectCallable {
+  readonly contract: MojoAnalyzedCallableSignature;
+  readonly implementation?: MojoAnalyzedFunction;
+}
+
+export interface MojoCallableImplementationAdapter {
+  readonly kind:
+    | "top-level-function-overload"
+    | "instance-method-overload"
+    | "static-method-overload"
+    | "constructor-overload";
+  readonly contract: MojoAnalyzedCallableSignature;
+  readonly implementation: MojoAnalyzedFunction;
+  readonly owner?: MojoAnalyzedClass;
+  readonly sourceFile: SourceFile;
+  readonly name: string;
+  readonly targetGenericArguments: readonly MojoTargetGenericArgument[];
+  readonly targetParameters: readonly MojoAnalyzedParameter[];
+  readonly parameterAdapters: readonly MojoCallableParameterAdapter[];
+  readonly implementationResultType: MojoTargetTypeRef;
+  readonly resultConversion: MojoValueConversion;
+  readonly raises: boolean;
+  readonly errorType?: MojoTargetTypeRef;
+}
+
+export type MojoAnalyzedTopLevelFunction = MojoAnalyzedFunction & {
+  readonly kind: "function";
+};
+
 export interface MojoAnalyzedClassField {
   readonly kind: "instance-field";
   readonly declaration: Node;
@@ -99,7 +139,7 @@ export interface MojoAnalyzedClassField {
   readonly name: string;
   readonly type: MojoTargetTypeRef;
   readonly ownerType: MojoTargetTypeRef;
-  readonly ownerTypeParameters: readonly string[];
+  readonly ownerTypeParameters: readonly import("../../target-model/types/project.js").MojoProjectTypeParameterDefinition[];
   readonly initializer?: Node;
   readonly visibility: "public" | "private";
 }
@@ -111,8 +151,9 @@ export interface MojoAnalyzedInterfaceField {
   readonly name: string;
   readonly type: MojoTargetTypeRef;
   readonly ownerType: MojoTargetTypeRef;
-  readonly ownerTypeParameters: readonly string[];
+  readonly ownerTypeParameters: readonly import("../../target-model/types/project.js").MojoProjectTypeParameterDefinition[];
   readonly optional: boolean;
+  readonly readonly: boolean;
 }
 
 export interface MojoAnalyzedInterfaceIndexSignature {
@@ -122,8 +163,18 @@ export interface MojoAnalyzedInterfaceIndexSignature {
   readonly keyType: MojoTargetTypeRef;
   readonly valueType: MojoTargetTypeRef;
   readonly ownerType: MojoTargetTypeRef;
-  readonly ownerTypeParameters: readonly string[];
+  readonly ownerTypeParameters: readonly import("../../target-model/types/project.js").MojoProjectTypeParameterDefinition[];
   readonly readonly: boolean;
+}
+
+export interface MojoAnalyzedAccessorProperty {
+  readonly kind: "accessor-property";
+  readonly declarations: readonly Node[];
+  readonly sourceName: string;
+  readonly read?: MojoAnalyzedCallableSignature;
+  readonly write?: MojoAnalyzedCallableSignature;
+  readonly ownerType: MojoTargetTypeRef;
+  readonly ownerTypeParameters: readonly import("../../target-model/types/project.js").MojoProjectTypeParameterDefinition[];
 }
 
 export interface MojoAnalyzedStaticClassField {
@@ -142,15 +193,22 @@ export type MojoAnalyzedProjectField =
 
 export interface MojoAnalyzedClass {
   readonly kind: "class";
+  readonly definition: import("../../target-model/types/project.js").MojoProjectTypeDefinition;
   readonly declaration: Node;
   readonly sourceFile: SourceFile;
   readonly name: string;
   readonly stateName: string;
+  readonly constructorFactoryName: string;
   readonly typeParameters: readonly MojoAnalyzedTypeParameter[];
   readonly fields: readonly MojoAnalyzedClassField[];
   readonly methods: readonly MojoAnalyzedFunction[];
+  readonly accessors: readonly MojoAnalyzedFunction[];
+  readonly callableContracts: readonly MojoAnalyzedCallableSignature[];
+  readonly accessorProperties: readonly MojoAnalyzedAccessorProperty[];
   readonly constructors: readonly MojoAnalyzedFunction[];
+  readonly heritage: readonly import("../../target-model/types/project.js").MojoProjectHeritageEdge[];
   readonly targetType: MojoTargetTypeRef;
+  readonly polymorphic: boolean;
   readonly stateStorage: "direct" | "erased";
   readonly initializationErrorType?: MojoTargetTypeRef;
   readonly errorRole?: "typed";
@@ -158,17 +216,25 @@ export interface MojoAnalyzedClass {
 
 export interface MojoAnalyzedInterface {
   readonly kind: "interface";
+  readonly definition: import("../../target-model/types/project.js").MojoProjectTypeDefinition;
   readonly declaration: Node;
   readonly sourceFile: SourceFile;
   readonly name: string;
   readonly stateName: string;
+  readonly constructorFactoryName: string;
   readonly typeParameters: readonly MojoAnalyzedTypeParameter[];
   readonly fields: readonly MojoAnalyzedInterfaceField[];
   readonly indexSignatures: readonly MojoAnalyzedInterfaceIndexSignature[];
+  readonly methods: readonly MojoAnalyzedCallableSignature[];
+  readonly accessors: readonly MojoAnalyzedCallableSignature[];
+  readonly accessorProperties: readonly MojoAnalyzedAccessorProperty[];
+  readonly heritage: readonly import("../../target-model/types/project.js").MojoProjectHeritageEdge[];
   readonly targetType: MojoTargetTypeRef;
+  readonly polymorphic: boolean;
   readonly stateStorage: "direct" | "erased";
 }
 
+export type * from "./dispatch-model.js";
 export interface MojoAnalyzedEnumMember {
   readonly kind: "enum-member";
   readonly declaration: Node;
@@ -187,389 +253,32 @@ export interface MojoAnalyzedEnum {
   readonly members: readonly MojoAnalyzedEnumMember[];
 }
 
+export interface MojoAnalyzedTypeAlias {
+  readonly kind: "type-alias";
+  readonly id: string;
+  readonly declaration: Node;
+  readonly sourceFile: SourceFile;
+  readonly name: string;
+  readonly typeParameters: readonly MojoAnalyzedTypeParameter[];
+  readonly value: MojoTargetTypeRef;
+  readonly exported: boolean;
+}
+
 export type MojoAnalyzedProjectProperty =
   | MojoAnalyzedProjectField
   | MojoAnalyzedInterfaceField
   | MojoAnalyzedInterfaceIndexSignature
+  | MojoAnalyzedAccessorProperty
   | MojoAnalyzedEnumMember;
 
 export type MojoAnalyzedDeclaration =
-  | MojoAnalyzedFunction
+  | MojoAnalyzedTopLevelFunction
   | MojoAnalyzedClass
   | MojoAnalyzedInterface
-  | MojoAnalyzedEnum;
+  | MojoAnalyzedEnum
+  | MojoAnalyzedTypeAlias;
 
-export interface MojoAnalyzedModuleBinding {
-  readonly kind: "module-binding" | "class-static-field";
-  readonly declaration: Node;
-  readonly sourceFile: SourceFile;
-  readonly sourceName: string;
-  readonly name: string;
-  readonly declarationKind: "const" | "let" | "var" | "using" | "await using";
-  readonly storage: "comptime" | "cell";
-  readonly type: MojoTargetTypeRef;
-  readonly initializer: Node;
-}
-
-export type MojoModuleInitializationStep =
-  | {
-      readonly kind: "binding";
-      readonly binding: MojoAnalyzedModuleBinding;
-    }
-  | {
-      readonly kind: "statement";
-      readonly statement: Node;
-    }
-  | {
-      readonly kind: "class-static-block";
-      readonly declaration: Node;
-      readonly body: Node;
-      readonly statements: readonly Node[];
-    };
-
-export interface MojoAnalyzedModule {
-  readonly id: string;
-  readonly sourceFile: SourceFile;
-  readonly stateName: string;
-  readonly createStateName: string;
-  readonly cellName: string;
-  readonly initializeName: string;
-  readonly lifecycleLockName: string;
-  readonly lifecycleInitializedName: string;
-  readonly bindings: readonly MojoAnalyzedModuleBinding[];
-  readonly initializationSteps: readonly MojoModuleInitializationStep[];
-  readonly asynchronous: boolean;
-  readonly raises: boolean;
-  readonly errorType?: MojoTargetTypeRef;
-  readonly runtimeInitializationRequired: boolean;
-}
-
-export type MojoPropertySelection =
-  | {
-      readonly kind: "project-field";
-      readonly receiver: Node;
-      readonly fieldName: string;
-      readonly fieldType: MojoTargetTypeRef;
-      readonly receiverType: MojoTargetTypeRef;
-      readonly accessMode: "read" | "write" | "read-write";
-      readonly optionalChain: boolean;
-    }
-  | {
-      readonly kind: "project-index-property";
-      readonly receiver: Node;
-      readonly receiverType: MojoTargetTypeRef;
-      readonly storageName: string;
-      readonly key: string;
-      readonly keyType: MojoTargetTypeRef;
-      readonly fieldType: MojoTargetTypeRef;
-      readonly accessMode: "read" | "write" | "read-write";
-      readonly optionalChain: boolean;
-    }
-  | {
-      readonly kind: "structural-field";
-      readonly receiver: Node;
-      readonly receiverType: MojoTargetTypeRef;
-      readonly storageIndex: number;
-      readonly fieldType: MojoTargetTypeRef;
-      readonly accessMode: "read" | "write" | "read-write";
-      readonly optionalChain: boolean;
-    }
-  | {
-      readonly kind: "project-union-field";
-      readonly receiver: Node;
-      readonly receiverType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
-      readonly fields: readonly {
-        readonly receiverType: MojoTargetTypeRef;
-        readonly fieldName: string;
-        readonly fieldType: MojoTargetTypeRef;
-      }[];
-      readonly resultType: MojoTargetTypeRef;
-      readonly accessMode: "read";
-    }
-  | {
-      readonly kind: "project-static-field";
-      readonly binding: MojoAnalyzedModuleBinding;
-      readonly fieldName: string;
-      readonly fieldType: MojoTargetTypeRef;
-      readonly accessMode: "read" | "write" | "read-write";
-      readonly optionalChain: boolean;
-    }
-  | {
-      readonly kind: "project-enum-member";
-      readonly owner: MojoTargetTypeRef;
-      readonly name: string;
-      readonly resultType: MojoTargetTypeRef;
-    }
-  | {
-      readonly kind: "provider";
-      readonly readOperation?: MojoSelectedProviderOperation;
-      readonly writeOperation?: MojoSelectedProviderOperation;
-      readonly receiver: Node;
-      readonly sourceReceiverType: MojoTargetTypeRef;
-      readonly receiverConversion?: MojoValueConversion;
-      readonly readResultConversion?: MojoValueConversion;
-      readonly sourceWriteType?: MojoTargetTypeRef;
-      readonly writeValueConversion?: MojoValueConversion;
-      readonly optionalChain: boolean;
-    }
-  | {
-      readonly kind: "provider-constant";
-      readonly operation: MojoSelectedProviderOperation;
-      readonly readResultConversion: MojoValueConversion;
-    }
-  | {
-      readonly kind: "provider-static";
-      readonly readOperation?: MojoSelectedProviderOperation;
-      readonly writeOperation?: MojoSelectedProviderOperation;
-      readonly readResultConversion?: MojoValueConversion;
-      readonly sourceWriteType?: MojoTargetTypeRef;
-      readonly writeValueConversion?: MojoValueConversion;
-    };
-
-export interface MojoValueSelection {
-  readonly kind: "provider-constant";
-  readonly operation: MojoSelectedProviderOperation;
-  readonly resultConversion: MojoValueConversion;
-}
-
-export type MojoValueRefinementSelection =
-  | {
-      readonly kind: "optional-present";
-      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "optional" }>;
-      readonly resultType: MojoTargetTypeRef;
-    }
-  | {
-      readonly kind: "union-member";
-      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
-      readonly resultType: MojoTargetTypeRef;
-    }
-  | {
-      readonly kind: "union-subset";
-      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
-      readonly resultType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
-    };
-
-export type MojoTypeTestSelection =
-  | {
-      readonly kind: "nullish-comparison";
-      readonly left: Node;
-      readonly right: Node;
-      readonly outcome:
-        | { readonly kind: "constant"; readonly value: boolean }
-        | {
-            readonly kind: "optional-absence";
-            readonly operand: "left" | "right";
-            readonly equal: boolean;
-          }
-        | {
-            readonly kind: "union-membership";
-            readonly operand: "left" | "right";
-            readonly testedTypes: readonly Extract<MojoTargetTypeRef, {
-              readonly kind: "null" | "undefined";
-            }>[];
-            readonly equal: boolean;
-          };
-    }
-  | {
-      readonly kind: "constant";
-      readonly value: boolean;
-      readonly operand: Node;
-    }
-  | {
-      readonly kind: "optional-presence";
-      readonly operand: Node;
-      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "optional" }>;
-    }
-  | {
-      readonly kind: "union-member";
-      readonly operand: Node;
-      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
-      readonly testedType: MojoTargetTypeRef;
-    };
-
-export type MojoNullishCoalescingSelection =
-  | {
-      readonly kind: "left";
-      readonly left: Node;
-      readonly resultType: MojoTargetTypeRef;
-      readonly conversion: MojoValueConversion;
-    }
-  | {
-      readonly kind: "right";
-      readonly left: Node;
-      readonly right: Node;
-      readonly resultType: MojoTargetTypeRef;
-      readonly conversion: MojoValueConversion;
-    }
-  | {
-      readonly kind: "optional" | "union";
-      readonly left: Node;
-      readonly right: Node;
-      readonly leftType: MojoTargetTypeRef;
-      readonly presentType: MojoTargetTypeRef;
-      readonly resultType: MojoTargetTypeRef;
-      readonly presentConversion: MojoValueConversion;
-      readonly rightConversion: MojoValueConversion;
-      readonly presentRefinement?: MojoValueRefinementSelection;
-    };
-
-export type MojoElementSelection = {
-  readonly kind: "native";
-  readonly receiver: Node;
-  readonly index: Node;
-  readonly accessMode: "read" | "write" | "read-write";
-  readonly receiverType: MojoTargetTypeRef;
-  readonly indexType: MojoTargetTypeRef;
-  readonly readType?: MojoTargetTypeRef;
-  readonly writeType?: MojoTargetTypeRef;
-  readonly indexConversion: MojoValueConversion;
-  readonly readResultConversion?: MojoValueConversion;
-  readonly selectedElementIndex?: number;
-  readonly evaluateSelectedIndex?: boolean;
-  readonly sourceIndexType?: MojoTargetTypeRef;
-  readonly optionalChain: boolean;
-} | {
-  readonly kind: "project-index";
-  readonly receiver: Node;
-  readonly index: Node;
-  readonly accessMode: "read" | "write" | "read-write";
-  readonly receiverType: MojoTargetTypeRef;
-  readonly storageName: string;
-  readonly indexType: MojoTargetTypeRef;
-  readonly readType?: MojoTargetTypeRef;
-  readonly writeType?: MojoTargetTypeRef;
-  readonly indexConversion: MojoValueConversion;
-  readonly readResultConversion?: MojoValueConversion;
-  readonly optionalChain: boolean;
-} | {
-  readonly kind: "provider";
-  readonly receiver: Node;
-  readonly index: Node;
-  readonly accessMode: "read" | "write" | "read-write";
-  readonly readOperation?: MojoSelectedProviderOperation;
-  readonly writeOperation?: MojoSelectedProviderOperation;
-  readonly receiverConversion: MojoValueConversion;
-  readonly sourceReceiverType: MojoTargetTypeRef;
-  readonly indexConversion: MojoValueConversion;
-  readonly readType?: MojoTargetTypeRef;
-  readonly writeType?: MojoTargetTypeRef;
-  readonly sourceWriteType?: MojoTargetTypeRef;
-  readonly writeValueConversion?: MojoValueConversion;
-  readonly readResultConversion?: MojoValueConversion;
-  readonly optionalChain: boolean;
-};
-
-export interface MojoIterationSelection {
-  readonly kind: "for-of" | "for-in";
-  readonly statement: Node;
-  readonly iterable: Node;
-  readonly bindingDeclaration: Node;
-  readonly bindingName: string;
-  readonly iterableType: MojoTargetTypeRef;
-  readonly elementType: MojoTargetTypeRef;
-  readonly target:
-    | "native-values"
-    | "dictionary-keys"
-    | "js-array-values"
-    | "js-map-entries"
-    | "js-set-values"
-    | "js-string-values";
-}
-
-export type MojoResourceDisposalSelection =
-  | {
-      readonly kind: "project";
-      readonly name: string;
-      readonly asynchronous: boolean;
-      readonly raises: boolean;
-      readonly dependency: Node;
-    }
-  | {
-      readonly kind: "provider";
-      readonly identity: string;
-      readonly operation: MojoSelectedProviderOperation;
-      readonly asynchronous: boolean;
-    };
-
-export interface MojoResourceDisposalAlternative {
-  readonly resourceType: MojoTargetTypeRef;
-  readonly disposal: MojoResourceDisposalSelection;
-}
-
-export interface MojoResourceManagementSelection {
-  readonly declaration: Node;
-  readonly declarationKind: "using" | "await using";
-  readonly bindingName: string;
-  readonly storageType: MojoTargetTypeRef;
-  readonly resourceType: MojoTargetTypeRef;
-  readonly storageMode: "direct" | "optional" | "nullish-union";
-  readonly alternatives: readonly MojoResourceDisposalAlternative[];
-}
-
-export interface MojoProgramQueries {
-  bindingName(referenceOrDeclaration: Node): string | undefined;
-  bindingSourceFile(referenceOrDeclaration: Node): SourceFile | undefined;
-  bindingType(declaration: Node): MojoTargetTypeRef | undefined;
-  expressionType(expression: Node): MojoTargetTypeRef | undefined;
-  expressionErrorType(expression: Node): MojoTargetTypeRef | undefined;
-  expressionConversion(
-    expression: Node,
-    expectedType: MojoTargetTypeRef,
-  ): MojoValueConversion | undefined;
-  callSelection(call: Node): MojoCallSelection | undefined;
-  propertySelection(access: Node): MojoPropertySelection | undefined;
-  valueSelection(expression: Node): MojoValueSelection | undefined;
-  valueRefinement(expression: Node): MojoValueRefinementSelection | undefined;
-  typeTestSelection(expression: Node): MojoTypeTestSelection | undefined;
-  nullishCoalescingSelection(expression: Node): MojoNullishCoalescingSelection | undefined;
-  elementSelection(access: Node): MojoElementSelection | undefined;
-  iterationSelection(statement: Node): MojoIterationSelection | undefined;
-  resourceManagementSelection(declaration: Node): MojoResourceManagementSelection | undefined;
-  objectLiteralSelection(expression: Node): MojoObjectLiteralSelection | undefined;
-  callableExpressionSelection(expression: Node): MojoCallableExpressionSelection | undefined;
-  templateExpressionSelection(expression: Node): MojoTemplateExpressionSelection | undefined;
-  bindingPatternSelection(declaration: Node): MojoBindingPatternSelection | undefined;
-  returnValueTransfer(expression: Node): boolean;
-  catchErrorType(catchClause: Node): MojoTargetTypeRef | undefined;
-  ownedTemporaryPassing(type: MojoTargetTypeRef): "plain" | "consume";
-  moduleForSourceFile(sourceFile: SourceFile): MojoAnalyzedModule | undefined;
-  moduleForId(id: string): MojoAnalyzedModule | undefined;
-  moduleBinding(referenceOrDeclaration: Node): MojoAnalyzedModuleBinding | undefined;
-  locationStorage(referenceOrDeclaration: Node): {
-    readonly declaration: Node;
-    readonly name: string;
-    readonly valueType: MojoTargetTypeRef;
-  } | undefined;
-}
-
-export interface MojoRuntimePackagePlan {
-  readonly packageName: string;
-  readonly digest: string;
-  readonly sources: readonly {
-    readonly path: string;
-    readonly digest: string;
-    readonly text: string;
-  }[];
-}
-
-export interface MojoPlanningHost {
-  readonly paths: TargetCompileInput["paths"];
-  readonly entryPoint: string;
-  readonly sourcePackages: TargetCompileInput["sourcePackages"];
-}
-
-export interface MojoTargetProgram {
-  readonly host: MojoPlanningHost;
-  readonly configuration: MojoTargetConfiguration;
-  readonly source: TargetSourceSyntaxProgram;
-  readonly sourceNavigation: TargetPlanningSourceNavigation;
-  readonly sourceFiles: readonly SourceFile[];
-  readonly projectTypes: MojoProjectTypeCatalog;
-  readonly modules: MojoSourceModuleCatalog;
-  readonly analyzedModules: readonly MojoAnalyzedModule[];
-  readonly declarations: readonly MojoAnalyzedDeclaration[];
-  readonly queries: MojoProgramQueries;
-  readonly runtimePackages: readonly MojoRuntimePackagePlan[];
-  readonly binaryEpilogues: readonly MojoProviderBinaryEpilogue[];
-  readonly reservedNames: readonly string[];
-}
+export type * from "./module-model.js";
+export type * from "./construction-model.js";
+export type * from "./operation-model.js";
+export type * from "./program-model.js";

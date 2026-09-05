@@ -4,7 +4,7 @@ import type {
   SourceFile,
 } from "@tsonic/tsts";
 import type { TargetCompileInput } from "@tsonic/target-api";
-import { normalizeMojoIdentifier } from "../../target-model/names/identifiers.js";
+import { normalizeMojoModuleIdentifier } from "../../target-model/names/identifiers.js";
 import type {
   MojoSourceModuleIssue,
   MojoSourcePackageDefinition,
@@ -20,6 +20,7 @@ export interface MojoSourceModuleIdentity {
   readonly packageName: string;
   readonly moduleSegments: readonly string[];
   readonly modulePath: readonly string[];
+  readonly artifactRole: "module" | "package-initializer";
   readonly artifactPath: string;
   readonly entryPoint: boolean;
 }
@@ -64,6 +65,7 @@ export function planMojoSourceModuleIdentities(
     readonly fileName: string;
     readonly relativeSourcePath: string;
     readonly sourceSegments: readonly string[];
+    readonly indexModule: boolean;
     readonly packageId: string;
     readonly componentId: string;
     readonly packageName: string;
@@ -90,10 +92,10 @@ export function planMojoSourceModuleIdentities(
       ));
       continue;
     }
-    const sourceSegments = sourceModuleSegments(relativeSourcePath);
-    if (sourceSegments === undefined) {
+    const sourceIdentity = sourceModuleSegments(relativeSourcePath);
+    if (sourceIdentity === undefined) {
       issues.push(issue(
-        "MOJO_SOURCE_MODULE_IDENTITY_UNSUPPORTED",
+        "MOJO_SOURCE_MODULE_PATH_INVALID",
         `Source file '${fileName}' has no deterministic Mojo module identity.`,
         sourceFile,
       ));
@@ -109,22 +111,24 @@ export function planMojoSourceModuleIdentities(
       continue;
     }
     const componentSegments = (packageCountByComponent.get(sourcePackage.componentId) ?? 0) > 1
-      ? [normalizeMojoIdentifier(sourcePackage.name ?? "package"), ...sourceSegments]
-      : sourceSegments;
+      ? [normalizeMojoModuleIdentifier(sourcePackage.name ?? "package"), ...sourceIdentity.segments]
+      : sourceIdentity.segments;
     pending.push(Object.freeze({
       sourceFile,
       fileName,
       relativeSourcePath,
       sourceSegments: Object.freeze(componentSegments),
+      indexModule: sourceIdentity.indexModule,
       packageId: sourcePackage.id,
       componentId: sourcePackage.componentId,
       packageName: componentPackageName,
       entryPoint: normalizedFileName === entryFileName,
     }));
   }
+  const physicalSources = allocatePhysicalSourceSegments(pending);
 
   const rootsByComponent = new Map<string, ModuleSegmentNode>();
-  for (const source of pending) {
+  for (const source of physicalSources) {
     const root = rootsByComponent.get(source.componentId) ?? createModuleSegmentNode();
     rootsByComponent.set(source.componentId, root);
     let node = root;
@@ -140,11 +144,17 @@ export function planMojoSourceModuleIdentities(
   const identities: MojoSourceModuleIdentity[] = [];
   const seenModulePaths = new Map<string, string>();
   const seenArtifactPaths = new Map<string, string>();
-  for (const source of pending) {
+  for (const source of physicalSources) {
     const root = rootsByComponent.get(source.componentId)!;
     const moduleSegments = resolveMojoModuleSegments(root, source.sourceSegments);
     const modulePath = Object.freeze([source.packageName, ...moduleSegments]);
-    const artifactPath = `src/${modulePath.join("/")}.mojo`;
+    const terminal = moduleNode(root, source.sourceSegments);
+    const artifactRole = source.indexModule || terminal.children.size > 0
+      ? "package-initializer" as const
+      : "module" as const;
+    const artifactPath = artifactRole === "package-initializer"
+      ? `src/${modulePath.join("/")}/__init__.mojo`
+      : `src/${modulePath.join("/")}.mojo`;
     const moduleIdentity = modulePath.join(".");
     const moduleOwner = seenModulePaths.get(moduleIdentity);
     const artifactOwner = seenArtifactPaths.get(artifactPath);
@@ -170,6 +180,7 @@ export function planMojoSourceModuleIdentities(
       packageName: source.packageName,
       moduleSegments: Object.freeze(moduleSegments),
       modulePath,
+      artifactRole,
       artifactPath,
       entryPoint: source.entryPoint,
     }));
@@ -185,17 +196,32 @@ export function planMojoSourceModuleIdentities(
     const componentPackageName = componentPackageNames.get(component.id);
     if (componentPackageName === undefined) return [];
     const directories = new Map<string, readonly string[]>();
-    directories.set(componentPackageName, Object.freeze([componentPackageName]));
+    const occupiedInitializers = new Set(identities
+      .filter((entry) => entry.componentId === component.id &&
+        entry.artifactRole === "package-initializer")
+      .map((entry) => entry.modulePath.join("/")));
+    if (!occupiedInitializers.has(componentPackageName)) {
+      directories.set(componentPackageName, Object.freeze([componentPackageName]));
+    }
     for (const identity of identities.filter((entry) => entry.componentId === component.id)) {
       for (let length = 1; length < identity.modulePath.length; length += 1) {
         const path = Object.freeze(identity.modulePath.slice(0, length));
-        directories.set(path.join("/"), path);
+        const key = path.join("/");
+        if (!occupiedInitializers.has(key)) directories.set(key, path);
       }
     }
     return [Object.freeze({
       componentId: component.id,
       packageName: componentPackageName,
       root: component.id === rootPackage.componentId,
+      dependencies: Object.freeze(component.dependencies.flatMap((dependencyId) => {
+        if (componentPackageNames.has(dependencyId)) return [dependencyId];
+        issues.push(issue(
+          "MOJO_SOURCE_PACKAGE_COMPONENT_MISSING",
+          `Source-package component '${component.id}' depends on unknown component '${dependencyId}'.`,
+        ));
+        return [];
+      }).sort((left, right) => left.localeCompare(right, "en"))),
       moduleDirectories: Object.freeze([...directories.values()].sort(comparePaths)),
     })];
   });
@@ -256,21 +282,57 @@ function packageRelativeSourcePath(sourceRootValue: string, fileName: string): s
     : undefined;
 }
 
-function sourceModuleSegments(relativeSourcePath: string): readonly string[] | undefined {
+function sourceModuleSegments(relativeSourcePath: string): {
+  readonly segments: readonly string[];
+  readonly indexModule: boolean;
+} | undefined {
   const sourcePath = relativeSourcePath.replace(/\.(?:mts|ts)$/u, "");
   if (sourcePath === relativeSourcePath || sourcePath.length === 0 ||
     sourcePath.startsWith("/") || sourcePath.endsWith("/")) return undefined;
   const segments = sourcePath.split("/");
-  return segments.some((segment) => segment.length === 0 || segment === "." || segment === "..")
-    ? undefined
-    : Object.freeze(segments);
+  if (segments.some((segment) => segment.length === 0 || segment === "." || segment === "..")) {
+    return undefined;
+  }
+  const indexModule = segments[segments.length - 1] === "index";
+  return Object.freeze({ segments: Object.freeze(segments), indexModule });
+}
+
+function allocatePhysicalSourceSegments<T extends {
+  readonly componentId: string;
+  readonly sourceSegments: readonly string[];
+  readonly indexModule: boolean;
+}>(sources: readonly T[]): readonly T[] {
+  const occupied = new Set(sources
+    .filter(({ indexModule }) => !indexModule)
+    .map((source) => sourceSegmentKey(source.componentId, source.sourceSegments)));
+  const allocated = new Map<T, T>();
+  const indexes = sources.filter(({ indexModule }) => indexModule).sort((left, right) =>
+    left.sourceSegments.length - right.sourceSegments.length ||
+    sourceSegmentKey(left.componentId, left.sourceSegments)
+      .localeCompare(sourceSegmentKey(right.componentId, right.sourceSegments), "en"));
+  for (const source of indexes) {
+    const collapsed = source.sourceSegments.slice(0, -1);
+    const collapsedKey = sourceSegmentKey(source.componentId, collapsed);
+    const preserveIndex = occupied.has(collapsedKey);
+    const sourceSegments = preserveIndex ? source.sourceSegments : collapsed;
+    occupied.add(sourceSegmentKey(source.componentId, sourceSegments));
+    allocated.set(source, Object.freeze({
+      ...source,
+      sourceSegments: Object.freeze([...sourceSegments]),
+      indexModule: !preserveIndex,
+    }));
+  }
+  return Object.freeze(sources.map((source) => allocated.get(source) ?? source));
+}
+
+function sourceSegmentKey(componentId: string, segments: readonly string[]): string {
+  return `${componentId}\0${segments.join("/")}`;
 }
 
 interface ModuleSegmentNode {
   readonly children: Map<string, ModuleSegmentNode>;
   terminal: boolean;
-  directoryName?: string;
-  moduleName?: string;
+  targetName?: string;
 }
 
 function createModuleSegmentNode(): ModuleSegmentNode {
@@ -278,35 +340,25 @@ function createModuleSegmentNode(): ModuleSegmentNode {
 }
 
 function assignMojoModuleSegmentNames(node: ModuleSegmentNode): void {
-  const groups = new Map<string, {
-    readonly sourceName: string;
-    readonly node: ModuleSegmentNode;
-    readonly role: "directory" | "module";
-  }[]>();
+  const groups = new Map<string, { readonly sourceName: string; readonly node: ModuleSegmentNode }[]>();
   for (const [sourceName, child] of node.children) {
-    const base = normalizeMojoIdentifier(sourceName);
+    const base = normalizeMojoModuleIdentifier(sourceName);
     const group = groups.get(base) ?? [];
-    if (child.children.size > 0) group.push({ sourceName, node: child, role: "directory" });
-    if (child.terminal) group.push({ sourceName, node: child, role: "module" });
+    group.push({ sourceName, node: child });
     groups.set(base, group);
   }
-  const reserved = new Set(groups.keys());
   const used = new Set<string>();
   for (const [base, group] of [...groups].sort(([left], [right]) => left.localeCompare(right, "en"))) {
-    group.sort((left, right) =>
-      left.sourceName.localeCompare(right.sourceName, "en") ||
-      left.role.localeCompare(right.role, "en"));
-    for (const [index, entry] of group.entries()) {
-      let candidate = base;
-      let suffix = 2;
-      if (index > 0 || used.has(candidate)) {
-        do {
-          candidate = `${base}_${suffix}`;
-          suffix += 1;
-        } while (reserved.has(candidate) || used.has(candidate));
+    group.sort((left, right) => left.sourceName.localeCompare(right.sourceName, "en"));
+    for (const entry of group) {
+      let hashWidth = 8;
+      let candidate = group.length === 1 ? base : `${base}_${shortHash(entry.sourceName, hashWidth)}`;
+      while (used.has(candidate)) {
+        hashWidth += 2;
+        candidate = `${base}_${shortHash(entry.sourceName, hashWidth)}`;
+        if (hashWidth > 64) throw new Error(`Unable to allocate Mojo module name for '${entry.sourceName}'.`);
       }
-      if (entry.role === "directory") entry.node.directoryName = candidate;
-      else entry.node.moduleName = candidate;
+      entry.node.targetName = candidate;
       used.add(candidate);
     }
   }
@@ -316,15 +368,21 @@ function assignMojoModuleSegmentNames(node: ModuleSegmentNode): void {
 function resolveMojoModuleSegments(root: ModuleSegmentNode, sourceSegments: readonly string[]): string[] {
   const result: string[] = [];
   let node = root;
-  for (const [index, sourceSegment] of sourceSegments.entries()) {
+  for (const sourceSegment of sourceSegments) {
     node = node.children.get(sourceSegment)!;
-    result.push(index + 1 === sourceSegments.length ? node.moduleName! : node.directoryName!);
+    result.push(node.targetName!);
   }
   return result;
 }
 
-function shortHash(value: string): string {
-  return createHash("sha256").update(value).digest("hex").slice(0, 16);
+function moduleNode(root: ModuleSegmentNode, sourceSegments: readonly string[]): ModuleSegmentNode {
+  let node = root;
+  for (const sourceSegment of sourceSegments) node = node.children.get(sourceSegment)!;
+  return node;
+}
+
+function shortHash(value: string, width = 16): string {
+  return createHash("sha256").update(value).digest("hex").slice(0, width);
 }
 
 function normalizePath(value: string): string {

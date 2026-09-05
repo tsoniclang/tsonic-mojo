@@ -3,9 +3,17 @@ import type {
   SourceFile,
   Symbol,
 } from "@tsonic/tsts";
-import type { MojoTargetTypeRef } from "./model.js";
+import type { SourceProjectMemberImplementationResult } from "@tsonic/target-api/source";
+import type { MojoTargetGenericArgument, MojoTargetTypeRef } from "./model.js";
 
 export type MojoProjectTypeKind = "class" | "interface" | "enum";
+
+export interface MojoProjectTypeParameterDefinition {
+  readonly declaration: Node;
+  readonly identity: string;
+  readonly name: string;
+  readonly kind: "type" | "value" | "origin";
+}
 
 export interface MojoProjectTypeDefinition {
   readonly id: string;
@@ -15,7 +23,7 @@ export interface MojoProjectTypeDefinition {
   readonly targetName: string;
   readonly modulePath: readonly string[];
   readonly kind: MojoProjectTypeKind;
-  readonly typeParameterNames: readonly string[];
+  readonly typeParameters: readonly MojoProjectTypeParameterDefinition[];
 }
 
 export interface MojoProjectTypeIssue {
@@ -35,6 +43,62 @@ export interface MojoProjectTypeCatalog {
   ): MojoProjectTypeDefinition | undefined;
   targetTypeForDefinition(
     definition: MojoProjectTypeDefinition,
-    arguments_: readonly MojoTargetTypeRef[],
+    arguments_: readonly MojoTargetGenericArgument[],
   ): MojoTargetTypeRef | undefined;
+}
+
+export interface MojoProjectHeritageEdge {
+  readonly kind: "extends" | "implements";
+  readonly source: MojoProjectTypeDefinition;
+  readonly target: MojoProjectTypeDefinition;
+  readonly heritage: Node;
+  readonly targetType: MojoTargetTypeRef;
+}
+
+export type MojoProjectTypeRelationship =
+  | { readonly kind: "related"; readonly targetType: MojoTargetTypeRef }
+  | { readonly kind: "unrelated" }
+  | { readonly kind: "ambiguous"; readonly targetTypes: readonly MojoTargetTypeRef[] };
+
+export interface MojoProjectTypeRelationships {
+  readonly definitions: readonly MojoProjectTypeDefinition[];
+  readonly issues: readonly MojoProjectTypeIssue[];
+  definitionContainingDeclaration(declaration: Node | undefined): MojoProjectTypeDefinition | undefined;
+  definitionForType(type: MojoTargetTypeRef | undefined): MojoProjectTypeDefinition | undefined;
+  openType(definition: MojoProjectTypeDefinition): MojoTargetTypeRef;
+  heritageForDefinition(definition: MojoProjectTypeDefinition): readonly MojoProjectHeritageEdge[];
+  directSupertypes(type: MojoTargetTypeRef): readonly MojoTargetTypeRef[] | undefined;
+  relationship(
+    source: MojoTargetTypeRef,
+    target: MojoProjectTypeDefinition,
+  ): MojoProjectTypeRelationship;
+  instantiateType(
+    definition: MojoProjectTypeDefinition,
+    instance: MojoTargetTypeRef,
+    type: MojoTargetTypeRef,
+  ): MojoTargetTypeRef | undefined;
+  instantiateGenericArguments(
+    definition: MojoProjectTypeDefinition,
+    instance: MojoTargetTypeRef,
+    arguments_: readonly MojoTargetGenericArgument[],
+  ): readonly MojoTargetGenericArgument[] | undefined;
+  instantiateMemberType(
+    member: Node,
+    receiver: MojoTargetTypeRef,
+    declaredType: MojoTargetTypeRef,
+  ): MojoTargetTypeRef | undefined;
+  isPolymorphic(definition: MojoProjectTypeDefinition): boolean;
+  classLineage(
+    definition: MojoProjectTypeDefinition,
+  ): readonly MojoProjectTypeDefinition[] | undefined;
+  interfacesForClass(
+    definition: MojoProjectTypeDefinition,
+  ): readonly MojoProjectTypeDefinition[] | undefined;
+  concreteClassesFor(
+    definition: MojoProjectTypeDefinition,
+  ): readonly MojoProjectTypeDefinition[];
+  memberImplementation(
+    concreteClass: MojoProjectTypeDefinition,
+    contractMember: Node,
+  ): SourceProjectMemberImplementationResult;
 }

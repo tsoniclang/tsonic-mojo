@@ -2,6 +2,8 @@ import type { Node } from "@tsonic/tsts";
 import {
   CatchClause_Block,
   Node_Expression,
+  TemplateExpression_TemplateSpans,
+  TemplateSpan_Expression,
   TryStatement_CatchClause,
   TryStatement_FinallyBlock,
   TryStatement_TryBlock,
@@ -23,6 +25,7 @@ import {
   providerCallRequiresRaisingConversion,
 } from "./effects.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
+import { mojoTemplateStringConversionRaises } from "../operations/template-expressions.js";
 
 export interface MojoErrorRegionIndexes {
   readonly source: TargetSourceProgram;
@@ -223,6 +226,16 @@ export function directMojoNodeErrorTypes(
   const addNativeConversionError = (raises: boolean): void => {
     if (raises) errors.push(mojoNativeErrorType());
   };
+  if (ast.kindName(node) === "KindTemplateExpression") {
+    const resultType = indexes.expressionTypes.get(node);
+    if (resultType !== undefined) {
+      addNativeConversionError((TemplateExpression_TemplateSpans(ast, node) ?? []).some((span) => {
+        const expression = span === undefined ? undefined : TemplateSpan_Expression(ast, span);
+        const sourceType = expression === undefined ? undefined : indexes.expressionTypes.get(expression);
+        return sourceType !== undefined && mojoTemplateStringConversionRaises(sourceType, resultType);
+      }));
+    }
+  }
   if (ast.is.IsCallExpression(node) || ast.is.IsNewExpression(node)) {
     const selection = indexes.callSelections.get(node);
     if (selection?.kind === "provider") {
@@ -252,6 +265,9 @@ export function directMojoNodeErrorTypes(
       if (dependency !== undefined) {
         errors.push(...(errorTypesByDeclaration.get(dependency) ?? []));
       }
+      if (selection.dynamicDispatchErrorType !== undefined) {
+        errors.push(selection.dynamicDispatchErrorType);
+      }
       addNativeConversionError(
         selection.arguments.some((argument) => mojoConversionRaises(argument.conversion)) ||
         mojoConversionRaises(selection.resultConversion),
@@ -263,6 +279,15 @@ export function directMojoNodeErrorTypes(
       } else if (selection.callableType.raises) {
         errors.push(selection.callableType.errorType ?? mojoNativeErrorType());
       }
+      addNativeConversionError(
+        selection.arguments.some((argument) => mojoConversionRaises(argument.conversion)) ||
+        mojoConversionRaises(selection.resultConversion),
+      );
+    } else if (selection?.kind === "object-assign") {
+      addNativeConversionError(selection.fields.some((field) =>
+        mojoConversionRaises(field.conversion)));
+    } else if (selection?.kind === "json-stringify") {
+      errors.push(mojoNativeErrorType());
       addNativeConversionError(
         selection.arguments.some((argument) => mojoConversionRaises(argument.conversion)) ||
         mojoConversionRaises(selection.resultConversion),
@@ -285,8 +310,7 @@ export function directMojoNodeErrorTypes(
       }
       addNativeConversionError(
         (selection.receiverConversion !== undefined && mojoConversionRaises(selection.receiverConversion)) ||
-        (selection.readResultConversion !== undefined && mojoConversionRaises(selection.readResultConversion)) ||
-        (selection.writeValueConversion !== undefined && mojoConversionRaises(selection.writeValueConversion)),
+        (selection.readResultConversion !== undefined && mojoConversionRaises(selection.readResultConversion)),
       );
     } else if (selection?.kind === "provider-constant") {
       errors.push(...mojoOperationErrorTypes(selection.operation));
@@ -300,9 +324,6 @@ export function directMojoNodeErrorTypes(
       }
       if (selection.readResultConversion !== undefined) {
         addNativeConversionError(mojoConversionRaises(selection.readResultConversion));
-      }
-      if (selection.writeValueConversion !== undefined) {
-        addNativeConversionError(mojoConversionRaises(selection.writeValueConversion));
       }
     }
   }
@@ -319,9 +340,7 @@ export function directMojoNodeErrorTypes(
       addNativeConversionError(
         mojoConversionRaises(selection.indexConversion) ||
         (selection.readResultConversion !== undefined &&
-          mojoConversionRaises(selection.readResultConversion)) ||
-        (selection.kind === "provider" && selection.writeValueConversion !== undefined &&
-          mojoConversionRaises(selection.writeValueConversion)),
+          mojoConversionRaises(selection.readResultConversion)),
       );
       if (selection.kind === "provider") {
         if (selection.readOperation !== undefined) {

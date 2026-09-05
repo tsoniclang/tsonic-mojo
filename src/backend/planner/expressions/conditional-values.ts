@@ -15,13 +15,18 @@ import {
   registerMojoSymbolImport,
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
-import { registerMojoTypeImports } from "../types/render.js";
+import { registerMojoTypeImports } from "../types/imports.js";
 import { applyValueRefinement } from "./leaves.js";
-import { convertMojoValue, isJsString } from "./support.js";
+import { convertMojoValue } from "./support.js";
+import { isJsString } from "./js-carriers.js";
 import { orderMojoValues } from "./support.js";
 import type { MojoValuePlanner } from "./support.js";
 import { withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
+import {
+  isMojoCompileTimeCondition,
+  planMojoCompileTimeCondition,
+} from "../compile-time/values.js";
 
 export function planNullishCoalescing(
   node: Node,
@@ -71,7 +76,14 @@ export function planNullishCoalescing(
         name: "value",
         arguments: Object.freeze([]),
       })
-    : applyValueRefinement(optionalPath, selection.presentRefinement, context);
+    : applyValueRefinement(
+        optionalPath,
+        selection.presentRefinement === undefined
+          ? undefined
+          : context.program.representations.narrowingFor(selection.presentRefinement),
+        context,
+      );
+  if (presentValue === undefined) return undefined;
   const convertedPresent = convertMojoValue(
     withMojoValue(Object.freeze([]), presentValue),
     selection.presentConversion,
@@ -155,13 +167,17 @@ export function planConditional(
   const trueNode = ConditionalExpression_WhenTrue(ast, node);
   const falseNode = ConditionalExpression_WhenFalse(ast, node);
   const resultType = context.program.queries.expressionType(node);
+  const compileTime = conditionNode !== undefined &&
+    isMojoCompileTimeCondition(conditionNode, context);
   const condition = conditionNode === undefined
     ? undefined
-    : planValue(conditionNode, context, { kind: "source-primitive", name: "bool" });
+    : compileTime
+      ? planMojoCompileTimeCondition(conditionNode, context, planValue)
+      : planValue(conditionNode, context, { kind: "source-primitive", name: "bool" });
   const whenTrue = trueNode === undefined ? undefined : planValue(trueNode, context, resultType);
   const whenFalse = falseNode === undefined ? undefined : planValue(falseNode, context, resultType);
   if (condition === undefined || whenTrue === undefined || whenFalse === undefined) return undefined;
-  if (whenTrue.before.length === 0 && whenFalse.before.length === 0) {
+  if (!compileTime && whenTrue.before.length === 0 && whenFalse.before.length === 0) {
     return withMojoValue(condition.before, {
       kind: "conditional",
       condition: condition.value,
@@ -178,6 +194,7 @@ export function planConditional(
     Object.freeze({ kind: "variable", name: resultName, type: resultType }),
     Object.freeze({
       kind: "if",
+      ...(compileTime ? { compileTime: true } : {}),
       condition: condition.value,
       thenStatements: Object.freeze([
         ...whenTrue.before,
@@ -237,15 +254,15 @@ export function planErasedExpression(
 ): MojoValuePlan | undefined {
   const inner = Node_Expression(context.program.source.ast, node);
   if (inner === undefined) return undefined;
-  const refinement = context.program.queries.valueRefinement(node);
+  const refinement = context.program.representations.narrowing(node);
   const plan = planValue(
     inner,
     context,
     refinement === undefined ? context.program.queries.expressionType(node) : undefined,
   );
-  return plan === undefined
-    ? undefined
-    : withMojoValue(plan.before, applyValueRefinement(plan.value, refinement, context));
+  if (plan === undefined) return undefined;
+  const value = applyValueRefinement(plan.value, refinement, context);
+  return value === undefined ? undefined : withMojoValue(plan.before, value);
 }
 
 export function planMojoTypeTest(
@@ -319,12 +336,82 @@ export function planMojoTypeTest(
     return undefined;
   }
   if (selection.kind === "constant") {
+    const operandType = context.program.queries.expressionType(selection.operand);
+    if (operandType === undefined) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_CONSTANT_TYPE_TEST_OPERAND_TYPE_MISSING",
+        "A constant type-test result requires the exact sealed operand carrier.",
+        selection.operand,
+      );
+      return undefined;
+    }
     return withMojoValue(
       Object.freeze([
         ...operand.before,
-        Object.freeze({ kind: "expression" as const, expression: operand.value }),
+        Object.freeze({
+          kind: operandType.kind === "unit" ? "expression" as const : "discard" as const,
+          expression: operand.value,
+        }),
       ]),
       Object.freeze({ kind: "bool-literal", value: selection.value }),
+    );
+  }
+  if (selection.kind === "project-dispatch") {
+    const route = context.program.projectDispatch.downcastFor(
+      selection.dispatchType,
+      selection.testedType,
+    );
+    if (route === undefined) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROJECT_TYPE_TEST_ROUTE_MISSING",
+        "A checked project type test has no exact sealed downcast route.",
+        selection.operand,
+      );
+      return undefined;
+    }
+    registerMojoTypeImports(selection.sourceType, context);
+    registerMojoTypeImports(selection.testedType, context);
+    const ordered = orderMojoValues(Object.freeze([Object.freeze({
+      plan: operand,
+      type: selection.sourceType,
+      role: "project_type_test_operand",
+      stabilize: true,
+    })]), context, true);
+    const source = selection.sourceType.kind === "optional"
+      ? Object.freeze({
+          kind: "method-call" as const,
+          receiver: ordered.values[0]!,
+          name: "value",
+          arguments: Object.freeze([]),
+        })
+      : ordered.values[0]!;
+    const downcast: MojoExpression = Object.freeze({
+      kind: "method-call",
+      receiver: source,
+      name: route.name,
+      arguments: Object.freeze([]),
+    });
+    const available: MojoExpression = Object.freeze({
+      kind: "construct",
+      type: Object.freeze({ kind: "source-primitive", name: "bool" }),
+      arguments: Object.freeze([{ value: downcast }]),
+    });
+    return withMojoValue(
+      ordered.before,
+      selection.sourceType.kind === "optional"
+        ? Object.freeze({
+            kind: "binary",
+            operator: "and",
+            left: Object.freeze({
+              kind: "construct",
+              type: Object.freeze({ kind: "source-primitive", name: "bool" }),
+              arguments: Object.freeze([{ value: ordered.values[0]! }]),
+            }),
+            right: available,
+          })
+        : available,
     );
   }
   registerMojoTypeImports(selection.sourceType, context);
@@ -391,7 +478,9 @@ function prefixOperator(kind: string | undefined): string | undefined {
 }
 
 function isComparisonOperator(operator: string): boolean {
-  return operator === "KindEqualsEqualsEqualsToken" ||
+  return operator === "KindEqualsEqualsToken" ||
+    operator === "KindEqualsEqualsEqualsToken" ||
+    operator === "KindExclamationEqualsToken" ||
     operator === "KindExclamationEqualsEqualsToken" ||
     operator === "KindLessThanToken" || operator === "KindLessThanEqualsToken" ||
     operator === "KindGreaterThanToken" || operator === "KindGreaterThanEqualsToken";

@@ -1,5 +1,6 @@
 import type { Node, ResolvedSourceCallInfo } from "@tsonic/tsts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
+import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type {
   MojoSourceProfileDeclarationIdentity,
   MojoSourceProfileRegistry,
@@ -8,15 +9,32 @@ import { mojoSourceProfileCallRows } from "./source-profile-rows.js";
 
 export { mojoSourceProfileCallRows } from "./source-profile-rows.js";
 
-export interface MojoSourceProfileCallRow {
+export interface MojoSourceProfileCallRowBase {
   readonly profile: "native" | "js";
   readonly kind: "call" | "construct";
   readonly owner: string;
   readonly member: string;
   readonly argumentCount?: number;
+  readonly argumentCarriers?: readonly MojoSourceProfileArgumentCarrierContract[];
   readonly parameterContract?: readonly MojoSourceProfileParameterContract[];
   readonly parameterContractMode?: "exact" | "overrides";
   readonly receiverCapability?: "integer";
+  readonly raises?: boolean;
+  readonly callback?: MojoSourceProfileCallbackContract;
+  readonly resultContract?: MojoSourceProfileResultContract;
+  readonly runtimeResultContract?:
+    | {
+        readonly kind: "optional-source-union";
+        readonly absence: "null" | "undefined";
+      }
+    | { readonly kind: "native-error-result" };
+}
+
+export type MojoSourceProfileCallRow = MojoSourceProfileCallRowBase & (
+  | {
+      readonly specialOperation: "object-assign" | "json-stringify";
+    }
+  | {
   readonly target:
     | {
         readonly kind: "instance";
@@ -29,9 +47,18 @@ export interface MojoSourceProfileCallRow {
         readonly name: string;
         readonly receiver?: "imm" | "mut" | "var" | "ref" | "deinit";
       };
-  readonly raises?: boolean;
-  readonly callback?: MojoSourceProfileCallbackContract;
-  readonly resultContract?: MojoSourceProfileResultContract;
+  }
+);
+
+export interface MojoSourceProfileArgumentCarrierContract {
+  readonly index: number;
+  readonly oneOf: readonly (
+    | "native-string"
+    | "js-string"
+    | "regexp"
+    | "callable"
+    | "undefined"
+  )[];
 }
 
 export type MojoSourceProfileResultContract =
@@ -85,6 +112,7 @@ export function selectMojoSourceProfileCallRow(
   source: TargetSourceProgram,
   call: ResolvedSourceCallInfo,
   profiles: MojoSourceProfileRegistry,
+  argumentTypes: readonly (MojoTargetTypeRef | undefined)[],
 ): MojoSourceProfileCallRowSelection {
   const semantics = source.semantics.forNode(call.call);
   const signatureDeclaration = semantics.declarations.signatureDeclaration(call.selectedSignature);
@@ -127,7 +155,8 @@ export function selectMojoSourceProfileCallRow(
   const rows = mojoSourceProfileCallRows.filter((row) =>
     row.profile === identity.profile && row.kind === expectedKind &&
     row.owner === owner && row.member === member &&
-    (row.argumentCount === undefined || row.argumentCount === argumentCount));
+    (row.argumentCount === undefined || row.argumentCount === argumentCount) &&
+    sourceProfileArgumentCarriersMatch(row.argumentCarriers, argumentTypes));
   if (rows.length !== 1) {
     return {
       kind: "unsupported",
@@ -138,6 +167,26 @@ export function selectMojoSourceProfileCallRow(
     };
   }
   return Object.freeze({ kind: "selected", identity, row: rows[0]! });
+}
+
+function sourceProfileArgumentCarriersMatch(
+  contracts: readonly MojoSourceProfileArgumentCarrierContract[] | undefined,
+  argumentTypes: readonly (MojoTargetTypeRef | undefined)[],
+): boolean {
+  return contracts === undefined || contracts.every((contract) => {
+    const type = argumentTypes[contract.index];
+    return type !== undefined && contract.oneOf.some((kind) => {
+      switch (kind) {
+        case "native-string": return type.kind === "native-string";
+        case "js-string":
+          return type.kind === "target-named" && type.id === "tsonic.mojo.js.JsString";
+        case "regexp":
+          return type.kind === "target-named" && type.id === "tsonic.mojo.js.JsRegExp";
+        case "callable": return type.kind === "callable";
+        case "undefined": return type.kind === "undefined";
+      }
+    });
+  });
 }
 
 export function selectedMojoSourceProfileDeclarationIdentity(

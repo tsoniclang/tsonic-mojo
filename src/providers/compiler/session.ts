@@ -64,7 +64,7 @@ export function createMojoCompilerProviderSession(
   }
   const snapshot = dependencies.snapshot ?? createMojoCompilerProjectSnapshot(
     configuration.compilerProvider,
-    configuration.toolchainVersion,
+    configuration.toolchain.compilerVersion,
   );
   const loader = dependencies.loader ?? createMojoCompilerMetadataLoader();
   const registries = snapshot.packages.map((package_) => createProjectionRegistry(snapshot, package_));

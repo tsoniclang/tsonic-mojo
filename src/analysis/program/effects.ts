@@ -23,7 +23,14 @@ export function providerCallRequiresRaisingConversion(
 
 export function mojoConversionRaises(conversion: MojoValueConversion): boolean {
   switch (conversion.kind) {
+    case "js-structural-object-box":
+    case "js-sequence-box":
+    case "js-tuple-box":
+    case "js-optional-box":
+    case "js-union-box": return true;
+    case "js-selected-to-json": return true;
     case "js-to-native-string": return true;
+    case "native-error-result-unwrap": return true;
     case "collection-map":
       return conversion.elementConversion !== undefined &&
         mojoConversionRaises(conversion.elementConversion);
@@ -36,6 +43,7 @@ export function mojoConversionRaises(conversion: MojoValueConversion): boolean {
     case "union-to-optional":
       return conversion.presentMembers.some((member) => mojoConversionRaises(member.conversion));
     case "union-map":
+    case "narrowed-union-map":
       return conversion.members.some((member) => mojoConversionRaises(member.conversion));
     default: return false;
   }

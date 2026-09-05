@@ -2,23 +2,27 @@ import type { Node, SourceFile } from "@tsonic/tsts";
 import type { TargetPlanningSourceNavigation } from "@tsonic/target-api/analysis";
 import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
-import type { MojoOwnedTemporaryPassing } from "../value-semantics/owned-temporaries.js";
 import type {
+  MojoAnalyzedClass,
+  MojoAnalyzedInterface,
   MojoAnalyzedModule,
   MojoAnalyzedModuleBinding,
+  MojoArrayLiteralSelection,
   MojoBindingPatternSelection,
+  MojoBindingProjectionPlan,
   MojoCallSelection,
   MojoCallableExpressionSelection,
   MojoElementSelection,
   MojoIterationSelection,
+  MojoIntrinsicExpressionSelection,
   MojoNullishCoalescingSelection,
   MojoObjectLiteralSelection,
   MojoProgramQueries,
   MojoPropertySelection,
+  MojoProjectStateProjection,
   MojoResourceManagementSelection,
   MojoTemplateExpressionSelection,
   MojoTypeTestSelection,
-  MojoValueRefinementSelection,
   MojoValueSelection,
 } from "./model.js";
 
@@ -33,23 +37,28 @@ export interface MojoProgramQueryIndexes {
   readonly callSelections: WeakMap<Node, MojoCallSelection>;
   readonly propertySelections: WeakMap<Node, MojoPropertySelection>;
   readonly valueSelections: WeakMap<Node, MojoValueSelection>;
-  readonly valueRefinements: WeakMap<Node, MojoValueRefinementSelection>;
+  readonly intrinsicExpressionSelections: WeakMap<Node, MojoIntrinsicExpressionSelection>;
   readonly typeTestSelections: WeakMap<Node, MojoTypeTestSelection>;
   readonly nullishCoalescingSelections: WeakMap<Node, MojoNullishCoalescingSelection>;
   readonly elementSelections: WeakMap<Node, MojoElementSelection>;
   readonly iterationSelections: WeakMap<Node, MojoIterationSelection>;
   readonly resourceManagementSelections: WeakMap<Node, MojoResourceManagementSelection>;
   readonly objectLiteralSelections: WeakMap<Node, MojoObjectLiteralSelection>;
+  readonly arrayLiteralSelections: WeakMap<Node, MojoArrayLiteralSelection>;
   readonly callableExpressionSelections: WeakMap<Node, MojoCallableExpressionSelection>;
   readonly templateExpressionSelections: WeakMap<Node, MojoTemplateExpressionSelection>;
   readonly bindingPatternSelections: WeakMap<Node, MojoBindingPatternSelection>;
-  readonly returnValueTransfers: WeakSet<Node>;
+  readonly bindingProjections: WeakMap<Node, MojoBindingProjectionPlan>;
+  readonly exitValueTransfers: WeakSet<Node>;
   readonly catchErrorTypes: WeakMap<Node, MojoTargetTypeRef>;
-  readonly ownedTemporaryPassing: (type: MojoTargetTypeRef) => MojoOwnedTemporaryPassing;
   readonly moduleBySourceFile: WeakMap<SourceFile, MojoAnalyzedModule>;
   readonly moduleById: ReadonlyMap<string, MojoAnalyzedModule>;
   readonly moduleBindingByDeclaration: WeakMap<Node, MojoAnalyzedModuleBinding>;
   readonly locationStorageNames: WeakMap<Node, string>;
+  readonly stateDeclarationsById: ReadonlyMap<
+    string,
+    MojoAnalyzedClass | MojoAnalyzedInterface
+  >;
 }
 
 export function createMojoProgramQueries(
@@ -83,8 +92,8 @@ export function createMojoProgramQueries(
     valueSelection(expression: Node): MojoValueSelection | undefined {
       return indexes.valueSelections.get(expression);
     },
-    valueRefinement(expression: Node): MojoValueRefinementSelection | undefined {
-      return indexes.valueRefinements.get(expression);
+    intrinsicExpressionSelection(expression: Node): MojoIntrinsicExpressionSelection | undefined {
+      return indexes.intrinsicExpressionSelections.get(expression);
     },
     typeTestSelection(expression: Node): MojoTypeTestSelection | undefined {
       return indexes.typeTestSelections.get(expression);
@@ -104,6 +113,9 @@ export function createMojoProgramQueries(
     objectLiteralSelection(expression: Node): MojoObjectLiteralSelection | undefined {
       return indexes.objectLiteralSelections.get(expression);
     },
+    arrayLiteralSelection(expression: Node): MojoArrayLiteralSelection | undefined {
+      return indexes.arrayLiteralSelections.get(expression);
+    },
     callableExpressionSelection(expression: Node): MojoCallableExpressionSelection | undefined {
       return indexes.callableExpressionSelections.get(expression);
     },
@@ -113,14 +125,14 @@ export function createMojoProgramQueries(
     bindingPatternSelection(declaration: Node): MojoBindingPatternSelection | undefined {
       return indexes.bindingPatternSelections.get(declaration);
     },
-    returnValueTransfer(expression: Node): boolean {
-      return indexes.returnValueTransfers.has(expression);
+    bindingProjection(declaration: Node): MojoBindingProjectionPlan | undefined {
+      return indexes.bindingProjections.get(declaration);
+    },
+    exitValueTransfer(expression: Node): boolean {
+      return indexes.exitValueTransfers.has(expression);
     },
     catchErrorType(catchClause: Node): MojoTargetTypeRef | undefined {
       return indexes.catchErrorTypes.get(catchClause);
-    },
-    ownedTemporaryPassing(type: MojoTargetTypeRef): MojoOwnedTemporaryPassing {
-      return indexes.ownedTemporaryPassing(type);
     },
     moduleForSourceFile(sourceFile: SourceFile) {
       return indexes.moduleBySourceFile.get(sourceFile);
@@ -146,6 +158,24 @@ export function createMojoProgramQueries(
       return name === undefined || valueType === undefined
         ? undefined
         : Object.freeze({ declaration, name, valueType });
+    },
+    projectState(type: MojoTargetTypeRef): MojoProjectStateProjection | undefined {
+      const instance = type.kind === "optional" ? type.value : type;
+      if (instance.kind !== "target-named") return undefined;
+      const declaration = indexes.stateDeclarationsById.get(instance.id);
+      if (declaration === undefined) return undefined;
+      return Object.freeze({
+        storage: declaration.stateStorage,
+        stateType: Object.freeze({
+          kind: "target-named" as const,
+          id: `${instance.id}:state`,
+          modulePath: instance.modulePath,
+          name: declaration.stateName,
+          ...((instance.genericArguments?.length ?? 0) === 0
+            ? {}
+            : { genericArguments: instance.genericArguments }),
+        }),
+      });
     },
   });
 }

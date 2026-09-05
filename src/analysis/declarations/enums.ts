@@ -39,7 +39,7 @@ export function analyzeMojoEnum(
   const semantics = input.source.semantics.forFile(input.sourceFile);
   for (const member of members as readonly Node[]) {
     if (!input.source.ast.is.IsEnumMember(member)) {
-      append(input, "MOJO_ENUM_MEMBER_SHAPE_UNSUPPORTED", "Enum declarations may contain only exact enum members.", member);
+      append(input, "MOJO_ENUM_MEMBER_NODE_KIND_INVALID", "The checked enum member list contains a non-enum node.", member);
       continue;
     }
     const nameNode = input.source.ast.name(member);

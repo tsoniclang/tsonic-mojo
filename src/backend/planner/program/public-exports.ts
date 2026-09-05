@@ -1,11 +1,9 @@
 import type {
-  MojoAnalyzedModule,
   MojoAnalyzedModuleBinding,
   MojoTargetProgram,
 } from "../../../analysis/program/model.js";
 import type { MojoSourceModuleDefinition } from "../../../analysis/source-modules/model.js";
 import {
-  closeMojoErrorType,
   mojoNativeErrorType,
 } from "../../../target-model/types/error-domains.js";
 import { normalizeMojoIdentifier } from "../../../target-model/names/identifiers.js";
@@ -21,58 +19,79 @@ import type {
 } from "../../target-ast/index.js";
 import { mojoModuleBindingRead } from "../bindings/module-bindings.js";
 import { adaptMojoValueErrorDomain } from "../expressions/error-domains.js";
-import { mojoValue } from "../expressions/value-plan.js";
+import { consumeMojoValue, mojoValue } from "../expressions/value-plan.js";
 import {
   appendMojoPlanningDiagnostic,
-  registerMojoModuleImport,
 } from "./context.js";
 import type { MojoPlanningContext } from "./context.js";
-import { registerMojoTypeImports } from "../types/render.js";
-
-const unitType: MojoTargetTypeRef = Object.freeze({ kind: "unit" });
+import { registerMojoTypeImports } from "../types/imports.js";
 
 export function planMojoPublicModuleExports(
   program: MojoTargetProgram,
   definition: MojoSourceModuleDefinition,
-  module: MojoAnalyzedModule,
   context: MojoPlanningContext,
 ): readonly MojoFunctionDeclaration[] | undefined {
   const bindings = new Map<import("@tsonic/tsts").Node, MojoAnalyzedModuleBinding>();
   for (const exported of program.modules.entryPoint.exports) {
     if (program.modules.forSourceFile(exported.sourceFile)?.id !== definition.id) continue;
     const binding = program.queries.moduleBinding(exported.declaration);
-    if (binding?.storage === "cell") bindings.set(binding.declaration, binding);
+    if (binding?.publicAbi !== undefined) bindings.set(binding.declaration, binding);
   }
   if (bindings.size === 0) return Object.freeze([]);
-  if (module.asynchronous) {
-    appendMojoPlanningDiagnostic(
-      context,
-      "MOJO_ASYNC_PUBLIC_BINDING_MODULE_UNSUPPORTED",
-      "A public runtime binding cannot synchronously expose an asynchronously initialized source module.",
-      module.sourceFile,
-    );
-    return undefined;
-  }
   const declarations: MojoFunctionDeclaration[] = [];
   for (const binding of [...bindings.values()].sort((left, right) =>
     left.name.localeCompare(right.name, "en"))) {
-    const declaration = planPublicCallableBinding(binding, module, context);
+    const declaration = binding.publicAbi?.kind === "value"
+      ? planPublicValueBinding(binding, binding.publicAbi.copy, context)
+      : planPublicCallableBinding(binding, context);
     if (declaration === undefined) return undefined;
     declarations.push(declaration);
   }
   return Object.freeze(declarations);
 }
 
-function planPublicCallableBinding(
+function planPublicValueBinding(
   binding: MojoAnalyzedModuleBinding,
-  module: MojoAnalyzedModule,
+  copy: "implicit" | "explicit",
   context: MojoPlanningContext,
 ): MojoFunctionDeclaration | undefined {
-  if (binding.type.kind !== "callable") {
+  const value = mojoModuleBindingRead(binding, context);
+  if (value === undefined) {
     appendMojoPlanningDiagnostic(
       context,
-      "MOJO_PUBLIC_RUNTIME_VALUE_ABI_UNSUPPORTED",
-      `Public runtime binding '${binding.sourceName}' requires an explicit Mojo library value ABI.`,
+      "MOJO_PUBLIC_RUNTIME_VALUE_STORAGE_MISSING",
+      `Public runtime value '${binding.sourceName}' has no exact initialized module storage.`,
+      binding.declaration,
+    );
+    return undefined;
+  }
+  registerMojoTypeImports(binding.type, context);
+  return Object.freeze({
+    kind: "function",
+    name: binding.name,
+    genericParameters: Object.freeze([]),
+    parameters: Object.freeze([]),
+    resultType: binding.type,
+    asynchronous: false,
+    raises: false,
+    statements: Object.freeze([Object.freeze({
+      kind: "return",
+      expression: copy === "implicit"
+        ? value
+        : Object.freeze({ kind: "copy", expression: value }),
+    })]),
+  });
+}
+
+function planPublicCallableBinding(
+  binding: MojoAnalyzedModuleBinding,
+  context: MojoPlanningContext,
+): MojoFunctionDeclaration | undefined {
+  if (binding.publicAbi?.kind !== "callable" || binding.type.kind !== "callable") {
+    appendMojoPlanningDiagnostic(
+      context,
+      "MOJO_PUBLIC_CALLABLE_ABI_MISSING",
+      `Public callable '${binding.sourceName}' has no exact sealed Mojo library callable ABI.`,
       binding.declaration,
     );
     return undefined;
@@ -90,38 +109,13 @@ function planPublicCallableBinding(
     );
     return undefined;
   }
-  const moduleErrorType = module.raises
-    ? module.errorType ?? mojoNativeErrorType()
-    : undefined;
   const callableErrorType = callableType.raises
     ? callableType.errorType ?? mojoNativeErrorType()
     : undefined;
-  const errorType = closeMojoErrorType(Object.freeze([
-    ...(moduleErrorType === undefined ? [] : [moduleErrorType]),
-    ...(callableErrorType === undefined ? [] : [callableErrorType]),
-  ]));
+  const errorType = callableErrorType;
   if (errorType !== undefined) registerMojoTypeImports(errorType, context);
   registerMojoTypeImports(callableType, context);
   const statements: MojoStatement[] = [];
-  if (module.runtimeInitializationRequired) {
-    const initialization = adaptMojoValueErrorDomain(
-      mojoValue(Object.freeze({
-        kind: "call",
-        callee: Object.freeze({ kind: "path", path: module.initializeName }),
-        arguments: Object.freeze([]),
-      })),
-      unitType,
-      moduleErrorType,
-      errorType,
-      binding.declaration,
-      context,
-    );
-    if (initialization === undefined) return undefined;
-    statements.push(...initialization.before);
-    if (!isUnitValue(initialization.value)) {
-      statements.push(Object.freeze({ kind: "expression", expression: initialization.value }));
-    }
-  }
   const callable = mojoModuleBindingRead(binding, context);
   if (callable === undefined) {
     appendMojoPlanningDiagnostic(
@@ -217,7 +211,7 @@ function publicCallableArgument(
     : path;
   if (value === undefined) return undefined;
   if (parameter.passing === "consume") {
-    value = Object.freeze({ kind: "consume", expression: value });
+    value = consumeMojoValue(value, parameter.type, context.program.lifecycle);
   }
   return value;
 }
@@ -238,7 +232,6 @@ function materializeRestArgument(
   if (type.kind !== "target-named" || type.id !== "tsonic.mojo.js.JsArray") return undefined;
   const element = collectionElement(type);
   if (element === undefined) return undefined;
-  registerMojoModuleImport(context, Object.freeze(["tsonic_js"]));
   const listType: MojoTargetTypeRef = Object.freeze({ kind: "list", element });
   registerMojoTypeImports(listType, context);
   registerMojoTypeImports(type, context);

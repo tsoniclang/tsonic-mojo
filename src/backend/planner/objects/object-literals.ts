@@ -6,13 +6,16 @@ import {
   appendMojoPlanningDiagnostic,
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
-import { orderMojoValues } from "../expressions/support.js";
+import { isTriviallyPureMojoValue, orderMojoValues } from "../expressions/support.js";
 import type { MojoValuePlanner } from "../expressions/support.js";
-import { registerMojoTypeImports } from "../types/render.js";
+import { registerMojoTypeImports } from "../types/imports.js";
 import { applyMojoConversion } from "../expressions/support.js";
 import { withMojoValue } from "../expressions/value-plan.js";
 import type { MojoValuePlan } from "../expressions/value-plan.js";
 import { planDictionaryKey } from "../expressions/conditional-values.js";
+import { planMojoPolymorphicObjectLiteral } from "./polymorphism/object-literals.js";
+import { mojoProjectStateValue } from "../declarations/state-storage.js";
+import { planMojoProjectConstruction } from "../expressions/project-construction.js";
 
 export function planMojoProjectObjectLiteral(
   node: Node,
@@ -21,6 +24,10 @@ export function planMojoProjectObjectLiteral(
 ): MojoValuePlan | undefined {
   const selection = context.program.queries.objectLiteralSelection(node);
   if (selection?.kind !== "interface") return undefined;
+  const dispatch = context.program.projectDispatch.objectLiteralFor(node);
+  if (dispatch !== undefined) {
+    return planMojoPolymorphicObjectLiteral(node, dispatch, context, planValue);
+  }
   registerMojoTypeImports(selection.constructionType, context);
   registerMojoTypeImports(selection.resultType, context);
   const before: MojoStatement[] = [];
@@ -43,6 +50,7 @@ export function planMojoProjectObjectLiteral(
   }
   for (const contribution of selection.contributions) {
     if (contribution.kind === "field") {
+      if (contribution.field.kind !== "interface-field") return undefined;
       const plan = planValue(contribution.value, context, contribution.fieldType);
       if (plan === undefined) return undefined;
       before.push(...plan.before);
@@ -73,17 +81,26 @@ export function planMojoProjectObjectLiteral(
       }));
       continue;
     }
+    if (contribution.kind === "method" || contribution.kind === "getter" ||
+      contribution.kind === "setter") return undefined;
     const plan = planValue(contribution.value, context, contribution.sourceType);
     if (plan === undefined) return undefined;
     before.push(...plan.before);
     const spread = stabilize(plan.value, contribution.sourceType, "object_spread", before, context);
+    const spreadState = mojoProjectStateValue(spread, contribution.sourceType, context);
+    if (spreadState === undefined) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_OBJECT_SPREAD_STATE_NOT_SEALED",
+        "A project object spread has no exact sealed state projection.",
+        contribution.element,
+      );
+      return undefined;
+    }
     for (const entry of contribution.fields) {
       const value: MojoExpression = Object.freeze({
         kind: "member",
-        receiver: Object.freeze({
-          kind: "postfix-deref",
-          expression: Object.freeze({ kind: "member", receiver: spread, name: "_state" }),
-        }),
+        receiver: spreadState,
         name: entry.field.name,
       });
       values.set(
@@ -96,10 +113,7 @@ export function planMojoProjectObjectLiteral(
       if (destination === undefined) return undefined;
       const sourceDictionary: MojoExpression = Object.freeze({
         kind: "member",
-        receiver: Object.freeze({
-          kind: "postfix-deref",
-          expression: Object.freeze({ kind: "member", receiver: spread, name: "_state" }),
-        }),
+        receiver: spreadState,
         name: entry.indexSignature.storageName,
       });
       const keyName = allocateMojoSyntheticName(context, "object_index_key");
@@ -163,14 +177,14 @@ export function planMojoProjectObjectLiteral(
     );
     return undefined;
   }
-  const constructed = Object.freeze({
-    kind: "construct",
-    type: selection.constructionType,
-    arguments: Object.freeze([
+  const constructed = planMojoProjectConstruction(
+    selection.construction,
+    Object.freeze([
       ...(arguments_ as { readonly value: MojoExpression }[]),
       ...(indexArguments as { readonly value: MojoExpression }[]),
     ]),
-  }) satisfies MojoExpression;
+    context,
+  );
   const converted = applyMojoConversion(constructed, selection.resultConversion, context);
   return converted === undefined ? undefined : withMojoValue(before, converted);
 }
@@ -221,6 +235,35 @@ export function planMojoProviderRecordLiteral(
   }));
 }
 
+export function planMojoStructuralObjectLiteral(
+  node: Node,
+  context: MojoPlanningContext,
+  planValue: MojoValuePlanner,
+): MojoValuePlan | undefined {
+  const selection = context.program.queries.objectLiteralSelection(node);
+  if (selection?.kind !== "structural") return undefined;
+  registerMojoTypeImports(selection.definition.type, context);
+  const plans = selection.fields.map((field) => Object.freeze({
+    field,
+    plan: planValue(field.value, context, field.field.type),
+  }));
+  if (plans.some(({ plan }) => plan === undefined)) return undefined;
+  const ordered = orderMojoValues(plans.map(({ field, plan }) => Object.freeze({
+    plan: plan!,
+    type: field.field.type,
+    role: "structural_object_field",
+  })), context);
+  const storage: MojoExpression = Object.freeze({
+    kind: "tuple",
+    elements: Object.freeze(ordered.values),
+  });
+  return withMojoValue(ordered.before, Object.freeze({
+    kind: "construct",
+    type: selection.definition.type,
+    arguments: Object.freeze([Object.freeze({ value: storage })]),
+  }));
+}
+
 function stabilize(
   value: MojoExpression,
   type: MojoTargetTypeRef,
@@ -229,6 +272,7 @@ function stabilize(
   context: MojoPlanningContext,
 ): MojoExpression {
   registerMojoTypeImports(type, context);
+  if (isTriviallyPureMojoValue(value)) return value;
   const name = allocateMojoSyntheticName(context, role);
   before.push(Object.freeze({ kind: "variable", name, type, initializer: value }));
   return Object.freeze({ kind: "path", path: name });

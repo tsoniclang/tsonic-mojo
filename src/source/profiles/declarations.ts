@@ -365,7 +365,8 @@ declare var Date: DateConstructor;
 
 interface JSON {
   parse(text: string): unknown;
-  stringify(value: unknown, replacer?: null, space?: string | number): string | undefined;
+  stringify(value: unknown, replacer?: ((key: string, value: unknown) => unknown) | null, space?: string | number): string | undefined;
+  stringify(value: unknown, replacer?: readonly (string | number)[] | null, space?: string | number): string | undefined;
 }
 declare var JSON: JSON;
 

@@ -83,6 +83,29 @@ export const jsReceiverFunctionRow = (
   ...(raises ? { raises: true } : {}),
 });
 
+export const jsReceiverFunctionRows = (
+  owner: string,
+  prefix: string,
+  methods: readonly (string | readonly [string, string, boolean?])[],
+): readonly MojoSourceProfileCallRow[] => methods.map((method) => {
+  const [member, name, raises] = typeof method === "string"
+    ? [method, `${prefix}_${snakeCase(method)}`, false] as const
+    : [method[0], `${prefix}_${method[1]}`, method[2] ?? false] as const;
+  return Object.freeze({
+    profile: "js" as const,
+    kind: "call" as const,
+    owner,
+    member,
+    target: Object.freeze({
+      kind: "function" as const,
+      modulePath: Object.freeze(["tsonic_js"]),
+      name,
+      receiver: "imm" as const,
+    }),
+    ...(raises ? { raises: true } : {}),
+  });
+});
+
 export const jsReceiverArrayRow = (
   owner: string,
   member: string,

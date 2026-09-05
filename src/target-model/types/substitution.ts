@@ -4,10 +4,13 @@ import type {
   MojoTargetGenericArgument,
   MojoTargetTypeRef,
 } from "./model.js";
+import type { MojoOriginRef } from "../origins/model.js";
+import { substituteMojoOrigin } from "../origins/substitution.js";
 
 export interface MojoTargetTypeSubstitutions {
   readonly types: ReadonlyMap<string, MojoTargetTypeRef>;
   readonly values: ReadonlyMap<string, MojoTargetGenericArgument>;
+  readonly origins: ReadonlyMap<string, MojoOriginRef>;
   readonly packs: ReadonlyMap<string, readonly MojoTargetGenericArgument[]>;
 }
 
@@ -28,7 +31,9 @@ export function substituteMojoTargetType(
     case "compiler-expression":
       return type;
     case "type-parameter":
-      return substitutions.types.get(type.name) ?? type;
+      return type.identity === undefined
+        ? substitutions.types.get(type.name) ?? type
+        : substitutions.types.get(type.identity) ?? type;
     case "target-named":
       return Object.freeze({
         ...type,
@@ -91,7 +96,8 @@ export function substituteMojoTargetType(
     case "reference":
       return Object.freeze({
         kind: "reference",
-        origin: type.origin,
+        origin: substituteMojoOrigin(type.origin, substitutions.origins),
+        mutable: type.mutable,
         value: substituteMojoTargetType(type.value, substitutions),
       });
     case "callable":
@@ -109,13 +115,20 @@ export function substituteMojoTargetType(
     case "function": {
       const nestedTypes = new Map(substitutions.types);
       const nestedValues = new Map(substitutions.values);
+      const nestedOrigins = new Map(substitutions.origins);
       const nestedPacks = new Map(substitutions.packs);
       for (const parameter of type.genericParameters) {
         if (parameter.kind === "type") nestedTypes.delete(parameter.name);
+        else if (parameter.kind === "origin") nestedOrigins.delete(parameter.name);
         else nestedValues.delete(parameter.name);
         nestedPacks.delete(parameter.name);
       }
-      const nested = { types: nestedTypes, values: nestedValues, packs: nestedPacks };
+      const nested = {
+        types: nestedTypes,
+        values: nestedValues,
+        origins: nestedOrigins,
+        packs: nestedPacks,
+      };
       return Object.freeze({
         ...type,
         genericParameters: Object.freeze(type.genericParameters.map((parameter) =>
@@ -131,6 +144,14 @@ export function substituteMojoTargetType(
       });
     }
   }
+}
+
+export function substituteMojoTargetGenericArguments(
+  arguments_: readonly MojoTargetGenericArgument[],
+  substitutions: MojoTargetTypeSubstitutions,
+): readonly MojoTargetGenericArgument[] {
+  return Object.freeze(arguments_.flatMap((argument) =>
+    substituteGenericArguments(argument, substitutions)));
 }
 
 function substituteGenericParameter(
@@ -158,6 +179,16 @@ function substituteGenericArguments(
   if (argument.kind === "value-reference" && argument.path.length === 1) {
     const replacement = substitutions.packs.get(argument.path[0]!);
     if (replacement !== undefined) return replacement;
+  }
+  if (argument.kind === "origin" && argument.origin.kind === "parameter") {
+    const replacement = substitutions.origins.get(argument.origin.name);
+    if (replacement !== undefined) {
+      return Object.freeze([Object.freeze({
+        kind: "origin",
+        ...(argument.name === undefined ? {} : { name: argument.name }),
+        origin: replacement,
+      })]);
+    }
   }
   if (argument.kind === "type") {
     return Object.freeze([Object.freeze({

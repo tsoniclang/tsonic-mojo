@@ -8,8 +8,10 @@ import { analyzeMojoProjectProperty } from "../operations/project-fields.js";
 import { analyzeMojoProviderProperty } from "../operations/properties.js";
 import { analyzeMojoStructuralProperty } from "../operations/structural-fields.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
+import { classifyMojoValueRefinement } from "../refinements/value.js";
 import { resolveExecutableRegionType as resolveType } from "./executable-region-support.js";
 import type { MojoExecutableRegionAnalysisInput } from "./executable-regions.js";
+import { unwrapCallableExpression } from "../callables/expression-syntax.js";
 
 export function analyzeCall(
   node: Node,
@@ -30,19 +32,39 @@ export function analyzeCall(
     source: input.source,
     providerSemantics: input.providerSemantics,
     projectTypes: input.projectTypes,
+    projectRelationships: input.projectRelationships,
+    lifecycle: input.lifecycle,
+    valueOwnership: input.valueOwnership,
     sourceProfiles: input.sourceProfiles,
     jsEnabled: input.jsEnabled,
     ...(input.sourceCallableErrorType === undefined
       ? {}
       : { sourceCallableErrorType: input.sourceCallableErrorType }),
     expressionTypes: input.expressionTypes,
+    valueRefinements: input.valueRefinements,
     conversions: input.conversions,
-    functionByDeclaration: input.functionByDeclaration,
+    callableByDeclaration: input.callableByDeclaration,
     classByDeclaration: input.classByDeclaration,
     classByTypeId: input.classByTypeId,
     locationStorageNames: input.locationStorageNames,
+    structuralObjects: input.structuralObjects,
     modulePathForSourceFile(owner) {
       return input.modules.forSourceFile(owner)?.modulePath ?? Object.freeze([]);
+    },
+    contextualizeCallableArgument(expression, targetType) {
+      const callableExpression = unwrapCallableExpression(expression, input.source);
+      if (!input.source.ast.is.IsArrowFunction(callableExpression) &&
+        !input.source.ast.is.IsFunctionExpression(callableExpression)) return undefined;
+      const selection = input.analyzeCallableExpression(
+        callableExpression,
+        input.sourceFile,
+        input.owner,
+        { contextualType: targetType },
+      );
+      if (selection !== undefined && expression !== callableExpression) {
+        input.expressionTypes.set(expression, selection.callableType);
+      }
+      return selection?.callableType ?? targetType;
     },
   });
   if (analyzed.kind === "unsupported") {
@@ -72,24 +94,42 @@ export function analyzeProperty(
   }
   const resolve = (type: Type): MojoTargetTypeRef | undefined => resolveType(type, undefined, input, semantics);
   const selectedReceiverType = resolve(selected.receiver.type);
-  const structuralReceiverType = input.expressionTypes.get(selected.receiver.expression) ??
+  const exactReceiverType = input.expressionTypes.get(selected.receiver.expression) ??
     selectedReceiverType;
+  if (exactReceiverType !== undefined && selectedReceiverType !== undefined) {
+    const refinement = classifyMojoValueRefinement(
+      exactReceiverType,
+      selectedReceiverType,
+      input.projectRelationships,
+      input.modules,
+    );
+    if (refinement !== undefined) {
+      input.valueRefinements.set(selected.receiver.expression, refinement);
+    }
+  }
+  const projectReceiverType = reconcileProjectReceiverType(
+    exactReceiverType,
+    selectedReceiverType,
+  );
   const structural = analyzeMojoStructuralProperty({
     source: selected,
-    receiverType: structuralReceiverType,
+    receiverType: exactReceiverType,
     structuralObjects: input.structuralObjects,
     semantics,
   });
   const project = structural.kind === "not-structural-field"
-    ? analyzeMojoProjectProperty(
+      ? analyzeMojoProjectProperty(
         selected,
         input.fieldByDeclaration,
-        selectedReceiverType,
+        input.callableByDeclaration,
+        projectReceiverType,
         Object.freeze([
           ...semantics.facts.selectedSubjects(selected.selectedSymbol, selected.selectedDeclaration),
           ...semantics.facts.selectedSubjects(selected.sourceSymbol, selected.sourceDeclaration),
         ]),
         input.source.ast,
+        input.projectRelationships,
+        resolve,
       )
     : structural;
   const property = project.kind === "not-project-field"
@@ -98,6 +138,7 @@ export function analyzeProperty(
         providerSemantics: input.providerSemantics,
         sourceProfiles: input.sourceProfiles,
         conversions: input.conversions,
+        valueRefinements: input.valueRefinements,
         resolveType: resolve,
       })
     : project;
@@ -105,8 +146,18 @@ export function analyzeProperty(
     input.diagnostics.push(diagnostic(property.code, property.reason, node));
   } else if (property.kind === "resolved") {
     input.propertySelections.set(node, property.selection);
+    input.propertyNodes.add(node);
     input.expressionTypes.set(node, property.expressionType);
   }
+}
+
+function reconcileProjectReceiverType(
+  exactType: MojoTargetTypeRef | undefined,
+  selectedType: MojoTargetTypeRef | undefined,
+): MojoTargetTypeRef | undefined {
+  if (exactType?.kind === "target-named" && selectedType?.kind === "target-named" &&
+    exactType.id === selectedType.id) return exactType;
+  return selectedType ?? exactType;
 }
 
 export function analyzeElement(
@@ -129,7 +180,9 @@ export function analyzeElement(
     sourceProfiles: input.sourceProfiles,
     conversions: input.conversions,
     expressionTypes: input.expressionTypes,
+    valueRefinements: input.valueRefinements,
     projectPropertyByDeclaration: input.fieldByDeclaration,
+    projectRelationships: input.projectRelationships,
     resolveType(type) {
       return resolveType(type, undefined, input, semantics);
     },

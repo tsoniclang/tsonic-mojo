@@ -26,11 +26,13 @@ test("higher-order calls retain one closed typed-error ABI", () => {
         "function failFirst(): never { throw new FirstFailure('first'); }",
         "function failSecond(): never { throw new SecondFailure(2); }",
         "function failSource(): never { throw new Error('source'); }",
+        "function failCombined(first: boolean): void { if (first) failFirst(); else failSource(); }",
         "export function main(): void {",
         "  capture(failFirst);",
         "  capture(() => { throw new SecondFailure(3); });",
         "  capture(failSecond);",
         "  capture(failSource);",
+        "  capture(() => failCombined(true));",
         "}",
       ].join("\n"),
     },
@@ -39,10 +41,15 @@ test("higher-order calls retain one closed typed-error ABI", () => {
   const generated = artifactTexts(result).find(({ text }) => text.includes("def capture"));
   assert.ok(generated);
   assert.match(generated.text, /RaisingCallable\[/u);
-  assert.match(generated.text, /Variant\[Error, FirstFailure, SecondFailure, tsonic_runtime\.TsError\]/u);
+  assert.match(
+    generated.text,
+    /Variant\[[\s\S]*Error,[\s\S]*FirstFailure,[\s\S]*SecondFailure,[\s\S]*TsError,[\s\S]*\]/u,
+  );
   assert.match(generated.text, /\.isa\[FirstFailure\]/u);
   assert.match(generated.text, /\.isa\[SecondFailure\]/u);
   assert.doesNotMatch(generated.text, /erase_callable_error/u);
+  assert.match(generated.text, /\^\.unsafe_unwrap\[TsError\]\(\)/u);
+  assert.doesNotMatch(generated.text, /unsafe_get\[\w+\]\(\)\^/u);
 });
 
 test("bottom-return callables adapt to ordinary callback results", () => {
@@ -86,7 +93,9 @@ test("callable declarations replace provisional effects with finalized conversio
   assert.deepEqual(result.diagnostics, []);
   const generated = artifactTexts(result).find(({ text }) => text.includes("def tsonic_main"));
   assert.ok(generated);
-  assert.match(generated.text, /RaisingCallable\[Tuple\[\], NoneType, Failure\]/u);
+  assert.match(generated.text, /def operation\(\) raises Failure:/u);
+  assert.match(generated.text, /def tsonic_main\(\) raises Failure:\s+operation\(\)/u);
+  assert.doesNotMatch(generated.text, /RaisingCallable|allocate_callable_environment/u);
 });
 
 test("stored callable declarations retain their exact error domain", () => {
@@ -112,9 +121,10 @@ test("stored callable declarations retain their exact error domain", () => {
   assert.deepEqual(result.diagnostics, []);
   const generated = artifactTexts(result).find(({ text }) => text.includes("def invoke"));
   assert.ok(generated);
-  assert.match(generated.text, /RaisingCallable\[Tuple\[\], [^,]+, FirstFailure\]/u);
+  assert.match(generated.text, /def fail_first\(\) raises FirstFailure -> Never/u);
   assert.match(generated.text, /def invoke\(\) raises FirstFailure/u);
-  assert.doesNotMatch(generated.text, /RaisingCallable\[Tuple\[\], [^,]+, Variant\[[^\]]*SecondFailure/u);
+  assert.match(generated.text, /def tsonic_main\(\) raises FirstFailure:\s+invoke\(\)/u);
+  assert.doesNotMatch(generated.text, /def invoke\(\)[^{\n]*SecondFailure/u);
 });
 
 test("closed catch domains stringify every retained error member", () => {
@@ -141,6 +151,6 @@ test("closed catch domains stringify every retained error member", () => {
   const generated = artifactTexts(result).find(({ text }) => text.includes("def invoke"));
   assert.ok(generated);
   assert.match(generated.text, /\.isa\[Failure\]/u);
-  assert.match(generated.text, /error\[tsonic_runtime\.TsError\]/u);
+  assert.match(generated.text, /error\.unsafe_get\[TsError\]\(\)/u);
   assert.match(generated.text, /String\(/u);
 });

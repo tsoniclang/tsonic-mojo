@@ -27,6 +27,11 @@ import {
 } from "./types.js";
 import type { MojoCompilerTypeProjectionContext } from "./types.js";
 import {
+  isImplicitMojoConformancePath,
+  mojoLifecycleRoleForCompilerPath,
+} from "../classification/lifecycle.js";
+import { isDirectMojoSelfReceiver } from "./call-conventions.js";
+import {
   canonicalExportMappings,
   compareText,
   documentation,
@@ -178,7 +183,7 @@ function projectTypeDeclaration(
     ? projectMojoGenericParameters(declaration.genericParameters, context)
     : Object.freeze([]);
   const projectedConformances = declaration.parentTraits
-    .filter(({ path }) => path === undefined || !implicitMojoConformancePaths.has(path))
+    .filter(({ path }) => !isImplicitMojoConformancePath(path))
     .map((trait) => {
       const projected = projectMojoCompilerType({
         kind: "named",
@@ -241,6 +246,9 @@ function projectTypeDeclaration(
           conformances: Object.freeze(projectedConformances.map(({ trait, projected }) => Object.freeze({
             trait: projected.target,
             ...(trait.condition === undefined ? {} : { condition: trait.condition }),
+            ...(mojoLifecycleRoleForCompilerPath(trait.path) === undefined
+              ? {}
+              : { lifecycleRole: mojoLifecycleRoleForCompilerPath(trait.path)! }),
           }))),
         }),
   }));
@@ -255,12 +263,6 @@ function projectTypeDeclaration(
     ...documentation(declaration.documentation),
   });
 }
-const implicitMojoConformancePaths = new Set([
-  "/std/traits/anytype/AnyType",
-  "/std/traits/deinitable/Deinitable",
-  "/std/traits/movable/Movable",
-]);
-
 function projectStructMembers(
   declaration: MojoCompilerStruct,
   exportId: string,
@@ -342,7 +344,7 @@ function projectStructMembers(
       if (!constructor && !function_.static && receiver === undefined) {
         throw new Error(`Mojo method '${declaration.name}.${name}' has no compiler-owned receiver convention.`);
       }
-      if (!function_.static && receiver !== undefined && !isDirectSelfReceiver(receiver.type)) {
+      if (!function_.static && receiver !== undefined && !isDirectMojoSelfReceiver(receiver.type)) {
         throw new Error(
           `Mojo method '${declaration.name}.${name}' has a custom receiver that one TypeScript instance value cannot represent exactly.`,
         );
@@ -411,7 +413,7 @@ function projectStructIndexers(
     if (function_.static || receiver === undefined) {
       throw new Error(`Mojo index getter '${declaration.name}.__getitem__' has no compiler-owned instance receiver.`);
     }
-    if (!isDirectSelfReceiver(receiver.type)) {
+    if (!isDirectMojoSelfReceiver(receiver.type)) {
       throw new Error(`Mojo index getter '${declaration.name}.__getitem__' has an unrepresentable custom receiver.`);
     }
     const projected = projectFunctionSignature(function_, context, memberId);
@@ -425,7 +427,7 @@ function projectStructIndexers(
     if (function_.static || receiver === undefined) {
       throw new Error(`Mojo index setter '${declaration.name}.__setitem__' has no compiler-owned instance receiver.`);
     }
-    if (!isDirectSelfReceiver(receiver.type)) {
+    if (!isDirectMojoSelfReceiver(receiver.type)) {
       throw new Error(`Mojo index setter '${declaration.name}.__setitem__' has an unrepresentable custom receiver.`);
     }
     const projected = projectFunctionSignature(function_, context, memberId);
@@ -544,7 +546,7 @@ function projectTraitMembers(
       if (!function_.static && receiver === undefined) {
         throw new Error(`Mojo trait method '${declaration.name}.${name}' has no compiler-owned receiver convention.`);
       }
-      if (!function_.static && receiver !== undefined && !isDirectSelfReceiver(receiver.type)) {
+      if (!function_.static && receiver !== undefined && !isDirectMojoSelfReceiver(receiver.type)) {
         throw new Error(
           `Mojo trait method '${declaration.name}.${name}' has a custom receiver that one TypeScript instance value cannot represent exactly.`,
         );
@@ -592,8 +594,4 @@ function projectTraitMembers(
     }));
   }
   return members;
-}
-
-function isDirectSelfReceiver(type: import("../model/model.js").MojoCompilerType): boolean {
-  return type.kind === "self" && type.memberPath.length === 0 && type.arguments.length === 0;
 }

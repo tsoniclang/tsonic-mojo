@@ -22,8 +22,12 @@ export function planDiscardedMojoExpression(
   }
   return Object.freeze([
     ...expression.before,
-    resultType.kind === "unit"
-      ? { kind: "expression", expression: expression.value }
+    resultType.kind === "unit" || resultType.kind === "never"
+      ? {
+          kind: "expression",
+          expression: expression.value,
+          ...(resultType.kind === "never" ? { neverReturns: true } : {}),
+        }
       : { kind: "discard", expression: expression.value },
   ]);
 }

@@ -1,12 +1,13 @@
 import type { Node } from "@tsonic/tsts";
-import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
+import type { MojoExpression } from "../../target-ast/index.js";
 import {
   appendMojoPlanningDiagnostic,
+  mojoModuleMemberExpression,
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import { mojoModuleBindingRead, mojoModuleBindingWrite } from "../bindings/module-bindings.js";
 import { mojoTargetTypeEquals } from "../../../target-model/types/equality.js";
-import { mojoTypeName, registerMojoTypeImports } from "../types/render.js";
+import { registerMojoTypeImports } from "../types/imports.js";
 import {
   convertMojoValue,
   finishOptionalMojoOperation,
@@ -18,6 +19,11 @@ import type { MojoValuePlanner } from "./support.js";
 import { mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { planDictionaryKey } from "./conditional-values.js";
+import { selectedMojoDispatchField } from "./property-writes.js";
+import {
+  mojoProjectStateValue,
+  mojoStateValue,
+} from "../declarations/state-storage.js";
 
 export function planMojoProperty(
   node: Node,
@@ -71,10 +77,11 @@ export function planMojoProperty(
       return undefined;
     }
     registerMojoTypeImports(selection.owner, context);
-    const owner = mojoTypeName(selection.owner, context.module.modulePath);
-    return owner === undefined
-      ? undefined
-      : mojoValue(Object.freeze({ kind: "path", path: `${owner}.${selection.name}` }));
+    return mojoValue(Object.freeze({
+      kind: "member",
+      receiver: Object.freeze({ kind: "type-value", type: selection.owner }),
+      name: selection.name,
+    }));
   }
   if (selection.kind === "project-static-field") {
     if (selection.optionalChain) {
@@ -116,42 +123,54 @@ export function planMojoProperty(
       Object.freeze({ plan: receiver.plan, type: selection.receiverType, role: "union_property_receiver" }),
     ], context, true);
     const receiverValue = ordered.values[0]!;
-    const readField = (field: (typeof selection.fields)[number]): MojoExpression => Object.freeze({
+    const fields = selection.fields.map((field) => Object.freeze({
+      field,
+      state: context.program.queries.projectState(field.receiverType),
+    }));
+    if (fields.some(({ state }) => state === undefined)) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROJECT_UNION_STATE_NOT_SEALED",
+        "A project-union property has no exact sealed state projection.",
+        node,
+      );
+      return undefined;
+    }
+    for (const { state } of fields) registerMojoTypeImports(state!.stateType, context);
+    const readField = (entry: (typeof fields)[number]): MojoExpression => Object.freeze({
       kind: "member",
-      receiver: Object.freeze({
-        kind: "postfix-deref",
-        expression: Object.freeze({
-          kind: "member",
-          receiver: Object.freeze({
-            kind: "type-element",
-            receiver: receiverValue,
-            type: field.receiverType,
-          }),
-          name: "_state",
-        }),
-      }),
-      name: field.fieldName,
+      receiver: mojoStateValue(Object.freeze({
+        kind: "proven-union-member",
+        receiver: receiverValue,
+        type: entry.field.receiverType,
+      }), entry.state!),
+      name: entry.field.fieldName,
     });
-    let expression = readField(selection.fields[selection.fields.length - 1]!);
-    for (let index = selection.fields.length - 2; index >= 0; index -= 1) {
-      const field = selection.fields[index]!;
+    let expression = readField(fields[fields.length - 1]!);
+    for (let index = fields.length - 2; index >= 0; index -= 1) {
+      const entry = fields[index]!;
       expression = Object.freeze({
         kind: "conditional",
         condition: Object.freeze({
           kind: "method-call",
           receiver: receiverValue,
           name: "isa",
-          genericArguments: Object.freeze([Object.freeze({ kind: "type", type: field.receiverType })]),
+          genericArguments: Object.freeze([Object.freeze({
+            kind: "type",
+            type: entry.field.receiverType,
+          })]),
           arguments: Object.freeze([]),
         }),
-        whenTrue: readField(field),
+        whenTrue: readField(entry),
         whenFalse: expression,
       });
     }
     return withMojoValue(ordered.before, expression);
   }
-  const sourceReceiverType = selection.kind === "project-field" ||
-    selection.kind === "project-index-property" || selection.kind === "structural-field"
+  const sourceReceiverType = selection.kind === "project-method" ||
+    selection.kind === "project-field" ||
+    selection.kind === "project-index-property" || selection.kind === "project-accessor" ||
+    selection.kind === "structural-field"
     ? selection.receiverType
     : selection.sourceReceiverType;
   const receiver = prepareMojoReceiver(
@@ -162,10 +181,62 @@ export function planMojoProperty(
     planValue,
   );
   if (receiver === undefined) return undefined;
+  if (selection.kind === "project-method") {
+    if (mode !== "read") {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROJECT_METHOD_WRITE_REQUIRES_VALUE",
+        "A project method replacement must be planned with its exact callable value.",
+        node,
+      );
+      return undefined;
+    }
+    const variant = context.program.projectDispatch.callableFor(
+      selection.receiverType,
+      selection.declaration,
+      Object.freeze([]),
+    );
+    if (variant?.property?.read === undefined) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROJECT_METHOD_READ_DISPATCH_NOT_SEALED",
+        "A project method value read has no exact sealed bound-callable dispatch slot.",
+        node,
+      );
+      return undefined;
+    }
+    const ordered = orderMojoValues([
+      Object.freeze({
+        plan: receiver.plan,
+        type: selection.receiverType,
+        role: "method_value_receiver",
+      }),
+    ], context, stabilizeReceiver);
+    const operation = withMojoValue(ordered.before, Object.freeze({
+      kind: "method-call",
+      receiver: ordered.values[0]!,
+      name: variant.property.read.name,
+      arguments: Object.freeze([]),
+    }));
+    return finishOptionalMojoOperation(node, receiver, operation, context);
+  }
   if (selection.kind === "project-field") {
     const directState = context.initializingState !== undefined &&
       context.program.source.ast.kindName(selection.receiver) === "KindThisKeyword" &&
       mojoTargetTypeEquals(context.initializingState.referenceType, selection.receiverType);
+    const dispatchView = context.program.projectDispatch.viewForType(selection.receiverType);
+    const dispatch = dispatchView === undefined
+      ? undefined
+      : context.program.projectDispatch.fieldFor(selection.receiverType, selection.declaration);
+    if (dispatchView !== undefined && dispatch?.read === undefined) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROJECT_FIELD_READ_DISPATCH_NOT_SEALED",
+        "A polymorphic project field read has no exact sealed Mojo dispatch slot.",
+        node,
+      );
+      return undefined;
+    }
     const ordered = orderMojoValues([
       Object.freeze({
         plan: receiver.plan,
@@ -173,16 +244,88 @@ export function planMojoProperty(
         role: "property_receiver",
       }),
     ], context, stabilizeReceiver && !directState);
-    const operation = withMojoValue(ordered.before, {
-      kind: "member",
-      receiver: directState
-        ? ordered.values[0]!
-        : {
-            kind: "postfix-deref",
-            expression: { kind: "member", receiver: ordered.values[0]!, name: "_state" },
-          },
-      name: selection.fieldName,
-    });
+    const sealedStatePath = directState
+      ? context.program.projectDispatch.statePath(
+          context.initializingState!.definition,
+          selection.declaration,
+        )
+      : undefined;
+    if (directState && dispatchView !== undefined && sealedStatePath === undefined) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROJECT_CONSTRUCTOR_FIELD_PATH_NOT_SEALED",
+        "A polymorphic constructor field access has no exact sealed state path.",
+        node,
+      );
+      return undefined;
+    }
+    const directPath = directState ? sealedStatePath ?? [selection.fieldName] : undefined;
+    const directReceiver = directPath === undefined
+      ? undefined
+      : directPath.slice(0, -1).reduce<MojoExpression>(
+          (value, name) => Object.freeze({ kind: "member", receiver: value, name }),
+          ordered.values[0]!,
+        );
+    const stateReceiver = directState || dispatch !== undefined
+      ? undefined
+      : mojoProjectStateValue(ordered.values[0]!, selection.receiverType, context);
+    if (!directState && dispatch === undefined && stateReceiver === undefined) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROJECT_FIELD_STATE_NOT_SEALED",
+        "A project field has no exact sealed state projection.",
+        node,
+      );
+      return undefined;
+    }
+    const operation = withMojoValue(ordered.before, dispatch === undefined || directState
+      ? {
+          kind: "member",
+          receiver: directState
+            ? directReceiver!
+            : stateReceiver!,
+          name: directPath?.[directPath.length - 1] ?? selection.fieldName,
+        }
+      : Object.freeze({
+          kind: "method-call" as const,
+          receiver: ordered.values[0]!,
+          name: dispatch.read!.name,
+          arguments: Object.freeze([]),
+        }));
+    return finishOptionalMojoOperation(node, receiver, operation, context);
+  }
+  if (selection.kind === "project-accessor") {
+    if (mode !== "read" || selection.readName === undefined || selection.readType === undefined) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROJECT_ACCESSOR_WRITE_REQUIRES_VALUE",
+        "A project accessor write must be planned with its exact assigned value.",
+        node,
+      );
+      return undefined;
+    }
+    const dispatchView = context.program.projectDispatch.viewForType(selection.receiverType);
+    const dispatch = dispatchView === undefined
+      ? undefined
+      : selectedMojoDispatchField(selection.receiverType, selection.declarations, context);
+    if (dispatchView !== undefined && dispatch?.read === undefined) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROJECT_ACCESSOR_READ_DISPATCH_NOT_SEALED",
+        "A polymorphic project accessor read has no exact sealed Mojo dispatch slot.",
+        node,
+      );
+      return undefined;
+    }
+    const ordered = orderMojoValues([
+      Object.freeze({ plan: receiver.plan, type: selection.receiverType, role: "accessor_receiver" }),
+    ], context, stabilizeReceiver);
+    const operation = withMojoValue(ordered.before, Object.freeze({
+      kind: "method-call",
+      receiver: ordered.values[0]!,
+      name: dispatch?.read?.name ?? selection.readName,
+      arguments: Object.freeze([]),
+    }));
     return finishOptionalMojoOperation(node, receiver, operation, context);
   }
   if (selection.kind === "structural-field") {
@@ -217,18 +360,47 @@ export function planMojoProperty(
     const ordered = orderMojoValues([
       Object.freeze({ plan: receiver.plan, type: selection.receiverType, role: "index_property_receiver" }),
     ], context, stabilizeReceiver);
-    const operation = withMojoValue(ordered.before, Object.freeze({
-      kind: "element",
-      receiver: Object.freeze({
-        kind: "member",
-        receiver: Object.freeze({
-          kind: "postfix-deref",
-          expression: Object.freeze({ kind: "member", receiver: ordered.values[0]!, name: "_state" }),
-        }),
-        name: selection.storageName,
-      }),
-      index: key,
-    }));
+    const dispatchView = context.program.projectDispatch.viewForType(selection.receiverType);
+    const dispatch = dispatchView === undefined
+      ? undefined
+      : context.program.projectDispatch.indexFor(selection.receiverType, selection.declaration);
+    if (dispatchView !== undefined && dispatch === undefined) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROJECT_INDEX_PROPERTY_DISPATCH_NOT_SEALED",
+        "A polymorphic project index property has no exact sealed dispatch slot.",
+        node,
+      );
+      return undefined;
+    }
+    const stateReceiver = dispatch === undefined
+      ? mojoProjectStateValue(ordered.values[0]!, selection.receiverType, context)
+      : undefined;
+    if (dispatch === undefined && stateReceiver === undefined) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROJECT_INDEX_PROPERTY_STATE_NOT_SEALED",
+        "A project index property has no exact sealed state projection.",
+        node,
+      );
+      return undefined;
+    }
+    const operation = withMojoValue(ordered.before, dispatch === undefined
+      ? Object.freeze({
+          kind: "element" as const,
+          receiver: Object.freeze({
+            kind: "member" as const,
+            receiver: stateReceiver!,
+            name: selection.storageName,
+          }),
+          index: key,
+        })
+      : Object.freeze({
+          kind: "method-call" as const,
+          receiver: ordered.values[0]!,
+          name: dispatch.read.name,
+          arguments: Object.freeze([Object.freeze({ value: key })]),
+        }));
     return finishOptionalMojoOperation(node, receiver, operation, context);
   }
   const operation = mode === "read" ? selection.readOperation : selection.writeOperation;
@@ -271,106 +443,26 @@ export function planMojoProperty(
   if (target.kind !== "property-read" && target.kind !== "property-write") return undefined;
   const member: MojoExpression = target.access.kind === "member"
     ? { kind: "member", receiver: ordered.values[0]!, name: target.access.name }
-    : {
-        kind: "method-call",
-        receiver: ordered.values[0]!,
-        name: target.access.name,
-        arguments: Object.freeze([]),
-      };
+    : target.access.kind === "method"
+      ? {
+          kind: "method-call",
+          receiver: ordered.values[0]!,
+          name: target.access.name,
+          arguments: Object.freeze([]),
+        }
+      : {
+          kind: "call",
+          callee: mojoModuleMemberExpression(
+            context,
+            target.access.modulePath,
+            target.access.name,
+          ),
+          arguments: Object.freeze([Object.freeze({ value: ordered.values[0]! })]),
+        };
   const operationPlan = mode !== "read" || selection.readResultConversion === undefined
     ? withMojoValue(ordered.before, member)
     : convertMojoValue(withMojoValue(ordered.before, member), selection.readResultConversion, context);
   return operationPlan === undefined
     ? undefined
     : finishOptionalMojoOperation(node, receiver, operationPlan, context);
-}
-
-export function planMojoProviderPropertyMethodWrite(
-  node: Node,
-  value: MojoValuePlan,
-  operator: string,
-  context: MojoPlanningContext,
-  planValue: MojoValuePlanner,
-): { readonly before: readonly MojoStatement[]; readonly statement: MojoStatement } | undefined {
-  const selection = context.program.queries.propertySelection(node);
-  if (selection?.kind !== "provider") return undefined;
-  const write = selection.writeOperation;
-  if (write?.target.kind !== "property-write" || write.target.access.kind !== "method" ||
-    write.receiverType === undefined || write.parameterTypes.length !== 1) return undefined;
-  if (selection.optionalChain) {
-    appendMojoPlanningDiagnostic(
-      context,
-      "MOJO_PROVIDER_OPTIONAL_PROPERTY_METHOD_WRITE_UNSUPPORTED",
-      "An optional property assignment has no exact JavaScript write semantics.",
-      node,
-    );
-    return undefined;
-  }
-  const prepared = prepareMojoReceiver(
-    selection.receiver,
-    selection.sourceReceiverType,
-    false,
-    context,
-    planValue,
-  );
-  const converted = prepared === undefined || selection.receiverConversion === undefined
-    ? undefined
-    : convertMojoValue(prepared.plan, selection.receiverConversion, context);
-  if (prepared === undefined || converted === undefined) return undefined;
-  const ordered = orderMojoValues([
-    Object.freeze({ plan: converted, type: write.receiverType, role: "property_write_receiver" }),
-    Object.freeze({ plan: value, type: write.parameterTypes[0]!, role: "property_write_value" }),
-  ], context);
-  let assigned = ordered.values[1]!;
-  if (operator !== "=") {
-    const read = selection.readOperation;
-    if (read?.target.kind !== "property-read" || read.receiverType === undefined ||
-      selection.readResultConversion === undefined ||
-      !mojoTargetTypeEquals(read.receiverType, write.receiverType)) {
-      appendMojoPlanningDiagnostic(
-        context,
-        "MOJO_PROVIDER_PROPERTY_METHOD_COMPOUND_WRITE_UNSUPPORTED",
-        "A method-backed compound property write requires one compatible exact read operation.",
-        node,
-      );
-      return undefined;
-    }
-    const rawRead: MojoExpression = read.target.access.kind === "member"
-      ? Object.freeze({ kind: "member", receiver: ordered.values[0]!, name: read.target.access.name })
-      : Object.freeze({
-          kind: "method-call",
-          receiver: ordered.values[0]!,
-          name: read.target.access.name,
-          arguments: Object.freeze([]),
-        });
-    const current = convertMojoValue(
-      mojoValue(rawRead),
-      selection.readResultConversion,
-      context,
-    );
-    if (current === undefined || current.before.length !== 0) return undefined;
-    assigned = Object.freeze({
-      kind: "binary",
-      operator: operator.slice(0, -1),
-      left: current.value,
-      right: assigned,
-    });
-  }
-  return Object.freeze({
-    before: ordered.before,
-    statement: Object.freeze({
-      kind: "expression",
-      expression: Object.freeze({
-        kind: "method-call",
-        receiver: ordered.values[0]!,
-        name: write.target.access.name,
-        arguments: Object.freeze([Object.freeze({
-          value: assigned,
-          ...(write.target.value.position === "keyword"
-            ? { name: write.target.value.nativeName! }
-            : {}),
-        })]),
-      }),
-    }),
-  });
 }

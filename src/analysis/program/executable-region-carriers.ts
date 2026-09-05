@@ -64,8 +64,10 @@ export function selectedOperationReceiverType(
 
 function propertyReceiver(selection: MojoPropertySelection): Node | undefined {
   switch (selection.kind) {
+    case "project-method":
     case "project-field":
     case "project-index-property":
+    case "project-accessor":
     case "structural-field":
     case "project-union-field":
     case "provider":
@@ -80,8 +82,10 @@ function propertyReceiver(selection: MojoPropertySelection): Node | undefined {
 
 function propertyReceiverType(selection: MojoPropertySelection): MojoTargetTypeRef | undefined {
   switch (selection.kind) {
+    case "project-method":
     case "project-field":
     case "project-index-property":
+    case "project-accessor":
     case "structural-field":
     case "project-union-field":
       return selection.receiverType;
@@ -210,7 +214,12 @@ export function analyzeReferencedValueRefinement(
     semantics,
   );
   if (selectedTargetType === undefined) return undefined;
-  const refinement = classifyMojoValueRefinement(declaredTargetType, selectedTargetType);
+  const refinement = classifyMojoValueRefinement(
+    declaredTargetType,
+    selectedTargetType,
+    input.projectRelationships,
+    input.modules,
+  );
   if (refinement === undefined) return undefined;
   input.valueRefinements.set(node, refinement);
   return refinement.resultType;
@@ -240,7 +249,12 @@ export function analyzeErasedValueRefinement(
     : sourceRefinement.kind === "exact" &&
       semantics.types.isIdentical(sourceType, selectedType);
   if (!mechanicallySelected) return;
-  const refinement = classifyMojoValueRefinement(sourceTargetType, selectedTargetType);
+  const refinement = classifyMojoValueRefinement(
+    sourceTargetType,
+    selectedTargetType,
+    input.projectRelationships,
+    input.modules,
+  );
   if (refinement !== undefined) input.valueRefinements.set(node, refinement);
 }
 
@@ -294,7 +308,12 @@ function resolveErasedExpressionCarrier(
     semantics,
   );
   if (selectedCarrier === undefined) return sourceCarrier;
-  if (classifyMojoValueRefinement(sourceCarrier, selectedCarrier) !== undefined) return selectedCarrier;
+  if (classifyMojoValueRefinement(
+    sourceCarrier,
+    selectedCarrier,
+    input.projectRelationships,
+    input.modules,
+  ) !== undefined) return selectedCarrier;
   if (ast.is.IsNonNullExpression(node)) return sourceCarrier;
   return classifyMojoValueConversion(sourceCarrier, selectedCarrier).kind === "resolved"
     ? selectedCarrier
@@ -317,18 +336,52 @@ export function analyzeTypeTest(
   const reference = input.source.navigation.sourceReferenceFor(right);
   const definition = input.projectTypes.definitionForDeclaration(reference?.declaration);
   const sourceType = input.expressionTypes.get(left);
-  if (definition?.kind !== "class" || sourceType === undefined) return;
+  if (definition?.kind !== "class" || sourceType === undefined ||
+    definition.typeParameters.length !== 0) return;
   const testedType = selectedProjectTypeTestMember(sourceType, definition.id);
-  if (testedType === undefined) return;
   let selection: MojoTypeTestSelection;
-  if (mojoTargetTypeEquals(sourceType, testedType)) {
+  if (testedType !== undefined && mojoTargetTypeEquals(sourceType, testedType)) {
     selection = Object.freeze({ kind: "constant", value: true, operand: left });
-  } else if (sourceType.kind === "optional" && mojoTargetTypeEquals(sourceType.value, testedType)) {
+  } else if (testedType !== undefined && sourceType.kind === "optional" &&
+    mojoTargetTypeEquals(sourceType.value, testedType)) {
     selection = Object.freeze({ kind: "optional-presence", operand: left, sourceType });
-  } else if (sourceType.kind === "union") {
+  } else if (testedType !== undefined && sourceType.kind === "union") {
     selection = Object.freeze({ kind: "union-member", operand: left, sourceType, testedType });
   } else {
-    return;
+    const dispatchType = sourceType.kind === "optional" ? sourceType.value : sourceType;
+    const sourceDefinition = input.projectRelationships.definitionForType(dispatchType);
+    const targetType = input.projectRelationships.openType(definition);
+    if (sourceDefinition === undefined) return;
+    const sourceToTarget = input.projectRelationships.relationship(dispatchType, definition);
+    if (sourceToTarget.kind === "ambiguous") return;
+    if (sourceToTarget.kind === "related" &&
+      mojoTargetTypeEquals(sourceToTarget.targetType, targetType)) {
+      selection = sourceType.kind === "optional"
+        ? Object.freeze({ kind: "optional-presence", operand: left, sourceType })
+        : Object.freeze({ kind: "constant", value: true, operand: left });
+    } else {
+      const targetToSource = input.projectRelationships.relationship(targetType, sourceDefinition);
+      if (targetToSource.kind === "ambiguous") return;
+      if (targetToSource.kind === "related" &&
+        mojoTargetTypeEquals(targetToSource.targetType, dispatchType)) {
+        const refinement = classifyMojoValueRefinement(
+          sourceType,
+          targetType,
+          input.projectRelationships,
+          input.modules,
+        );
+        if (refinement?.kind !== "project-downcast") return;
+        selection = Object.freeze({
+            kind: "project-dispatch",
+            operand: left,
+            sourceType,
+            dispatchType,
+            testedType: targetType,
+          });
+      } else {
+        selection = Object.freeze({ kind: "constant", value: false, operand: left });
+      }
+    }
   }
   input.typeTestSelections.set(node, selection);
   input.expressionTypes.set(node, Object.freeze({ kind: "source-primitive", name: "bool" }));

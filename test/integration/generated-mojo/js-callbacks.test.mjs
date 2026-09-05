@@ -24,11 +24,12 @@ test("JavaScript array callbacks retain exact authored arities", () => {
       ].join("\n"),
     },
   }));
-  assert.match(source, /tsonic_js\.array_map_zero\[Float64\]/u);
-  assert.match(source, /tsonic_js\.array_map_value\[Float64\]/u);
-  assert.match(source, /tsonic_js\.array_map_with_index\[Float64\]/u);
-  assert.match(source, /tsonic_js\.array_map_with_array\[Float64\]/u);
-  assert.equal((source.match(/tsonic_runtime\.RaisingCallable/gu) ?? []).length, 4);
+  assert.match(source, /array_map_zero\[Float64\]\(values, _callable\)/u);
+  assert.match(source, /array_map_value\[Float64\]\(values, _callable_2\)/u);
+  assert.match(source, /array_map_with_index\[Float64\]\(values, _callable_3\)/u);
+  assert.match(source, /array_map_with_array\[Float64\]\(values, _callable_4\)/u);
+  assert.match(source, /def _callable_4\(\n    value: Float64,\n    index: Float64,\n    array: JsArray\[Float64\],/u);
+  assert.doesNotMatch(source, /RaisingCallable|GlobalCell/u);
 });
 
 test("JavaScript callback operations retain the callback's exact error domain", () => {
@@ -49,10 +50,10 @@ test("JavaScript callback operations retain the callback's exact error domain", 
       ].join("\n"),
     },
   }));
-  assert.match(source, /tsonic_js\.array_map_value\[Float64\]/u);
-  assert.match(source, /RaisingCallable\[Tuple\[Float64\], Float64, CallbackFailure\]/u);
+  assert.match(source, /array_map_value\[/u);
+  assert.match(source, /def _callable\(value: Float64\) raises CallbackFailure -> Float64/u);
   assert.match(source, /def tsonic_main\(\) raises CallbackFailure/u);
-  assert.doesNotMatch(source, /array_map_value[^\n]*Variant\[/u);
+  assert.doesNotMatch(source, /RaisingCallable|array_map_value[^\n]*Variant\[/u);
 });
 
 test("JavaScript callbacks calling pure project functions retain an admitted helper domain", () => {
@@ -67,7 +68,8 @@ test("JavaScript callbacks calling pure project functions retain an admitted hel
       ].join("\n"),
     },
   }));
-  assert.match(source, /tsonic_js\.array_sort_compare/u);
+  assert.match(source, /from tsonic_js import array_sort_compare, JsArray/u);
+  assert.match(source, /array_sort_compare\(/u);
   assert.match(source, /def tsonic_main\(\) raises Error/u);
 });
 
@@ -108,11 +110,11 @@ test("JavaScript callback families select one sealed runtime operation", () => {
     "map_for_each_with_map",
     "set_for_each_with_set",
   ]) {
-    assert.match(source, new RegExp(`tsonic_js\\.${operation}`, "u"));
+    assert.match(source, new RegExp(`\\b${operation}\\b`, "u"));
   }
 });
 
-test("JavaScript predicate callbacks retain exact truthiness adapters", () => {
+test("JavaScript predicate callbacks use native immediate adapters", () => {
   const source = generatedSource(compileMojo({
     surfaces: ["js"],
     files: {
@@ -125,8 +127,39 @@ test("JavaScript predicate callbacks retain exact truthiness adapters", () => {
       ].join("\n"),
     },
   }));
-  assert.match(source, /tsonic_js\.adapt_truthy_number_callback/u);
-  assert.match(source, /tsonic_js\.adapt_truthy_string_callback/u);
+  assert.match(source, /array_filter_value\(values, _callable\)/u);
+  assert.match(source, /array_some_value\(values, _callable_2\)/u);
+  assert.doesNotMatch(source, /lambda/u);
+  assert.match(source, /return js_truthy_number\(value\)/u);
+  assert.match(source, /return len\(.+\) != 0/u);
+  assert.doesNotMatch(source, /js_truthy_number\(_immediate_callback\(/u);
+  assert.doesNotMatch(source, /len\(_immediate_callback_2\(/u);
+  assert.doesNotMatch(source, /adapt_truthy_|widen_callable|RaisingCallable/u);
+});
+
+test("identity-bearing callbacks bridge once into the native immediate ABI", () => {
+  const source = generatedSource(compileMojo({
+    surfaces: ["js"],
+    files: {
+      "index.ts": [
+        "export function main(): void {",
+        "  const increment = (value: number): number => value + 1;",
+        "  const alias = increment;",
+        "  const strictSame = alias === increment;",
+        "  const looseSame = alias == increment;",
+        "  const strictDifferent = alias !== increment;",
+        "  const looseDifferent = alias != increment;",
+        "  if (strictSame && looseSame && !strictDifferent && !looseDifferent) [1].map(alias);",
+        "}",
+      ].join("\n"),
+    },
+  }));
+  assert.match(source, /Callable/u);
+  assert.equal(source.match(/\.identity\(\) is(?: not)? .*\.identity\(\)/gu)?.length, 4);
+  assert.doesNotMatch(source, /RaisingCallable/u);
+  assert.match(source, /lambda/u);
+  assert.match(source, /_immediate_callback\.call\(\(/u);
+  assert.doesNotMatch(source, /adapt_truthy_|widen_callable\(_immediate_callback/u);
 });
 
 test("JavaScript core collection date and math operations use sealed runtime rows", () => {
@@ -175,7 +208,7 @@ test("JavaScript core collection date and math operations use sealed runtime row
     },
   }));
   for (const operation of [
-    "map_new", "set_new", "date_new", "date_parse", "date_utc", "date_now",
+    "map_new", "set_new", "date_new", "date_parse_native", "date_utc", "date_now",
     "math_abs", "math_acos", "math_acosh", "math_asin", "math_asinh", "math_atan",
     "math_atan2", "math_atanh", "math_cbrt", "math_ceil", "math_clz32", "math_cos",
     "math_cosh", "math_exp", "math_expm1", "math_floor", "math_fround", "math_hypot",
@@ -189,16 +222,20 @@ test("JavaScript core collection date and math operations use sealed runtime row
     "number_to_string_radix",
     "boolean_to_string", "boolean_value_of", "console_log", "console_info",
     "console_warn", "console_error", "console_debug",
-  ]) assert.match(source, new RegExp(`tsonic_js\\.${operation}`, "u"));
+  ]) assert.match(source, new RegExp(`\\b${operation}\\b`, "u"));
   for (const method of [
     "set", "get", "has", "keys", "values", "entries", "delete", "clear", "add",
     "union", "intersection", "difference", "symmetric_difference", "is_subset_of",
-    "is_superset_of", "is_disjoint_from", "get_time", "get_utc_full_year", "to_iso_string",
+    "is_superset_of", "is_disjoint_from", "get_time", "get_utc_full_year",
     "get_utc_month", "get_utc_date", "get_utc_day", "get_utc_hours", "get_utc_minutes",
     "get_utc_seconds", "get_utc_milliseconds", "set_time", "set_utc_milliseconds",
     "set_utc_seconds", "set_utc_minutes", "set_utc_hours", "set_utc_date", "set_utc_month",
-    "set_utc_full_year", "to_json", "to_utc_string", "to_string", "value_of",
+    "set_utc_full_year", "value_of",
   ]) assert.match(source, new RegExp(`\\.${method}\\(`, "u"));
+  for (const operation of [
+    "date_to_iso_string_native", "date_to_json_native", "date_to_utc_string_native",
+    "date_to_string_native",
+  ]) assert.match(source, new RegExp(`\\b${operation}\\b`, "u"));
 });
 
 test("JavaScript radix formatting requires an exact integral receiver", () => {
@@ -230,6 +267,7 @@ test("JavaScript string and array operations retain exact source-profile selecti
         "  values.copyWithin(1, 0, 1); values.includes(7); values.indexOf(7);",
         "  values.lastIndexOf(7); values.join(\",\"); values.slice(0, 2); values.at(-1);",
         "  const text = \"  Alpha beta Alpha  \";",
+        "  const first = text[0];",
         "  text.toUpperCase(); text.toLowerCase(); text.includes(\"beta\");",
         "  text.startsWith(\"  Alpha\"); text.endsWith(\"Alpha  \");",
         "  text.indexOf(\"Alpha\"); text.lastIndexOf(\"Alpha\"); text.slice(2, 7);",
@@ -245,13 +283,60 @@ test("JavaScript string and array operations retain exact source-profile selecti
   }));
   for (const method of [
     "push", "pop", "shift", "unshift", "splice", "reverse", "sort", "fill",
-    "copy_within", "includes", "index_of", "last_index_of", "join", "slice", "at",
-    "to_upper_case", "to_lower_case", "starts_with", "ends_with", "char_at",
-    "char_code_at", "code_point_at", "pad_start", "pad_end", "repeat", "trim",
-    "trim_start", "trim_end", "substring", "substr", "replace", "replace_all",
-    "concat", "value_of",
+    "copy_within", "includes", "index_of", "last_index_of", "slice", "at",
   ]) assert.match(source, new RegExp(`\\.${method}\\(`, "u"));
-  assert.match(source, /tsonic_js\.string_split/u);
-  assert.match(source, /tsonic_js\.string_from_char_code/u);
-  assert.match(source, /tsonic_js\.string_from_code_point/u);
+  for (const operation of [
+    "array_join_native", "native_string_to_upper_case", "native_string_to_lower_case",
+    "native_string_includes", "native_string_starts_with", "native_string_ends_with",
+    "native_string_index_of", "native_string_last_index_of", "native_string_slice",
+    "native_string_at", "native_string_char_at", "native_string_char_code_at",
+    "native_string_code_point_at", "native_string_pad_start", "native_string_pad_end",
+    "native_string_repeat", "native_string_trim", "native_string_trim_start",
+    "native_string_trim_end", "native_string_trim_left", "native_string_trim_right",
+    "native_string_substring", "native_string_substr", "native_string_concat",
+    "native_string_value_of", "native_string_from_char_code", "native_string_from_code_point",
+  ]) assert.match(source, new RegExp(`\\b${operation}\\b`, "u"));
+  assert.match(source, /\bstring_split_pattern\b/u);
+  assert.match(source, /\bstring_replace_pattern\b/u);
+  assert.match(source, /\bstring_replace_all_pattern\b/u);
+  assert.match(source, /native_string_char_at\(text, Float64\(0\)\)/u);
+  assert.doesNotMatch(source, /\.join\(|\.trim\(|\.to_upper_case\(/u);
+});
+
+test("global URI operations preserve native strings across the explicit JS boundary", () => {
+  const result = compileMojo({
+    surfaces: ["js"],
+    files: {
+      "index.ts": [
+        "export function roundTrip(value: string): string {",
+        "  return decodeURIComponent(encodeURIComponent(value));",
+        "}",
+        "export function main(): void { roundTrip('a b'); }",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = generatedSource(result);
+  assert.match(source, /decode_uri_component_native\(encode_uri_component_native\(value\)\)/u);
+  assert.doesNotMatch(source, /decode_uri_component_js|encode_uri_component_js/u);
+});
+
+test("optional native-string helper calls preserve the complete optional chain", () => {
+  const result = compileMojo({
+    surfaces: ["js"],
+    files: {
+      "index.ts": [
+        "export function normalize(value: string | undefined): string | undefined {",
+        "  return value?.trim().toLowerCase();",
+        "}",
+        "export function main(): void { normalize(undefined); normalize(' value '); }",
+      ].join("\n"),
+    },
+  });
+  assert.deepEqual(result.diagnostics, []);
+  const source = generatedSource(result);
+  assert.match(source, /if _optional_receiver/u);
+  assert.match(source, /native_string_trim\(_optional_receiver\.value\(\)\)/u);
+  assert.match(source, /native_string_to_lower_case/u);
+  assert.doesNotMatch(source, /\.trim\(|\.to_lower_case\(/u);
 });

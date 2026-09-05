@@ -7,6 +7,12 @@ import type {
 } from "@tsonic/tsts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoCallSelection } from "../program/model.js";
+import {
+  fixedMojoLifecycleContract,
+  mojoExplicitLifecycleCapabilities,
+} from "../../target-model/lifecycle/index.js";
+
+const rawPointerLifecycle = fixedMojoLifecycleContract(mojoExplicitLifecycleCapabilities);
 import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 
@@ -95,6 +101,7 @@ export function mojoRawPointerTargetType(): MojoTargetTypeRef {
     id: "tsonic.mojo.runtime.RawPointer",
     modulePath: Object.freeze(["tsonic_runtime"]),
     name: "RawPointer",
+    lifecycle: rawPointerLifecycle,
   });
 }
 

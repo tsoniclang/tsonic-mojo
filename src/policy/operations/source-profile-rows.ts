@@ -9,16 +9,19 @@ import {
   jsInstanceRows,
   jsReceiverArrayRow,
   jsReceiverFunctionRow,
+  jsReceiverFunctionRows,
   jsStaticRows,
   receiverArgument,
   receiverType,
   snakeCase,
   sourceErrorRows,
 } from "./source-profile-row-builders.js";
+import { mojoRegExpSourceProfileCallRows } from "./source-profile-regexp-rows.js";
 
 export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Object.freeze([
   ...sourceErrorRows,
   ...jsConstructorRows,
+  ...mojoRegExpSourceProfileCallRows,
   Object.freeze({
     profile: "js",
     kind: "call",
@@ -65,7 +68,7 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
       ]),
     }),
   }),
-  ...jsInstanceRows("String", "imm", [
+  ...jsReceiverFunctionRows("String", "native_string", [
     "at", "charAt", "charCodeAt", "codePointAt", "concat", "endsWith", "includes",
     "indexOf", "lastIndexOf", "padEnd", "padStart",
     ["repeat", "repeat", true], "slice", "startsWith",
@@ -73,46 +76,24 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     ["toUpperCase", "to_upper_case", true], "toWellFormed",
     "trim", "trimEnd", "trimLeft", "trimRight", "trimStart", "valueOf", "isWellFormed",
   ]),
-  Object.freeze({
-    profile: "js",
-    kind: "call",
-    owner: "String",
-    member: "replace",
-    target: Object.freeze({ kind: "instance", name: "replace", receiver: "imm" }),
-    parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["js-string", "js-string"]),
-  }),
-  Object.freeze({
-    profile: "js",
-    kind: "call",
-    owner: "String",
-    member: "replaceAll",
-    target: Object.freeze({ kind: "instance", name: "replace_all", receiver: "imm" }),
-    parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["js-string", "js-string"]),
-    raises: true,
-  }),
-  Object.freeze({
-    profile: "js",
-    kind: "call",
-    owner: "String",
-    member: "split",
-    target: Object.freeze({
-      kind: "function",
-      modulePath: Object.freeze(["tsonic_js"]),
-      name: "string_split",
-      receiver: "imm",
-    }),
-    parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["js-string", "float64"]),
-  }),
-  ...jsInstanceRows("Array", "mut", ["copyWithin", "pop", "reverse", "shift"]),
-  jsInstanceParameterRow("Array", "fill", "mut", [receiverArgument(0), "float64", "float64"]),
-  jsInstanceParameterRow("Array", "push", "mut", [receiverArgument(0)]),
-  jsInstanceParameterRow("Array", "splice", "mut", ["float64", "float64", receiverArgument(0)]),
-  jsInstanceParameterRow("Array", "unshift", "mut", [receiverArgument(0)]),
+  ...jsInstanceRows("Array", "imm", ["copyWithin", "pop", "reverse", "shift"]),
+  jsInstanceParameterRow("Array", "fill", "imm", [receiverArgument(0), "float64", "float64"]),
+  jsInstanceParameterRow("Array", "push", "imm", [receiverArgument(0)]),
+  jsInstanceParameterRow("Array", "splice", "imm", ["float64", "float64", receiverArgument(0)]),
+  jsInstanceParameterRow("Array", "unshift", "imm", [receiverArgument(0)]),
   ...["Array", "ReadonlyArray"].flatMap((owner) => [
     jsInstanceParameterRow(owner, "at", "imm", ["float64"]),
     jsInstanceParameterRow(owner, "includes", "imm", [receiverArgument(0), "float64"]),
     jsInstanceParameterRow(owner, "indexOf", "imm", [receiverArgument(0), "float64"]),
-    jsInstanceParameterRow(owner, "join", "imm", ["js-string"]),
+    Object.freeze({
+      ...jsInstanceParameterRow(owner, "join", "imm", ["native-string"]),
+      target: Object.freeze({
+        kind: "function" as const,
+        modulePath: Object.freeze(["tsonic_js"]),
+        name: "array_join_native",
+        receiver: "imm" as const,
+      }),
+    }),
     jsInstanceParameterRow(owner, "lastIndexOf", "imm", [receiverArgument(0), "float64"]),
     jsInstanceParameterRow(owner, "slice", "imm", ["float64", "float64"]),
   ]),
@@ -151,14 +132,14 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     owner: "Array",
     member: "sort",
     argumentCount: 0,
-    target: Object.freeze({ kind: "instance", name: "sort", receiver: "mut" }),
+    target: Object.freeze({ kind: "instance", name: "sort", receiver: "imm" }),
   }),
-  jsCallbackRow("Array", "sort", "mut", "float64", [
+  jsCallbackRow("Array", "sort", "imm", "float64", [
     "array_sort_zero", "array_sort_value", "array_sort_compare",
   ], 1),
-  ...jsInstanceRows("Map", "mut", ["clear"]),
-  jsInstanceParameterRow("Map", "delete", "mut", [receiverArgument(0)]),
-  jsInstanceParameterRow("Map", "set", "mut", [receiverArgument(0), receiverArgument(1)]),
+  ...jsInstanceRows("Map", "imm", ["clear"]),
+  jsInstanceParameterRow("Map", "delete", "imm", [receiverArgument(0)]),
+  jsInstanceParameterRow("Map", "set", "imm", [receiverArgument(0), receiverArgument(1)]),
   ...["Map", "ReadonlyMap"].flatMap((owner) => [
     Object.freeze({
       ...jsInstanceParameterRow(owner, "get", "imm", [receiverArgument(0)]),
@@ -177,9 +158,9 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
   ...["Map", "ReadonlyMap"].map((owner) => jsCallbackRow(owner, "forEach", "imm", "preserve", [
     "map_for_each_zero", "map_for_each_value", "map_for_each_value_key", "map_for_each_with_map",
   ])),
-  ...jsInstanceRows("Set", "mut", ["clear"]),
-  jsInstanceParameterRow("Set", "add", "mut", [receiverArgument(0)]),
-  jsInstanceParameterRow("Set", "delete", "mut", [receiverArgument(0)]),
+  ...jsInstanceRows("Set", "imm", ["clear"]),
+  jsInstanceParameterRow("Set", "add", "imm", [receiverArgument(0)]),
+  jsInstanceParameterRow("Set", "delete", "imm", [receiverArgument(0)]),
   ...["Set", "ReadonlySet"].flatMap((owner) => [
     jsInstanceParameterRow(owner, "has", "imm", [receiverArgument(0)]),
     ...[
@@ -203,7 +184,12 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     ["getUTCFullYear", "get_utc_full_year"], ["getUTCHours", "get_utc_hours"],
     ["getUTCMilliseconds", "get_utc_milliseconds"], ["getUTCMinutes", "get_utc_minutes"],
     ["getUTCMonth", "get_utc_month"], ["getUTCSeconds", "get_utc_seconds"],
-    ["toJSON", "to_json"], "toString", ["toUTCString", "to_utc_string"], "valueOf",
+    "valueOf",
+  ]),
+  ...jsReceiverFunctionRows("Date", "date", [
+    ["toJSON", "to_json_native"],
+    ["toString", "to_string_native"],
+    ["toUTCString", "to_utc_string_native"],
   ]),
   ...jsInstanceRows("Date", "mut", [
     "setTime", ["setUTCDate", "set_utc_date"], ["setUTCFullYear", "set_utc_full_year"],
@@ -216,7 +202,12 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     kind: "call",
     owner: "Date",
     member: "toISOString",
-    target: Object.freeze({ kind: "instance", name: "to_iso_string", receiver: "imm" }),
+    target: Object.freeze({
+      kind: "function",
+      modulePath: Object.freeze(["tsonic_js"]),
+      name: "date_to_iso_string_native",
+      receiver: "imm",
+    }),
     raises: true,
   }),
   Object.freeze({
@@ -265,8 +256,11 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
   jsReceiverFunctionRow(
     "Number", "toPrecision", "number_to_precision_digits", 1, ["float64"], true,
   ),
-  ...jsStaticRows("StringConstructor", ["fromCharCode", ["fromCodePoint", "string_from_code_point", true]]),
-  ...jsStaticRows("DateConstructor", ["now", "parse", ["UTC", "date_utc"]]),
+  ...jsStaticRows("StringConstructor", [
+    ["fromCharCode", "native_string_from_char_code"],
+    ["fromCodePoint", "native_string_from_code_point", true],
+  ]),
+  ...jsStaticRows("DateConstructor", ["now", ["parse", "date_parse_native"], ["UTC", "date_utc"]]),
   Object.freeze({
     profile: "js",
     kind: "call",
@@ -347,13 +341,31 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     owner: "JSON",
     member: "stringify",
     argumentCount: 1,
-    parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["js-value"]),
-    target: Object.freeze({
-      kind: "function",
-      modulePath: Object.freeze(["tsonic_js"]),
-      name: "json_stringify",
-    }),
-    raises: true,
+    specialOperation: "json-stringify",
+  }),
+  Object.freeze({
+    profile: "js",
+    kind: "call",
+    owner: "JSON",
+    member: "stringify",
+    argumentCount: 2,
+    specialOperation: "json-stringify",
+  }),
+  Object.freeze({
+    profile: "js",
+    kind: "call",
+    owner: "JSON",
+    member: "stringify",
+    argumentCount: 3,
+    specialOperation: "json-stringify",
+  }),
+  Object.freeze({
+    profile: "js",
+    kind: "call",
+    owner: "ObjectConstructor",
+    member: "assign",
+    argumentCount: 2,
+    specialOperation: "object-assign",
   }),
   ...["isFinite", "isInteger", "isNaN", "isSafeInteger"].map((member) => Object.freeze({
     profile: "js" as const,
@@ -389,15 +401,15 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     }),
   }),
   ...[
-    ["encodeURIComponent", "encode_uri_component"],
-    ["decodeURIComponent", "decode_uri_component"],
+    ["encodeURIComponent", "encode_uri_component_native"],
+    ["decodeURIComponent", "decode_uri_component_native"],
   ].map(([member, name]): MojoSourceProfileCallRow => Object.freeze({
     profile: "js",
     kind: "call",
     owner: "Global",
     member: member!,
     argumentCount: 1,
-    parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["js-string"]),
+    parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["native-string"]),
     target: Object.freeze({
       kind: "function",
       modulePath: Object.freeze(["tsonic_js"]),

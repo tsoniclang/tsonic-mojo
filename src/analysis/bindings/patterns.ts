@@ -9,12 +9,14 @@ import {
 import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
 import { instantiateProjectFieldType } from "../operations/project-fields.js";
 import type {
   MojoAnalyzedClass,
   MojoAnalyzedInterface,
   MojoBindingNormalization,
+  MojoBindingProjectionPlan,
   MojoBindingPatternElementSelection,
   MojoBindingPatternSelection,
   MojoBindingValueProjection,
@@ -38,9 +40,23 @@ export interface MojoBindingPatternAnalysisInput {
   readonly bindingTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly classByTypeId: ReadonlyMap<string, MojoAnalyzedClass>;
   readonly interfaceByTypeId: ReadonlyMap<string, MojoAnalyzedInterface>;
+  readonly projectRelationships: MojoProjectTypeRelationships;
   readonly structuralObjects: MojoStructuralObjectCatalog;
   readonly diagnostics: TargetDiagnostic[];
 }
+
+export type MojoBindingProjectionAnalysisInput = Omit<
+  MojoBindingPatternAnalysisInput,
+  "declaration" | "initializer" | "sourceReuse"
+> & {
+  readonly declaration: Node;
+  readonly pattern: Node;
+};
+
+type MojoBindingProjectionContext = Omit<
+  MojoBindingProjectionAnalysisInput,
+  "declaration" | "pattern"
+>;
 
 export function analyzeMojoBindingPattern(
   input: MojoBindingPatternAnalysisInput,
@@ -50,14 +66,32 @@ export function analyzeMojoBindingPattern(
     (!input.ast.is.IsArrayBindingPattern(pattern) && !input.ast.is.IsObjectBindingPattern(pattern))) {
     return undefined;
   }
-  const elements = analyzePatternElements(pattern, input.sourceType, input.sourceSemanticType, input);
+  const projection = analyzeMojoBindingProjection({ ...input, pattern });
+  return projection === undefined
+    ? undefined
+    : Object.freeze({
+        ...projection,
+        initializer: input.initializer,
+        sourceReuse: input.sourceReuse,
+      });
+}
+
+export function analyzeMojoBindingProjection(
+  input: MojoBindingProjectionAnalysisInput,
+): MojoBindingProjectionPlan | undefined {
+  if (!input.ast.is.IsArrayBindingPattern(input.pattern) &&
+    !input.ast.is.IsObjectBindingPattern(input.pattern)) return undefined;
+  const elements = analyzePatternElements(
+    input.pattern,
+    input.sourceType,
+    input.sourceSemanticType,
+    input,
+  );
   return elements === undefined
     ? undefined
     : Object.freeze({
         declaration: input.declaration,
-        initializer: input.initializer,
         sourceType: input.sourceType,
-        sourceReuse: input.sourceReuse,
         elements,
       });
 }
@@ -66,7 +100,7 @@ function analyzePatternElements(
   pattern: Node,
   sourceType: MojoTargetTypeRef,
   sourceSemanticType: Type | undefined,
-  input: MojoBindingPatternAnalysisInput,
+  input: MojoBindingProjectionContext,
 ): readonly MojoBindingPatternElementSelection[] | undefined {
   const array = input.ast.is.IsArrayBindingPattern(pattern);
   const object = input.ast.is.IsObjectBindingPattern(pattern);
@@ -209,7 +243,7 @@ function projectArrayElement(
   index: number,
   rest: boolean,
   hasDefault: boolean,
-  input: MojoBindingPatternAnalysisInput,
+  input: MojoBindingProjectionContext,
 ): ProjectedBindingValue | undefined {
   if (rest) {
     if (sourceType.kind === "tuple") {
@@ -264,7 +298,7 @@ function projectObjectElement(
   binding: Node,
   rest: boolean,
   extractedNames: ReadonlySet<string>,
-  input: MojoBindingPatternAnalysisInput,
+  input: MojoBindingProjectionContext,
 ): ProjectedBindingValue | undefined {
   if (rest) {
     if (!input.ast.is.IsIdentifier(binding) || sourceSemanticType === undefined) return undefined;
@@ -346,7 +380,7 @@ interface ObjectDataField {
 
 function objectDataFields(
   sourceType: MojoTargetTypeRef,
-  input: MojoBindingPatternAnalysisInput,
+  input: MojoBindingProjectionContext,
 ): readonly ObjectDataField[] | undefined {
   const structural = input.structuralObjects.definitionForType(sourceType);
   if (structural !== undefined) {
@@ -364,7 +398,7 @@ function objectDataFields(
   const fields = class_?.fields ?? interface_?.fields;
   if (fields === undefined || (interface_?.indexSignatures.length ?? 0) !== 0) return undefined;
   const selected = fields.map((field) => {
-    const type = instantiateProjectFieldType(field, sourceType);
+    const type = instantiateProjectFieldType(field, sourceType, input.projectRelationships);
     return type === undefined
       ? undefined
       : Object.freeze({
@@ -384,7 +418,7 @@ function objectDataFields(
 
 function resolveSourceType(
   type: Type | undefined,
-  input: MojoBindingPatternAnalysisInput,
+  input: MojoBindingProjectionContext,
 ): MojoTargetTypeRef | undefined {
   return type === undefined ? undefined : input.resolveType(type);
 }
@@ -428,7 +462,7 @@ function uniqueProperty(
 function semanticPropertyMatches(
   field: ObjectDataField,
   property: TypePropertyInfo,
-  input: MojoBindingPatternAnalysisInput,
+  input: MojoBindingProjectionContext,
 ): boolean {
   const symbols = [property.symbol, ...property.rootSymbols];
   if (symbols.some((symbol) => field.sourceSymbols.includes(symbol))) return true;
@@ -464,7 +498,7 @@ function bindingPropertyName(element: Node, ast: AstReader): string | undefined 
 }
 
 function reject(
-  input: MojoBindingPatternAnalysisInput,
+  input: MojoBindingProjectionContext,
   code: string,
   message: string,
   node: Node,

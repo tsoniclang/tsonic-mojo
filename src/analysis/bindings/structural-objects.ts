@@ -2,6 +2,14 @@ import type { AstReader, Node, Symbol } from "@tsonic/tsts";
 import { sourceNodeIdentity } from "@tsonic/target-api/source";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import {
+  fixedMojoLifecycleContract,
+  mojoImplicitHeapLifecycleCapabilities,
+} from "../../target-model/lifecycle/index.js";
+
+const structuralObjectLifecycle = fixedMojoLifecycleContract(
+  mojoImplicitHeapLifecycleCapabilities,
+);
 
 export interface MojoStructuralObjectField {
   readonly sourceName: string;
@@ -48,6 +56,7 @@ export function createMojoStructuralObjectCatalog(ast: AstReader): MojoStructura
         modulePath: Object.freeze(["tsonic_runtime"]),
         name: "StructuralObject",
         genericArguments: Object.freeze([Object.freeze({ kind: "type" as const, type: storageType })]),
+        lifecycle: structuralObjectLifecycle,
       });
       const definition = Object.freeze({
         id,

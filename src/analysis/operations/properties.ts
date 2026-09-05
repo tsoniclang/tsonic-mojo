@@ -2,6 +2,7 @@ import type { Node, ResolvedSourcePropertyAccessInfo, Type } from "@tsonic/tsts"
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
+import { classifyMojoRefinedValueConversion } from "../refinements/value.js";
 import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
 import type { MojoPropertySelection } from "../program/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
@@ -19,6 +20,11 @@ import {
 import type { MojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
 import { selectedMojoSourceProfileDeclarationIdentity } from "../../policy/operations/source-profile-selection.js";
 import { analyzeStaticProviderProperty } from "./static-provider-properties.js";
+import { sourceProfileRegExpPropertyAccess } from "../../policy/operations/source-profile-regexp-properties.js";
+import {
+  classifyMojoSourceResultConversion,
+  mojoConvertedValueType,
+} from "./call-results.js";
 
 export type MojoPropertyAnalysis =
   | { readonly kind: "resolved"; readonly selection: MojoPropertySelection; readonly expressionType: MojoTargetTypeRef }
@@ -30,6 +36,7 @@ export interface MojoProviderPropertyAnalysisContext {
   readonly providerSemantics: MojoProviderSemantics;
   readonly sourceProfiles: MojoSourceProfileRegistry;
   readonly conversions: MojoConversionIndex;
+  readonly valueRefinements: WeakMap<Node, import("../program/model.js").MojoValueRefinementSelection>;
   readonly resolveType: (type: Type) => MojoTargetTypeRef | undefined;
 }
 
@@ -102,12 +109,18 @@ export function analyzeMojoProviderProperty(
         reason: "Selected provider module constant has no exact source carrier.",
       };
     }
-    const conversion = classifyMojoValueConversion(instantiated.operation.resultType, selectedRead);
+    const conversion = classifyMojoSourceResultConversion(
+      instantiated.operation.resultType,
+      selectedRead,
+    );
     return conversion.kind === "unsupported"
       ? { kind: "unsupported", code: "MOJO_PROVIDER_CONSTANT_CONVERSION_UNPROVEN", reason: conversion.reason }
       : {
           kind: "resolved",
-          expressionType: selectedRead,
+          expressionType: mojoConvertedValueType(
+            instantiated.operation.resultType,
+            conversion.conversion,
+          ),
           selection: Object.freeze({
             kind: "provider-constant",
             operation: instantiated.operation,
@@ -152,7 +165,11 @@ export function analyzeMojoProviderProperty(
       reason: "Selected provider property read and write require different receiver carriers.",
     };
   }
-  const receiverConversion = classifyMojoValueConversion(receiverType, receiverTarget);
+  const receiverConversion = classifyMojoRefinedValueConversion(
+    receiverType,
+    receiverTarget,
+    context.valueRefinements.get(source.receiver.expression),
+  );
   if (receiverConversion.kind === "unsupported") {
     return {
       kind: "unsupported",
@@ -201,11 +218,11 @@ export function analyzeMojoProviderProperty(
         reason: "Selected provider property read has no exact source carrier.",
       };
     }
-    const conversion = classifyMojoValueConversion(read.operation.resultType, selectedRead);
+    const conversion = classifyMojoSourceResultConversion(read.operation.resultType, selectedRead);
     if (conversion.kind === "unsupported") {
       return { kind: "unsupported", code: "MOJO_PROVIDER_PROPERTY_READ_CONVERSION_UNPROVEN", reason: conversion.reason };
     }
-    expressionType = selectedRead;
+    expressionType = mojoConvertedValueType(read.operation.resultType, conversion.conversion);
     readResultConversion = conversion.conversion;
   } else expressionType = selectedWrite!;
   return {
@@ -220,9 +237,7 @@ export function analyzeMojoProviderProperty(
       receiverConversion: receiverConversion.conversion,
       ...(readResultConversion === undefined ? {} : { readResultConversion }),
       ...(selectedWrite === undefined ? {} : { sourceWriteType: selectedWrite }),
-      ...(writeValueConversion?.kind !== "resolved"
-        ? {}
-        : { writeValueConversion: writeValueConversion.conversion }),
+      ...(writeParameterType === undefined ? {} : { targetWriteType: writeParameterType }),
       optionalChain: source.optionalChain,
     }),
   };
@@ -289,14 +304,6 @@ function analyzeSourceProfileProperty(
           }),
         };
   }
-  const access = sourceProfilePropertyAccess(identity.profile, owner, member);
-  if (access === undefined) {
-    return {
-      kind: "unsupported",
-      code: "MOJO_SOURCE_PROFILE_PROPERTY_UNSUPPORTED",
-      reason: `The exact source-profile property '${owner}.${member}' has no Mojo policy row.`,
-    };
-  }
   const receiverType = context.resolveType(source.receiver.type);
   if (receiverType === undefined) {
     return {
@@ -305,7 +312,19 @@ function analyzeSourceProfileProperty(
       reason: `The source-profile property '${owner}.${member}' has no exact receiver carrier.`,
     };
   }
-  const receiverConversion = classifyMojoValueConversion(receiverType, receiverType);
+  const access = sourceProfilePropertyAccess(identity.profile, owner, member, receiverType);
+  if (access === undefined) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_SOURCE_PROFILE_PROPERTY_UNSUPPORTED",
+      reason: `The exact source-profile property '${owner}.${member}' has no Mojo policy row.`,
+    };
+  }
+  const receiverConversion = classifyMojoRefinedValueConversion(
+    receiverType,
+    receiverType,
+    context.valueRefinements.get(source.receiver.expression),
+  );
   if (receiverConversion.kind === "unsupported") {
     return { kind: "unsupported", code: "MOJO_SOURCE_PROFILE_PROPERTY_RECEIVER_CONFLICT", reason: receiverConversion.reason };
   }
@@ -319,7 +338,7 @@ function analyzeSourceProfileProperty(
       reason: `The source-profile property '${owner}.${member}' has no exact read or write carrier.`,
     };
   }
-  if (access.kind === "method" && writeType !== undefined) {
+  if (writeType !== undefined && access.write === undefined && access.read.kind === "method") {
     return {
       kind: "unsupported",
       code: "MOJO_SOURCE_PROFILE_METHOD_PROPERTY_WRITE_UNSUPPORTED",
@@ -334,7 +353,7 @@ function analyzeSourceProfileProperty(
     : Object.freeze({
         target: Object.freeze({
           kind: "property-read",
-          access: Object.freeze({ kind: access.kind, name: access.name }),
+          access: access.read,
           receiver: "ref",
         }),
         receiverType,
@@ -342,14 +361,14 @@ function analyzeSourceProfileProperty(
         resultType: readStorageType!,
         genericArguments: Object.freeze([]),
         genericParameters: Object.freeze([]),
-        raises: false,
+        raises: access.raises,
       });
   const writeOperation: MojoSelectedProviderOperation | undefined = writeType === undefined
     ? undefined
     : Object.freeze({
         target: Object.freeze({
           kind: "property-write",
-          access: Object.freeze({ kind: "member", name: access.name }),
+          access: access.write ?? Object.freeze({ kind: "member", name: access.read.name }),
           receiver: "mut",
           value: Object.freeze({ convention: "imm", position: "positional-or-keyword" }),
         }),
@@ -358,7 +377,7 @@ function analyzeSourceProfileProperty(
         resultType: Object.freeze({ kind: "unit" }),
         genericArguments: Object.freeze([]),
         genericParameters: Object.freeze([]),
-        raises: false,
+        raises: access.raises,
       });
   const readResultConversion = readType === undefined
     ? undefined
@@ -385,11 +404,9 @@ function analyzeSourceProfileProperty(
       receiver: source.receiver.expression,
       sourceReceiverType: receiverType,
       receiverConversion: receiverConversion.conversion,
-      ...(readResultConversion?.kind !== "resolved" ? {} : { readResultConversion: readResultConversion.conversion }),
+      ...(readResultConversion === undefined ? {} : { readResultConversion: readResultConversion.conversion }),
       ...(writeType === undefined ? {} : { sourceWriteType: writeType }),
-      ...(writeValueConversion?.kind !== "resolved"
-        ? {}
-        : { writeValueConversion: writeValueConversion.conversion }),
+      ...(writeStorageType === undefined ? {} : { targetWriteType: writeStorageType }),
       optionalChain: source.optionalChain,
     }),
   };
@@ -399,46 +416,112 @@ function sourceProfilePropertyAccess(
   profile: "native" | "js",
   owner: string,
   member: string,
+  receiver: MojoTargetTypeRef,
 ): {
-  readonly kind: "member" | "method";
-  readonly name: string;
+  readonly read:
+    | { readonly kind: "member" | "method"; readonly name: string }
+    | { readonly kind: "function"; readonly modulePath: readonly string[]; readonly name: string };
+  readonly write?: { readonly kind: "member" | "method"; readonly name: string };
   readonly resultType?: MojoTargetTypeRef;
   readonly storageType?: MojoTargetTypeRef;
+  readonly raises: boolean;
 } | undefined {
+  const regexp = profile === "js"
+    ? sourceProfileRegExpPropertyAccess(owner, member, receiver)
+    : undefined;
+  if (regexp !== undefined) return regexp;
   if (owner === "Error") {
     const nativeString = Object.freeze({ kind: "native-string" as const });
     if (member === "name" || member === "message") {
-      return { kind: "member", name: member, resultType: nativeString, storageType: nativeString };
+      return {
+        read: Object.freeze({ kind: "member", name: member }),
+        write: Object.freeze({ kind: "member", name: member }),
+        resultType: nativeString,
+        storageType: nativeString,
+        raises: false,
+      };
     }
     if (member === "stack") {
       const stack = Object.freeze({ kind: "optional" as const, value: nativeString });
-      return { kind: "member", name: "stack", resultType: stack, storageType: stack };
+      return {
+        read: Object.freeze({ kind: "member", name: "stack" }),
+        write: Object.freeze({ kind: "member", name: "stack" }),
+        resultType: stack,
+        storageType: stack,
+        raises: false,
+      };
     }
   }
   if (profile === "native") {
-    if ((owner === "String" || owner === "Array" || owner === "ReadonlyArray") && member === "length") {
+    if (owner === "String" && member === "length" && receiver.kind === "native-string") {
       return {
-        kind: "method",
-        name: "__len__",
-        resultType: Object.freeze({ kind: "source-primitive", name: "native-int" }),
+        read: Object.freeze({
+          kind: "function",
+          modulePath: Object.freeze(["tsonic_runtime"]),
+          name: "source_string_length",
+        }),
+        raises: false,
       };
     }
-    if ((owner === "Map" || owner === "ReadonlyMap" || owner === "Set" || owner === "ReadonlySet") && member === "size") {
+    if ((owner === "Array" || owner === "ReadonlyArray") && member === "length" &&
+      hasNativeLength(receiver)) {
       return {
-        kind: "method",
-        name: "__len__",
+        read: Object.freeze({ kind: "method", name: "__len__" }),
         resultType: Object.freeze({ kind: "source-primitive", name: "native-int" }),
+        raises: false,
+      };
+    }
+    if ((owner === "Map" || owner === "ReadonlyMap" || owner === "Set" || owner === "ReadonlySet") && member === "size" &&
+      hasNativeLength(receiver)) {
+      return {
+        read: Object.freeze({ kind: "method", name: "__len__" }),
+        resultType: Object.freeze({ kind: "source-primitive", name: "native-int" }),
+        raises: false,
       };
     }
     return undefined;
   }
-  if ((owner === "String" || owner === "Array" || owner === "ReadonlyArray") && member === "length") {
-    return { kind: "method", name: "js_length" };
+  if (owner === "String" && member === "length" && receiver.kind === "native-string") {
+    return {
+      read: Object.freeze({
+        kind: "function",
+        modulePath: Object.freeze(["tsonic_runtime"]),
+        name: "source_string_length",
+      }),
+      raises: false,
+    };
   }
-  if ((owner === "Map" || owner === "ReadonlyMap" || owner === "Set" || owner === "ReadonlySet") && member === "size") {
-    return { kind: "method", name: "js_size" };
+  if ((owner === "Array" || owner === "ReadonlyArray") && member === "length" &&
+    hasNativeLength(receiver)) {
+    return {
+      read: Object.freeze({ kind: "method", name: "__len__" }),
+      resultType: Object.freeze({ kind: "source-primitive", name: "native-int" }),
+      raises: false,
+    };
+  }
+  if ((owner === "String" || owner === "Array" || owner === "ReadonlyArray") && member === "length" &&
+    hasJavaScriptLength(receiver)) {
+    return { read: Object.freeze({ kind: "method", name: "js_length" }), raises: false };
+  }
+  if ((owner === "Map" || owner === "ReadonlyMap" || owner === "Set" || owner === "ReadonlySet") && member === "size" &&
+    hasJavaScriptLength(receiver)) {
+    return { read: Object.freeze({ kind: "method", name: "js_size" }), raises: false };
   }
   return undefined;
+}
+
+function hasNativeLength(type: MojoTargetTypeRef): boolean {
+  return type.kind === "native-string" || type.kind === "list" || type.kind === "fixed-array" ||
+    type.kind === "tuple" || type.kind === "dictionary";
+}
+
+function hasJavaScriptLength(type: MojoTargetTypeRef): boolean {
+  return type.kind === "target-named" && [
+    "tsonic.mojo.js.JsString",
+    "tsonic.mojo.js.JsArray",
+    "tsonic.mojo.js.JsMap",
+    "tsonic.mojo.js.JsSet",
+  ].includes(type.id);
 }
 
 function sourceProfileConstantName(

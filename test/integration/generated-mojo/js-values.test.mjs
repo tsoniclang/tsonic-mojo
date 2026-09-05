@@ -36,7 +36,40 @@ test("closed JSON values retain exact parse stringify and Object operations", ()
     "object_values",
     "object_entries",
     "object_has_own",
-  ]) assert.match(source, new RegExp(`tsonic_js\\.${operation}`, "u"));
+  ]) assert.match(source, new RegExp(`\\b${operation}\\b`, "u"));
+});
+
+test("selected constructor-only generic types retain their exact foreign imports", () => {
+  const source = generatedSource(compileMojo({ surfaces: ["js"], files: {
+    "value.ts": "export class Value { code: number = 1; }",
+    "index.ts": "import type { Value } from './value.js'; export function main(): void { new Map<string, Value>(); }",
+  } }));
+  assert.match(source, /from [\w.]+\.value import Value/u);
+  assert.match(source, /map_new\[String, Value\]\(\)/u);
+});
+
+test("template lowering preserves immediate conversion and avoids empty concatenation", () => {
+  const source = generatedSource(compileMojo({ surfaces: ["js"], files: {
+    "index.ts": [
+      "function native(value: string): string { return `${value}`; }",
+      "function dynamic(value: unknown, next: () => string): string { return `${value}${next()}`; }",
+      "export function main(): void { native('value'); dynamic(JSON.parse('true'), () => 'tail'); }",
+    ].join("\n"),
+  } }));
+  assert.match(source, /def native\(value: String\) -> String:\n    return value/u);
+  assert.doesNotMatch(source, /"" \+|\+ ""/u);
+  assert.match(source, /var \w+: String = js_value_to_string\(\s*value,?\s*\)\.to_native_strict\(\)\n    return \w+ \+ next\.call\(\(\)\)/u);
+});
+
+test("pure native primitive comparisons stay inline rather than snapshotting", () => {
+  const source = generatedSource(compileMojo({ surfaces: ["js"], files: {
+    "index.ts": [
+      "function quote(value: string): boolean { return value === '\"' || value === \"'\"; }",
+      "export function main(): void { quote('value'); }",
+    ].join("\n"),
+  } }));
+  assert.doesNotMatch(source, /var _binary_/u);
+  assert.match(source, /return value == .* or value == /u);
 });
 
 test("dynamic and finalized catch values use exact closed template stringification", () => {
@@ -52,23 +85,85 @@ test("dynamic and finalized catch values use exact closed template stringificati
       ].join("\n"),
     },
   }));
-  assert.match(source, /tsonic_js\.js_value_to_string/u);
+  assert.match(source, /\bjs_value_to_string\b/u);
   assert.match(source, /String\(error\)/u);
 });
 
-test("JSON replacer arguments reject at the sealed source-profile boundary", () => {
-  const result = compileMojo({
+test("closed structural objects support identity-preserving assign and JSON replacers", () => {
+  const source = generatedSource(compileMojo({
     surfaces: ["js"],
     files: {
       "index.ts": [
         "export function main(): void {",
-        "  JSON.stringify({ ready: true }, null);",
+        "  const target = { count: 1, label: 'before' };",
+        "  const assigned = Object.assign(target, { label: 'after' });",
+        "  JSON.stringify({ keep: assigned.label, drop: 2 },",
+        "    (key, value) => key === 'drop' ? undefined : value, 2);",
+        "}",
+      ].join("\n"),
+    },
+  }));
+  assert.match(source, /StructuralObject/u);
+  assert.match(source, /json_stringify_with_replacer_and_space_number/u);
+  assert.match(source, /js_value_from_object_entries/u);
+});
+
+test("JSON.stringify retains an exact project toJSON projection until serialization", () => {
+  const source = generatedSource(compileMojo({
+    surfaces: ["js"],
+    files: {
+      "index.ts": [
+        "class Box {",
+        "  value: string;",
+        "  constructor(value: string) { this.value = value; }",
+        "  toJSON(key: string): string {",
+        "    return `${key}:${this.value}`;",
+        "  }",
+        "}",
+        "export function main(): void {",
+        "  JSON.stringify({ nested: new Box('value') },",
+        "    (_key, value) => value);",
+        "}",
+      ].join("\n"),
+    },
+  }));
+  assert.match(source, /struct _json_projection/u);
+  assert.match(source, /\.to_json\(/u);
+  assert.match(source, /\bjs_value_from_json_projection\b/u);
+  assert.match(source, /\bjson_stringify_with_replacer\b/u);
+});
+
+test("open Object.assign and property-list JSON replacers reject at the exact call boundary", () => {
+  for (const [body, code] of [
+    ["Object.assign({ value: 1 }, { other: 2 });", "MOJO_OBJECT_ASSIGN_FIELD_RELATION_UNPROVEN"],
+    ["JSON.stringify({ value: 1 }, ['value']);", "MOJO_JSON_STRINGIFY_REPLACER_UNSUPPORTED"],
+  ]) {
+    const result = compileMojo({
+      surfaces: ["js"],
+      files: { "index.ts": `export function main(): void { ${body} }` },
+    });
+    assert.deepEqual(result.artifacts, []);
+    assert.deepEqual(result.diagnostics.map((diagnostic) => diagnostic.code), [code]);
+  }
+});
+
+test("JSON.stringify rejects a non-required toJSON contract without runtime discovery", () => {
+  const result = compileMojo({
+    surfaces: ["js"],
+    files: {
+      "index.ts": [
+        "class WrongJson {",
+        "  toJSON(key: string, suffix: string): string { return key + suffix; }",
+        "}",
+        "export function main(): void {",
+        "  JSON.stringify(new WrongJson());",
         "}",
       ].join("\n"),
     },
   });
   assert.deepEqual(result.artifacts, []);
-  assert.deepEqual(result.diagnostics.map(({ code }) => code), [
-    "MOJO_SOURCE_PROFILE_CALL_UNSUPPORTED",
-  ]);
+  assert.deepEqual(
+    result.diagnostics.map((diagnostic) => diagnostic.code),
+    ["MOJO_JSON_STRINGIFY_VALUE_UNSUPPORTED"],
+  );
 });

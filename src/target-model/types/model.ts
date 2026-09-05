@@ -1,4 +1,7 @@
 import type { SourcePrimitiveKind } from "@tsonic/tsts";
+import type { MojoOriginRef } from "../origins/model.js";
+import type { MojoLifecycleTraitRole } from "../lifecycle/model.js";
+import type { MojoNamedLifecycleContract } from "../lifecycle/model.js";
 
 export type MojoTargetTypeRef =
   | { readonly kind: "source-primitive"; readonly name: SourcePrimitiveKind }
@@ -10,13 +13,20 @@ export type MojoTargetTypeRef =
   | { readonly kind: "dynamic"; readonly domain: "source" | "js" }
   | { readonly kind: "bigint" }
   | { readonly kind: "symbol" }
-  | { readonly kind: "type-parameter"; readonly name: string }
+  | {
+      readonly kind: "type-parameter";
+      readonly name: string;
+      readonly identity?: string;
+      readonly lifecycleRequirements?: readonly MojoLifecycleTraitRole[];
+    }
   | {
       readonly kind: "target-named";
       readonly id: string;
       readonly modulePath: readonly string[];
       readonly name: string;
       readonly genericArguments?: readonly MojoTargetGenericArgument[];
+      readonly lifecycle?: MojoNamedLifecycleContract;
+      readonly lifecycleRequirement?: MojoLifecycleTraitRole;
     }
   | { readonly kind: "list"; readonly element: MojoTargetTypeRef }
   | {
@@ -45,7 +55,12 @@ export type MojoTargetTypeRef =
       readonly genericArguments: readonly MojoTargetGenericArgument[];
     }
   | { readonly kind: "compiler-expression"; readonly expression: string }
-  | { readonly kind: "reference"; readonly origin: string; readonly value: MojoTargetTypeRef }
+  | {
+      readonly kind: "reference";
+      readonly origin: MojoOriginRef;
+      readonly mutable: boolean;
+      readonly value: MojoTargetTypeRef;
+    }
   | {
       readonly kind: "callable";
       readonly parameters: readonly MojoTargetCallableParameter[];
@@ -78,6 +93,7 @@ export type MojoTargetGenericArgument =
   | { readonly kind: "integer"; readonly name?: string; readonly value: string }
   | { readonly kind: "boolean"; readonly name?: string; readonly value: boolean }
   | { readonly kind: "value-reference"; readonly name?: string; readonly path: readonly string[] }
+  | { readonly kind: "origin"; readonly name?: string; readonly origin: MojoOriginRef }
   | { readonly kind: "unbound"; readonly name?: string };
 
 export type MojoCallArgumentConvention =
@@ -119,7 +135,12 @@ export interface MojoProviderTargetGenericParameter {
 
 export type MojoTargetConformanceCondition =
   | { readonly kind: "boolean"; readonly value: boolean }
-  | { readonly kind: "conforms-to"; readonly subject: string; readonly traitNames: readonly string[] }
+  | {
+      readonly kind: "conforms-to";
+      readonly subject: string;
+      readonly traitNames: readonly string[];
+      readonly lifecycleRoles?: readonly MojoLifecycleTraitRole[];
+    }
   | { readonly kind: "predicate"; readonly value: MojoTargetConditionValue }
   | {
       readonly kind: "equals";

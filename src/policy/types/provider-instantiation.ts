@@ -1,4 +1,4 @@
-import type { AstReader, Node, Type } from "@tsonic/tsts";
+import type { Node, Type } from "@tsonic/tsts";
 import type { MojoProviderTypeRow } from "../../providers/packages/model.js";
 import type {
   MojoTargetGenericArgument,
@@ -9,10 +9,7 @@ import { resolveMojoNonTypeGenericArguments } from "./generic-arguments.js";
 import { authoredTypeArguments } from "./resolution-helpers.js";
 import type { MojoTypeResolution } from "./resolution.js";
 
-interface ProviderTypeInstantiationContext {
-  readonly ast: AstReader;
-  readonly semantics: import("@tsonic/target-api/source").SourceFileSemantics;
-}
+type ProviderTypeInstantiationContext = import("./resolution.js").MojoTypeResolutionContext;
 
 type NestedTypeResolver = (
   selectedType: Type | undefined,
@@ -38,6 +35,7 @@ export function instantiateMojoProviderType(
   }
   const typeSubstitutions = new Map<string, MojoTargetTypeRef>();
   const valueSubstitutions = new Map<string, MojoTargetGenericArgument>();
+  const originSubstitutions = new Map<string, import("../../target-model/origins/model.js").MojoOriginRef>();
   const packSubstitutions = new Map<string, readonly MojoTargetGenericArgument[]>();
   const authoredArguments = authoredTypeArguments(authoredTypeNode, context.ast);
   for (const [index, parameter] of row.sourceGenericParameters.entries()) {
@@ -58,7 +56,7 @@ export function instantiateMojoProviderType(
         position: "positional",
         variadic: parameter.variadic,
         constraints: Object.freeze([]),
-      }, authoredArgument, context.ast);
+      }, authoredArgument, context);
       if (arguments_ === undefined || arguments_.length === 0 ||
         (!parameter.variadic && arguments_.length !== 1)) {
         return {
@@ -67,7 +65,11 @@ export function instantiateMojoProviderType(
         };
       }
       if (parameter.variadic) packSubstitutions.set(parameter.targetName, arguments_);
-      else valueSubstitutions.set(parameter.targetName, arguments_[0]!);
+      else if (parameter.targetKind === "origin" && arguments_[0]?.kind === "origin") {
+        originSubstitutions.set(parameter.targetName, arguments_[0].origin);
+      } else if (parameter.targetKind === "value") {
+        valueSubstitutions.set(parameter.targetName, arguments_[0]!);
+      }
       continue;
     }
     const resolved = resolveNested(sourceArgument, authoredArgument, resolving);
@@ -90,6 +92,7 @@ export function instantiateMojoProviderType(
     type: substituteMojoTargetType(row.targetType, {
       types: typeSubstitutions,
       values: valueSubstitutions,
+      origins: originSubstitutions,
       packs: packSubstitutions,
     }),
   };

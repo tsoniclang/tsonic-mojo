@@ -8,10 +8,13 @@ import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import { appendMojoPlanningDiagnostic } from "../program/context.js";
-import { planMojoAssignment, planMojoValue, planMojoUpdate } from "../expressions/value.js";
-import { registerMojoTypeImports } from "../types/render.js";
+import { planMojoValue } from "../expressions/value.js";
+import { planMojoAssignment } from "../expressions/assignments.js";
+import { planMojoUpdate } from "../expressions/updates.js";
+import { registerMojoTypeImports } from "../types/imports.js";
 import { planMojoBindingPattern } from "../bindings/patterns.js";
 import { planMojoResourceScope } from "./resources.js";
+import { planMojoCompileTimeInitializer } from "../compile-time/values.js";
 
 export function resourceDeclarationList(
   statement: Node,
@@ -90,9 +93,12 @@ function planVariableDeclaration(
     );
     return undefined;
   }
+  const compileTimeInitializer = sourceInitializer === undefined
+    ? undefined
+    : planMojoCompileTimeInitializer(sourceInitializer, context, planMojoValue, type);
   const initializer = sourceInitializer === undefined
     ? undefined
-    : planMojoValue(sourceInitializer, context, type);
+    : compileTimeInitializer ?? planMojoValue(sourceInitializer, context, type);
   if (sourceInitializer !== undefined && initializer === undefined) {
     appendMojoPlanningDiagnostic(
       context,
@@ -114,6 +120,7 @@ function planVariableDeclaration(
         kind: "variable",
         name,
         type,
+        ...(compileTimeInitializer === undefined ? {} : { compileTime: true }),
         ...(initializer === undefined && defaultValue === undefined
           ? {}
           : { initializer: initializer?.value ?? defaultValue! }),
@@ -168,12 +175,12 @@ export function planForInitializer(
   if (ast.is.IsVariableDeclarationList(initializer)) {
     return planVariableDeclarationList(initializer, context);
   }
-  const assignment = planMojoAssignment(initializer, context);
+  const assignment = planMojoAssignment(initializer, context, planMojoValue);
   if (assignment !== undefined) return Object.freeze([
     ...assignment.before,
     assignment.statement,
   ]);
-  const update = planMojoUpdate(initializer, context);
+  const update = planMojoUpdate(initializer, context, planMojoValue);
   if (update !== undefined) return Object.freeze([
     ...update.before,
     update.statement,

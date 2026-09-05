@@ -1,6 +1,6 @@
 import type { Node, SourceFile } from "@tsonic/tsts";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
-import { Node_Expression, Node_Initializer } from "@tsonic/target-api/source";
+import { Node_Initializer } from "@tsonic/target-api/source";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
@@ -15,8 +15,9 @@ import type {
   MojoCallableExpressionSelection,
   MojoRecursiveCallableBinding,
 } from "../program/model.js";
-import { walkSourceTree } from "../program/traversal.js";
+import { walkSourceTree } from "../../source/syntax/traversal.js";
 import {
+  analyzeMojoExecutableBindingProjection,
   analyzeMojoExecutableRegion,
 } from "../program/executable-regions.js";
 import type {
@@ -24,14 +25,30 @@ import type {
 } from "../program/executable-regions.js";
 import { recordMojoExecutableRegionConversionUses } from "../conversions/uses.js";
 import { allocateMojoLocalBindings } from "../program/local-bindings.js";
+import type { MojoLifecycleResolver } from "../lifecycle/model.js";
+import { resolveMojoTargetType } from "../../policy/types/resolution.js";
+import { mojoParameterConvention } from "../representations/index.js";
+import {
+  callableExpressionDeclaration,
+  captureEligibleDeclaration,
+  isNestedCallable,
+  nodeIsWithin,
+  unwrapCallableExpression,
+} from "./expression-syntax.js";
 
 export interface MojoCallableExpressionSignatureInput {
   readonly expression: Node;
   readonly sourceFile: SourceFile;
   readonly owner?: MojoAnalyzedClassOwner;
+  readonly selectedType?: import("@tsonic/tsts").Type;
+  readonly contextualType?: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
+  readonly kind?: import("../program/model.js").MojoAnalyzedCallableKind;
+  readonly name?: string;
+  readonly allowAsynchronous?: boolean;
   readonly source: TargetSourceProgram;
   readonly providerSemantics: MojoProviderSemantics;
   readonly projectTypes: MojoProjectTypeCatalog;
+  readonly lifecycle: MojoLifecycleResolver;
   readonly sourceProfiles: MojoSourceProfileRegistry;
   readonly jsEnabled: boolean;
   readonly sourceCallableErrorType?: MojoTargetTypeRef;
@@ -47,7 +64,7 @@ export function analyzeMojoCallableExpressionSignature(
 ): MojoAnalyzedFunction | undefined {
   const { ast } = input.source;
   const semantics = input.source.semantics.forFile(input.sourceFile);
-  const selectedType = semantics.types.expressionType(input.expression);
+  const selectedType = input.selectedType ?? semantics.types.expressionType(input.expression);
   const callableEvidence = selectedType === undefined
     ? undefined
     : semantics.types.callable(selectedType);
@@ -64,6 +81,7 @@ export function analyzeMojoCallableExpressionSignature(
     source: input.source,
     providerSemantics: input.providerSemantics,
     projectTypes: input.projectTypes,
+    lifecycle: input.lifecycle,
     sourceProfiles: input.sourceProfiles,
     jsEnabled: input.jsEnabled,
     ...(input.sourceCallableErrorType === undefined
@@ -71,17 +89,19 @@ export function analyzeMojoCallableExpressionSignature(
       : { sourceCallableErrorType: input.sourceCallableErrorType }),
     declaration: input.expression,
     sourceFile: input.sourceFile,
-    name: "",
+    name: input.name ?? "",
     body,
     allocateLocalName: input.allocateLocalName,
     bindingNames: input.bindingNames,
     bindingTypes: input.bindingTypes,
     diagnostics: input.diagnostics,
     ...(callableEvidence === undefined ? {} : { callable: callableEvidence }),
+    ...(input.contextualType === undefined ? {} : { contextualType: input.contextualType }),
+    ...(input.kind === undefined ? {} : { kind: input.kind }),
     ...(input.owner === undefined ? {} : { owner: input.owner }),
   });
   if (callable === undefined) return undefined;
-  if (callable.asynchronous) {
+  if (callable.asynchronous && input.allowAsynchronous !== true) {
     input.diagnostics.push(mojoAnalysisDiagnostic(
       "MOJO_ASYNC_CALLABLE_EXPRESSION_NATIVE_LIMIT",
       "The pinned Mojo lambda syntax has no native asynchronous lambda form.",
@@ -117,6 +137,7 @@ export interface MojoCallableCaptureInput {
   readonly moduleBindingByDeclaration: WeakMap<Node, unknown>;
   readonly diagnostics: TargetDiagnostic[];
   readonly recursiveDeclaration?: Node;
+  readonly captureSelf?: boolean;
 }
 
 export function collectMojoCallableCaptures(
@@ -134,7 +155,17 @@ export function collectMojoCallableCaptures(
     walkSourceTree(root, ast, (node): void => {
       if (!valid) return;
       if (ast.kindName(node) === "KindThisKeyword") {
-        capturesSelf = input.owner !== undefined;
+        if (input.captureSelf === false && input.owner !== undefined) return;
+        if (ast.is.IsArrowFunction(input.expression) && input.owner !== undefined) {
+          capturesSelf = true;
+          return;
+        }
+        input.diagnostics.push(mojoAnalysisDiagnostic(
+          "MOJO_DYNAMIC_THIS_CALLABLE_UNSUPPORTED",
+          "A function-valued expression using dynamic 'this' requires an exact receiver-bearing method contract.",
+          node,
+        ));
+        valid = false;
         return;
       }
       if (!ast.is.IsIdentifier(node)) return;
@@ -206,6 +237,12 @@ export interface MojoCallableExpressionAnalysisInput {
   readonly expression: Node;
   readonly sourceFile: SourceFile;
   readonly owner?: MojoAnalyzedClassOwner;
+  readonly selectedType?: import("@tsonic/tsts").Type;
+  readonly contextualType?: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
+  readonly kind?: import("../program/model.js").MojoAnalyzedCallableKind;
+  readonly name?: string;
+  readonly allowAsynchronous?: boolean;
+  readonly captureSelf?: boolean;
   readonly allocateLocalName: (sourceName: string) => string;
   readonly moduleBindingByDeclaration: WeakMap<Node, unknown>;
   readonly ensureLocationStorage: (declaration: Node, bindingName: string) => string;
@@ -226,9 +263,15 @@ export function analyzeAndSealMojoCallableExpression(
     expression: input.expression,
     sourceFile: input.sourceFile,
     ...(input.owner === undefined ? {} : { owner: input.owner }),
+    ...(input.selectedType === undefined ? {} : { selectedType: input.selectedType }),
+    ...(input.contextualType === undefined ? {} : { contextualType: input.contextualType }),
+    ...(input.kind === undefined ? {} : { kind: input.kind }),
+    ...(input.name === undefined ? {} : { name: input.name }),
+    ...(input.allowAsynchronous === true ? { allowAsynchronous: true } : {}),
     source: environment.source,
     providerSemantics: environment.providerSemantics,
     projectTypes: environment.projectTypes,
+    lifecycle: environment.lifecycle,
     sourceProfiles: environment.sourceProfiles,
     jsEnabled: environment.jsEnabled,
     allocateLocalName: input.allocateLocalName,
@@ -243,6 +286,19 @@ export function analyzeAndSealMojoCallableExpression(
   if (callable === undefined) return;
   let raises = false;
   const initializerRoots: Node[] = [];
+  const semantics = environment.source.semantics.forFile(input.sourceFile);
+  for (const parameter of callable.parameters) {
+    if (parameter.bindingPatternNode === undefined) continue;
+    const sourceType = semantics.declarations.declaredValueType(parameter.declaration) ??
+      semantics.declarations.declaredType(parameter.declaration);
+    analyzeMojoExecutableBindingProjection(
+      parameter.declaration,
+      parameter.bodyType,
+      sourceType,
+      input.sourceFile,
+      environment,
+    );
+  }
   for (const parameter of callable.parameters) {
     if (parameter.omissionKind !== "initializer" || parameter.initializer === undefined) continue;
     initializerRoots.push(parameter.initializer);
@@ -367,8 +423,41 @@ export function analyzeAndSealMojoCallableExpression(
     moduleBindingByDeclaration: input.moduleBindingByDeclaration,
     diagnostics: environment.diagnostics,
     ...(declaration === undefined ? {} : { recursiveDeclaration: declaration }),
+    ...(input.captureSelf === false ? { captureSelf: false } : {}),
   });
-  const selectedType = environment.expressionTypes.get(input.expression);
+  const selectedCarrier = input.contextualType !== undefined
+    ? { kind: "resolved" as const, type: input.contextualType }
+    : input.selectedType === undefined
+    ? undefined
+    : resolveMojoTargetType(input.selectedType, undefined, {
+        ast: environment.source.ast,
+        navigation: environment.source.navigation,
+        semantics: environment.source.semantics.forFile(input.sourceFile),
+        sourceFacts: environment.source.sourceFacts,
+        providerSemantics: environment.providerSemantics,
+        projectTypes: environment.projectTypes,
+        sourceProfiles: environment.sourceProfiles,
+        jsEnabled: environment.jsEnabled,
+        ...(environment.sourceCallableErrorType === undefined
+          ? {}
+          : { sourceCallableErrorType: environment.sourceCallableErrorType }),
+      });
+  if (selectedCarrier?.kind === "unsupported" && callable.kind !== "getter" &&
+    callable.kind !== "setter") {
+    environment.diagnostics.push(mojoAnalysisDiagnostic(
+      "MOJO_CALLABLE_EXPRESSION_SELECTED_TYPE_UNRESOLVED",
+      selectedCarrier.reason,
+      input.expression,
+    ));
+    return;
+  }
+  const selectedType = callable.kind === "getter" || callable.kind === "setter"
+    ? callableExpressionType(callable, raises, environment.sourceCallableErrorType)
+    : selectedCarrier?.kind === "resolved"
+      ? selectedCarrier.type
+      : input.selectedType === undefined && input.contextualType === undefined
+        ? environment.expressionTypes.get(input.expression)
+        : undefined;
   if (captureAnalysis === undefined || selectedType?.kind !== "callable" ||
     selectedType.parameters.length !== callable.parameters.length) {
     if (captureAnalysis !== undefined) {
@@ -392,6 +481,9 @@ export function analyzeAndSealMojoCallableExpression(
   environment.expressionTypes.set(input.expression, callableType);
   input.selections.set(input.expression, Object.freeze({
     expression: input.expression,
+    sourceFile: input.sourceFile,
+    kind: callable.kind,
+    typeParameters: callable.typeParameters,
     parameters: callable.parameters,
     captures: captureAnalysis.captures,
     ...(captureAnalysis.recursiveBinding === undefined
@@ -399,13 +491,35 @@ export function analyzeAndSealMojoCallableExpression(
       : { recursiveBinding: captureAnalysis.recursiveBinding }),
     resultType: callable.resultType,
     body: callable.body,
+    asynchronous: callable.asynchronous,
     raises,
+    ...(input.owner === undefined ? {} : { owner: input.owner }),
     callableType,
   }));
   if (declaration !== undefined) {
     input.byDeclaration.set(declaration, input.expression);
     input.declarationByExpression.set(input.expression, declaration);
   }
+}
+
+function callableExpressionType(
+  callable: MojoAnalyzedFunction,
+  raises: boolean,
+  errorType: MojoTargetTypeRef | undefined,
+): Extract<MojoTargetTypeRef, { readonly kind: "callable" }> {
+  return Object.freeze({
+    kind: "callable",
+    parameters: Object.freeze(callable.parameters.map((parameter) => Object.freeze({
+      name: parameter.name,
+      convention: mojoParameterConvention(parameter.disposition),
+      passing: parameter.disposition.kind === "owned" ? "consume" as const : "plain" as const,
+      type: parameter.callType,
+      omissionKind: parameter.omissionKind,
+    }))),
+    result: callable.resultType,
+    raises,
+    ...(raises && errorType !== undefined ? { errorType } : {}),
+  });
 }
 
 export function resolveMojoCallableExpressionDependency(
@@ -436,68 +550,28 @@ export function resolveMojoCallableExpressionDependency(
   return undefined;
 }
 
-function callableExpressionDeclaration(
+export function resolveMojoAuthoredCallableExpressionSyntax(
   expression: Node,
   source: TargetSourceProgram,
 ): Node | undefined {
-  const { ast } = source;
-  let current = expression;
-  while (true) {
-    const parent = ast.parent(current);
-    if (parent === undefined) return undefined;
-    if (Node_Initializer(ast, parent) === current) return parent;
-    if (!isTransparentExpression(parent, ast) || Node_Expression(ast, parent) !== current) {
+  const visitedDeclarations = new Set<Node>();
+  let current: Node | undefined = expression;
+  while (current !== undefined) {
+    current = unwrapCallableExpression(current, source);
+    if (source.ast.is.IsArrowFunction(current) || source.ast.is.IsFunctionExpression(current)) {
+      return current;
+    }
+    const reference = source.navigation.sourceReferenceFor(current);
+    if (reference?.project !== true || visitedDeclarations.has(reference.declaration)) {
       return undefined;
     }
-    current = parent;
+    const symbol = reference.symbol;
+    if (symbol === undefined || source.sourceFiles.some((sourceFile) => sourceFile !== undefined &&
+      source.navigation.bindingWritesWithin(symbol, sourceFile).length > 0)) {
+      return undefined;
+    }
+    visitedDeclarations.add(reference.declaration);
+    current = Node_Initializer(source.ast, reference.declaration);
   }
-}
-
-function unwrapCallableExpression(
-  expression: Node,
-  source: TargetSourceProgram,
-): Node {
-  const { ast } = source;
-  let current = expression;
-  while (isTransparentExpression(current, ast)) {
-    const inner = Node_Expression(ast, current);
-    if (inner === undefined) break;
-    current = inner;
-  }
-  return current;
-}
-
-function isTransparentExpression(
-  node: Node,
-  ast: TargetSourceProgram["ast"],
-): boolean {
-  return ast.is.IsParenthesizedExpression(node) || ast.is.IsAsExpression(node) ||
-    ast.is.IsTypeAssertion(node) || ast.is.IsNonNullExpression(node) ||
-    ast.is.IsSatisfiesExpression(node);
-}
-
-function captureEligibleDeclaration(
-  declaration: Node,
-  ast: TargetSourceProgram["ast"],
-): boolean {
-  return ast.is.IsVariableDeclaration(declaration) ||
-    ast.is.IsParameterDeclaration(declaration) ||
-    ast.is.IsBindingElement(declaration);
-}
-
-function nodeIsWithin(
-  node: Node,
-  ancestor: Node,
-  ast: TargetSourceProgram["ast"],
-): boolean {
-  let current: Node | undefined = node;
-  while (current !== undefined) {
-    if (current === ancestor) return true;
-    current = ast.parent(current);
-  }
-  return false;
-}
-
-function isNestedCallable(node: Node, ast: TargetSourceProgram["ast"]): boolean {
-  return ast.is.IsFunctionExpression(node) || ast.is.IsArrowFunction(node);
+  return undefined;
 }

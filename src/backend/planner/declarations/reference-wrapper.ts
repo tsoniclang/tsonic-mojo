@@ -1,6 +1,8 @@
 import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import type { MojoFunctionDeclaration } from "../../target-ast/index.js";
 import type { MojoExpression } from "../../target-ast/index.js";
+import type { MojoProjectStateProjection } from "../../../analysis/program/model.js";
+import { mojoStateValue } from "./state-storage.js";
 
 export function mojoReferenceIdentityEqualityMethod(
   owner: MojoTargetTypeRef,
@@ -41,19 +43,16 @@ export function mojoReferenceIdentityEqualityMethod(
 export function mojoReferenceErrorWritableMethod(
   fallbackName: string,
   messageFieldName: string | undefined,
+  state: MojoProjectStateProjection,
 ): MojoFunctionDeclaration {
   const value: MojoExpression = messageFieldName === undefined
     ? Object.freeze({ kind: "string-literal", value: fallbackName })
     : Object.freeze({
         kind: "member",
-        receiver: Object.freeze({
-          kind: "postfix-deref",
-          expression: Object.freeze({
-            kind: "member",
-            receiver: Object.freeze({ kind: "path", path: "self" }),
-            name: "_state",
-          }),
-        }),
+        receiver: mojoStateValue(
+          Object.freeze({ kind: "path", path: "self" }),
+          state,
+        ),
         name: messageFieldName,
       });
   return Object.freeze({

@@ -2,55 +2,66 @@ import type {
   MojoCompilerConditionValue,
   MojoCompilerConformanceCondition,
 } from "./model.js";
+import type { MojoLifecycleTraitRole } from "../../../target-model/lifecycle/model.js";
 import type { MojoCompilerTypeScope } from "./type-parser.js";
+import { mojoLifecycleRoleForCompilerPath } from "../classification/lifecycle.js";
 
 const qualifiedIdentifierPattern = /^[_A-Za-z][_A-Za-z0-9]*(?:\.[_A-Za-z][_A-Za-z0-9]*)*$/u;
 
 export function parseMojoCompilerConformanceCondition(
   expression: string,
-  _scope: MojoCompilerTypeScope,
+  scope: MojoCompilerTypeScope,
 ): MojoCompilerConformanceCondition {
-  return parseCondition(expression.trim());
+  return parseCondition(expression.trim(), scope);
 }
 
-function parseCondition(expression: string): MojoCompilerConformanceCondition {
+function parseCondition(
+  expression: string,
+  scope: MojoCompilerTypeScope,
+): MojoCompilerConformanceCondition {
   const text = stripOuterParentheses(expression);
   if (text.length === 0) throw new Error("Mojo compiler emitted an empty conformance condition.");
   const conditional = splitTopLevelConditional(text);
   if (conditional !== undefined) {
     return Object.freeze({
       kind: "conditional",
-      condition: parseCondition(conditional.condition),
-      whenTrue: parseCondition(conditional.whenTrue),
-      whenFalse: parseCondition(conditional.whenFalse),
+      condition: parseCondition(conditional.condition, scope),
+      whenTrue: parseCondition(conditional.whenTrue, scope),
+      whenFalse: parseCondition(conditional.whenFalse, scope),
     });
   }
   const alternatives = splitTopLevelKeyword(text, "or");
   if (alternatives.length > 1) {
     return Object.freeze({
       kind: "any",
-      operands: Object.freeze(alternatives.map(parseCondition)),
+      operands: Object.freeze(alternatives.map((part) => parseCondition(part, scope))),
     });
   }
   const requirements = splitTopLevelKeyword(text, "and");
   if (requirements.length > 1) {
     return Object.freeze({
       kind: "all",
-      operands: Object.freeze(requirements.map(parseCondition)),
+      operands: Object.freeze(requirements.map((part) => parseCondition(part, scope))),
     });
   }
   if (text.startsWith("not ")) {
-    return Object.freeze({ kind: "not", operand: parseCondition(text.slice(4)) });
+    return Object.freeze({ kind: "not", operand: parseCondition(text.slice(4), scope) });
   }
   if (text === "True" || text === "False") {
     return Object.freeze({ kind: "boolean", value: text === "True" });
   }
   const conforms = /^conforms_to\(([_A-Za-z][_A-Za-z0-9]*),\s*([_A-Za-z][_A-Za-z0-9]*(?:\s*&\s*[_A-Za-z][_A-Za-z0-9]*)*)\)$/u.exec(text);
   if (conforms !== null) {
+    const traitNames = Object.freeze(conforms[2]!.split("&").map((part) => part.trim()));
+    const lifecycleRoles = traitNames.map((name) =>
+      mojoLifecycleRoleForCompilerPath(scope.resolveTypePath?.(name)));
     return Object.freeze({
       kind: "conforms-to",
       subject: conforms[1]!,
-      traitNames: Object.freeze(conforms[2]!.split("&").map((part) => part.trim())),
+      traitNames,
+      ...(lifecycleRoles.every((role) => role !== undefined)
+        ? { lifecycleRoles: Object.freeze(lifecycleRoles as MojoLifecycleTraitRole[]) }
+        : {}),
     });
   }
   const equality = splitTopLevelOperator(text, "==");

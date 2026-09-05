@@ -10,9 +10,11 @@ import { mojoModuleBindingRead } from "../bindings/module-bindings.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import {
   allocateMojoSyntheticName,
-  registerMojoModuleImport,
+  mojoModuleMemberExpression,
+  mojoModulePathExpression,
 } from "../program/context.js";
-import { registerMojoTypeImports } from "../types/render.js";
+import { registerMojoTypeImports } from "../types/imports.js";
+import { consumeMojoValue } from "../expressions/value-plan.js";
 
 export function planMojoResourceScope(
   declaration: Node,
@@ -84,7 +86,7 @@ function disposalStatements(
     const alternative = selection.alternatives[index]!;
     registerMojoTypeImports(alternative.resourceType, context);
     const memberReceiver: MojoExpression = Object.freeze({
-      kind: "type-element",
+      kind: "proven-union-member",
       receiver,
       type: alternative.resourceType,
     });
@@ -133,20 +135,30 @@ function disposalExpression(
     if (target.kind === "instance-call") {
       call = Object.freeze({
         kind: "method-call",
-        receiver: consumedReceiver(receiver, target.receiver),
+        receiver: consumedReceiver(
+          receiver,
+          alternative.resourceType,
+          target.receiver,
+          context,
+        ),
         name: target.name,
         arguments: Object.freeze([]),
       });
     } else if (target.kind === "function-call" && target.receiver !== undefined) {
-      registerMojoModuleImport(context, target.modulePath);
       call = Object.freeze({
         kind: "call",
-        callee: Object.freeze({
-          kind: "path",
-          path: [...target.modulePath, ...(target.ownerPath ?? []), target.name].join("."),
-        }),
+        callee: mojoModulePathExpression(
+          context,
+          target.modulePath,
+          Object.freeze([...(target.ownerPath ?? []), target.name]),
+        ),
         arguments: Object.freeze([Object.freeze({
-          value: consumedReceiver(receiver, target.receiver),
+          value: consumedReceiver(
+            receiver,
+            alternative.resourceType,
+            target.receiver,
+            context,
+          ),
         })]),
       });
     } else {
@@ -157,12 +169,11 @@ function disposalExpression(
   const taskFactory = selectedDisposalRaises(disposal)
     ? "create_raising_task"
     : "create_task";
-  registerMojoModuleImport(context, Object.freeze(["tsonic_runtime"]));
   return Object.freeze({
     kind: "await",
     expression: Object.freeze({
       kind: "call",
-      callee: Object.freeze({ kind: "path", path: `tsonic_runtime.${taskFactory}` }),
+      callee: mojoModuleMemberExpression(context, ["tsonic_runtime"], taskFactory),
       arguments: Object.freeze([Object.freeze({ value: call })]),
     }),
   });
@@ -179,12 +190,11 @@ function planRaisingResourceScope(
   const errorType = mojoErrorType();
   const optionalErrorType: MojoTargetTypeRef = Object.freeze({ kind: "optional", value: errorType });
   registerMojoTypeImports(optionalErrorType, context);
-  registerMojoModuleImport(context, Object.freeze(["tsonic_runtime"]));
   const priorError = Object.freeze({ kind: "path" as const, path: priorErrorName });
   const cleanupError = Object.freeze({ kind: "path" as const, path: cleanupErrorName });
   const composed = Object.freeze({
     kind: "call" as const,
-    callee: Object.freeze({ kind: "path" as const, path: "tsonic_runtime.suppressed_error" }),
+    callee: mojoModuleMemberExpression(context, ["tsonic_runtime"], "suppressed_error"),
     arguments: Object.freeze([
       Object.freeze({ value: cleanupError }),
       Object.freeze({
@@ -248,10 +258,12 @@ function planRaisingResourceScope(
 
 function consumedReceiver(
   receiver: MojoExpression,
+  type: MojoTargetTypeRef,
   convention: "imm" | "mut" | "var" | "ref" | "out" | "deinit",
+  context: MojoPlanningContext,
 ): MojoExpression {
   return convention === "var" || convention === "deinit"
-    ? Object.freeze({ kind: "consume", expression: receiver })
+    ? consumeMojoValue(receiver, type, context.program.lifecycle)
     : receiver;
 }
 

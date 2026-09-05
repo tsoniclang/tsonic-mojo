@@ -1,7 +1,10 @@
 import type { Node } from "@tsonic/tsts";
-import type { MojoExpression } from "../../target-ast/index.js";
+import { Node_Expression } from "@tsonic/target-api/source";
+import { mojoTargetTypeEquals } from "../../../target-model/types/equality.js";
+import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 import {
   appendMojoPlanningDiagnostic,
+  mojoModuleMemberExpression,
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import {
@@ -11,9 +14,47 @@ import {
   prepareMojoReceiver,
 } from "./support.js";
 import type { MojoValuePlanner } from "./support.js";
-import { withMojoValue } from "./value-plan.js";
+import { consumeMojoValue, mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
+import type { MojoPreparedMutation } from "./mutation-plan.js";
 import { applyValueRefinement } from "./leaves.js";
+import { mojoProjectStateValue } from "../declarations/state-storage.js";
+
+export function planMojoDelete(
+  node: Node,
+  context: MojoPlanningContext,
+  planValue: MojoValuePlanner,
+): MojoValuePlan | undefined {
+  const operand = Node_Expression(context.program.source.ast, node);
+  const selection = operand === undefined
+    ? undefined
+    : context.program.queries.elementSelection(operand);
+  if (selection?.kind !== "js-array-delete") {
+    appendMojoPlanningDiagnostic(
+      context,
+      "MOJO_DELETE_PLAN_NOT_SEALED",
+      "delete planning requires one exact sealed JavaScript Array mutation.",
+      node,
+    );
+    return undefined;
+  }
+  const receiver = planValue(selection.receiver, context, selection.receiverType);
+  const sourceIndex = planValue(selection.index, context);
+  const index = sourceIndex === undefined
+    ? undefined
+    : convertMojoValue(sourceIndex, selection.indexConversion, context);
+  if (receiver === undefined || index === undefined) return undefined;
+  const ordered = orderMojoValues([
+    Object.freeze({ plan: receiver, type: selection.receiverType, role: "delete_receiver" }),
+    Object.freeze({ plan: index, type: selection.indexType, role: "delete_index" }),
+  ], context);
+  return withMojoValue(ordered.before, Object.freeze({
+    kind: "method-call",
+    receiver: ordered.values[0]!,
+    name: "delete",
+    arguments: Object.freeze([Object.freeze({ value: ordered.values[1]! })]),
+  }));
+}
 
 export function planMojoElement(
   node: Node,
@@ -104,24 +145,77 @@ export function planMojoElement(
   const indexExpression: MojoExpression = selectedTupleIndex === undefined
     ? ordered.values[1]!
     : Object.freeze({ kind: "number-literal", text: String(selectedTupleIndex) });
-  const indexedReceiver: MojoExpression = selection.kind !== "project-index"
+  const projectView = selection.kind === "project-index"
+    ? context.program.projectDispatch.viewForType(selection.receiverType)
+    : undefined;
+  const projectIndex = projectView === undefined || selection.kind !== "project-index"
+    ? undefined
+    : context.program.projectDispatch.indexFor(selection.receiverType, selection.declaration);
+  if (projectView !== undefined && projectIndex === undefined) {
+    appendMojoPlanningDiagnostic(
+      context,
+      "MOJO_PROJECT_INDEX_DISPATCH_NOT_SEALED",
+      "A polymorphic project index access has no exact sealed dispatch slot.",
+      node,
+    );
+    return undefined;
+  }
+  if (mode === "write" && projectIndex !== undefined) {
+    appendMojoPlanningDiagnostic(
+      context,
+      "MOJO_PROJECT_INDEX_WRITE_REQUIRES_VALUE",
+      "A polymorphic project index write must be planned with its exact assigned value.",
+      node,
+    );
+    return undefined;
+  }
+  const projectState = selection.kind === "project-index" && projectIndex === undefined
+    ? mojoProjectStateValue(ordered.values[0]!, selection.receiverType, context)
+    : undefined;
+  if (selection.kind === "project-index" && projectIndex === undefined && projectState === undefined) {
+    appendMojoPlanningDiagnostic(
+      context,
+      "MOJO_PROJECT_INDEX_STATE_NOT_SEALED",
+      "A project index access has no exact sealed state projection.",
+      node,
+    );
+    return undefined;
+  }
+  const indexedReceiver: MojoExpression = selection.kind !== "project-index" || projectIndex !== undefined
     ? ordered.values[0]!
     : {
         kind: "member",
-        receiver: {
-          kind: "postfix-deref",
-          expression: { kind: "member", receiver: ordered.values[0]!, name: "_state" },
-        },
+        receiver: projectState!,
         name: selection.storageName,
       };
-  const access: MojoExpression = selection.kind === "provider" &&
-      operation?.target.kind === "index-read" && operation.target.access.kind === "method"
+  const access: MojoExpression = projectIndex !== undefined
     ? {
         kind: "method-call",
         receiver: indexedReceiver,
-        name: operation.target.access.name,
+        name: projectIndex.read.name,
         arguments: Object.freeze([Object.freeze({ value: indexExpression })]),
       }
+    : selection.kind === "provider" && operation?.target.kind === "index-read" &&
+        operation.target.access.kind !== "element"
+    ? operation.target.access.kind === "method"
+      ? {
+          kind: "method-call",
+          receiver: indexedReceiver,
+          name: operation.target.access.name,
+          arguments: Object.freeze([Object.freeze({ value: indexExpression })]),
+        }
+      : {
+          kind: "call",
+          callee: mojoModuleMemberExpression(
+            context,
+            operation.target.access.modulePath,
+            operation.target.access.name,
+          ),
+          arguments: Object.freeze([
+            Object.freeze({ value: indexedReceiver }),
+            Object.freeze({ value: indexExpression }),
+          ]),
+        }
     : {
         kind: "element",
         receiver: indexedReceiver,
@@ -137,12 +231,283 @@ export function planMojoElement(
   if (operationPlan === undefined) return undefined;
   const finished = finishOptionalMojoOperation(node, preparedReceiver, operationPlan, context);
   if (finished === undefined) return undefined;
+  const refined = applyValueRefinement(
+    finished.value,
+    context.program.representations.narrowing(node),
+    context,
+  );
+  if (refined === undefined) return undefined;
   return withMojoValue(
     finished.before,
-    applyValueRefinement(
-      finished.value,
-      context.program.queries.valueRefinement(node),
-      context,
-    ),
+    refined,
   );
+}
+
+export function projectElementUsesMethodWrite(
+  selection: import("../../../analysis/program/model.js").MojoElementSelection | undefined,
+  context: MojoPlanningContext,
+): boolean {
+  return selection?.kind === "project-index" &&
+    context.program.projectDispatch.viewForType(selection.receiverType) !== undefined;
+}
+
+export function providerElementUsesMethodWrite(
+  selection: import("../../../analysis/program/model.js").MojoElementSelection | undefined,
+): boolean {
+  return selection?.kind === "provider" &&
+    selection.writeOperation?.target.kind === "index-write" &&
+    selection.writeOperation.target.access.kind === "method";
+}
+
+export function planMojoProviderElementMethodWrite(
+  node: Node,
+  value: MojoValuePlan,
+  operator: string,
+  context: MojoPlanningContext,
+  planValue: MojoValuePlanner,
+): MojoPreparedMutation | undefined {
+  const selection = context.program.queries.elementSelection(node);
+  if (selection?.kind !== "provider") return undefined;
+  const write = selection.writeOperation;
+  if (write?.target.kind !== "index-write" || write.receiverType === undefined ||
+    write.parameterTypes.length !== 2) return undefined;
+  const target = write.target;
+  if (target.access.kind !== "method") return undefined;
+  const writeName = target.access.name;
+  if (selection.optionalChain) {
+    appendMojoPlanningDiagnostic(
+      context,
+      "MOJO_PROVIDER_OPTIONAL_ELEMENT_METHOD_WRITE_UNSUPPORTED",
+      "An optional element assignment has no exact JavaScript write semantics.",
+      node,
+    );
+    return undefined;
+  }
+  const prepared = prepareMojoReceiver(
+    selection.receiver,
+    selection.sourceReceiverType,
+    false,
+    context,
+    planValue,
+  );
+  const rawIndex = planValue(selection.index, context);
+  const convertedReceiver = prepared === undefined
+    ? undefined
+    : convertMojoValue(prepared.plan, selection.receiverConversion, context);
+  const convertedIndex = rawIndex === undefined
+    ? undefined
+    : convertMojoValue(rawIndex, selection.indexConversion, context);
+  if (prepared === undefined || convertedReceiver === undefined || convertedIndex === undefined) {
+    return undefined;
+  }
+  const location = orderMojoValues([
+    Object.freeze({ plan: convertedReceiver, type: write.receiverType, role: "element_write_receiver", use: "location" as const }),
+    Object.freeze({ plan: convertedIndex, type: write.parameterTypes[0]!, role: "element_write_index" }),
+  ], context, true);
+  let before: readonly MojoStatement[] = location.before;
+  let assigned: MojoExpression;
+  let previousValue: MojoExpression | undefined;
+  if (operator === "=") {
+    const orderedValue = orderMojoValues([
+      Object.freeze({ plan: value, type: write.parameterTypes[1]!, role: "element_write_value" }),
+    ], context, true);
+    before = Object.freeze([...before, ...orderedValue.before]);
+    assigned = orderedValue.values[0]!;
+  } else {
+    const read = selection.readOperation;
+    if (read?.target.kind !== "index-read" || read.receiverType === undefined ||
+      read.parameterTypes.length !== 1 || selection.readResultConversion === undefined ||
+      !mojoTargetTypeEquals(read.receiverType, write.receiverType) ||
+      !mojoTargetTypeEquals(read.parameterTypes[0]!, write.parameterTypes[0]!)) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROVIDER_ELEMENT_METHOD_COMPOUND_WRITE_UNSUPPORTED",
+        "A method-backed compound element write requires compatible exact read and write operations.",
+        node,
+      );
+      return undefined;
+    }
+    const rawRead: MojoExpression = read.target.access.kind === "element"
+      ? Object.freeze({
+          kind: "element",
+          receiver: location.values[0]!,
+          index: location.values[1]!,
+        })
+      : read.target.access.kind === "method"
+        ? Object.freeze({
+            kind: "method-call",
+            receiver: location.values[0]!,
+            name: read.target.access.name,
+            arguments: Object.freeze([Object.freeze({ value: location.values[1]! })]),
+          })
+        : Object.freeze({
+            kind: "call",
+            callee: mojoModuleMemberExpression(
+              context,
+              read.target.access.modulePath,
+              read.target.access.name,
+            ),
+            arguments: Object.freeze([
+              Object.freeze({ value: location.values[0]! }),
+              Object.freeze({ value: location.values[1]! }),
+            ]),
+          });
+    const current = convertMojoValue(
+      mojoValue(rawRead),
+      selection.readResultConversion,
+      context,
+    );
+    if (current === undefined) return undefined;
+    const orderedCurrent = orderMojoValues([
+      Object.freeze({ plan: current, type: selection.readType!, role: "element_write_current" }),
+    ], context, true);
+    const orderedValue = orderMojoValues([
+      Object.freeze({ plan: value, type: write.parameterTypes[1]!, role: "element_write_value" }),
+    ], context, true);
+    before = Object.freeze([
+      ...before,
+      ...orderedCurrent.before,
+      ...orderedValue.before,
+    ]);
+    previousValue = orderedCurrent.values[0]!;
+    assigned = Object.freeze({
+      kind: "binary",
+      operator: operator.slice(0, -1),
+      left: previousValue,
+      right: orderedValue.values[0]!,
+    });
+  }
+  return Object.freeze({
+    before,
+    assignedValue: assigned,
+    assignedType: write.parameterTypes[1]!,
+    ...(previousValue === undefined ? {} : { previousValue }),
+    valuePassing: target.value.convention === "var" ? "consume" : "borrow",
+    createWrite(argumentValue: MojoExpression): MojoStatement {
+      const argument = target.value.convention === "var"
+        ? consumeMojoValue(argumentValue, write.parameterTypes[1]!, context.program.lifecycle)
+        : argumentValue;
+      return Object.freeze({
+        kind: "expression",
+        expression: Object.freeze({
+          kind: "method-call",
+          receiver: location.values[0]!,
+          name: writeName,
+          arguments: Object.freeze([
+            Object.freeze({ value: location.values[1]! }),
+            Object.freeze({ value: argument }),
+          ]),
+        }),
+      });
+    },
+  });
+}
+
+export function planMojoProjectElementWrite(
+  node: Node,
+  value: MojoValuePlan,
+  operator: string,
+  context: MojoPlanningContext,
+  planValue: MojoValuePlanner,
+): MojoPreparedMutation | undefined {
+  const selection = context.program.queries.elementSelection(node);
+  if (selection?.kind !== "project-index") return undefined;
+  const dispatch = context.program.projectDispatch.indexFor(
+    selection.receiverType,
+    selection.declaration,
+  );
+  if (dispatch?.write === undefined || selection.writeType === undefined) {
+    appendMojoPlanningDiagnostic(
+      context,
+      "MOJO_PROJECT_INDEX_WRITE_DISPATCH_NOT_SEALED",
+      "A polymorphic project index write has no exact sealed writable dispatch slot.",
+      node,
+    );
+    return undefined;
+  }
+  if (selection.optionalChain) {
+    appendMojoPlanningDiagnostic(
+      context,
+      "MOJO_PROJECT_OPTIONAL_INDEX_WRITE_UNSUPPORTED",
+      "An optional project index assignment has no exact JavaScript write semantics.",
+      node,
+    );
+    return undefined;
+  }
+  const receiver = prepareMojoReceiver(
+    selection.receiver,
+    selection.receiverType,
+    false,
+    context,
+    planValue,
+  );
+  const rawIndex = planValue(selection.index, context);
+  const index = rawIndex === undefined
+    ? undefined
+    : convertMojoValue(rawIndex, selection.indexConversion, context);
+  if (receiver === undefined || index === undefined) return undefined;
+  const location = orderMojoValues([
+    Object.freeze({ plan: receiver.plan, type: selection.receiverType, role: "index_write_receiver" }),
+    Object.freeze({ plan: index, type: selection.indexType, role: "index_write_key" }),
+  ], context, true);
+  let before: readonly MojoStatement[];
+  let assigned: MojoExpression;
+  let previousValue: MojoExpression | undefined;
+  if (operator !== "=") {
+    if (selection.readType === undefined ||
+      !mojoTargetTypeEquals(selection.readType, selection.writeType)) {
+      appendMojoPlanningDiagnostic(
+        context,
+        "MOJO_PROJECT_INDEX_COMPOUND_WRITE_UNSUPPORTED",
+        "A compound project index write requires one identical exact read and write carrier.",
+        node,
+      );
+      return undefined;
+    }
+    const current: MojoExpression = Object.freeze({
+      kind: "method-call",
+      receiver: location.values[0]!,
+      name: dispatch.read.name,
+      arguments: Object.freeze([Object.freeze({ value: location.values[1]! })]),
+    });
+    const ordered = orderMojoValues([
+      Object.freeze({ plan: mojoValue(current), type: selection.readType, role: "index_write_current" }),
+      Object.freeze({ plan: value, type: selection.writeType, role: "index_write_value" }),
+    ], context, true);
+    before = Object.freeze([...location.before, ...ordered.before]);
+    previousValue = ordered.values[0]!;
+    assigned = Object.freeze({
+      kind: "binary",
+      operator: operator.slice(0, -1),
+      left: previousValue,
+      right: ordered.values[1]!,
+    });
+  } else {
+    const ordered = orderMojoValues([
+      Object.freeze({ plan: value, type: selection.writeType, role: "index_write_value" }),
+    ], context, true);
+    before = Object.freeze([...location.before, ...ordered.before]);
+    assigned = ordered.values[0]!;
+  }
+  return Object.freeze({
+    before,
+    assignedValue: assigned,
+    assignedType: selection.writeType,
+    ...(previousValue === undefined ? {} : { previousValue }),
+    valuePassing: "borrow",
+    createWrite(argumentValue: MojoExpression): MojoStatement {
+      return Object.freeze({
+        kind: "expression",
+        expression: Object.freeze({
+          kind: "method-call",
+          receiver: location.values[0]!,
+          name: dispatch.write!.name,
+          arguments: Object.freeze([
+            Object.freeze({ value: location.values[1]! }),
+            Object.freeze({ value: argumentValue }),
+          ]),
+        }),
+      });
+    },
+  });
 }

@@ -27,6 +27,7 @@ export function instantiateMojoProviderOperation(
 ): MojoProviderOperationInstantiation {
   const typeSubstitutions = new Map<string, MojoTargetTypeRef>();
   const valueSubstitutions = new Map<string, MojoTargetGenericArgument>();
+  const originSubstitutions = new Map<string, import("../../target-model/origins/model.js").MojoOriginRef>();
   const packSubstitutions = new Map<string, readonly MojoTargetGenericArgument[]>();
   if (row.receiverType !== undefined) {
     const sourceReceiver = source.sourceReceiver?.type;
@@ -81,11 +82,9 @@ export function instantiateMojoProviderOperation(
       if (parameter.variadic) packSubstitutions.set(parameter.name, resolved);
       if (resolved.length === 1) {
         const [argument] = resolved;
-        if (argument?.kind === "integer") {
-          valueSubstitutions.set(parameter.name, argument);
-        } else if (argument?.kind === "boolean") {
-          valueSubstitutions.set(parameter.name, argument);
-        } else if (argument !== undefined) {
+        if (parameter.kind === "origin" && argument?.kind === "origin") {
+          originSubstitutions.set(parameter.name, argument.origin);
+        } else if (parameter.kind === "value" && argument !== undefined) {
           valueSubstitutions.set(parameter.name, argument);
         }
       }
@@ -131,6 +130,7 @@ export function instantiateMojoProviderOperation(
   const substitutions = {
     types: typeSubstitutions,
     values: valueSubstitutions,
+    origins: originSubstitutions,
     packs: packSubstitutions,
   };
   return {
@@ -168,6 +168,7 @@ export function instantiateMojoProviderPropertyOperation(
   const substitutions = {
     types: typeSubstitutions,
     values: new Map<string, never>(),
+    origins: new Map<string, never>(),
     packs: new Map<string, never>(),
   };
   return {

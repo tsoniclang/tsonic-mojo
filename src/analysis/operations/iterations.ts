@@ -11,6 +11,11 @@ import {
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoIterationSelection } from "../program/model.js";
+import type { MojoBindingProjectionPlan } from "../program/model.js";
+import {
+  sourceProfileRegExpElementType,
+  sourceProfileRegExpIteratorElement,
+} from "../../policy/types/js-regexp.js";
 
 export type MojoIterationAnalysis =
   | { readonly kind: "resolved"; readonly selection: MojoIterationSelection }
@@ -24,14 +29,21 @@ export interface MojoIterationAnalysisInput {
   readonly bindingNames: WeakMap<Node, string>;
   readonly bindingTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly resolveType: (type: Type) => MojoTargetTypeRef | undefined;
+  readonly sourceTypesIdentical: (left: Type, right: Type) => boolean;
+  readonly analyzeBindingProjection: (
+    declaration: Node,
+    sourceType: MojoTargetTypeRef,
+    sourceSemanticType: Type,
+  ) => MojoBindingProjectionPlan | undefined;
 }
 
 export function analyzeMojoIteration(input: MojoIterationAnalysisInput): MojoIterationAnalysis {
   const { source } = input;
-  if (source.iterationKind === "for-await-of") {
+  if (source.iterationKind === "for-await-of" &&
+    !isSynchronousAsyncAdaptation(source, input.sourceTypesIdentical)) {
     return unsupported(
-      "MOJO_ASYNC_ITERATION_NATIVE_LIMIT",
-      "The active Mojo compiler exposes no native asynchronous iteration statement contract.",
+      "MOJO_ASYNC_ITERATOR_PROTOCOL_NATIVE_LIMIT",
+      "The active Mojo compiler exposes no native asynchronous iterator protocol; only checker-selected synchronous iteration adapted to for-await is representable without a target-owned suspension machine.",
     );
   }
   const bindingDeclaration = selectedBindingDeclaration(input.statement, input.ast);
@@ -42,15 +54,19 @@ export function analyzeMojoIteration(input: MojoIterationAnalysisInput): MojoIte
     );
   }
   const bindingNameNode = input.ast.name(bindingDeclaration);
+  const bindingPattern = bindingNameNode !== undefined &&
+    (input.ast.is.IsArrayBindingPattern(bindingNameNode) ||
+      input.ast.is.IsObjectBindingPattern(bindingNameNode));
   const bindingName = input.bindingNames.get(bindingDeclaration) ??
     (bindingNameNode === undefined ? undefined : input.bindingNames.get(bindingNameNode));
   const bindingType = input.bindingTypes.get(bindingDeclaration);
   const iterableType = input.resolveType(source.sourceIterableType);
   const sourceElementType = input.resolveType(source.sourceElementType);
-  if (bindingName === undefined || bindingType === undefined || iterableType === undefined || sourceElementType === undefined) {
+  if (bindingName === undefined || (!bindingPattern && bindingType === undefined) ||
+    iterableType === undefined || sourceElementType === undefined) {
     const missing = [
       ...(bindingName === undefined ? ["binding name"] : []),
-      ...(bindingType === undefined ? ["binding carrier"] : []),
+      ...(!bindingPattern && bindingType === undefined ? ["binding carrier"] : []),
       ...(iterableType === undefined ? ["source iterable carrier"] : []),
       ...(sourceElementType === undefined ? ["source element carrier"] : []),
     ];
@@ -59,7 +75,10 @@ export function analyzeMojoIteration(input: MojoIterationAnalysisInput): MojoIte
       `Iteration lacks an exact ${missing.join(", ")}.`,
     );
   }
-  const target = targetIterationContract(source.iterationKind, iterableType);
+  const target = targetIterationContract(
+    source.iterationKind === "for-await-of" ? "for-of" : source.iterationKind,
+    iterableType,
+  );
   if (target === undefined) {
     return unsupported(
       "MOJO_ITERATION_TARGET_UNSUPPORTED",
@@ -72,25 +91,123 @@ export function analyzeMojoIteration(input: MojoIterationAnalysisInput): MojoIte
       "The checker-selected source element and native Mojo iterator element carriers differ.",
     );
   }
-  if (!mojoTargetTypeEquals(sourceElementType, bindingType)) {
+  if (!bindingPattern && !mojoTargetTypeEquals(sourceElementType, bindingType!)) {
     return unsupported(
       "MOJO_ITERATION_BINDING_CONVERSION_UNSUPPORTED",
       "Iteration binding requires a conversion that cannot be represented at the native loop boundary.",
     );
   }
-  return {
-    kind: "resolved",
-    selection: Object.freeze({
-      kind: source.iterationKind,
-      statement: input.statement,
-      iterable: input.iterable,
-      bindingDeclaration,
-      bindingName,
-      iterableType,
-      elementType: target.elementType,
-      target: target.target,
-    }),
+  const binding = bindingPattern
+    ? input.analyzeBindingProjection(
+        bindingDeclaration,
+        sourceElementType,
+        source.sourceElementType,
+      )
+    : undefined;
+  if (bindingPattern && binding === undefined) {
+    return unsupported(
+      "MOJO_ITERATION_BINDING_PROJECTION_UNPROVEN",
+      "The exact iteration element has no sealed projection for its authored binding pattern.",
+    );
+  }
+  const common = {
+    statement: input.statement,
+    iterable: input.iterable,
+    binding: bindingPattern
+      ? Object.freeze({
+          kind: "pattern" as const,
+          declaration: bindingDeclaration,
+          name: bindingName,
+          projection: binding!,
+        })
+      : Object.freeze({
+          kind: "identifier" as const,
+          declaration: bindingDeclaration,
+          name: bindingName,
+        }),
+    iterableType,
+    elementType: target.elementType,
   };
+  let selection: MojoIterationSelection;
+  if (source.iterationKind === "for-in") {
+    if (target.target !== "dictionary-keys") {
+      return unsupported(
+        "MOJO_ITERATION_SOURCE_TARGET_CONFLICT",
+        "Property-key iteration selected a non-key target iteration contract.",
+      );
+    }
+    selection = Object.freeze({
+      ...common,
+      kind: "for-in",
+      adaptation: "none",
+      target: target.target,
+    });
+  } else {
+    if (target.target === "dictionary-keys") {
+      return unsupported(
+        "MOJO_ITERATION_SOURCE_TARGET_CONFLICT",
+        "Value iteration selected a property-key target iteration contract.",
+      );
+    }
+    selection = source.iterationKind === "for-await-of"
+      ? Object.freeze({
+          ...common,
+          kind: "for-await-of",
+          adaptation: "synchronous-to-async",
+          target: target.target,
+        })
+      : Object.freeze({
+          ...common,
+          kind: "for-of",
+          adaptation: "none",
+          target: target.target,
+        });
+  }
+  return { kind: "resolved", selection };
+}
+
+function isSynchronousAsyncAdaptation(
+  source: Extract<ResolvedSourceIterationInfo, { readonly iterationKind: "for-await-of" }>,
+  sourceTypesIdentical: (left: Type, right: Type) => boolean,
+): boolean {
+  const mechanism = source.mechanism;
+  if (mechanism.kind === "union") {
+    return mechanism.alternatives.every((alternative) =>
+      synchronousAlternativeYieldsSourceElement(
+        alternative,
+        source.sourceElementType,
+        sourceTypesIdentical,
+      ));
+  }
+  return synchronousAlternativeYieldsSourceElement(
+    mechanism,
+    source.sourceElementType,
+    sourceTypesIdentical,
+  );
+}
+
+function synchronousAlternativeYieldsSourceElement(
+  mechanism: Exclude<
+    Extract<ResolvedSourceIterationInfo, { readonly iterationKind: "for-await-of" }>[
+      "mechanism"
+    ],
+    { readonly kind: "union" }
+  >,
+  sourceElementType: Type,
+  sourceTypesIdentical: (left: Type, right: Type) => boolean,
+): boolean {
+  if (mechanism.kind === "synchronous-iterator-adapted-to-async") {
+    const yieldType = mechanism.protocol.iterationTypes.yieldType;
+    if (yieldType === undefined) return false;
+    return sourceTypesIdentical(
+      yieldType,
+      sourceElementType,
+    );
+  }
+  if (mechanism.kind === "array-like-index-adapted-to-async") {
+    return sourceTypesIdentical(mechanism.selectedIndexType, sourceElementType);
+  }
+  return mechanism.kind === "string-code-unit-index-adapted-to-async";
 }
 
 function selectedBindingDeclaration(statement: Node, ast: AstReader): Node | undefined {
@@ -100,7 +217,10 @@ function selectedBindingDeclaration(statement: Node, ast: AstReader): Node | und
   if (declarations.length !== 1 || declarations[0] === undefined) return undefined;
   const declaration = declarations[0];
   const name = ast.name(declaration);
-  return name !== undefined && ast.is.IsIdentifier(name) ? declaration : undefined;
+  return name !== undefined && (ast.is.IsIdentifier(name) ||
+    ast.is.IsArrayBindingPattern(name) || ast.is.IsObjectBindingPattern(name))
+    ? declaration
+    : undefined;
 }
 
 function targetIterationContract(
@@ -111,6 +231,14 @@ function targetIterationContract(
   readonly elementType: MojoTargetTypeRef;
 } | undefined {
   if (kind === "for-of") {
+    const regexpIteratorElement = sourceProfileRegExpIteratorElement(iterable);
+    if (regexpIteratorElement !== undefined) {
+      return { target: "js-array-values", elementType: regexpIteratorElement };
+    }
+    const regexpArrayElement = sourceProfileRegExpElementType(iterable);
+    if (regexpArrayElement !== undefined) {
+      return { target: "js-array-values", elementType: regexpArrayElement };
+    }
     if (iterable.kind === "list" || iterable.kind === "fixed-array") {
       return { target: "native-values", elementType: iterable.element };
     }

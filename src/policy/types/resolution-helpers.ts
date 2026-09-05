@@ -8,31 +8,41 @@ import type {
 import { ArrayTypeNode_ElementType } from "@tsonic/target-api/source";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import type { MojoNamedLifecycleContract } from "../../target-model/lifecycle/model.js";
 import type { MojoTypeResolution, MojoTypeResolutionContext } from "./resolution.js";
 
 export function resolveTypeParameter(
   symbol: ReturnType<MojoTypeResolutionContext["semantics"]["declarations"]["typeSymbol"]>,
   context: MojoTypeResolutionContext,
-): MojoTargetTypeRef | undefined {
+): Node | undefined {
   if (symbol === undefined) return undefined;
   const declarations = context.semantics.declarations.symbolDeclarations(symbol);
   if (declarations.length !== 1 || !context.ast.is.IsTypeParameterDeclaration(declarations[0])) {
     return undefined;
   }
   const name = context.ast.name(declarations[0]!);
-  return name === undefined || !context.ast.is.IsIdentifier(name)
-    ? undefined
-    : Object.freeze({ kind: "type-parameter", name: context.ast.text(name) });
+  return name === undefined || !context.ast.is.IsIdentifier(name) ? undefined : declarations[0];
 }
 
 export function resolveUnion(
   selectedType: Type,
+  authoredTypeNode: Node | undefined,
   context: MojoTypeResolutionContext,
-  resolveMember: (member: Type) => MojoTypeResolution,
+  resolveMember: (member: Type, authoredMember: Node | undefined) => MojoTypeResolution,
 ): MojoTypeResolution {
   const members: MojoTargetTypeRef[] = [];
+  const authoredMembers = authoredTypeNode === undefined
+    ? Object.freeze([])
+    : authoredUnionMemberNodes(authoredTypeNode, context.ast);
   for (const member of context.semantics.types.unionOrIntersectionTypes(selectedType)) {
-    const resolved = resolveMember(member);
+    const matchingAuthoredMembers = authoredMembers.filter((candidate) => {
+      const selected = context.semantics.types.authoredSelection(candidate, member);
+      return selected.kind === "authored-members" && selected.nodes.includes(candidate);
+    });
+    if (matchingAuthoredMembers.length > 1) {
+      return { kind: "unsupported", reason: "the selected union member has ambiguous authored type syntax" };
+    }
+    const resolved = resolveMember(member, matchingAuthoredMembers[0]);
     if (resolved.kind === "unsupported") return resolved;
     if (!members.some((candidate) => mojoTargetTypeEquals(candidate, resolved.type))) {
       members.push(resolved.type);
@@ -52,6 +62,22 @@ export function resolveUnion(
   return { kind: "resolved", type: { kind: "union", members: Object.freeze(members) } };
 }
 
+function authoredUnionMemberNodes(
+  node: Node,
+  ast: AstReader,
+): readonly Node[] {
+  if (ast.is.IsUnionTypeNode(node)) {
+    return Object.freeze(ast.children(node).filter(
+      (child): child is Node => child !== undefined,
+    ));
+  }
+  if (!ast.is.IsParenthesizedTypeNode(node)) return Object.freeze([node]);
+  const inner = ast.as.AsParenthesizedTypeNode(node)?.Type;
+  return inner === undefined
+    ? Object.freeze([])
+    : authoredUnionMemberNodes(inner, ast);
+}
+
 export function exactUndefinedType(type: Type, context: MojoTypeResolutionContext): boolean {
   const nonNullish = context.semantics.types.withoutMissingOrUndefined(type);
   return nonNullish !== undefined && context.semantics.types.isNever(nonNullish);
@@ -62,12 +88,14 @@ export function namedType(
   modulePath: readonly string[],
   name: string,
   genericArguments: readonly MojoTargetTypeRef[] = [],
+  lifecycle?: MojoNamedLifecycleContract,
 ): MojoTargetTypeRef {
   return Object.freeze({
     kind: "target-named",
     id,
     modulePath: Object.freeze([...modulePath]),
     name,
+    ...(lifecycle === undefined ? {} : { lifecycle }),
     ...(genericArguments.length === 0
       ? {}
       : {
@@ -89,7 +117,7 @@ export function providerOwnerMatches(
 export function typeSubjects(
   type: Type,
   authoredTypeNode: Node | undefined,
-  context: MojoTypeResolutionContext,
+  context: Pick<MojoTypeResolutionContext, "ast" | "semantics">,
 ): readonly ExtensionFactSubject[] {
   const subjects: ExtensionFactSubject[] = [];
   if (authoredTypeNode !== undefined) {

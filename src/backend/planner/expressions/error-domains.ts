@@ -8,8 +8,8 @@ import {
   appendMojoPlanningDiagnostic,
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
-import { registerMojoTypeImports } from "../types/render.js";
-import { withMojoValue } from "./value-plan.js";
+import { registerMojoTypeImports } from "../types/imports.js";
+import { consumeMojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 
 export function adaptMojoValueErrorDomain(
@@ -56,9 +56,9 @@ export function adaptMojoValueErrorDomain(
   const error = Object.freeze({ kind: "path" as const, path: errorName });
   const caught = Object.freeze({
     name: errorName,
-    statements: rethrowInErrorDomain(error, normalizedSourceErrorType, normalizedTargetErrorType),
+    statements: rethrowInErrorDomain(error, normalizedSourceErrorType, normalizedTargetErrorType, context),
   });
-  if (resultType.kind === "unit") {
+  if (resultType.kind === "unit" || resultType.kind === "never") {
     return withMojoValue(Object.freeze([
       Object.freeze({
         kind: "try" as const,
@@ -67,6 +67,7 @@ export function adaptMojoValueErrorDomain(
           Object.freeze({
             kind: "expression" as const,
             expression: plan.value,
+            ...(resultType.kind === "never" ? { neverReturns: true } : {}),
           }),
         ]),
         catches: Object.freeze([caught]),
@@ -75,9 +76,7 @@ export function adaptMojoValueErrorDomain(
   }
   const resultName = allocateMojoSyntheticName(context, "raising_result");
   const result = Object.freeze({ kind: "path" as const, path: resultName });
-  const resultValue: MojoExpression = context.program.queries.ownedTemporaryPassing(resultType) === "consume"
-    ? Object.freeze({ kind: "consume", expression: result })
-    : result;
+  const resultValue = consumeMojoValue(result, resultType, context.program.lifecycle);
   return withMojoValue(Object.freeze([
     Object.freeze({ kind: "variable" as const, name: resultName, type: resultType }),
     Object.freeze({
@@ -110,14 +109,18 @@ function rethrowInErrorDomain(
   error: MojoExpression,
   source: MojoTargetTypeRef,
   target: MojoTargetTypeRef,
+  context: MojoPlanningContext,
 ): readonly MojoStatement[] {
   if (target.kind !== "union") {
-    return Object.freeze([Object.freeze({ kind: "raise", expression: error })]);
+    return Object.freeze([Object.freeze({
+      kind: "raise",
+      expression: consumeMojoValue(error, source, context.program.lifecycle),
+    })]);
   }
   if (source.kind !== "union") {
     return Object.freeze([Object.freeze({
       kind: "raise",
-      expression: constructErrorDomain(target, error),
+      expression: constructErrorDomain(target, consumeMojoValue(error, source, context.program.lifecycle)),
     })]);
   }
   const branch = (index: number): readonly MojoStatement[] => {
@@ -125,9 +128,11 @@ function rethrowInErrorDomain(
     const raised = Object.freeze({
       kind: "raise" as const,
       expression: constructErrorDomain(target, Object.freeze({
-        kind: "type-element" as const,
-        receiver: error,
-        type: member,
+        kind: "method-call" as const,
+        receiver: consumeMojoValue(error, source, context.program.lifecycle),
+        name: "unsafe_unwrap",
+        genericArguments: Object.freeze([Object.freeze({ kind: "type" as const, type: member })]),
+        arguments: Object.freeze([]),
       })),
     });
     if (index === source.members.length - 1) return Object.freeze([raised]);

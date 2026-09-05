@@ -1,5 +1,6 @@
 import type { ArgumentPassingMode } from "@tsonic/tsts";
 import type { MojoCallArgumentConvention } from "../../../target-model/types/model.js";
+import type { MojoCompilerType } from "../model/model.js";
 
 export function projectMojoPassingMode(
   convention: MojoCallArgumentConvention,
@@ -12,4 +13,8 @@ export function projectMojoPassingMode(
     case "out": return "byref-writeonly-must-init";
     case "deinit": return "move";
   }
+}
+
+export function isDirectMojoSelfReceiver(type: MojoCompilerType): boolean {
+  return type.kind === "self" && type.memberPath.length === 0 && type.arguments.length === 0;
 }

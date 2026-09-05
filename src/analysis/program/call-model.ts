@@ -6,17 +6,27 @@ import type {
   MojoTargetGenericArgument,
   MojoTargetTypeRef,
 } from "../../target-model/types/model.js";
+import type { MojoArgumentDisposition } from "../representations/model.js";
 
 export interface MojoAnalyzedCallArgument {
   readonly expression: Node;
+  readonly sourceArgumentIndex: number;
+  readonly sourceForm: "value" | "spread-element" | "spread-sequence";
+  readonly spreadElementIndex?: number;
+  readonly sourceContainerType?: MojoTargetTypeRef;
   readonly sourceType: MojoTargetTypeRef;
   readonly parameterType: MojoTargetTypeRef;
   readonly conversion: MojoValueConversion;
-  readonly passing: "plain" | "consume";
+  readonly disposition: MojoArgumentDisposition;
   readonly spread: boolean;
   readonly position: MojoCallArgumentPosition;
   readonly nativeName?: string;
   readonly parameterIndex: number;
+  readonly callableConsumption?: "immediate" | "retained";
+  readonly locationBorrow?: {
+    readonly declaration: Node;
+    readonly mutability: "immutable" | "mutable";
+  };
 }
 
 export type MojoCallableArgumentSlot =
@@ -30,6 +40,26 @@ export type MojoCallableArgumentSlot =
     };
 
 export type MojoCallSelection =
+  | {
+      readonly kind: "source-intrinsic";
+      readonly operation:
+        | "comptime-value"
+        | "comptime-type"
+        | "comptime-condition"
+        | "comptime-iteration"
+        | "copy"
+        | "materialize"
+        | "write-only-reference"
+        | "read-write-reference"
+        | "read-only-reference"
+        | "shared-borrow"
+        | "mutable-borrow"
+        | "move"
+        | "js-string";
+      readonly operand?: Node;
+      readonly value?: MojoTargetGenericArgument;
+      readonly resultType: MojoTargetTypeRef;
+    }
   | {
       readonly kind: "explicit-safety";
       readonly form: "remaining-block";
@@ -130,6 +160,7 @@ export type MojoCallSelection =
       readonly operation: "equal-pointer";
       readonly pointeeType: MojoTargetTypeRef;
       readonly locationType: MojoTargetTypeRef;
+      readonly operandType: MojoTargetTypeRef;
       readonly resultType: MojoTargetTypeRef;
       readonly leftExpression: Node;
       readonly rightExpression: Node;
@@ -137,19 +168,42 @@ export type MojoCallSelection =
   | {
       readonly kind: "project";
       readonly target:
-        | { readonly kind: "function"; readonly name: string; readonly modulePath: readonly string[] }
+        | {
+            readonly kind: "function";
+            readonly declaration: Node;
+            readonly adapterDeclaration?: Node;
+            readonly name: string;
+            readonly modulePath: readonly string[];
+          }
         | {
             readonly kind: "method";
             readonly name: string;
+            readonly declaration: Node;
+            readonly adapterDeclaration?: Node;
+            readonly implementationDeclaration: Node;
             readonly receiver: Node;
             readonly receiverType: MojoTargetTypeRef;
+            readonly dispatch: "virtual" | "exact";
           }
-        | { readonly kind: "static-method"; readonly owner: MojoTargetTypeRef; readonly name: string }
-        | { readonly kind: "constructor"; readonly type: MojoTargetTypeRef };
+        | {
+            readonly kind: "static-method";
+            readonly declaration: Node;
+            readonly adapterDeclaration?: Node;
+            readonly implementationDeclaration: Node;
+            readonly owner: MojoTargetTypeRef;
+            readonly name: string;
+          }
+        | {
+            readonly kind: "constructor";
+            readonly construction: import("./construction-model.js").MojoProjectConstruction;
+            readonly adapterDeclaration?: Node;
+          };
       readonly genericArguments: readonly MojoTargetGenericArgument[];
       readonly arguments: readonly MojoAnalyzedCallArgument[];
       readonly resultType: MojoTargetTypeRef;
       readonly resultConversion: MojoValueConversion;
+      readonly dynamicDispatchErrorType?: MojoTargetTypeRef;
+      readonly invocationErrorType?: MojoTargetTypeRef;
       readonly optionalChain: boolean;
     }
   | {
@@ -159,7 +213,9 @@ export type MojoCallSelection =
       readonly receiver?: Node;
       readonly sourceReceiverType?: MojoTargetTypeRef;
       readonly receiverConversion?: MojoValueConversion;
+      readonly receiverDisposition?: MojoArgumentDisposition;
       readonly propagatedCallbackParameterIndex?: number;
+      readonly propagatedCallbackBaseErrorType?: MojoTargetTypeRef;
       readonly resultConversion: MojoValueConversion;
       readonly optionalChain: boolean;
     }
@@ -172,4 +228,32 @@ export type MojoCallSelection =
       readonly resultType: MojoTargetTypeRef;
       readonly resultConversion: MojoValueConversion;
       readonly optionalChain: boolean;
+    }
+  | {
+      readonly kind: "object-assign";
+      readonly target: Node;
+      readonly source: Node;
+      readonly targetType: MojoTargetTypeRef;
+      readonly sourceType: MojoTargetTypeRef;
+      readonly arguments: readonly MojoAnalyzedCallArgument[];
+      readonly fields: readonly {
+        readonly sourceName: string;
+        readonly sourceStorageIndex: number;
+        readonly targetStorageIndex: number;
+        readonly sourceType: MojoTargetTypeRef;
+        readonly targetType: MojoTargetTypeRef;
+        readonly conversion: MojoValueConversion;
+      }[];
+      readonly resultType: MojoTargetTypeRef;
+      readonly optionalChain: false;
+    }
+  | {
+      readonly kind: "json-stringify";
+      readonly arguments: readonly MojoAnalyzedCallArgument[];
+      readonly replacer: "none" | "callable";
+      readonly space: "none" | "number" | "string";
+      readonly runtimeResultType: MojoTargetTypeRef;
+      readonly resultType: MojoTargetTypeRef;
+      readonly resultConversion: MojoValueConversion;
+      readonly optionalChain: false;
     };

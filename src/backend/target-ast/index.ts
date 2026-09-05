@@ -1,12 +1,18 @@
 export type {
   MojoComptimeDeclaration,
+  MojoDecorator,
   MojoDeclaration,
   MojoFieldDeclaration,
   MojoFunctionDeclaration,
+  MojoGenericParameterDeclaration,
   MojoParameter,
   MojoStructDeclaration,
   MojoTraitDeclaration,
   MojoTypeAliasDeclaration,
+} from "./declarations.js";
+export {
+  mojoFieldwiseInitDecorators,
+  mojoStaticMethodDecorators,
 } from "./declarations.js";
 export type {
   MojoCallArgument,
@@ -20,6 +26,7 @@ export type {
 } from "./imports.js";
 export type {
   MojoSourceModule,
+  MojoTypeAliasUse,
 } from "./modules.js";
 export type {
   MojoCatchClause,

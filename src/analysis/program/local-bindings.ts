@@ -1,7 +1,7 @@
 import type { AstReader, Node, SourceFile } from "@tsonic/tsts";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
-import { walkSourceTree } from "./traversal.js";
+import { walkSourceTree } from "../../source/syntax/traversal.js";
 
 export function allocateMojoLocalBindings(
   body: Node,
@@ -28,7 +28,10 @@ export function allocateMojoLocalBindings(
       return;
     }
     if (ast.is.IsArrayBindingPattern(nameNode) || ast.is.IsObjectBindingPattern(nameNode)) {
-      allocatePattern(
+      const rootName = allocate("binding");
+      bindings.set(node, rootName);
+      if (sourceFile !== undefined) bindingSourceFiles.set(node, sourceFile);
+      allocateMojoBindingPatternNames(
         nameNode,
         sourceFile,
         allocate,
@@ -47,12 +50,12 @@ export function allocateMojoLocalBindings(
   }, (node, root) => node === root || !isCallableBoundary(node, ast));
 }
 
-function allocatePattern(
+export function allocateMojoBindingPatternNames(
   pattern: Node,
   sourceFile: SourceFile | undefined,
   allocate: (name: string) => string,
   bindings: WeakMap<Node, string>,
-  bindingSourceFiles: WeakMap<Node, SourceFile>,
+  bindingSourceFiles: WeakMap<Node, SourceFile> | undefined,
   ast: AstReader,
   diagnostics: TargetDiagnostic[],
 ): void {
@@ -82,7 +85,15 @@ function allocatePattern(
       continue;
     }
     if (ast.is.IsArrayBindingPattern(name) || ast.is.IsObjectBindingPattern(name)) {
-      allocatePattern(name, sourceFile, allocate, bindings, bindingSourceFiles, ast, diagnostics);
+      allocateMojoBindingPatternNames(
+        name,
+        sourceFile,
+        allocate,
+        bindings,
+        bindingSourceFiles,
+        ast,
+        diagnostics,
+      );
       continue;
     }
     diagnostics.push(mojoAnalysisDiagnostic(
@@ -99,13 +110,13 @@ function bind(
   sourceFile: SourceFile | undefined,
   allocate: (name: string) => string,
   bindings: WeakMap<Node, string>,
-  bindingSourceFiles: WeakMap<Node, SourceFile>,
+  bindingSourceFiles: WeakMap<Node, SourceFile> | undefined,
   ast: AstReader,
 ): void {
   const name = allocate(ast.text(nameNode));
   bindings.set(declaration, name);
   bindings.set(nameNode, name);
-  if (sourceFile !== undefined) {
+  if (sourceFile !== undefined && bindingSourceFiles !== undefined) {
     bindingSourceFiles.set(declaration, sourceFile);
     bindingSourceFiles.set(nameNode, sourceFile);
   }

@@ -5,13 +5,14 @@ import type {
 } from "@tsonic/tsts";
 import { sourceNodeIdentity } from "@tsonic/target-api/source";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
-import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import type { MojoTargetGenericArgument } from "../../target-model/types/model.js";
 import type {
   MojoProjectTypeCatalog,
   MojoProjectTypeDefinition,
   MojoProjectTypeIssue,
   MojoProjectTypeKind,
 } from "../../target-model/types/project.js";
+import { classifyMojoSourceGenericParameter } from "../../source/semantics/generic-parameters.js";
 
 export function createMojoProjectTypeCatalog(
   source: TargetSourceProgram,
@@ -50,15 +51,37 @@ export function createMojoProjectTypeCatalog(
         }));
         continue;
       }
-      const parameterNames = (rawParameters as readonly Node[]).map((parameter) => ast.name(parameter));
-      if (parameterNames.some((parameter) => parameter === undefined || !ast.is.IsIdentifier(parameter))) {
-        issues.push(Object.freeze({
-          node: statement,
-          code: "MOJO_PROJECT_TYPE_PARAMETER_UNNAMED",
-          message: "Project type parameters require exact identifier declarations.",
-        }));
-        continue;
+      const semantics = source.semantics.forFile(sourceFile);
+      const typeParameters = [];
+      let parameterFailure = false;
+      for (const parameter of rawParameters as readonly Node[]) {
+        const classified = classifyMojoSourceGenericParameter(statement, parameter, {
+          ast,
+          semantics,
+          sourceFacts: source.sourceFacts,
+        });
+        if (classified.kind === "unsupported") {
+          issues.push(Object.freeze({
+            node: parameter,
+            code: "MOJO_PROJECT_TYPE_PARAMETER_UNRESOLVED",
+            message: `Project type parameter cannot be classified exactly: ${classified.reason}.`,
+          }));
+          parameterFailure = true;
+          break;
+        }
+        const identity = sourceNodeIdentity(ast, parameter);
+        if (identity === undefined) {
+          issues.push(Object.freeze({
+            node: parameter,
+            code: "MOJO_PROJECT_TYPE_PARAMETER_IDENTITY_UNRESOLVED",
+            message: "A project type parameter requires one stable source declaration identity.",
+          }));
+          parameterFailure = true;
+          break;
+        }
+        typeParameters.push(Object.freeze({ ...classified.parameter, identity }));
       }
+      if (parameterFailure) continue;
       const sourceName = ast.text(nameNode);
       const definition = Object.freeze({
         id: `tsonic.mojo.project:${identity}`,
@@ -68,7 +91,7 @@ export function createMojoProjectTypeCatalog(
         targetName: nameForDeclaration(statement, sourceName),
         modulePath: Object.freeze([...modulePathForSourceFile(sourceFile)]),
         kind,
-        typeParameterNames: Object.freeze((parameterNames as readonly Node[]).map((name) => ast.text(name))),
+        typeParameters: Object.freeze(typeParameters),
       });
       const existing = byId.get(definition.id);
       if (existing !== undefined && existing.declaration !== statement) {
@@ -108,9 +131,15 @@ export function createMojoProjectTypeCatalog(
     },
     targetTypeForDefinition(
       definition: MojoProjectTypeDefinition,
-      arguments_: readonly MojoTargetTypeRef[],
+      arguments_: readonly MojoTargetGenericArgument[],
     ) {
-      if (arguments_.length !== definition.typeParameterNames.length) return undefined;
+      if (arguments_.length !== definition.typeParameters.length ||
+        arguments_.some((argument, index) => !genericArgumentMatchesParameter(
+          argument,
+          definition.typeParameters[index]!.kind,
+        ))) {
+        return undefined;
+      }
       return Object.freeze({
         kind: "target-named" as const,
         id: definition.id,
@@ -119,12 +148,23 @@ export function createMojoProjectTypeCatalog(
         ...(arguments_.length === 0
           ? {}
           : {
-              genericArguments: Object.freeze(arguments_.map((type: MojoTargetTypeRef) =>
-                Object.freeze({ kind: "type" as const, type }))),
+              genericArguments: Object.freeze(arguments_),
             }),
       });
     },
   });
+}
+
+function genericArgumentMatchesParameter(
+  argument: MojoTargetGenericArgument,
+  parameterKind: MojoProjectTypeDefinition["typeParameters"][number]["kind"],
+): boolean {
+  if (parameterKind === "type") {
+    return argument.kind === "type" || argument.kind === "type-expression";
+  }
+  if (parameterKind === "origin") return argument.kind === "origin";
+  return argument.kind !== "type" && argument.kind !== "type-expression" &&
+    argument.kind !== "origin" && argument.kind !== "unbound";
 }
 
 function projectTypeKind(

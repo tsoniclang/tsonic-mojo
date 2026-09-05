@@ -10,16 +10,18 @@ import {
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
-import { mojoAnalysisDiagnostic } from "../diagnostics.js";
 import type { MojoSourceModuleCatalog } from "../source-modules/model.js";
 import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
 import type { MojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
 import { resolveMojoTargetType } from "../../policy/types/resolution.js";
+import { classifyMojoBindingDisposition } from "../representations/index.js";
 import type {
   MojoAnalyzedModule,
   MojoAnalyzedModuleBinding,
   MojoModuleInitializationStep,
 } from "./model.js";
+import { isMojoModuleRuntimeStatement } from "./module-runtime-statements.js";
+import { analyzeModuleBindingPattern, diagnostic, isExplicitCompileTimeInitializer } from "./module-binding-support.js";
 
 export interface MojoModuleBindingAnalysisInput {
   readonly source: TargetSourceProgram;
@@ -32,6 +34,7 @@ export interface MojoModuleBindingAnalysisInput {
   readonly sourceCallableErrorType?: MojoTargetTypeRef;
   readonly diagnostics: TargetDiagnostic[];
   readonly allocateModuleName: (sourceFile: SourceFile, name: string) => string;
+  readonly allocateModuleTypeName: (sourceFile: SourceFile, name: string) => string;
   readonly bindName: (declaration: Node, name: string) => void;
   readonly bindSourceFile: (declaration: Node, sourceFile: SourceFile) => void;
   readonly bindType: (declaration: Node, type: MojoTargetTypeRef) => void;
@@ -53,12 +56,13 @@ export function analyzeMojoModuleBindings(
       continue;
     }
     const semantics = input.source.semantics.forFile(sourceFile);
-    const stateName = input.allocateModuleName(sourceFile, "TsonicModuleState");
-    const createStateName = input.allocateModuleName(sourceFile, "createTsonicModuleState");
-    const cellName = input.allocateModuleName(sourceFile, "tsonicModuleState");
-    const initializeName = input.allocateModuleName(sourceFile, "initializeTsonicModule");
-    const lifecycleLockName = input.allocateModuleName(sourceFile, "lifecycleLock");
-    const lifecycleInitializedName = input.allocateModuleName(sourceFile, "lifecycleInitialized");
+    const stateName = input.allocateModuleTypeName(sourceFile, "_ModuleState");
+    const createStateName = input.allocateModuleName(sourceFile, "_createModuleState");
+    const cellName = input.allocateModuleName(sourceFile, "_moduleState");
+    const initializeName = input.allocateModuleName(sourceFile, "_initializeModule");
+    const initializeBodyName = input.allocateModuleName(sourceFile, "_initializeModuleBody");
+    const lifecycleLockName = input.allocateModuleName(sourceFile, "_lifecycleLock");
+    const lifecycleInitializedName = input.allocateModuleName(sourceFile, "_lifecycleInitialized");
     const bindings: MojoAnalyzedModuleBinding[] = [];
     const initializationSteps: MojoModuleInitializationStep[] = [];
     for (const statement of ast.statements(sourceFile)) {
@@ -96,10 +100,33 @@ export function analyzeMojoModuleBindings(
         }
         for (const declaration of declarations as readonly Node[]) {
           const nameNode = ast.name(declaration);
+          if (nameNode !== undefined && (ast.is.IsArrayBindingPattern(nameNode) ||
+            ast.is.IsObjectBindingPattern(nameNode))) {
+            if (declarationKind === "using" || declarationKind === "await using") {
+              input.diagnostics.push(diagnostic(
+                "MOJO_MODULE_RESOURCE_BINDING_PATTERN_UNSUPPORTED",
+                "Top-level resource management requires one exact resource binding rather than a destructured aggregate.",
+                declaration,
+              ));
+              continue;
+            }
+            const pattern = analyzeModuleBindingPattern(
+              declaration,
+              nameNode,
+              declarationKind,
+              sourceFile,
+              semantics,
+              input,
+            );
+            if (pattern === undefined) continue;
+            bindings.push(...pattern.bindings);
+            initializationSteps.push(pattern);
+            continue;
+          }
           if (nameNode === undefined || !ast.is.IsIdentifier(nameNode)) {
             input.diagnostics.push(diagnostic(
-              "MOJO_MODULE_BINDING_PATTERN_UNSUPPORTED",
-              "Top-level destructuring requires the sealed binding-pattern plan.",
+              "MOJO_MODULE_BINDING_NAME_UNSUPPORTED",
+              "A top-level binding requires one exact identifier or binding pattern.",
               declaration,
             ));
             continue;
@@ -125,6 +152,7 @@ export function analyzeMojoModuleBindings(
             authoredTypeNode,
             {
               ast,
+              navigation: input.source.navigation,
               semantics,
               sourceFacts: input.source.sourceFacts,
               providerSemantics: input.providerSemantics,
@@ -138,7 +166,7 @@ export function analyzeMojoModuleBindings(
           );
           if (resolved.kind === "unsupported") {
             input.diagnostics.push(diagnostic(
-              "MOJO_TARGET_TYPE_UNSUPPORTED",
+              "MOJO_MODULE_BINDING_CARRIER_UNRESOLVED",
               `Selected top-level binding type cannot be represented exactly in Mojo: ${resolved.reason}.`,
               declaration,
             ));
@@ -146,10 +174,15 @@ export function analyzeMojoModuleBindings(
           }
           const sourceName = ast.text(nameNode);
           const name = input.allocateModuleName(sourceFile, sourceName);
-          const storage = declarationKind === "const" &&
-              isNativeComptimeInitializer(initializer, resolved.type, input.source)
-            ? "comptime"
-            : "cell";
+          const disposition = classifyMojoBindingDisposition({
+            declaration,
+            initializer,
+            declarationKind,
+            type: resolved.type,
+            comptime: declarationKind === "const" &&
+              isExplicitCompileTimeInitializer(initializer, input.source),
+            source: input.source,
+          });
           const binding = Object.freeze({
             kind: "module-binding" as const,
             declaration,
@@ -157,7 +190,7 @@ export function analyzeMojoModuleBindings(
             sourceName,
             name,
             declarationKind,
-            storage,
+            disposition,
             type: resolved.type,
             initializer,
           }) satisfies MojoAnalyzedModuleBinding;
@@ -165,7 +198,7 @@ export function analyzeMojoModuleBindings(
           input.bindName(declaration, name);
           input.bindSourceFile(declaration, sourceFile);
           input.bindType(declaration, resolved.type);
-          if (storage === "cell") {
+          if (disposition.kind === "immutable-runtime" || disposition.kind === "live-cell") {
             initializationSteps.push(Object.freeze({ kind: "binding", binding }));
           }
         }
@@ -185,6 +218,7 @@ export function analyzeMojoModuleBindings(
           undefined,
           {
             ast,
+            navigation: input.source.navigation,
             semantics,
             sourceFacts: input.source.sourceFacts,
             providerSemantics: input.providerSemantics,
@@ -220,7 +254,7 @@ export function analyzeMojoModuleBindings(
           sourceName: "default",
           name,
           declarationKind: "const" as const,
-          storage: "cell" as const,
+          disposition: Object.freeze({ kind: "immutable-runtime" as const }),
           type: resolved.type,
           initializer,
         });
@@ -278,6 +312,7 @@ export function analyzeMojoModuleBindings(
               semantics.types.expressionType(initializer);
             const resolved = resolveMojoTargetType(selectedType, authoredTypeNode, {
               ast,
+              navigation: input.source.navigation,
               semantics,
               sourceFacts: input.source.sourceFacts,
               providerSemantics: input.providerSemantics,
@@ -290,16 +325,20 @@ export function analyzeMojoModuleBindings(
             });
             if (resolved.kind === "unsupported") {
               input.diagnostics.push(diagnostic(
-                "MOJO_TARGET_TYPE_UNSUPPORTED",
+                "MOJO_CLASS_STATIC_FIELD_CARRIER_UNRESOLVED",
                 `Selected class static field type cannot be represented exactly in Mojo: ${resolved.reason}.`,
                 member,
               ));
               continue;
             }
             const sourceName = ast.text(nameNode);
+            const privateMember = ast.hasModifierKind(member, "private") ||
+              ast.hasModifierKind(member, "protected") || ast.is.IsPrivateIdentifier(nameNode);
             const name = input.allocateModuleName(
               sourceFile,
-              `${definition.targetName}_${sourceName.replace(/^#/u, "private_")}`,
+              privateMember
+                ? `_${definition.targetName}_${sourceName.replace(/^#/u, "")}`
+                : `${definition.targetName}_${sourceName}`,
             );
             const binding = Object.freeze({
               kind: "class-static-field" as const,
@@ -308,7 +347,14 @@ export function analyzeMojoModuleBindings(
               sourceName,
               name,
               declarationKind: "let" as const,
-              storage: "cell" as const,
+              disposition: classifyMojoBindingDisposition({
+                declaration: member,
+                initializer,
+                declarationKind: "let",
+                type: resolved.type,
+                comptime: false,
+                source: input.source,
+              }),
               type: resolved.type,
               initializer,
             }) satisfies MojoAnalyzedModuleBinding;
@@ -341,6 +387,10 @@ export function analyzeMojoModuleBindings(
             }
           }
         }
+        continue;
+      }
+      if (isMojoModuleRuntimeStatement(statement, ast)) {
+        initializationSteps.push(Object.freeze({ kind: "statement", statement }));
       }
     }
     analyzed.push(Object.freeze({
@@ -350,12 +400,17 @@ export function analyzeMojoModuleBindings(
       createStateName,
       cellName,
       initializeName,
+      initializeBodyName,
       lifecycleLockName,
       lifecycleInitializedName,
       bindings: Object.freeze(bindings),
       initializationSteps: Object.freeze(initializationSteps),
       asynchronous: definition.topLevelAwait,
       raises: false,
+      directAsynchronous: definition.topLevelAwait,
+      directRaises: false,
+      directRuntimeInitializationRequired: initializationSteps.length > 0,
+      initializationStateRequired: initializationSteps.length > 0,
       runtimeInitializationRequired: initializationSteps.length > 0,
     }));
   }
@@ -374,36 +429,20 @@ export function finalizeMojoModuleBindingTypes(
     const bindingByDeclaration = new Map(
       bindings.map((binding) => [binding.declaration, binding] as const),
     );
-    const initializationSteps = Object.freeze(module.initializationSteps.map((step) =>
-      step.kind !== "binding"
-        ? step
-        : Object.freeze({
-            kind: "binding" as const,
-            binding: bindingByDeclaration.get(step.binding.declaration) ?? step.binding,
-          })));
+    const initializationSteps = Object.freeze(module.initializationSteps.map((step) => {
+      if (step.kind === "binding") {
+        return Object.freeze({
+          kind: "binding" as const,
+          binding: bindingByDeclaration.get(step.binding.declaration) ?? step.binding,
+        });
+      }
+      if (step.kind !== "binding-pattern") return step;
+      return Object.freeze({
+        ...step,
+        bindings: Object.freeze(step.bindings.map((binding) =>
+          bindingByDeclaration.get(binding.declaration) ?? binding)),
+      });
+    }));
     return Object.freeze({ ...module, bindings, initializationSteps });
   }));
-}
-
-function isNativeComptimeInitializer(
-  initializer: Node,
-  type: MojoTargetTypeRef,
-  source: TargetSourceProgram,
-): boolean {
-  const kind = source.ast.kindName(initializer);
-  if (type.kind === "source-primitive" && type.name === "bool") {
-    return kind === "KindTrueKeyword" || kind === "KindFalseKeyword";
-  }
-  if (type.kind !== "source-primitive" || type.name === "char") return false;
-  if (kind === "KindNumericLiteral") return true;
-  if (!source.ast.is.IsPrefixUnaryExpression(initializer)) return false;
-  const operand = source.ast.as.AsPrefixUnaryExpression(initializer)?.Operand;
-  const operator = source.ast.operatorKindName(initializer);
-  return operand !== undefined &&
-    (source.ast.is.IsNumericLiteral(operand) || source.ast.is.IsBigIntLiteral(operand)) &&
-    (operator === "KindPlusToken" || operator === "KindMinusToken");
-}
-
-function diagnostic(code: string, message: string, node: Node): TargetDiagnostic {
-  return mojoAnalysisDiagnostic(code, message, node);
 }

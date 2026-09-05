@@ -10,8 +10,11 @@ import type {
 import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import type { MojoExpression } from "../../target-ast/index.js";
 import type { MojoPlanningContext } from "../program/context.js";
-import { appendMojoPlanningDiagnostic, registerMojoModuleImport } from "../program/context.js";
-import { registerMojoTypeImports } from "../types/render.js";
+import {
+  appendMojoPlanningDiagnostic,
+  mojoModuleMemberExpression,
+} from "../program/context.js";
+import { registerMojoTypeImports } from "../types/imports.js";
 import { orderMojoValues } from "./support.js";
 import type { MojoValuePlanner } from "./support.js";
 import { withMojoValue } from "./value-plan.js";
@@ -35,41 +38,52 @@ export function planMojoTemplateExpression(
     );
     return undefined;
   }
-  const planned = selection.substitutions.map((substitution) =>
-    planValue(substitution.expression, context));
-  if (planned.some((value) => value === undefined)) return undefined;
-  const ordered = orderMojoValues(
-    (planned as readonly MojoValuePlan[]).map((value, index) => Object.freeze({
-      plan: value,
-      type: selection.substitutions[index]!.type,
-      role: "template_substitution",
-    })),
-    context,
-    true,
-  );
-  let result = stringLiteral(
-    context.program.source.ast.text(head),
-    selection.resultType,
-    context,
-  );
-  if (result === undefined) return undefined;
-  for (const [index, span] of (spans as readonly Node[]).entries()) {
-    const substitution = selection.substitutions[index]!;
+  const planned = selection.substitutions.map((substitution) => {
+    const value = planValue(substitution.expression, context);
+    if (value === undefined) return undefined;
+    const selected = substitution.conversion.kind === "optional" || substitution.conversion.kind === "union"
+      ? orderMojoValues([Object.freeze({
+          plan: value,
+          type: substitution.type,
+          role: "template_value",
+        })], context, true)
+      : Object.freeze({ before: value.before, values: Object.freeze([value.value]) });
     const converted = planStringification(
-      ordered.values[index]!,
+      selected.values[0]!,
       substitution.type,
       substitution.conversion,
       selection.resultType,
       context,
     );
+    return converted === undefined ? undefined : withMojoValue(selected.before, converted);
+  });
+  if (planned.some((value) => value === undefined)) return undefined;
+  const ordered = orderMojoValues(
+    (planned as readonly MojoValuePlan[]).map((value) => Object.freeze({
+      plan: value,
+      type: selection.resultType,
+      role: "template_substitution",
+    })),
+    context,
+  );
+  const headText = context.program.source.ast.text(head);
+  let result: MojoExpression | undefined = headText.length === 0
+    ? undefined
+    : stringLiteral(headText, selection.resultType, context);
+  if (headText.length !== 0 && result === undefined) return undefined;
+  for (const [index, span] of (spans as readonly Node[]).entries()) {
+    const converted = ordered.values[index]!;
     const literal = TemplateSpan_Literal(context.program.source.ast, span);
-    const tail = literal === undefined
-      ? undefined
-      : stringLiteral(context.program.source.ast.text(literal), selection.resultType, context);
-    if (converted === undefined || tail === undefined) return undefined;
-    result = concatenate(concatenate(result, converted), tail);
+    if (literal === undefined) return undefined;
+    result = result === undefined ? converted : concatenate(result, converted);
+    const tailText = context.program.source.ast.text(literal);
+    if (tailText.length !== 0) {
+      const tail = stringLiteral(tailText, selection.resultType, context);
+      if (tail === undefined) return undefined;
+      result = concatenate(result, tail);
+    }
   }
-  return withMojoValue(ordered.before, result);
+  return result === undefined ? undefined : withMojoValue(ordered.before, result);
 }
 
 function planStringification(
@@ -167,7 +181,7 @@ function planStringification(
         const member = conversion.members[index]!;
         registerMojoTypeImports(member.type, context);
         const selected = planStringification(
-          Object.freeze({ kind: "type-element", receiver: expression, type: member.type }),
+          Object.freeze({ kind: "proven-union-member", receiver: expression, type: member.type }),
           member.type,
           member.conversion,
           resultType,
@@ -199,10 +213,9 @@ function jsStringCall(
   value: MojoExpression,
   context: MojoPlanningContext,
 ): MojoExpression {
-  registerMojoModuleImport(context, ["tsonic_js"]);
   return Object.freeze({
     kind: "call",
-    callee: Object.freeze({ kind: "path", path: `tsonic_js.${name}` }),
+    callee: mojoModuleMemberExpression(context, ["tsonic_js"], name),
     arguments: Object.freeze([{ value }]),
   });
 }

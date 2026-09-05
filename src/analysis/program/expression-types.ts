@@ -13,7 +13,14 @@ export function inferMojoExpressionType(
   ast: AstReader,
   expressionTypes: WeakMap<Node, MojoTargetTypeRef>,
 ): MojoTargetTypeRef | undefined {
-  if (ast.is.IsParenthesizedExpression(node)) {
+  if (ast.is.IsAsExpression(node) || ast.is.IsTypeAssertion(node) ||
+    ast.is.IsNonNullExpression(node)) {
+    const selected = expressionTypes.get(node);
+    if (selected !== undefined) return selected;
+    const expression = Node_Expression(ast, node);
+    return expression === undefined ? undefined : expressionTypes.get(expression);
+  }
+  if (ast.is.IsParenthesizedExpression(node) || ast.is.IsSatisfiesExpression(node)) {
     const expression = Node_Expression(ast, node);
     return expression === undefined ? undefined : expressionTypes.get(expression);
   }
@@ -24,7 +31,9 @@ export function inferMojoExpressionType(
     const left = BinaryExpression_Left(ast, node);
     return left === undefined ? undefined : expressionTypes.get(left);
   }
-  if (operator === "KindEqualsEqualsEqualsToken" ||
+  if (operator === "KindEqualsEqualsToken" ||
+    operator === "KindEqualsEqualsEqualsToken" ||
+    operator === "KindExclamationEqualsToken" ||
     operator === "KindExclamationEqualsEqualsToken" ||
     operator === "KindLessThanToken" || operator === "KindLessThanEqualsToken" ||
     operator === "KindGreaterThanToken" || operator === "KindGreaterThanEqualsToken" ||
@@ -45,6 +54,7 @@ export function inferMojoExpressionType(
 export function isMojoExpressionNode(node: Node, ast: AstReader): boolean {
   return ast.is.IsIdentifier(node) || ast.is.IsStringLiteral(node) ||
     ast.is.IsNoSubstitutionTemplateLiteral(node) || isNumericLiteral(node, ast) ||
+    ast.is.IsRegularExpressionLiteral(node) ||
     ast.is.IsBinaryExpression(node) || ast.is.IsCallExpression(node) || ast.is.IsNewExpression(node) ||
     ast.is.IsPropertyAccessExpression(node) || ast.is.IsElementAccessExpression(node) ||
     ast.is.IsArrayLiteralExpression(node) || ast.is.IsObjectLiteralExpression(node) ||
@@ -54,6 +64,8 @@ export function isMojoExpressionNode(node: Node, ast: AstReader): boolean {
     ast.is.IsArrowFunction(node) || ast.is.IsFunctionExpression(node) ||
     ast.is.IsAwaitExpression(node) || ast.is.IsAsExpression(node) || ast.is.IsTypeAssertion(node) ||
     ast.is.IsNonNullExpression(node) || ast.is.IsSatisfiesExpression(node) ||
+    ast.is.IsTypeOfExpression(node) || ast.is.IsVoidExpression(node) ||
+    ast.is.IsDeleteExpression(node) ||
     ast.is.IsParenthesizedExpression(node) ||
     ast.kindName(node) === "KindThisKeyword" || ast.kindName(node) === "KindNullKeyword" ||
     ast.kindName(node) === "KindUndefinedKeyword" || ast.kindName(node) === "KindTrueKeyword" ||

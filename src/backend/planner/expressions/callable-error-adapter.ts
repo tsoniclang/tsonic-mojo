@@ -6,12 +6,16 @@ import type {
   MojoStructDeclaration,
 } from "../../target-ast/index.js";
 import {
-  allocateMojoSyntheticName,
-  registerMojoModuleImport,
+  mojoFieldwiseInitDecorators,
+  mojoStaticMethodDecorators,
+} from "../../target-ast/index.js";
+import {
+  allocateMojoSyntheticDeclarationName,
+  mojoModuleMemberExpression,
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
-import { registerMojoTypeImports } from "../types/render.js";
-import { mojoValue } from "./value-plan.js";
+import { registerMojoTypeImports } from "../types/imports.js";
+import { consumeMojoValue, mojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 
 const runtimeModule = Object.freeze(["tsonic_runtime"]);
@@ -34,10 +38,9 @@ export function adaptMojoRaisingCallableError(
   if (!sourceType.raises || sourceErrorType === undefined ||
     !targetType.raises || targetErrorType === undefined) return undefined;
 
-  registerMojoModuleImport(context, runtimeModule);
   registerMojoTypeImports(sourceType, context);
   registerMojoTypeImports(targetType, context);
-  const name = allocateMojoSyntheticName(context, "callable_error_adapter");
+  const name = allocateMojoSyntheticDeclarationName(context, "callable_error_adapter");
   const adapterType = localNamedType(context, name);
   const contextType = runtimeNamedType(
     "tsonic.mojo.runtime.ErasedCallableContext",
@@ -64,10 +67,11 @@ export function adaptMojoRaisingCallableError(
     }),
     name: "call",
     arguments: Object.freeze([Object.freeze({
-      value: Object.freeze({
-        kind: "consume",
-        expression: Object.freeze({ kind: "path", path: argumentsName }),
-      }),
+      value: consumeMojoValue(
+        Object.freeze({ kind: "path", path: argumentsName }),
+        argumentType,
+        context.program.lifecycle,
+      ),
     })]),
   });
   const convertedError = convert(
@@ -88,7 +92,7 @@ export function adaptMojoRaisingCallableError(
     asynchronous: false,
     raises: true,
     errorType: targetErrorType,
-    decorators: Object.freeze(["staticmethod"]),
+    decorators: mojoStaticMethodDecorators,
     statements: Object.freeze([
       Object.freeze({
         kind: "variable",
@@ -124,15 +128,16 @@ export function adaptMojoRaisingCallableError(
     resultType: unitType,
     asynchronous: false,
     raises: false,
-    decorators: Object.freeze(["staticmethod"]),
+    decorators: mojoStaticMethodDecorators,
     statements: Object.freeze([Object.freeze({
       kind: "expression",
       expression: Object.freeze({
         kind: "call",
-        callee: Object.freeze({
-          kind: "path",
-          path: "tsonic_runtime.destroy_callable_environment",
-        }),
+        callee: mojoModuleMemberExpression(
+          context,
+          runtimeModule,
+          "destroy_callable_environment",
+        ),
         genericArguments: Object.freeze([Object.freeze({ kind: "type", type: adapterType })]),
         arguments: Object.freeze([Object.freeze({
           value: Object.freeze({ kind: "path", path: contextName }),
@@ -151,16 +156,17 @@ export function adaptMojoRaisingCallableError(
       compileTime: false,
     })]),
     methods: Object.freeze([invoke, destroy]),
-    decorators: Object.freeze(["fieldwise_init"]),
+    decorators: mojoFieldwiseInitDecorators,
   });
   context.syntheticDeclarations.push(declaration);
 
   const environment: MojoExpression = Object.freeze({
     kind: "call",
-    callee: Object.freeze({
-      kind: "path",
-      path: "tsonic_runtime.allocate_callable_environment",
-    }),
+    callee: mojoModuleMemberExpression(
+      context,
+      runtimeModule,
+      "allocate_callable_environment",
+    ),
     arguments: Object.freeze([
       Object.freeze({
         value: Object.freeze({
@@ -169,7 +175,11 @@ export function adaptMojoRaisingCallableError(
           arguments: Object.freeze([Object.freeze({ value: expression })]),
         }),
       }),
-      Object.freeze({ value: Object.freeze({ kind: "path", path: `${name}.destroy` }) }),
+      Object.freeze({ value: Object.freeze({
+        kind: "member",
+        receiver: Object.freeze({ kind: "path", path: name }),
+        name: "destroy",
+      }) }),
     ]),
   });
   return Object.freeze({
@@ -177,7 +187,11 @@ export function adaptMojoRaisingCallableError(
     type: targetType,
     arguments: Object.freeze([
       Object.freeze({ value: environment }),
-      Object.freeze({ value: Object.freeze({ kind: "path", path: `${name}.invoke` }) }),
+      Object.freeze({ value: Object.freeze({
+        kind: "member",
+        receiver: Object.freeze({ kind: "path", path: name }),
+        name: "invoke",
+      }) }),
     ]),
   });
 }

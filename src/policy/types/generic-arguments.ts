@@ -3,30 +3,55 @@ import type {
   MojoProviderTargetGenericParameter,
   MojoTargetGenericArgument,
 } from "../../target-model/types/model.js";
+import type { MojoTypeResolutionContext } from "./resolution.js";
+import { resolveMojoSourceOrigin } from "./origins.js";
+import {
+  classifyMojoSourceGenericParameter,
+  mojoSourceGenericParameterOwner,
+} from "../../source/semantics/generic-parameters.js";
+
+type MojoValueGenericArgumentContext = Pick<
+  MojoTypeResolutionContext,
+  "ast" | "semantics" | "sourceFacts"
+>;
 
 export function resolveMojoNonTypeGenericArguments(
   parameter: MojoProviderTargetGenericParameter,
   node: Node,
-  ast: AstReader,
+  context: MojoTypeResolutionContext,
 ): readonly MojoTargetGenericArgument[] | undefined {
-  if (parameter.kind !== "value") return undefined;
+  if (parameter.kind === "type") return undefined;
+  const { ast } = context;
   if (parameter.variadic && ast.is.IsTupleTypeNode(node)) {
     const elements = ast.elements(node);
     if (elements.some((element) => element === undefined)) return undefined;
     const result = (elements as readonly Node[]).map((element) =>
-      resolveMojoValueGenericArgument(element, ast));
+      parameter.kind === "origin"
+        ? resolveOriginGenericArgument(element, context)
+        : resolveMojoValueGenericArgument(element, context));
     return result.some((argument) => argument === undefined)
       ? undefined
       : Object.freeze(result as MojoTargetGenericArgument[]);
   }
-  const value = resolveMojoValueGenericArgument(node, ast);
+  const value = parameter.kind === "origin"
+    ? resolveOriginGenericArgument(node, context)
+    : resolveMojoValueGenericArgument(node, context);
   return value === undefined ? undefined : Object.freeze([value]);
+}
+
+function resolveOriginGenericArgument(
+  node: Node,
+  context: MojoTypeResolutionContext,
+): MojoTargetGenericArgument | undefined {
+  const origin = resolveMojoSourceOrigin(node, context);
+  return origin === undefined ? undefined : Object.freeze({ kind: "origin", origin });
 }
 
 export function resolveMojoValueGenericArgument(
   node: Node,
-  ast: AstReader,
+  input: AstReader | MojoValueGenericArgumentContext,
 ): MojoTargetGenericArgument | undefined {
+  const ast = isValueGenericArgumentContext(input) ? input.ast : input;
   const literal = ast.is.IsLiteralTypeNode(node)
     ? ast.as.AsLiteralTypeNode(node)?.Literal
     : node;
@@ -44,7 +69,11 @@ export function resolveMojoValueGenericArgument(
       ? Object.freeze({ kind: "integer", value: BigInt(text).toString(10) })
       : undefined;
   }
-  if (!ast.is.IsPrefixUnaryExpression(literal)) return undefined;
+  if (!ast.is.IsPrefixUnaryExpression(literal)) {
+    return isValueGenericArgumentContext(input)
+      ? resolveCompileTimeValueParameter(node, input)
+      : undefined;
+  }
   const unary = ast.as.AsPrefixUnaryExpression(literal);
   const operand = unary?.Operand;
   if (operand === undefined || !ast.is.IsNumericLiteral(operand)) return undefined;
@@ -58,4 +87,38 @@ export function resolveMojoValueGenericArgument(
   return operator === "KindPlusToken"
     ? Object.freeze({ kind: "integer", value: value.toString(10) })
     : undefined;
+}
+
+function resolveCompileTimeValueParameter(
+  node: Node,
+  context: MojoValueGenericArgumentContext,
+): MojoTargetGenericArgument | undefined {
+  const selectedType = context.semantics.types.authoredType(node);
+  const symbol = selectedType === undefined
+    ? undefined
+    : context.semantics.declarations.typeAliasSymbol(selectedType) ??
+      context.semantics.declarations.typeSymbol(selectedType);
+  const declarations = symbol === undefined
+    ? Object.freeze([])
+    : context.semantics.declarations.symbolDeclarations(symbol);
+  const declaration = declarations.length === 1 ? declarations[0] : undefined;
+  if (declaration === undefined || !context.ast.is.IsTypeParameterDeclaration(declaration)) {
+    return undefined;
+  }
+  const owner = mojoSourceGenericParameterOwner(declaration, context);
+  const classification = owner === undefined
+    ? undefined
+    : classifyMojoSourceGenericParameter(owner, declaration, context);
+  return classification?.kind === "resolved" && classification.parameter.kind === "value"
+    ? Object.freeze({
+        kind: "value-reference",
+        path: Object.freeze([classification.parameter.name]),
+      })
+    : undefined;
+}
+
+function isValueGenericArgumentContext(
+  input: AstReader | MojoValueGenericArgumentContext,
+): input is MojoValueGenericArgumentContext {
+  return "semantics" in input && "sourceFacts" in input;
 }

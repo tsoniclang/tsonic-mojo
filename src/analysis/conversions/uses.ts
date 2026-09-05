@@ -84,21 +84,9 @@ export function recordMojoExecutableRegionConversionUses(
       return;
     }
     if (ast.is.IsArrayLiteralExpression(expression)) {
-      const type = expressionTypes.get(expression);
-      const elements = ast.elements(expression);
-      const expected = type?.kind === "list" || type?.kind === "fixed-array"
-        ? elements.map(() => type.element)
-        : type?.kind === "tuple"
-          ? type.elements
-          : type?.kind === "target-named" && type.id === "tsonic.mojo.js.JsArray"
-            ? elements.map(() => type.genericArguments?.[0]?.kind === "type"
-                ? type.genericArguments[0].type
-                : undefined)
-            : [];
-      for (const [index, element] of elements.entries()) {
-        const target = expected[index];
-        if (element !== undefined && target !== undefined && !ast.is.IsSpreadElement(element)) record(element, target);
-        visitExpression(element);
+      for (const element of ast.elements(expression)) {
+        if (element === undefined) continue;
+        visitExpression(ast.is.IsSpreadElement(element) ? Node_Expression(ast, element) : element);
       }
       return;
     }
@@ -131,9 +119,12 @@ export function recordMojoExecutableRegionConversionUses(
                 visitExpression(contribution.key.expression);
               }
             }
-          } else {
+          } else if (selection.kind === "provider-record") {
             const field = selection.fields.find((candidate) => candidate.element === property);
             if (field !== undefined) record(value, field.storageType);
+          } else {
+            const field = selection.fields.find((candidate) => candidate.element === property);
+            if (field !== undefined) record(value, field.field.type);
           }
         }
         visitExpression(value);
@@ -180,7 +171,8 @@ export function recordMojoExecutableRegionConversionUses(
       for (const argument of ast.arguments(expression)) {
         if (argument === undefined) continue;
         if (selection?.kind !== "project" && selection?.kind !== "provider" &&
-          selection?.kind !== "callable") {
+          selection?.kind !== "callable" && selection?.kind !== "object-assign" &&
+          selection?.kind !== "json-stringify") {
           const expected = callArgumentExpectedType(selection, argument);
           if (expected !== undefined) record(argument, expected);
         }
@@ -210,9 +202,9 @@ export function recordMojoExecutableRegionConversionUses(
         const property = left === undefined ? undefined : propertySelections.get(left);
         const element = left === undefined ? undefined : elementSelections.get(left);
         const leftType = property?.kind === "provider" || property?.kind === "provider-static"
-          ? property.sourceWriteType
+          ? property.targetWriteType
           : element?.kind === "provider"
-            ? element.sourceWriteType
+            ? element.targetWriteType
             : element?.writeType ??
               (left === undefined ? undefined : expressionTypes.get(left));
         if (leftType !== undefined) record(right, leftType);

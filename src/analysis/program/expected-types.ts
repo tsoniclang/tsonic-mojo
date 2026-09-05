@@ -1,4 +1,4 @@
-import type { Node } from "@tsonic/tsts";
+import type { Node, Type } from "@tsonic/tsts";
 import {
   BinaryExpression_Left,
   BinaryExpression_Right,
@@ -50,6 +50,9 @@ export function expectedExpressionType(
     if (selection?.kind === "provider-record") {
       return selection.fields.find((candidate) => candidate.element === parent)?.storageType;
     }
+    if (selection?.kind === "structural") {
+      return selection.fields.find((candidate) => candidate.element === parent)?.field.type;
+    }
     const contribution = selection?.contributions.find((candidate) =>
       (candidate.kind === "field" || candidate.kind === "index-entry") && candidate.element === parent);
     return contribution?.kind === "field"
@@ -83,7 +86,17 @@ export function callArgumentExpectedType(
   expression: Node,
 ): MojoTargetTypeRef | undefined {
   if (selection === undefined) return undefined;
+  if (selection.kind === "source-intrinsic") {
+    return selection.operand === expression ? selection.resultType : undefined;
+  }
   if (selection.kind === "project" || selection.kind === "provider" || selection.kind === "callable") {
+    return selection.arguments.find((argument) => argument.expression === expression)?.parameterType;
+  }
+  if (selection.kind === "object-assign") {
+    if (selection.target === expression) return selection.targetType;
+    return selection.source === expression ? selection.sourceType : undefined;
+  }
+  if (selection.kind === "json-stringify") {
     return selection.arguments.find((argument) => argument.expression === expression)?.parameterType;
   }
   if (selection.kind === "raw-pointer") {
@@ -127,7 +140,30 @@ export function callArgumentExpectedType(
       return selection.valueExpression === expression ? selection.pointeeType : undefined;
     case "equal-pointer":
       return selection.leftExpression === expression || selection.rightExpression === expression
-        ? selection.locationType
+        ? selection.operandType
         : undefined;
   }
+}
+
+export function selectedSourceCallArgumentExpectedType(
+  node: Node,
+  input: MojoExecutableRegionAnalysisInput,
+  semantics: ReturnType<MojoExecutableRegionAnalysisInput["source"]["semantics"]["forFile"]>,
+  resolveType: (type: Type) => MojoTargetTypeRef | undefined,
+): MojoTargetTypeRef | undefined {
+  const parent = input.source.ast.parent(node);
+  if (parent === undefined ||
+    (!input.source.ast.is.IsCallExpression(parent) &&
+      !input.source.ast.is.IsNewExpression(parent))) return undefined;
+  const sourceArgumentIndex = input.source.ast.arguments(parent).findIndex((argument) =>
+    argument === node);
+  if (sourceArgumentIndex < 0) return undefined;
+  const selectedCall = semantics.operations.call(parent);
+  if (selectedCall === undefined || selectedCall.sourceSelectedSignatureKind !== "resolved") {
+    return undefined;
+  }
+  const bindings = selectedCall.sourceArgumentBindings.filter((binding) =>
+    binding.sourceArgumentIndex === sourceArgumentIndex);
+  if (bindings.length !== 1) return undefined;
+  return resolveType(bindings[0]!.selectedParameterType);
 }

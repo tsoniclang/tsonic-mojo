@@ -23,13 +23,18 @@ export interface MojoRecursiveCallableBinding {
 
 export interface MojoCallableExpressionSelection {
   readonly expression: Node;
+  readonly sourceFile: import("@tsonic/tsts").SourceFile;
+  readonly kind: import("./model.js").MojoAnalyzedCallableKind;
+  readonly typeParameters: readonly import("./model.js").MojoAnalyzedTypeParameter[];
   readonly parameters: readonly MojoAnalyzedParameter[];
   readonly captures: readonly MojoCallableCapture[];
   readonly recursiveBinding?: MojoRecursiveCallableBinding;
   readonly resultType: MojoTargetTypeRef;
   readonly body: Node;
+  readonly asynchronous: boolean;
   readonly raises: boolean;
   readonly errorType?: MojoTargetTypeRef;
+  readonly owner?: import("./model.js").MojoAnalyzedClassOwner;
   readonly callableType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
 }
 
@@ -113,12 +118,15 @@ export interface MojoBindingPatternElementSelection {
       };
 }
 
-export interface MojoBindingPatternSelection {
+export interface MojoBindingProjectionPlan {
   readonly declaration: Node;
-  readonly initializer: Node;
   readonly sourceType: MojoTargetTypeRef;
-  readonly sourceReuse: "direct" | "stabilized";
   readonly elements: readonly MojoBindingPatternElementSelection[];
+}
+
+export interface MojoBindingPatternSelection extends MojoBindingProjectionPlan {
+  readonly initializer: Node;
+  readonly sourceReuse: "direct" | "stabilized";
 }
 
 export type MojoObjectLiteralContribution =
@@ -126,7 +134,7 @@ export type MojoObjectLiteralContribution =
       readonly kind: "field";
       readonly element: Node;
       readonly value: Node;
-      readonly field: MojoAnalyzedInterfaceField;
+      readonly field: MojoAnalyzedInterfaceField | import("./model.js").MojoAnalyzedAccessorProperty;
       readonly fieldType: MojoTargetTypeRef;
     }
   | {
@@ -137,6 +145,9 @@ export type MojoObjectLiteralContribution =
       readonly fields: readonly {
         readonly field: MojoAnalyzedInterfaceField;
         readonly fieldType: MojoTargetTypeRef;
+      }[];
+      readonly methods: readonly {
+        readonly method: import("./model.js").MojoAnalyzedCallableSignature;
       }[];
       readonly indexSignatures: readonly {
         readonly indexSignature: MojoAnalyzedInterfaceIndexSignature;
@@ -154,6 +165,21 @@ export type MojoObjectLiteralContribution =
       readonly indexSignature: MojoAnalyzedInterfaceIndexSignature;
       readonly keyType: MojoTargetTypeRef;
       readonly valueType: MojoTargetTypeRef;
+    }
+  | {
+      readonly kind: "method";
+      readonly element: Node;
+      readonly contractDeclarations: readonly Node[];
+    }
+  | {
+      readonly kind: "getter";
+      readonly element: Node;
+      readonly contractDeclarations: readonly Node[];
+    }
+  | {
+      readonly kind: "setter";
+      readonly element: Node;
+      readonly contractDeclarations: readonly Node[];
     };
 
 export type MojoObjectLiteralSelection =
@@ -161,6 +187,7 @@ export type MojoObjectLiteralSelection =
       readonly kind: "interface";
       readonly interface: MojoAnalyzedInterface;
       readonly constructionType: MojoTargetTypeRef;
+      readonly construction: import("./construction-model.js").MojoProjectConstruction;
       readonly resultType: MojoTargetTypeRef;
       readonly resultConversion: MojoValueConversion;
       readonly fields: readonly {
@@ -183,5 +210,15 @@ export type MojoObjectLiteralSelection =
         readonly providerMemberId: string;
         readonly targetName: string;
         readonly storageType: MojoTargetTypeRef;
+      }[];
+    }
+  | {
+      readonly kind: "structural";
+      readonly definition: import("../bindings/structural-objects.js").MojoStructuralObjectDefinition;
+      readonly fields: readonly {
+        readonly element: Node;
+        readonly value: Node;
+        readonly storageIndex: number;
+        readonly field: import("../bindings/structural-objects.js").MojoStructuralObjectField;
       }[];
     };

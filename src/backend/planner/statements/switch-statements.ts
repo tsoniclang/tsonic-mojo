@@ -10,7 +10,7 @@ import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import { allocateMojoSyntheticName } from "../program/context.js";
 import { planMojoValue } from "../expressions/value.js";
-import { registerMojoTypeImports } from "../types/render.js";
+import { registerMojoTypeImports } from "../types/imports.js";
 import type {
   MojoFlowPlanningContext,
   MojoStatementPlanningScope,
