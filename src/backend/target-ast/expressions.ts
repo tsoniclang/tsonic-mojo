@@ -21,6 +21,7 @@ export type MojoExpression =
       readonly operator: string;
       readonly left: MojoExpression;
       readonly right: MojoExpression;
+      readonly evaluation?: "read-only";
     }
   | {
       readonly kind: "conditional";

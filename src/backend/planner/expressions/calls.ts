@@ -282,7 +282,13 @@ export function planMojoCall(
       const ordered = orderCallArguments(
         arguments_ as PlannedMojoCallArgument[],
         context,
-        Object.freeze({ plan: callee.plan, type: selection.callableType, role: "callable_value" }),
+        Object.freeze({
+          plan: callee.plan,
+          type: selection.callableType,
+          role: "callable_value",
+          typeAnnotation: "inferred",
+          ...(callableDisposition.kind === "direct" ? { stabilize: false } : {}),
+        }),
       );
       const call: MojoExpression = Object.freeze({
         kind: "call",

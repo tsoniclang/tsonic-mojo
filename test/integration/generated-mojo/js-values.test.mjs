@@ -61,6 +61,17 @@ test("template lowering preserves immediate conversion and avoids empty concaten
   assert.match(source, /var \w+: String = js_value_to_string\(\s*value,?\s*\)\.to_native_strict\(\)\n    return \w+ \+ next\.call\(\(\)\)/u);
 });
 
+test("pure native primitive comparisons stay inline rather than snapshotting", () => {
+  const source = generatedSource(compileMojo({ surfaces: ["js"], files: {
+    "index.ts": [
+      "function quote(value: string): boolean { return value === '\"' || value === \"'\"; }",
+      "export function main(): void { quote('value'); }",
+    ].join("\n"),
+  } }));
+  assert.doesNotMatch(source, /var _binary_/u);
+  assert.match(source, /return value == .* or value == /u);
+});
+
 test("dynamic and finalized catch values use exact closed template stringification", () => {
   const source = generatedSource(compileMojo({
     surfaces: ["js"],

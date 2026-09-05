@@ -390,6 +390,10 @@ export function planBinary(
         operator,
         left: ordered.values[0]!,
         right: ordered.values[1]!,
+        ...((leftType.kind === "source-primitive" || leftType.kind === "native-string") &&
+          (rightType.kind === "source-primitive" || rightType.kind === "native-string")
+          ? { evaluation: "read-only" as const }
+          : {}),
       }),
     );
   }

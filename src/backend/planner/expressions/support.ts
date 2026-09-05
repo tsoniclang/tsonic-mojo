@@ -46,6 +46,7 @@ export interface OrderedMojoValue {
   readonly role: string;
   readonly stabilize?: boolean;
   readonly use?: "value" | "location";
+  readonly typeAnnotation?: "inferred";
 }
 
 export interface PlannedMojoCallArgument {
@@ -107,13 +108,13 @@ export function orderMojoValues(
       ((value.stabilize === true || stabilizeAll || index < finalEffectIndex) && !stable ||
         index < finalPreludeIndex && (value.use !== "location" || !stable)) &&
       !isTriviallyPureMojoValue(value.plan.value)) {
-      registerMojoTypeImports(value.type, context);
+      if (value.typeAnnotation !== "inferred") registerMojoTypeImports(value.type, context);
       const name = allocateMojoSyntheticName(context, value.role);
       before.push(Object.freeze({
         kind: "variable",
         name,
-        type: value.type,
-        initializer: isStableMojoLocation(value.plan.value) &&
+        ...(value.typeAnnotation === "inferred" ? {} : { type: value.type }),
+        initializer: value.typeAnnotation !== "inferred" && isStableMojoLocation(value.plan.value) &&
           context.program.lifecycle.capabilities(value.type).copy === "explicit"
           ? Object.freeze({ kind: "copy", expression: value.plan.value })
           : value.plan.value,
@@ -140,6 +141,8 @@ function isReadOnlyMojoValue(expression: MojoExpression): boolean {
     case "postfix-deref":
     case "parenthesized": return isReadOnlyMojoValue(expression.expression);
     case "proven-union-member": return isReadOnlyMojoValue(expression.receiver);
+    case "binary": return expression.evaluation === "read-only" &&
+      isReadOnlyMojoValue(expression.left) && isReadOnlyMojoValue(expression.right);
     case "construct": return expression.type.kind === "source-primitive" &&
       expression.arguments.every((argument) => argument.name === undefined &&
         argument.spread !== true && isReadOnlyMojoValue(argument.value));
