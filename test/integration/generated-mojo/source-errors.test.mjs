@@ -2,6 +2,41 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
 
+test("template native-string boundaries participate in exact error closure", () => {
+  const result = compileMojo({ surfaces: ["js"], files: { "index.ts": [
+    "export function text(value: unknown): string { return `${value}`; }",
+    "export function ordinary(value: string): string { return `${value}`; }",
+    "export function wrapped(value: unknown): string {",
+    "  try { throw new Error('original'); } catch { return text(value); }",
+    "}",
+    "export function main(): void { text('safe'); }",
+  ].join("\n") } });
+  assert.deepEqual(result.diagnostics, []);
+  const generated = artifactTexts(result).find(({ text }) => text.includes("def wrapped"));
+  assert.ok(generated);
+  assert.match(generated.text, /def text\(value: JsValue\) raises Error -> String:/u);
+  assert.match(generated.text, /def ordinary\(value: String\) -> String:/u);
+  assert.match(generated.text, /def wrapped\(value: JsValue\) raises Error -> String:/u);
+  assert.match(generated.text, /to_native_strict\(\)/u);
+});
+
+test("never-return error adaptation has no impossible result slot", () => {
+  const result = compileMojo({ files: { "index.ts": [
+    "class Failure { message: string; constructor(message: string) { this.message = message; } }",
+    "function fail(): never { throw new Failure('failed'); }",
+    "export function invoke(value: boolean): void {",
+    "  if (value) throw new Error('source');",
+    "  fail();",
+    "}",
+    "export function main(): void {}",
+  ].join("\n") } });
+  assert.deepEqual(result.diagnostics, []);
+  const generated = artifactTexts(result).find(({ text }) => text.includes("def invoke"));
+  assert.ok(generated);
+  assert.match(generated.text, /try:\s+fail\(\)/u);
+  assert.doesNotMatch(generated.text, /var \w+: Never|_ = _raising_result/u);
+});
+
 test("rethrows transfer an owned final-use error but retain values visible to handlers", () => {
   const result = compileMojo({ files: { "index.ts": [
     "export function rethrow(): void {",

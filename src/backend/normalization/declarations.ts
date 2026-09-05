@@ -162,6 +162,12 @@ function isPureUnusedLiteral(statement: MojoStatement): boolean {
 function terminatesBlock(statement: MojoStatement): boolean {
   if (statement.kind === "return" || statement.kind === "raise" ||
     statement.kind === "break" || statement.kind === "continue") return true;
+  if (statement.kind === "expression") return statement.neverReturns === true;
+  if (statement.kind === "try") {
+    return (statement.finallyStatements !== undefined && branchTerminates(statement.finallyStatements)) ||
+      (branchTerminates(statement.statements) &&
+        statement.catches.every((catch_) => branchTerminates(catch_.statements)));
+  }
   if (statement.kind !== "if" || statement.elseStatements === undefined) return false;
   return branchTerminates(statement.thenStatements) && branchTerminates(statement.elseStatements);
 }

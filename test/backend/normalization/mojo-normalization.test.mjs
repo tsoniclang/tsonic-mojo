@@ -1,5 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+
+test("normalization removes successors only when a try region cannot continue", () => {
+  const fail = {
+    kind: "expression", neverReturns: true,
+    expression: { kind: "call", callee: { kind: "path", path: "fail" }, arguments: [] },
+  };
+  const next = { kind: "return" };
+  const terminal = {
+    kind: "try", statements: [fail],
+    catches: [{ name: "error", statements: [{ kind: "raise", expression: { kind: "path", path: "error" } }] }],
+  };
+  assert.deepEqual(normalizeMojoStatements([terminal, next]), [terminal]);
+  const recovering = { ...terminal, catches: [{ name: "error", statements: [{ kind: "pass" }] }] };
+  assert.deepEqual(normalizeMojoStatements([recovering, next]), [recovering, next]);
+  const ordinary = { ...fail, neverReturns: false };
+  assert.deepEqual(normalizeMojoStatements([ordinary, next]), [ordinary, next]);
+});
 import {
   normalizeMojoExpression,
   normalizeMojoStatements,

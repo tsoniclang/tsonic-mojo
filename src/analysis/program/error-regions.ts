@@ -2,6 +2,8 @@ import type { Node } from "@tsonic/tsts";
 import {
   CatchClause_Block,
   Node_Expression,
+  TemplateExpression_TemplateSpans,
+  TemplateSpan_Expression,
   TryStatement_CatchClause,
   TryStatement_FinallyBlock,
   TryStatement_TryBlock,
@@ -23,6 +25,7 @@ import {
   providerCallRequiresRaisingConversion,
 } from "./effects.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
+import { mojoTemplateStringConversionRaises } from "../operations/template-expressions.js";
 
 export interface MojoErrorRegionIndexes {
   readonly source: TargetSourceProgram;
@@ -223,6 +226,16 @@ export function directMojoNodeErrorTypes(
   const addNativeConversionError = (raises: boolean): void => {
     if (raises) errors.push(mojoNativeErrorType());
   };
+  if (ast.kindName(node) === "KindTemplateExpression") {
+    const resultType = indexes.expressionTypes.get(node);
+    if (resultType !== undefined) {
+      addNativeConversionError((TemplateExpression_TemplateSpans(ast, node) ?? []).some((span) => {
+        const expression = span === undefined ? undefined : TemplateSpan_Expression(ast, span);
+        const sourceType = expression === undefined ? undefined : indexes.expressionTypes.get(expression);
+        return sourceType !== undefined && mojoTemplateStringConversionRaises(sourceType, resultType);
+      }));
+    }
+  }
   if (ast.is.IsCallExpression(node) || ast.is.IsNewExpression(node)) {
     const selection = indexes.callSelections.get(node);
     if (selection?.kind === "provider") {

@@ -84,14 +84,16 @@ function compileWith(convention) {
   });
 }
 
-test("direct provider callbacks close from the exact selected target callable", () => {
+test("provider callbacks close from the exact retained target callable", () => {
   const result = compileWith("imm");
   assert.deepEqual(result.diagnostics, []);
   const source = artifactTexts(result).find(({ text }) => text.includes("def tsonic_main"));
   assert.ok(source);
   assert.match(source.text, /from fixture_callback import observe/u);
-  assert.match(source.text, /def _callable\(value: String\)/u);
-  assert.match(source.text, /observe\(_callable\)/u);
+  assert.match(source.text, /RaisingCallable\[\s*Tuple\[String\],\s*NoneType,/u);
+  assert.match(source.text, /var \(value,\) = _callable_environment_arguments\^/u);
+  assert.equal((source.text.match(/allocate_callable_environment\(/gu) ?? []).length, 1);
+  assert.match(source.text, /observe\(\s*RaisingCallable/u);
 });
 
 test("contextual callback ABI contradictions fail at analysis", () => {

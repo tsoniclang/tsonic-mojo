@@ -56,9 +56,9 @@ export function adaptMojoValueErrorDomain(
   const error = Object.freeze({ kind: "path" as const, path: errorName });
   const caught = Object.freeze({
     name: errorName,
-    statements: rethrowInErrorDomain(error, normalizedSourceErrorType, normalizedTargetErrorType),
+    statements: rethrowInErrorDomain(error, normalizedSourceErrorType, normalizedTargetErrorType, context),
   });
-  if (resultType.kind === "unit") {
+  if (resultType.kind === "unit" || resultType.kind === "never") {
     return withMojoValue(Object.freeze([
       Object.freeze({
         kind: "try" as const,
@@ -67,6 +67,7 @@ export function adaptMojoValueErrorDomain(
           Object.freeze({
             kind: "expression" as const,
             expression: plan.value,
+            ...(resultType.kind === "never" ? { neverReturns: true } : {}),
           }),
         ]),
         catches: Object.freeze([caught]),
@@ -108,25 +109,29 @@ function rethrowInErrorDomain(
   error: MojoExpression,
   source: MojoTargetTypeRef,
   target: MojoTargetTypeRef,
+  context: MojoPlanningContext,
 ): readonly MojoStatement[] {
   if (target.kind !== "union") {
-    return Object.freeze([Object.freeze({ kind: "raise", expression: error })]);
+    return Object.freeze([Object.freeze({
+      kind: "raise",
+      expression: consumeMojoValue(error, source, context.program.lifecycle),
+    })]);
   }
   if (source.kind !== "union") {
     return Object.freeze([Object.freeze({
       kind: "raise",
-      expression: constructErrorDomain(target, error),
+      expression: constructErrorDomain(target, consumeMojoValue(error, source, context.program.lifecycle)),
     })]);
   }
   const branch = (index: number): readonly MojoStatement[] => {
     const member = source.members[index]!;
     const raised = Object.freeze({
       kind: "raise" as const,
-      expression: constructErrorDomain(target, Object.freeze({
+      expression: constructErrorDomain(target, consumeMojoValue(Object.freeze({
         kind: "proven-union-member" as const,
         receiver: error,
         type: member,
-      })),
+      }), member, context.program.lifecycle)),
     });
     if (index === source.members.length - 1) return Object.freeze([raised]);
     return Object.freeze([Object.freeze({

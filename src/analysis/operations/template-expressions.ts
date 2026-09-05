@@ -117,6 +117,21 @@ function sameStringDomain(left: MojoTargetTypeRef, right: MojoTargetTypeRef): bo
     isJsString(left) && isJsString(right);
 }
 
+export function mojoTemplateStringConversionRaises(
+  sourceType: MojoTargetTypeRef,
+  resultType: MojoTargetTypeRef,
+): boolean {
+  if (resultType.kind !== "native-string") return false;
+  if (isJsString(sourceType) || (sourceType.kind === "dynamic" && sourceType.domain === "js")) {
+    return true;
+  }
+  if (sourceType.kind === "optional") {
+    return mojoTemplateStringConversionRaises(sourceType.value, resultType);
+  }
+  return sourceType.kind === "union" && sourceType.members.some((member) =>
+    mojoTemplateStringConversionRaises(member, resultType));
+}
+
 function isStringType(type: MojoTargetTypeRef): boolean {
   return type.kind === "native-string" || isJsString(type);
 }

@@ -26,11 +26,13 @@ test("higher-order calls retain one closed typed-error ABI", () => {
         "function failFirst(): never { throw new FirstFailure('first'); }",
         "function failSecond(): never { throw new SecondFailure(2); }",
         "function failSource(): never { throw new Error('source'); }",
+        "function failCombined(first: boolean): void { if (first) failFirst(); else failSource(); }",
         "export function main(): void {",
         "  capture(failFirst);",
         "  capture(() => { throw new SecondFailure(3); });",
         "  capture(failSecond);",
         "  capture(failSource);",
+        "  capture(() => failCombined(true));",
         "}",
       ].join("\n"),
     },
@@ -46,6 +48,7 @@ test("higher-order calls retain one closed typed-error ABI", () => {
   assert.match(generated.text, /\.isa\[FirstFailure\]/u);
   assert.match(generated.text, /\.isa\[SecondFailure\]/u);
   assert.doesNotMatch(generated.text, /erase_callable_error/u);
+  assert.match(generated.text, /unsafe_get\[TsError\]\(\)\^/u);
 });
 
 test("bottom-return callables adapt to ordinary callback results", () => {
