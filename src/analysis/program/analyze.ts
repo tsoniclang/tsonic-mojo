@@ -410,7 +410,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
   };
 
   const moduleRegionFacts = new WeakMap<
-    import("./model.js").MojoAnalyzedModule,
+    SourceFile,
     MojoAnalyzedModuleRegionFacts
   >();
   analyzeMojoProgramInitializationRegions({

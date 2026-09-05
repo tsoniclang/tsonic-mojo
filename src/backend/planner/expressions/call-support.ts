@@ -210,6 +210,7 @@ export function orderCallArguments(
   arguments_: readonly PlannedMojoCallArgument[],
   context: MojoPlanningContext,
   receiver?: OrderedMojoValue,
+  isolateInvocation = false,
 ): {
   readonly before: readonly MojoStatement[];
   readonly receiver?: MojoExpression;
@@ -223,7 +224,7 @@ export function orderCallArguments(
       role: "call_argument",
       ...(argument.borrowProjection === true ? { stabilize: false as const } : {}),
     })),
-  ], context);
+  ], context, isolateInvocation);
   const offset = receiver === undefined ? 0 : 1;
   return Object.freeze({
     before: ordered.before,

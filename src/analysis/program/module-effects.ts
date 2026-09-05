@@ -1,4 +1,4 @@
-import type { Node } from "@tsonic/tsts";
+import type { Node, SourceFile } from "@tsonic/tsts";
 import type { MojoSourceModuleCatalog } from "../source-modules/model.js";
 import type { MojoAnalyzedModule } from "./model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
@@ -12,14 +12,14 @@ export interface MojoAnalyzedModuleRegionFacts {
 export function finalizeMojoModuleEffects(
   analyzedModules: readonly MojoAnalyzedModule[],
   modules: MojoSourceModuleCatalog,
-  moduleRegionFacts: WeakMap<MojoAnalyzedModule, MojoAnalyzedModuleRegionFacts>,
+  moduleRegionFacts: WeakMap<SourceFile, MojoAnalyzedModuleRegionFacts>,
   errorTypesByDeclaration: ReadonlyMap<Node, readonly MojoTargetTypeRef[]>,
 ): readonly MojoAnalyzedModule[] {
   const analyzedById = new Map(
     analyzedModules.map((module) => [module.id, module] as const),
   );
   const errorTypes = new Map(analyzedModules.map((module) => {
-    const facts = moduleRegionFacts.get(module);
+    const facts = moduleRegionFacts.get(module.sourceFile);
     return [module, mergeMojoErrorTypes(
       facts?.directErrorTypes ?? [],
       ...[...(facts?.dependencies ?? [])].map((dependency) =>

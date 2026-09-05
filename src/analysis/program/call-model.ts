@@ -203,6 +203,7 @@ export type MojoCallSelection =
       readonly resultType: MojoTargetTypeRef;
       readonly resultConversion: MojoValueConversion;
       readonly dynamicDispatchErrorType?: MojoTargetTypeRef;
+      readonly invocationErrorType?: MojoTargetTypeRef;
       readonly optionalChain: boolean;
     }
   | {

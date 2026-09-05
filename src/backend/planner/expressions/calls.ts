@@ -15,7 +15,8 @@ import {
   prepareMojoReceiver,
   unsupportedOptionalCall,
 } from "./support.js";
-import { orderCallArguments, planSelectedArguments } from "./call-support.js";
+import { planSelectedArguments } from "./call-support.js";
+import { createMojoCallInvocationPlanner } from "./call-invocation.js";
 import type {
   MojoValuePlanner,
   PlannedMojoCallArgument,
@@ -55,6 +56,7 @@ export function planMojoCall(
   if (selection.kind === "json-stringify") {
     return planMojoJsonStringify(selection, context, planValue);
   }
+  const invocation = createMojoCallInvocationPlanner(selection, node, context);
   if (selection.kind === "project") {
     const genericArguments = mojoTargetGenericArgumentsInContext(
       selection.genericArguments,
@@ -88,7 +90,7 @@ export function planMojoCall(
           );
           return undefined;
         }
-        const ordered = orderCallArguments(plannedArguments, context);
+        const ordered = invocation.orderArguments(plannedArguments);
         before = ordered.before;
         call = {
           kind: "call",
@@ -147,7 +149,7 @@ export function planMojoCall(
           return undefined;
         }
         if (receiver === undefined) return undefined;
-        const ordered = orderCallArguments(plannedArguments, context, Object.freeze({
+        const ordered = invocation.orderArguments(plannedArguments, Object.freeze({
           plan: receiver.plan,
           type: receiverType,
           role: "call_receiver",
@@ -206,7 +208,7 @@ export function planMojoCall(
             : { genericArguments }),
           arguments: ordered.arguments,
         };
-        const converted = convertMojoValue(withMojoValue(before, call), selection.resultConversion, context);
+        const converted = invocation.convertResult(withMojoValue(before, call));
         if (converted === undefined) return undefined;
         return finishOptionalMojoOperation(node, receiver, converted, context);
       }
@@ -230,7 +232,7 @@ export function planMojoCall(
           );
           return undefined;
         }
-        const ordered = orderCallArguments(plannedArguments, context);
+        const ordered = invocation.orderArguments(plannedArguments);
         before = ordered.before;
         call = {
           kind: "method-call",
@@ -245,7 +247,7 @@ export function planMojoCall(
       }
       case "constructor": {
         if (selection.optionalChain) return unsupportedOptionalCall(node, context);
-        const ordered = orderCallArguments(plannedArguments, context);
+        const ordered = invocation.orderArguments(plannedArguments);
         before = ordered.before;
         call = planMojoProjectConstruction(
           selection.target.construction,
@@ -255,7 +257,7 @@ export function planMojoCall(
         break;
       }
     }
-    return convertMojoValue(withMojoValue(before, call), selection.resultConversion, context);
+    return invocation.convertResult(withMojoValue(before, call));
   }
   if (selection.kind === "callable") {
     const actualCalleeType = context.program.queries.expressionType(selection.callee);
@@ -279,9 +281,8 @@ export function planMojoCall(
       if (arguments_.some((argument) => argument === undefined)) {
         return undefined;
       }
-      const ordered = orderCallArguments(
+      const ordered = invocation.orderArguments(
         arguments_ as PlannedMojoCallArgument[],
-        context,
         Object.freeze({
           plan: callee.plan,
           type: selection.callableType,
@@ -295,10 +296,8 @@ export function planMojoCall(
         callee: ordered.receiver!,
         arguments: ordered.arguments,
       });
-      const converted = convertMojoValue(
+      const converted = invocation.convertResult(
         withMojoValue(ordered.before, call),
-        selection.resultConversion,
-        context,
       );
       return converted === undefined
         ? undefined
@@ -311,9 +310,8 @@ export function planMojoCall(
     const arguments_ = selection.argumentSlots.map((slot) =>
       planCallableArgumentSlot(slot, context, planValue, plannedByArgument));
     if (arguments_.some((argument) => argument === undefined)) return undefined;
-    const ordered = orderCallArguments(
+    const ordered = invocation.orderArguments(
       arguments_ as PlannedMojoCallArgument[],
-      context,
       Object.freeze({ plan: callee.plan, type: selection.callableType, role: "callable_value" }),
     );
     if (ordered.arguments.some((argument) => argument.name !== undefined || argument.spread === true)) {
@@ -336,10 +334,8 @@ export function planMojoCall(
         }),
       })]),
     });
-    const converted = convertMojoValue(
+    const converted = invocation.convertResult(
       withMojoValue(ordered.before, call),
-      selection.resultConversion,
-      context,
     );
     return converted === undefined
       ? undefined
@@ -391,9 +387,8 @@ export function planMojoCall(
     } else if (selection.optionalChain) {
       return unsupportedOptionalCall(node, context);
     }
-    const ordered = orderCallArguments(
+    const ordered = invocation.orderArguments(
       plannedArguments,
-      context,
       convertedReceiver === undefined || selection.operation.receiverType === undefined
         ? undefined
         : Object.freeze({
@@ -442,7 +437,7 @@ export function planMojoCall(
     if (preparedReceiver === undefined || receiver === undefined || selection.operation.receiverType === undefined) {
       return undefined;
     }
-    const ordered = orderCallArguments(plannedArguments, context, Object.freeze({
+    const ordered = invocation.orderArguments(plannedArguments, Object.freeze({
       plan: receiver,
       type: selection.operation.receiverType,
       role: "call_receiver",
@@ -463,14 +458,12 @@ export function planMojoCall(
         : { genericArguments }),
       arguments: ordered.arguments,
     };
-    const converted = convertMojoValue(withMojoValue(before, call), selection.resultConversion, context);
+    const converted = invocation.convertResult(withMojoValue(before, call));
     if (converted === undefined) return undefined;
     return finishOptionalMojoOperation(node, preparedReceiver, converted, context);
   }
-  const converted = convertMojoValue(
+  const converted = invocation.convertResult(
     withMojoValue(before, call),
-    selection.resultConversion,
-    context,
   );
   if (converted === undefined) return undefined;
   return preparedFunctionReceiver !== undefined

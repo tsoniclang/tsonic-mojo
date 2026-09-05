@@ -44,7 +44,7 @@ export interface MojoProgramEffectsFinalizationInput {
   readonly callableExpressionSelections: WeakMap<Node, import("./model.js").MojoCallableExpressionSelection>;
   readonly callableExpressionByDeclaration: WeakMap<Node, Node>;
   readonly callableDeclarationByExpression: WeakMap<Node, Node>;
-  readonly moduleRegionFacts: WeakMap<MojoAnalyzedModule, MojoAnalyzedModuleRegionFacts>;
+  readonly moduleRegionFacts: WeakMap<SourceFile, MojoAnalyzedModuleRegionFacts>;
 }
 
 export type MojoProgramEffectsFinalization =
@@ -474,6 +474,18 @@ export function finalizeMojoProgramEffects(
       sealCallableDeclaration(reference.declaration, callable.callableType);
     }
   }
+  for (const callNode of callNodes) {
+    const selection = callSelections.get(callNode);
+    if (selection?.kind !== "project") continue;
+    const dependency = callDependencies.get(callNode);
+    const invocationErrorType = closeMojoErrorType([
+      ...(dependency === undefined ? [] : errorTypesByDeclaration.get(dependency) ?? []),
+      ...(selection.dynamicDispatchErrorType === undefined ? [] : [selection.dynamicDispatchErrorType]),
+    ]);
+    if (invocationErrorType !== undefined) {
+      callSelections.set(callNode, Object.freeze({ ...selection, invocationErrorType }));
+    }
+  }
   const evaluationErrorTypeCache = new WeakMap<Node, readonly MojoTargetTypeRef[]>();
   for (const sourceFile of sourceFiles) {
     walkSourceTree(sourceFile, ast, (node): void => {
@@ -494,7 +506,7 @@ export function finalizeMojoProgramEffects(
         errorRegionIndexes,
         errorTypesByDeclaration,
       )));
-    moduleRegionFacts.set(module, Object.freeze({
+    moduleRegionFacts.set(module.sourceFile, Object.freeze({
       dependencies: new Set<Node>(),
       directErrorTypes,
     }));

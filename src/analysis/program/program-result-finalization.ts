@@ -66,7 +66,7 @@ export interface MojoProgramResultFinalizationInput {
   readonly enums: readonly MojoAnalyzedEnum[];
   readonly typeAliases: readonly MojoAnalyzedTypeAlias[];
   readonly analyzedModules: readonly MojoAnalyzedModule[];
-  readonly moduleRegionFacts: WeakMap<MojoAnalyzedModule, MojoAnalyzedModuleRegionFacts>;
+  readonly moduleRegionFacts: WeakMap<SourceFile, MojoAnalyzedModuleRegionFacts>;
   readonly errorTypesByDeclaration: ReadonlyMap<Node, readonly MojoTargetTypeRef[]>;
   readonly catchErrorTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly callableExpressionSelections: WeakMap<Node, MojoCallableExpressionSelection>;
@@ -186,14 +186,8 @@ export function finalizeMojoProgramResult(
       ...(typedError ? { errorRole: "typed" as const } : {}),
     });
   });
-  const effectFinalizedModules = finalizeMojoModuleBindingTypes(finalizeMojoModuleEffects(
-    analyzedModules,
-    modules,
-    moduleRegionFacts,
-    errorTypesByDeclaration,
-  ), bindingTypes);
   const firstClassFinalizedModules = addMojoFirstClassFunctionBindings(
-    effectFinalizedModules,
+    finalizeMojoModuleBindingTypes(analyzedModules, bindingTypes),
     topLevelCallableContracts,
     finalizedByDeclaration,
     checkedSource,
@@ -203,8 +197,14 @@ export function finalizeMojoProgramResult(
     environment.projectRelationships,
     diagnostics,
   );
-  const finalizedModules = finalizeMojoPublicModuleBindingAbis(
+  const effectFinalizedModules = finalizeMojoModuleEffects(
     firstClassFinalizedModules,
+    modules,
+    moduleRegionFacts,
+    errorTypesByDeclaration,
+  );
+  const finalizedModules = finalizeMojoPublicModuleBindingAbis(
+    effectFinalizedModules,
     modules,
     environment.lifecycle,
     diagnostics,
