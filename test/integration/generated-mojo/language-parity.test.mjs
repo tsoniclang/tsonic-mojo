@@ -196,7 +196,7 @@ test("project classes retain reference identity and declaration-owned private st
   assert.ok(source);
   assert.match(source.text, /struct _CounterState/u);
   assert.match(source.text, /var _value: Int32/u);
-  assert.match(source.text, /struct Counter\(ImplicitlyCopyable, Equatable\)[\s\S]*ArcPointer\[_CounterState\]/u);
+  assert.match(source.text, /struct Counter\(Equatable, ImplicitlyCopyable\)[\s\S]*ArcPointer\[_CounterState\]/u);
   assert.doesNotMatch(source.text, /#value/u);
 });
 
@@ -918,7 +918,7 @@ test("discriminated project unions select one exact object constituent and commo
   const generated = artifactTexts(result).find(({ text }) => text.includes("def area"));
   assert.ok(generated);
   assert.match(generated.text, /area\(Shape\(Circle\("circle", Int32\(2\)\)\)\)/u);
-  assert.match(generated.text, /\.isa\[Circle\]\(\)/u);
+  assert.match(generated.text, /\.isa\[\s*Circle,?\s*\]\(\)/u);
   assert.match(generated.text, /shape\.unsafe_get\[Circle\]\(\).*\.radius/u);
   assert.match(generated.text, /shape\.unsafe_get\[Square\]\(\).*\.side/u);
 

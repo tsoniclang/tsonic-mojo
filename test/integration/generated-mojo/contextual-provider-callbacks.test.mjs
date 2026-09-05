@@ -90,7 +90,7 @@ test("provider callbacks close from the exact retained target callable", () => {
   const source = artifactTexts(result).find(({ text }) => text.includes("def tsonic_main"));
   assert.ok(source);
   assert.match(source.text, /from fixture_callback import observe/u);
-  assert.match(source.text, /RaisingCallable\[\s*Tuple\[String\],\s*NoneType,/u);
+  assert.match(source.text, /RaisingCallable\[\s*Tuple\[String\],\s*NoneType,?\s*\]/u);
   assert.match(source.text, /var \(value,\) = _callable_environment_arguments\^/u);
   assert.equal((source.text.match(/allocate_callable_environment\(/gu) ?? []).length, 1);
   assert.match(source.text, /observe\(\s*RaisingCallable/u);

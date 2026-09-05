@@ -37,3 +37,9 @@ load, store and element offsets require an explicit `unsafeContext`. The retired
 object-binding marker is not supported. Layout-backed raw-memory conversions
 (`toRawPointer` and `reinterpretRawPointer`) are not implemented: a source layout
 fact alone does not prove native storage layout or ownership.
+
+The pinned Mojo compiler has a reproduced runtime defect when forwarding a
+borrowed `String` to a non-inlined variadic function. It reproduces in a small
+standard-library-only program and affects Tsumo's array-call execution. Full
+Tsumo runtime acceptance is therefore not certified on this compiler pin;
+successful native compilation alone is not an execution proof.

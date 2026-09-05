@@ -69,6 +69,13 @@ export function renderMojoDocument(
           document: command.mode === "break" ? current.broken : current.flat,
         });
         break;
+      case "choice": {
+        const preferred = { ...command, document: current.preferred };
+        stack.push(command.mode === "flat" || fits(width - column, [...stack, preferred])
+          ? preferred
+          : { ...command, document: current.expanded });
+        break;
+      }
     }
   }
   const rendered = output.join("").replace(/[ \t]+(?=\n|$)/gu, "");
@@ -96,10 +103,13 @@ function fits(remainingWidth: number, commands: RenderCommand[]): boolean {
         commands.push({ ...command, indentation: command.indentation + current.amount, document: current.document });
         break;
       case "group":
-        commands.push({ ...command, mode: "flat", document: current.document });
+        commands.push({ ...command, document: current.document });
         break;
       case "if-break":
         commands.push({ ...command, document: command.mode === "break" ? current.broken : current.flat });
+        break;
+      case "choice":
+        commands.push({ ...command, document: current.preferred });
         break;
     }
   }

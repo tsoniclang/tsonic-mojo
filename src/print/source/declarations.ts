@@ -13,9 +13,11 @@ import {
   group,
   hardLine,
   join,
+  parenthesizedLayout,
   text,
 } from "../document/builders.js";
 import type { MojoDocument } from "../document/model.js";
+import { renderMojoDocument } from "../document/render.js";
 import type { MojoPrintContext } from "./context.js";
 import {
   printLambdaCaptures,
@@ -88,10 +90,10 @@ export function printMojoFunctionDocument(
   const signature = group(concat(
     text(function_.asynchronous ? `async def ${function_.name}` : `def ${function_.name}`),
     printMojoGenericParametersDocument(function_.genericParameters, context),
-    parameters,
+    parameters.kind === "group" ? parameters.document : parameters,
     function_.raises ? concat(text(" raises"), error) : emptyDocument,
     captures,
-    result === undefined ? emptyDocument : concat(text(" -> "), result),
+    result === undefined ? emptyDocument : concat(text(" -> "), parenthesizedLayout(result)),
   ));
   const declaration = block(
     signature,
@@ -138,7 +140,13 @@ function printStructDocument(
     ? emptyDocument
     : delimitedList(
         "(",
-        declaration.conformances.map((type) => requiredMojoTypeDocument(type, context)),
+        declaration.conformances.map((type) => {
+          const document = requiredMojoTypeDocument(type, context);
+          return { document, key: renderMojoDocument(document, {
+            width: Number.MAX_SAFE_INTEGER, finalNewline: false,
+          }) };
+        }).sort((left, right) => left.key < right.key ? -1 : left.key > right.key ? 1 : 0)
+          .map(({ document }) => document),
         ")",
       );
   const header = group(concat(

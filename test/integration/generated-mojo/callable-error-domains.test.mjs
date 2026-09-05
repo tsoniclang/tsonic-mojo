@@ -150,7 +150,7 @@ test("closed catch domains stringify every retained error member", () => {
   assert.deepEqual(result.diagnostics, []);
   const generated = artifactTexts(result).find(({ text }) => text.includes("def invoke"));
   assert.ok(generated);
-  assert.match(generated.text, /\.isa\[Failure\]/u);
+  assert.match(generated.text, /\.isa\[\s*Failure,?\s*\]/u);
   assert.match(generated.text, /error\.unsafe_get\[TsError\]\(\)/u);
   assert.match(generated.text, /String\(/u);
 });

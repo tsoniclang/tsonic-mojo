@@ -14,12 +14,88 @@ function statementModule(statements) {
   };
 }
 
+test("printer separates top-level compound declarations with two blank lines", () => {
+  const module = statementModule([{ kind: "pass" }]);
+  module.imports = [{ kind: "module", modulePath: ["example"] }];
+  module.declarations.push({ ...module.declarations[0], name: "second" });
+  const printed = printMojoModule(module);
+  assert.match(printed, /import example\n\n\ndef choose/u);
+  assert.match(printed, /    pass\n\n\ndef second/u);
+});
+
+test("printer keeps an early type annotation flat when the initializer can break", () => {
+  const module = statementModule([{
+    kind: "variable", name: "candidate",
+    type: { kind: "optional", value: { kind: "source-primitive", name: "float64" } },
+    initializer: {
+      kind: "call", callee: { kind: "path", path: "create_optional" },
+      arguments: [{ value: { kind: "path", path: "selected_argument_with_a_long_but_meaningful_name" } }],
+    },
+  }]);
+  module.imports = [{ kind: "symbols", modulePath: ["std", "collections"], symbols: [{ name: "Optional" }] }];
+  const printed = printMojoModule(module);
+  assert.match(printed, /var candidate: Optional\[Float64\] = create_optional\(\n/u);
+  assert.doesNotMatch(printed, /Optional\[\n/u);
+});
+
+test("printer can break a long result annotation without changing the type", () => {
+  const module = statementModule([{ kind: "pass" }]);
+  module.declarations[0] = {
+    ...module.declarations[0], name: "selected_operation_operation_operation_operation_closed", raises: true,
+    errorType: { kind: "target-named", id: "error", modulePath: [], name: "Error" },
+  };
+  assert.match(printMojoModule(module), / raises Error -> \(\n    Bool\n\):/u);
+});
+
+test("printer orders conformance syntax canonically without changing the selected set", () => {
+  const module = {
+    modulePath: [], imports: [], typeAliases: [],
+    declarations: [{
+      kind: "struct", name: "Value", genericParameters: [], fields: [], methods: [],
+      conformances: ["ImplicitlyCopyable", "Equatable"].map((name) => ({
+        kind: "target-named", id: name, modulePath: [], name,
+      })),
+    }],
+  };
+  assert.match(printMojoModule(module), /struct Value\(Equatable, ImplicitlyCopyable\):/u);
+  assert.equal(module.declarations[0].conformances[0].name, "ImplicitlyCopyable");
+});
+
 test("printer separates a terminal nested try from its containing finally", () => {
   const inner = { kind: "try", statements: [{ kind: "pass" }], catches: [{ statements: [{ kind: "pass" }] }] };
   const outer = { kind: "try", statements: [inner], catches: [], finallyStatements: [{ kind: "pass" }] };
   assert.match(printMojoModule(statementModule([outer])), /        except:\n            pass\n        pass\n    finally:/u);
   const separated = { ...outer, statements: [inner, { kind: "pass" }] };
   assert.equal(printMojoModule(statementModule([outer])), printMojoModule(statementModule([separated])));
+});
+
+test("printer keeps scalar literals intact while breaking their enclosing operation", () => {
+  const value = { kind: "construct", type: { kind: "source-primitive", name: "float64" },
+    arguments: [{ value: { kind: "number-literal", text: "100" } }],
+  };
+  const expression = { kind: "binary", operator: "+",
+    left: { kind: "path", path: "first_meaningful_operand_with_a_long_name" },
+    right: { kind: "binary", operator: "*", left: value,
+      right: { kind: "path", path: "second_meaningful_operand_with_a_long_name" } },
+  };
+  const printed = printMojoModule(statementModule([{ kind: "return", expression }]));
+  assert.match(printed, /Float64\(100\)/u);
+  assert.doesNotMatch(printed, /Float64\(\n/u);
+});
+
+test("printer chooses string delimiters without changing escaped characters", () => {
+  const examples = [
+    ["plain", '"plain"'],
+    ['say "hello"', `'say "hello"'`],
+    ["it's fine", '"it\'s fine"'],
+    ['"\\ud800"', `'"\\\\ud800"'`],
+    ['"\\"', `'"\\\\"'`],
+    ['"\n"', `'"\\n"'`],
+  ];
+  for (const [value, literal] of examples) {
+    const printed = printMojoModule(statementModule([{ kind: "return", expression: { kind: "string-literal", value } }]));
+    assert.ok(printed.includes(`return ${literal}\n`), printed);
+  }
 });
 
 test("printer preserves branch regions while spelling a single conditional tail as elif", () => {
@@ -164,6 +240,7 @@ test("printer emits typed declarations and structured control flow", () => {
     printMojoModule(module),
     [
       "from std.collections import List, Optional as Maybe",
+      "",
       "",
       "struct Counter:",
       "    var value: Int32",

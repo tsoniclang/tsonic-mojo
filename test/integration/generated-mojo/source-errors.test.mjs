@@ -129,7 +129,7 @@ test("nested raising arguments are adapted through their enclosing evaluation re
     functionStart,
     functionEnd === -1 ? generated.text.length : functionEnd,
   );
-  assert.match(functionText, /raises Variant\[Error, ParseFailure\]/u);
+  assert.match(functionText, /raises Variant\[\s*Error,\s*ParseFailure,?\s*\]/u);
   assert.match(functionText, /json_parse\(JsString\(values\[index\]\)\)/u);
   assert.equal((functionText.match(/\btry:/gu) ?? []).length, 1);
 });

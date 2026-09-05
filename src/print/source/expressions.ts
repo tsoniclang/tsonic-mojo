@@ -5,6 +5,7 @@ import type {
   MojoParameter,
 } from "../../backend/target-ast/index.js";
 import {
+  chooseLayout,
   concat,
   delimitedList,
   emptyDocument,
@@ -89,15 +90,15 @@ function printExpressionAtPrecedence(
       printMojoExpressionDocument(expression.operand, context, unaryPrecedence),
     ));
     case "binary": return printBinaryDocument(expression, context, precedence);
-    case "conditional": return parenthesizeWhenBroken(concat(
-      printMojoExpressionDocument(expression.whenTrue, context, conditionalPrecedence + 1),
-      line,
-      text("if "),
-      printMojoExpressionDocument(expression.condition, context, conditionalPrecedence + 1),
-      line,
-      text("else "),
-      printMojoExpressionDocument(expression.whenFalse, context, conditionalPrecedence),
-    ));
+    case "conditional": {
+      const whenTrue = printMojoExpressionDocument(expression.whenTrue, context, conditionalPrecedence + 1);
+      const condition = printMojoExpressionDocument(expression.condition, context, conditionalPrecedence + 1);
+      const whenFalse = printMojoExpressionDocument(expression.whenFalse, context, conditionalPrecedence);
+      return chooseLayout(
+        concat(whenTrue, text(" if "), condition, text(" else "), whenFalse),
+        parenthesizeWhenBroken(concat(whenTrue, line, text("if "), condition, line, text("else "), whenFalse)),
+      );
+    }
     case "call": return group(concat(
       printMojoExpressionDocument(expression.callee, context, postfixPrecedence),
       expression.genericArguments === undefined || expression.genericArguments.length === 0
@@ -144,13 +145,22 @@ function printExpressionAtPrecedence(
         : concat(text(":"), printMojoExpressionDocument(expression.step, context)),
       text("]"),
     );
-    case "construct": return group(concat(
-      requiredMojoTypeDocument(expression.type, context),
-      expression.genericArguments === undefined || expression.genericArguments.length === 0
-        ? emptyDocument
-        : printGenericArguments(expression.genericArguments, context),
-      printCallArguments(expression.arguments, context),
-    ));
+    case "construct": {
+      const argument = expression.arguments.length === 1 ? expression.arguments[0] : undefined;
+      const scalarLiteral = expression.type.kind === "source-primitive" &&
+        argument !== undefined && argument.name === undefined && argument.spread !== true &&
+        (argument.value.kind === "number-literal" || argument.value.kind === "bool-literal" ||
+          (argument.value.kind === "unary" && argument.value.operand.kind === "number-literal"));
+      return group(concat(
+        requiredMojoTypeDocument(expression.type, context),
+        expression.genericArguments === undefined || expression.genericArguments.length === 0
+          ? emptyDocument
+          : printGenericArguments(expression.genericArguments, context),
+        scalarLiteral
+          ? concat(text("("), printMojoExpressionDocument(argument.value, context), text(")"))
+          : printCallArguments(expression.arguments, context),
+      ));
+    }
     case "forced-comptime": return concat(
       text("comptime"),
       delimitedList("(", [printMojoExpressionDocument(expression.expression, context)], ")"),
@@ -228,17 +238,20 @@ function printBinaryDocument(
     }
     operands.push(current);
     operands.reverse();
-    return parenthesizeWhenBroken(join(
+    const documents = operands.map((operand) => printMojoExpressionDocument(operand, context, precedence + 1));
+    return chooseLayout(join(text(` ${expression.operator} `), documents), parenthesizeWhenBroken(join(
       concat(line, text(`${expression.operator} `)),
-      operands.map((operand) => printMojoExpressionDocument(operand, context, precedence + 1)),
-    ));
+      documents,
+    )));
   }
-  return parenthesizeWhenBroken(concat(
-    printMojoExpressionDocument(expression.left, context, precedence === 40 ? precedence + 1 : precedence),
+  const left = printMojoExpressionDocument(expression.left, context, precedence === 40 ? precedence + 1 : precedence);
+  const right = printMojoExpressionDocument(expression.right, context, precedence + 1);
+  return chooseLayout(concat(left, text(` ${expression.operator} `), right), parenthesizeWhenBroken(concat(
+    left,
     line,
     text(`${expression.operator} `),
-    printMojoExpressionDocument(expression.right, context, precedence + 1),
-  ));
+    right,
+  )));
 }
 
 function parenthesizeWhenBroken(document: MojoDocument): MojoDocument {
@@ -354,7 +367,10 @@ function binaryOperatorPrecedence(operator: string): number {
 }
 
 function quoteMojoString(value: string): string {
-  return JSON.stringify(value).replace(/\\u2028/gu, "\\u{2028}").replace(/\\u2029/gu, "\\u{2029}");
+  const doubleQuoted = JSON.stringify(value).replace(/\\u2028/gu, "\\u{2028}").replace(/\\u2029/gu, "\\u{2029}");
+  const singleQuoted = `'${doubleQuoted.slice(1, -1).replace(/\\.|'/gu, (token) =>
+    token === '\\"' ? '"' : token === "'" ? "\\'" : token)}'`;
+  return singleQuoted.length < doubleQuoted.length ? singleQuoted : doubleQuoted;
 }
 
 function renderQualifiedPath(
