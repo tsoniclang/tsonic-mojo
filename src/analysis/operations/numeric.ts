@@ -24,7 +24,8 @@ export function analyzeMojoNumericOperation(
     (right !== undefined && rightType === undefined)) return "unclosed";
   const nativeLiteralRight = right !== undefined && ast.is.IsNumericLiteral(right) &&
     leftType.kind === "source-primitive" && result.kind === "source-primitive" &&
-    result.name === leftType.name && result.name !== "float32" && result.name !== "float64";
+    result.name === leftType.name && result.name !== "float16" &&
+    result.name !== "float32" && result.name !== "float64";
   const operation = selectMojoNumericOperation(operator, leftType, rightType, result, nativeLiteralRight);
   if (operation === undefined) return "unclosed";
   const compound = token !== undefined && isMojoAssignmentOperator(token);

@@ -86,5 +86,5 @@ function isNumeric(type: MojoTargetTypeRef): type is Extract<MojoTargetTypeRef, 
 }
 
 function isFloating(type: Extract<MojoTargetTypeRef, { readonly kind: "source-primitive" }>): boolean {
-  return type.name === "float32" || type.name === "float64";
+  return type.name === "float16" || type.name === "float32" || type.name === "float64";
 }
