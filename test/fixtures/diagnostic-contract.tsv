@@ -1,6 +1,7 @@
 # contractVersion=1
 # baselineProductionCount=618
 code	ownerLayer	classification	auditDisposition	reachableSourceProof	nativeProof	mutationProof	replacementCode
+MOJO_BITWISE_OPERANDS_NOT_CLOSED	analysis	exact-rejection	retain-exact-guard	test/integration/generated-mojo/numeric-operators.test.mjs	../mojo-pudding/packages/language/runner.mojo	-	-
 MOJO_ANALYZED_MODULE_MISSING	planning	internal-invariant	reviewed-other	-	-	-	-
 MOJO_ARRAY_LITERAL_ELEMENT_CONVERSION_UNPROVEN	analysis	internal-invariant	reviewed-other	-	-	-	-
 MOJO_ARRAY_LITERAL_ELEMENT_NOT_CLOSED	analysis	internal-invariant	reviewed-other	-	-	-	-

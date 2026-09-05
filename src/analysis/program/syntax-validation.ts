@@ -61,6 +61,13 @@ const supportedBinaryOperators = new Set([
   "KindCaretToken",
   "KindLessThanLessThanToken",
   "KindGreaterThanGreaterThanToken",
+  "KindGreaterThanGreaterThanGreaterThanToken",
+  "KindAmpersandEqualsToken",
+  "KindBarEqualsToken",
+  "KindCaretEqualsToken",
+  "KindLessThanLessThanEqualsToken",
+  "KindGreaterThanGreaterThanEqualsToken",
+  "KindGreaterThanGreaterThanGreaterThanEqualsToken",
   "KindEqualsToken",
   "KindPlusEqualsToken",
   "KindMinusEqualsToken",
@@ -69,6 +76,12 @@ const supportedBinaryOperators = new Set([
 ]);
 
 const assignmentOperators = new Set([
+  "KindAmpersandEqualsToken",
+  "KindBarEqualsToken",
+  "KindCaretEqualsToken",
+  "KindLessThanLessThanEqualsToken",
+  "KindGreaterThanGreaterThanEqualsToken",
+  "KindGreaterThanGreaterThanGreaterThanEqualsToken",
   "KindEqualsToken",
   "KindPlusEqualsToken",
   "KindMinusEqualsToken",

@@ -5,6 +5,7 @@ import type { MojoPlanningContext } from "../program/context.js";
 import { registerMojoTypeImports } from "../types/imports.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { withMojoValue } from "./value-plan.js";
+import { planMojoNumericExpression } from "./numeric.js";
 
 export function planMojoIntrinsicExpression(
   node: Node,
@@ -21,6 +22,7 @@ export function planMojoIntrinsicExpression(
     );
     return undefined;
   }
+  if (selection.kind === "numeric") return planMojoNumericExpression(node, context, planValue);
   const operand = planValue(selection.operand, context);
   if (operand === undefined) return undefined;
   const operandType = context.program.queries.expressionType(selection.operand);

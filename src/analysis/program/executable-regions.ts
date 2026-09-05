@@ -73,6 +73,7 @@ import {
 } from "./executable-region-flow.js";
 import { analyzeCall, analyzeElement, analyzeProperty } from "./executable-region-operations.js";
 import { analyzeMojoIntrinsicExpression } from "../operations/intrinsic-expressions.js";
+import { analyzeMojoNumericOperation } from "../operations/numeric.js";
 import type { MojoLifecycleAnalysis } from "../lifecycle/model.js";
 import type { MojoValueOwnership } from "../../target-model/lifecycle/model.js";
 import { analyzeMojoExecutableBindingProjection } from "./executable-region-bindings.js";
@@ -366,6 +367,17 @@ export function analyzeMojoExecutableRegion(
     if (!isMojoExpressionNode(node, ast) || !isRuntimeValueOccurrence(node, input)) return;
     const inferred = inferMojoExpressionType(node, ast, input.expressionTypes);
     if (inferred !== undefined) input.expressionTypes.set(node, inferred);
+    const numeric = analyzeMojoNumericOperation(node, ast, input.expressionTypes);
+    if (numeric === "unclosed") {
+      input.diagnostics.push(diagnostic(
+        "MOJO_BITWISE_OPERANDS_NOT_CLOSED",
+        "A bitwise operation requires exact numeric operand, result and write carriers before planning.",
+        node,
+      ));
+    } else if (numeric !== undefined) {
+      input.intrinsicExpressionSelections.set(node, numeric);
+      input.expressionTypes.set(node, numeric.resultType);
+    }
     const parent = ast.parent(node);
     if (parent !== undefined && pendingInferredBindings.has(parent) &&
       ast.is.IsVariableDeclaration(parent) && Node_Initializer(ast, parent) === node) {

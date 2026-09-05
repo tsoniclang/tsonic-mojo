@@ -138,6 +138,7 @@ export function planMojoUpdate(
       operator,
       context,
       planValue,
+      node,
     );
     return prepared === undefined
       ? undefined
@@ -161,6 +162,7 @@ export function planMojoUpdate(
       operator,
       context,
       planValue,
+      node,
     );
     return prepared === undefined
       ? undefined
@@ -184,6 +186,7 @@ export function planMojoUpdate(
       operator,
       context,
       planValue,
+      node,
     );
     return prepared === undefined
       ? undefined
@@ -209,6 +212,7 @@ export function planMojoUpdate(
       operator,
       context,
       planValue,
+      node,
     );
     return prepared === undefined
       ? undefined
@@ -307,4 +311,3 @@ function materializeUpdate(
     context,
   );
 }
-

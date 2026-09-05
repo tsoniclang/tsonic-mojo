@@ -34,6 +34,8 @@ import type {
   MojoPreparedMutation,
 } from "./mutation-plan.js";
 import { plannedLocationExpression } from "./mutation-locations.js";
+import { planMojoCompoundValue } from "./numeric.js";
+import { mojoValue } from "./value-plan.js";
 
 const assignmentOperatorText = new Map<string, string>([
   ["KindEqualsToken", "="],
@@ -41,6 +43,12 @@ const assignmentOperatorText = new Map<string, string>([
   ["KindMinusEqualsToken", "-="],
   ["KindAsteriskEqualsToken", "*="],
   ["KindSlashEqualsToken", "/="],
+  ["KindAmpersandEqualsToken", "&="],
+  ["KindBarEqualsToken", "|="],
+  ["KindCaretEqualsToken", "^="],
+  ["KindLessThanLessThanEqualsToken", "<<="],
+  ["KindGreaterThanGreaterThanEqualsToken", ">>="],
+  ["KindGreaterThanGreaterThanGreaterThanEqualsToken", ">>>="],
 ]);
 
 export type PlannedMojoAssignment = MojoPlannedMutation;
@@ -94,7 +102,11 @@ export function planMojoAssignment(
     );
     return undefined;
   }
-  const right = planValue(rightNode, context, targetWriteType ?? leftType);
+  const numeric = context.program.queries.intrinsicExpressionSelection(node);
+  const rightType = numeric?.kind === "numeric"
+    ? context.program.queries.expressionType(rightNode)
+    : targetWriteType ?? leftType;
+  const right = planValue(rightNode, context, rightType);
   if (right === undefined) return undefined;
   const targetType = targetWriteType ?? leftType;
   if (targetType === undefined) {
@@ -113,6 +125,7 @@ export function planMojoAssignment(
       operator,
       context,
       planValue,
+      node,
     );
     return materializeAssignment(prepared, node, resultUse, context);
   }
@@ -123,6 +136,7 @@ export function planMojoAssignment(
       operator,
       context,
       planValue,
+      node,
     );
     return materializeAssignment(prepared, node, resultUse, context);
   }
@@ -133,6 +147,7 @@ export function planMojoAssignment(
       operator,
       context,
       planValue,
+      node,
     );
     return materializeAssignment(prepared, node, resultUse, context);
   }
@@ -145,6 +160,7 @@ export function planMojoAssignment(
       operator,
       context,
       planValue,
+      node,
     );
     return materializeAssignment(prepared, node, resultUse, context);
   }
@@ -181,12 +197,7 @@ export function planMojoAssignment(
         Object.freeze({ plan: right, type: targetType, role: "static_property_right" }),
       ], context, true);
       before.push(...ordered.before);
-      value = Object.freeze({
-        kind: "binary",
-        operator: operator.slice(0, -1),
-        left: ordered.values[0]!,
-        right: ordered.values[1]!,
-      });
+      value = planMojoCompoundValue(node, operator, ordered.values[0]!, ordered.values[1]!, context);
     } else {
       before.push(...right.before);
     }
@@ -222,21 +233,16 @@ export function planMojoAssignment(
   }
   const storage = plannedLocationExpression(leftNode, context);
   if (storage !== undefined) {
+    const current: MojoExpression = Object.freeze({ kind: "method-call", receiver: storage, name: "read", arguments: Object.freeze([]) });
+    const ordered = operator === "=" ? undefined : orderMojoValues([
+      Object.freeze({ plan: mojoValue(current), type: leftType ?? targetType, role: "compound_left" }),
+      Object.freeze({ plan: right, type: rightType ?? targetType, role: "compound_right" }),
+    ], context, true);
     const value: MojoExpression = operator === "="
       ? right.value
-      : Object.freeze({
-          kind: "binary",
-          operator: operator.slice(0, -1),
-          left: Object.freeze({
-            kind: "method-call",
-            receiver: storage,
-            name: "read",
-            arguments: Object.freeze([]),
-          }),
-          right: right.value,
-        });
+      : planMojoCompoundValue(node, operator, ordered!.values[0]!, ordered!.values[1]!, context);
     const prepared: MojoPreparedMutation = Object.freeze({
-      before: right.before,
+      before: ordered?.before ?? right.before,
       assignedValue: value,
       assignedType: targetType,
       valuePassing: "consume",
@@ -256,7 +262,7 @@ export function planMojoAssignment(
     });
     return materializeAssignment(prepared, node, resultUse, context);
   }
-  const stabilizeLocation = right.before.length !== 0 || resultUse === "value";
+  const stabilizeLocation = right.before.length !== 0 || resultUse === "value" || numeric?.kind === "numeric";
   const left = ast.is.IsPropertyAccessExpression(leftNode)
     ? planMojoProperty(leftNode, context, planValue, "write", stabilizeLocation)
     : ast.is.IsElementAccessExpression(leftNode)
@@ -266,7 +272,7 @@ export function planMojoAssignment(
   const before: MojoStatement[] = [...left.before];
   let plannedOperator = operator;
   let plannedRight = right.value;
-  if (operator !== "=" && right.before.length !== 0) {
+  if (operator !== "=" && (right.before.length !== 0 || numeric?.kind === "numeric")) {
     if (targetType === undefined) return undefined;
     registerMojoTypeImports(targetType, context);
     const priorName = allocateMojoSyntheticName(context, "compound_left");
@@ -278,24 +284,14 @@ export function planMojoAssignment(
       initializer: left.value,
     }));
     plannedOperator = "=";
-    plannedRight = Object.freeze({
-      kind: "binary",
-      operator: operator.slice(0, -1),
-      left: priorValue,
-      right: right.value,
-    });
+    plannedRight = planMojoCompoundValue(node, operator, priorValue, right.value, context);
   }
   before.push(...right.before);
   const prepared: MojoPreparedMutation = Object.freeze({
     before: Object.freeze(before),
     assignedValue: plannedOperator === "="
       ? plannedRight
-      : Object.freeze({
-          kind: "binary",
-          operator: plannedOperator.slice(0, -1),
-          left: left.value,
-          right: plannedRight,
-        }),
+      : planMojoCompoundValue(node, plannedOperator, left.value, plannedRight, context),
     assignedType: targetType,
     valuePassing: "assign",
     createWrite(value: MojoExpression): MojoStatement {

@@ -1,4 +1,5 @@
 import type { Node } from "@tsonic/tsts";
+import { planMojoCompoundValue } from "./numeric.js";
 import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 import {
   appendMojoPlanningDiagnostic,
@@ -42,6 +43,7 @@ export function planMojoProjectPropertyWrite(
   operator: string,
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
+  operationNode: Node,
 ): MojoPreparedMutation | undefined {
   const selection = context.program.queries.propertySelection(node);
   if (selection?.kind !== "project-method" && selection?.kind !== "project-accessor" &&
@@ -158,12 +160,7 @@ export function planMojoProjectPropertyWrite(
     ], context, true);
     before = Object.freeze([...location.before, ...ordered.before]);
     previousValue = ordered.values[0]!;
-    assigned = Object.freeze({
-      kind: "binary",
-      operator: operator.slice(0, -1),
-      left: previousValue,
-      right: ordered.values[1]!,
-    });
+    assigned = planMojoCompoundValue(operationNode, operator, previousValue, ordered.values[1]!, context);
   } else {
     const ordered = orderMojoValues([
       Object.freeze({ plan: value, type: writeType, role: "property_write_value" }),
@@ -217,6 +214,7 @@ export function planMojoProviderPropertyMethodWrite(
   operator: string,
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
+  operationNode: Node,
 ): MojoPreparedMutation | undefined {
   const selection = context.program.queries.propertySelection(node);
   if (selection?.kind !== "provider") return undefined;
@@ -305,12 +303,7 @@ export function planMojoProviderPropertyMethodWrite(
       ...orderedValue.before,
     ]);
     previousValue = orderedCurrent.values[0]!;
-    assigned = Object.freeze({
-      kind: "binary",
-      operator: operator.slice(0, -1),
-      left: previousValue,
-      right: orderedValue.values[0]!,
-    });
+    assigned = planMojoCompoundValue(operationNode, operator, previousValue, orderedValue.values[0]!, context);
   } else {
     before = Object.freeze([...before, ...orderedValue.before]);
     assigned = orderedValue.values[0]!;

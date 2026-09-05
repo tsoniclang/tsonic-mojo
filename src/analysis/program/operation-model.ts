@@ -121,6 +121,14 @@ export interface MojoValueSelection {
 
 export type MojoIntrinsicExpressionSelection =
   | {
+      readonly kind: "numeric";
+      readonly operand: Node;
+      readonly right?: Node;
+      readonly operation: import("../../target-model/operations/numeric.js").MojoNumericOperation;
+      readonly writeConversion?: import("../../target-model/operations/numeric.js").MojoNumericConversion;
+      readonly resultType: MojoTargetTypeRef;
+    }
+  | {
       readonly kind: "typeof";
       readonly operand: Node;
       readonly result:
@@ -343,4 +351,3 @@ export interface MojoResourceManagementSelection {
   readonly storageMode: "direct" | "optional" | "nullish-union";
   readonly alternatives: readonly MojoResourceDisposalAlternative[];
 }
-

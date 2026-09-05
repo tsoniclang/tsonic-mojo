@@ -1,4 +1,5 @@
 import type { Node } from "@tsonic/tsts";
+import { planMojoNumericExpression } from "./numeric.js";
 import {
   ConditionalExpression_Condition,
   ConditionalExpression_WhenFalse,
@@ -149,6 +150,9 @@ export function planPrefixUnary(
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
 ): MojoValuePlan | undefined {
+  if (context.program.queries.intrinsicExpressionSelection(node)?.kind === "numeric") {
+    return planMojoNumericExpression(node, context, planValue);
+  }
   const operandNode = PrefixUnaryExpression_Operand(context.program.source.ast, node);
   const operator = prefixOperator(context.program.source.ast.operatorKindName(node));
   const operand = operandNode === undefined ? undefined : planValue(operandNode, context);
