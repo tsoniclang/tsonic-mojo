@@ -2,6 +2,32 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
 
+test("rethrows transfer an owned final-use error but retain values visible to handlers", () => {
+  const result = compileMojo({ files: { "index.ts": [
+    "export function rethrow(): void {",
+    "  try { throw new Error('failed'); } catch (error) { throw error; }",
+    "}",
+    "export function observed(): void {",
+    "  const error = new Error('observed');",
+    "  try { throw error; } finally { error.message; }",
+    "}",
+    "export function caught(): void {",
+    "  const error = new Error('caught');",
+    "  try { throw error; } catch { error.message; }",
+    "}",
+    "export function main(): void {}",
+  ].join("\n") } });
+  assert.deepEqual(result.diagnostics, []);
+  const generated = artifactTexts(result).find(({ text }) => text.includes("def rethrow"));
+  assert.ok(generated);
+  const rethrow = generated.text.slice(generated.text.indexOf("def rethrow"), generated.text.indexOf("def observed"));
+  assert.match(rethrow, /raise error\^/u);
+  const observed = generated.text.slice(generated.text.indexOf("def observed"), generated.text.indexOf("def caught"));
+  assert.doesNotMatch(observed, /raise error\^/u);
+  const caught = generated.text.slice(generated.text.indexOf("def caught"), generated.text.indexOf("def tsonic_main"));
+  assert.doesNotMatch(caught, /raise error\^/u);
+});
+
 const source = [
   "function makeError(message: string): Error {",
   "  const error = new Error(message);",

@@ -581,6 +581,29 @@ test("expression callables retain exact immutable captures", () => {
   assert.doesNotMatch(source.text, /allocate_callable_environment|_callable_environment/u);
 });
 
+test("const-function and imported callable-value parameters retain their exact callback ABI", () => {
+  const result = compileMojo({ files: {
+    "invoke.ts": [
+      "export const invoke = (action: (value: string) => string): string => action('value');",
+    ].join("\n"),
+    "index.ts": [
+      "import { invoke } from './invoke.js';",
+      "const local = (action: (value: string) => string): string => action('local');",
+      "export function main(): void {",
+      "  const prefix = 'prefix';",
+      "  invoke(value => prefix + value);",
+      "  local(value => value);",
+      "}",
+    ].join("\n"),
+  } });
+  assert.deepEqual(result.diagnostics, []);
+  const generated = artifactTexts(result).find(({ text }) => text.includes("def tsonic_main"));
+  assert.ok(generated);
+  assert.equal((generated.text.match(/= allocate_callable_environment\(/gu) ?? []).length, 2);
+  assert.match(generated.text, /RaisingCallable\[/u);
+  assert.doesNotMatch(generated.text, /lambda |def _callable\(/u);
+});
+
 test("retained closures preserve statement conversions inside their erased callable environment", () => {
   const result = compileMojo({
     files: {

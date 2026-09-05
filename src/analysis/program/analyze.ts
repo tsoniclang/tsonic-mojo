@@ -120,7 +120,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
   const templateExpressionNodes = new Set<Node>();
   const bindingPatternSelections = new WeakMap<Node, MojoBindingPatternSelection>();
   const bindingProjections = new WeakMap<Node, MojoBindingProjectionPlan>();
-  const returnValueTransfers = new WeakSet<Node>();
+  const exitValueTransfers = new WeakSet<Node>();
   const analyzedCallableExpressions = new WeakSet<Node>();
   const structuralObjects = createMojoStructuralObjectCatalog(ast);
   const fieldByDeclaration = new WeakMap<Node, MojoAnalyzedProjectProperty>();
@@ -394,7 +394,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     templateExpressionNodes,
     bindingPatternSelections,
     bindingProjections,
-    returnValueTransfers,
+    exitValueTransfers,
     structuralObjects,
     analyzeCallableExpression,
     conversions,

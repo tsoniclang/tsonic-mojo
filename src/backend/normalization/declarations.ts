@@ -64,6 +64,14 @@ export function normalizeMojoStatements(
       continue;
     }
     const statement = normalizeStatement(source);
+    if (statement.kind === "if" && statement.condition.kind === "bool-literal") {
+      const branch = statement.condition.value ? statement.thenStatements : statement.elseStatements;
+      if (branch === undefined || branch.length === 0) continue;
+      if (branchTerminates(branch)) {
+        normalized.push(...branch);
+        break;
+      }
+    }
     if (isEmptyUnitExpression(statement) || isPureUnusedLiteral(statement)) continue;
     normalized.push(statement);
     if (terminatesBlock(statement)) break;

@@ -69,7 +69,7 @@ import {
 import {
   analyzeNullishCoalescing,
   isMojoIterationBindingDeclaration,
-  selectReturnValueTransfer,
+  selectExitValueTransfer,
 } from "./executable-region-flow.js";
 import { analyzeCall, analyzeElement, analyzeProperty } from "./executable-region-operations.js";
 import { analyzeMojoIntrinsicExpression } from "../operations/intrinsic-expressions.js";
@@ -126,7 +126,7 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly templateExpressionNodes: Set<Node>;
   readonly bindingPatternSelections: WeakMap<Node, MojoBindingPatternSelection>;
   readonly bindingProjections: WeakMap<Node, MojoBindingProjectionPlan>;
-  readonly returnValueTransfers: WeakSet<Node>;
+  readonly exitValueTransfers: WeakSet<Node>;
   readonly structuralObjects: MojoStructuralObjectCatalog;
   readonly conversions: MojoConversionIndex;
   readonly functionByDeclaration: WeakMap<Node, MojoAnalyzedFunction>;
@@ -178,7 +178,7 @@ export function analyzeMojoExecutableRegion(
   const callableExpressionNodes: Node[] = [];
   const bindingPatternDeclarations: Node[] = [];
   const pendingInferredBindings = new Set<Node>();
-  const returnExpressions: Node[] = [];
+  const exitExpressions: { readonly expression: Node; readonly throwing: boolean }[] = [];
   walkSourceTree(root, ast, (node): void => {
     if (ast.is.IsVariableDeclaration(node)) {
       const declarationKind = ast.variableDeclarationKind(node);
@@ -213,9 +213,9 @@ export function analyzeMojoExecutableRegion(
     if (ast.is.IsForOfStatement(node) || ast.is.IsForInStatement(node)) iterationNodes.push(node);
     if (ast.is.IsObjectLiteralExpression(node)) objectLiteralNodes.push(node);
     if (ast.is.IsFunctionExpression(node) || ast.is.IsArrowFunction(node)) callableExpressionNodes.push(node);
-    if (ast.is.IsReturnStatement(node)) {
+    if (ast.is.IsReturnStatement(node) || ast.is.IsThrowStatement(node)) {
       const expression = Node_Expression(ast, node);
-      if (expression !== undefined) returnExpressions.push(expression);
+      if (expression !== undefined) exitExpressions.push({ expression, throwing: ast.is.IsThrowStatement(node) });
     }
   }, (node, regionRoot) => descendWithinExecutableRegion(node, regionRoot, ast));
 
@@ -326,9 +326,9 @@ export function analyzeMojoExecutableRegion(
     analyzeBindingPatternDeclaration(declaration, sourceType);
   }
 
-  for (const expression of returnExpressions) {
-    if (selectReturnValueTransfer(expression, input)) {
-      input.returnValueTransfers.add(expression);
+  for (const { expression, throwing } of exitExpressions) {
+    if (selectExitValueTransfer(expression, throwing, input)) {
+      input.exitValueTransfers.add(expression);
     }
   }
 

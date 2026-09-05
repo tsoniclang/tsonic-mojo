@@ -63,6 +63,19 @@ test("normalization removes statements after a terminating branch", () => {
   ]);
 });
 
+test("constant branches flatten only when termination makes the destruction boundary identical", () => {
+  const terminal = [{ kind: "return", expression: { kind: "number-literal", text: "1" } }];
+  const branch = {
+    kind: "if", condition: { kind: "bool-literal", value: true }, thenStatements: terminal,
+  };
+  assert.deepEqual(normalizeMojoStatements([branch]), terminal);
+  assert.deepEqual(normalizeMojoStatements([{ ...branch, condition: { kind: "bool-literal", value: false } }]), []);
+  const scoped = { ...branch, thenStatements: [{ kind: "variable", name: "owned", initializer: {
+    kind: "call", callee: { kind: "path", path: "allocate" }, arguments: [],
+  } }] };
+  assert.deepEqual(normalizeMojoStatements([scoped, ...terminal]), [scoped, ...terminal]);
+});
+
 test("normalization removes an exact redundant floating carrier around integer literals", () => {
   assert.deepEqual(
     normalizeMojoExpression(numericConstruction(

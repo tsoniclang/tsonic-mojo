@@ -154,6 +154,7 @@ export function applyValueRefinement(
   if (refinement === undefined) return expression;
   const sourceCarrier = context.program.representations.carrier(refinement.carrier);
   if (sourceCarrier !== undefined) registerMojoTypeImports(sourceCarrier.type, context);
+  if (refinement.kind === "union-member") registerMojoTypeImports(refinement.member.type, context);
   if (refinement.kind === "project-downcast") {
     const route = context.program.projectDispatch.downcastFor(
       refinement.dispatchType,

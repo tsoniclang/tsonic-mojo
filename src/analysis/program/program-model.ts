@@ -69,7 +69,7 @@ export interface MojoProgramQueries {
   templateExpressionSelection(expression: Node): MojoTemplateExpressionSelection | undefined;
   bindingPatternSelection(declaration: Node): MojoBindingPatternSelection | undefined;
   bindingProjection(declaration: Node): MojoBindingProjectionPlan | undefined;
-  returnValueTransfer(expression: Node): boolean;
+  exitValueTransfer(expression: Node): boolean;
   catchErrorType(catchClause: Node): MojoTargetTypeRef | undefined;
   moduleForSourceFile(sourceFile: SourceFile): MojoAnalyzedModule | undefined;
   moduleForId(id: string): MojoAnalyzedModule | undefined;

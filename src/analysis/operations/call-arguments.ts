@@ -170,6 +170,9 @@ export function analyzeArguments(
         valueOwnership,
       );
       if (disposition.kind === "unsupported") return disposition;
+      const callableConsumption = target.callableConsumption !== undefined
+        ? target.callableConsumption
+        : requiresErasedCallable(parameterType) ? "retained" : undefined;
       arguments_.push(Object.freeze({
         expression: sourceExpression,
         sourceArgumentIndex,
@@ -188,13 +191,22 @@ export function analyzeArguments(
         ...(target.position === "keyword" && target.nativeName !== undefined
           ? { nativeName: target.nativeName }
           : {}),
-        ...(target.callableConsumption === undefined
+        ...(callableConsumption === undefined
           ? {}
-          : { callableConsumption: target.callableConsumption }),
+          : { callableConsumption }),
       }));
     }
   }
   return { kind: "resolved", arguments: Object.freeze(arguments_) };
+}
+
+function requiresErasedCallable(type: MojoTargetTypeRef): boolean {
+  switch (type.kind) {
+    case "callable": return true;
+    case "optional": return requiresErasedCallable(type.value);
+    case "union": return type.members.some(requiresErasedCallable);
+    default: return false;
+  }
 }
 
 function spreadElementType(

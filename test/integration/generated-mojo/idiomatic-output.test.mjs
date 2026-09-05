@@ -20,6 +20,28 @@ test("nullish checks omit inert sentinel temporaries but preserve effectful unus
   assert.match(source.text, /var _comparison_right: Undefined = missing\(\)/u);
 });
 
+test("an exhaustive cross-module union narrowing imports its exact final member", () => {
+  const result = compileMojo({ files: {
+    "models.ts": "export class Left {} export class Right {} export type Choice = Left | Right;",
+    "index.ts": [
+      "import { Left, Right } from './models.js';",
+      "import type { Choice } from './models.js';",
+      "export function choose(value: Choice): boolean {",
+      "  if (value instanceof Left) return false;",
+      "  if (value instanceof Right) return true;",
+      "  return false;",
+      "}",
+      "export function main(): void {}",
+    ].join("\n"),
+  } });
+  assert.deepEqual(result.diagnostics, []);
+  const generated = artifactTexts(result).find(({ text }) => text.includes("def choose"));
+  assert.ok(generated);
+  assert.doesNotMatch(generated.text, /unsafe_get\[tsonic_generated\./u);
+  assert.doesNotMatch(generated.text, /if True:|if False:/u);
+  assert.match(generated.text, /return True/u);
+});
+
 test("ordinary declarations use native names, immutable parameters, and no module state", () => {
   const result = compileMojo({
     files: {

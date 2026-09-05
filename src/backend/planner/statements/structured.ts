@@ -181,7 +181,7 @@ function planStatement(
     if (sourceExpression !== undefined && expression === undefined) return undefined;
     const returnedExpression = expression === undefined
       ? undefined
-      : context.program.queries.returnValueTransfer(sourceExpression!)
+      : context.program.queries.exitValueTransfer(sourceExpression!)
         ? consumeMojoValue(expression.value, scope.resultType, context.program.lifecycle)
         : expression.value;
     return Object.freeze([
@@ -214,9 +214,12 @@ function planStatement(
   if (ast.is.IsThrowStatement(node)) {
     const sourceExpression = Node_Expression(ast, node);
     const expression = sourceExpression === undefined ? undefined : planMojoValue(sourceExpression, context);
-    return expression === undefined
-      ? undefined
-      : Object.freeze([...expression.before, { kind: "raise", expression: expression.value }]);
+    const type = sourceExpression === undefined ? undefined : context.program.queries.expressionType(sourceExpression);
+    if (expression === undefined || type === undefined) return undefined;
+    const raised = context.program.queries.exitValueTransfer(sourceExpression!)
+      ? consumeMojoValue(expression.value, type, context.program.lifecycle)
+      : expression.value;
+    return Object.freeze([...expression.before, { kind: "raise", expression: raised }]);
   }
   if (ast.is.IsVariableStatement(node)) {
     return planVariableDeclarationList(VariableStatement_DeclarationList(ast, node), context);
