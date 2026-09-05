@@ -127,11 +127,13 @@ function rethrowInErrorDomain(
     const member = source.members[index]!;
     const raised = Object.freeze({
       kind: "raise" as const,
-      expression: constructErrorDomain(target, consumeMojoValue(Object.freeze({
-        kind: "proven-union-member" as const,
-        receiver: error,
-        type: member,
-      }), member, context.program.lifecycle)),
+      expression: constructErrorDomain(target, Object.freeze({
+        kind: "method-call" as const,
+        receiver: consumeMojoValue(error, source, context.program.lifecycle),
+        name: "unsafe_unwrap",
+        genericArguments: Object.freeze([Object.freeze({ kind: "type" as const, type: member })]),
+        arguments: Object.freeze([]),
+      })),
     });
     if (index === source.members.length - 1) return Object.freeze([raised]);
     return Object.freeze([Object.freeze({
