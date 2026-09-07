@@ -76,6 +76,18 @@ test("printer keeps native callable parameter and result layouts independent", (
   assert.equal(signature.result.value, object);
 });
 
+test("printer keeps a short expression flat after its declaration prefix breaks", () => {
+  const call = (name) => ({ kind: "call", callee: { kind: "path", path: name }, arguments: [] });
+  const printed = printMojoModule(statementModule([{
+    kind: "variable", name: "selected_condition_with_full_annotation",
+    type: { kind: "source-primitive", name: "bool" },
+    initializer: { kind: "binary", operator: "or", left: call("first_condition"), right: call("second_condition") },
+  }]));
+  assert.match(printed, /= \(\n        first_condition\(\) or second_condition\(\)\n    \)/u);
+  assert.equal((printed.match(/first_condition\(\)/gu) ?? []).length, 1);
+  assert.equal((printed.match(/second_condition\(\)/gu) ?? []).length, 1);
+});
+
 test("printer preserves nested conditional branches with one evaluation of each operand", () => {
   const call = (name) => ({ kind: "call", callee: { kind: "path", path: name }, arguments: [] });
   const expression = {

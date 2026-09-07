@@ -260,7 +260,7 @@ function printBinaryDocument(
 function parenthesizeWhenBroken(document: MojoDocument): MojoDocument {
   return group(concat(
     ifBreak(text("(")),
-    indent(4, concat(ifBreak(hardLine), document)),
+    indent(4, concat(ifBreak(hardLine), group(document))),
     ifBreak(hardLine),
     ifBreak(text(")")),
   ));

@@ -73,6 +73,26 @@ export function run(): number { return read({ value: 5 }); }
   assert.doesNotMatch(compact, /Optional\[Box,?\]\(Optional\[Box/u);
 });
 
+for (const [name, declarations, payload] of [
+  ["primitive", "", "string | number"],
+  ["object", "class First { first = 1; } class Second { second = 2; }", "First | Second"],
+]) {
+  test(`optional ${name} union results preserve absence before source narrowing`, () => {
+    const generated = compile(`
+${declarations}
+export function read(values: Map<string, ${payload}>, key: () => string): ${payload} | undefined {
+  const selected = values.get(key());
+  if (selected === undefined) return undefined;
+  return selected;
+}
+`, ["js"]);
+    assert.match(generated, /var _optional_source:[\s\S]*?= values\.get\(/u);
+    assert.match(generated, /if _optional_source:\n\s+var _union_source:/u);
+    assert.doesNotMatch(generated, /values\.get\([^\n]*\)\.value\(\)/u);
+    assert.equal((generated.match(/key\.call\(/gu) ?? []).length, 1);
+  });
+}
+
 test("transparent unsafe expressions retain the selected native pointee carrier", () => {
   const generated = compile(`
 import { offsetNativePointer, loadNativePointer, unsafeContext } from "@tsonic/core/lang.js";
