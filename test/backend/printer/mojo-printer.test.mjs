@@ -38,6 +38,59 @@ test("printer keeps an early type annotation flat when the initializer can break
   assert.doesNotMatch(printed, /Optional\[\n/u);
 });
 
+test("printer keeps subscript evaluation intact while allowing bracket line breaks", () => {
+  const numeric = { kind: "source-primitive", name: "float64" };
+  const scalar = (value) => ({
+    kind: "construct", type: numeric, arguments: [{ value: { kind: "number-literal", text: value } }],
+  });
+  const path = (name) => ({ kind: "path", path: name });
+  const compare = (left) => ({ kind: "binary", operator: "==", left, right: scalar("28") });
+  const module = statementModule([{
+    kind: "variable", name: "_binary_left_2", type: { kind: "source-primitive", name: "bool" },
+    initializer: { kind: "binary", operator: "and", left: compare(path("indexed")),
+      right: compare({ kind: "element", receiver: path("values"), index: scalar("0") }) },
+  }]);
+  assert.match(printMojoModule(module), /indexed == Float64\(28\) and values\[\n        Float64\(0\)\n    \] == Float64\(28\)/u);
+  const sideEffect = { kind: "call", callee: path("next_index"), arguments: [] };
+  module.declarations[0].statements[0].initializer.right.left.index = sideEffect;
+  const printed = printMojoModule(module);
+  assert.equal(printed.match(/next_index\(\)/gu)?.length, 1);
+  assert.doesNotMatch(printed, /next_index\(\),\s*\]/u);
+});
+
+test("printer keeps native callable parameter and result layouts independent", () => {
+  const object = { kind: "target-named", id: "project-object", modulePath: [], name: "ProjectObject" };
+  const signature = {
+    kind: "function", genericParameters: [], parameters: [{ type: object, convention: "imm" }],
+    result: { kind: "optional", value: object }, raises: false, asynchronous: false, thin: true,
+  };
+  const module = {
+    modulePath: [], typeAliases: [],
+    imports: [{ kind: "symbols", modulePath: ["std", "collections"], symbols: [{ name: "Optional" }] }],
+    declarations: [{ kind: "struct", name: "BaseScore", genericParameters: [], conformances: [], methods: [],
+      fields: [{ name: "_downcast_DerivedScore_dispatch", type: signature, compileTime: false }] }],
+  };
+  const printed = printMojoModule(module);
+  assert.match(printed, /def\(ProjectObject\) thin -> Optional\[\n        ProjectObject,\n    \]/u);
+  assert.equal(signature.parameters.length, 1);
+  assert.equal(signature.result.value, object);
+});
+
+test("printer preserves nested conditional branches with one evaluation of each operand", () => {
+  const call = (name) => ({ kind: "call", callee: { kind: "path", path: name }, arguments: [] });
+  const expression = {
+    kind: "conditional", condition: call("first_condition"), whenTrue: call("first_selected_result"),
+    whenFalse: { kind: "conditional", condition: call("second_condition"),
+      whenTrue: call("second_selected_result"), whenFalse: call("final_selected_result") },
+  };
+  const printed = printMojoModule(statementModule([{ kind: "return", expression }]));
+  assert.match(printed, /return first_selected_result\(\)/u);
+  for (const name of ["first_condition", "first_selected_result", "second_condition", "second_selected_result", "final_selected_result"]) {
+    assert.equal(printed.split(`${name}()`).length - 1, 1);
+  }
+  assert.match(printed, /first_selected_result\(\)\s+if first_condition\(\)\s+else \(/u);
+});
+
 test("printer can break a long result annotation without changing the type", () => {
   const module = statementModule([{ kind: "pass" }]);
   module.declarations[0] = {

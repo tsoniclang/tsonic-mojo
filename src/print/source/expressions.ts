@@ -93,7 +93,10 @@ function printExpressionAtPrecedence(
     case "conditional": {
       const whenTrue = printMojoExpressionDocument(expression.whenTrue, context, conditionalPrecedence + 1);
       const condition = printMojoExpressionDocument(expression.condition, context, conditionalPrecedence + 1);
-      const whenFalse = printMojoExpressionDocument(expression.whenFalse, context, conditionalPrecedence);
+      const whenFalseValue = printMojoExpressionDocument(expression.whenFalse, context, conditionalPrecedence);
+      const whenFalse = expression.whenFalse.kind === "conditional"
+        ? parenthesizeWhenBroken(whenFalseValue)
+        : whenFalseValue;
       return chooseLayout(
         concat(whenTrue, text(" if "), condition, text(" else "), whenFalse),
         parenthesizeWhenBroken(concat(whenTrue, line, text("if "), condition, line, text("else "), whenFalse)),
@@ -120,9 +123,9 @@ function printExpressionAtPrecedence(
     );
     case "element": return concat(
       printMojoExpressionDocument(expression.receiver, context, postfixPrecedence),
-      text("["),
-      printMojoExpressionDocument(expression.index, context),
-      text("]"),
+      delimitedList("[", [printMojoExpressionDocument(expression.index, context)], "]", {
+        trailingComma: false,
+      }),
     );
     case "proven-union-member": return concat(
       printMojoExpressionDocument(expression.receiver, context, postfixPrecedence),

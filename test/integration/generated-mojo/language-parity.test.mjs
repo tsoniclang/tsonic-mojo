@@ -982,7 +982,7 @@ test("project interface index signatures retain exact map-backed storage and sou
   assert.match(source.text, /var _index: Dict\[String, Int32\]/u);
   assert.match(source.text, /for _object_index_key in _object_spread\._state\[\]\._index\.keys\(\):/u);
   assert.match(source.text, /\._state\[\]\._index\["first"\] \+= Int32\(4\)/u);
-  assert.match(source.text, /\._state\[\]\._index\[name\]/u);
+  assert.match(source.text, /\._state\[\]\._index\[\s*name\s*\]/u);
 });
 
 test("readonly project index signatures reject exact selected writes", () => {
