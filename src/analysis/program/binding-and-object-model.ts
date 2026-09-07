@@ -1,5 +1,6 @@
 import type { Node } from "@tsonic/tsts";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
+import type { MojoNumericConversion } from "../../target-model/operations/numeric.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type {
   MojoAnalyzedInterface,
@@ -43,7 +44,7 @@ export type MojoTemplateStringConversion =
   | { readonly kind: "native-to-js" }
   | { readonly kind: "js-to-native" }
   | { readonly kind: "boolean" }
-  | { readonly kind: "number" }
+  | { readonly kind: "number"; readonly operandConversion: MojoNumericConversion }
   | { readonly kind: "integer" }
   | { readonly kind: "character" }
   | { readonly kind: "native-error" }

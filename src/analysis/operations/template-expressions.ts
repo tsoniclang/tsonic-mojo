@@ -82,8 +82,16 @@ function classifyStringification(
   if (type.kind === "source-primitive") {
     if (type.name === "bool") return Object.freeze({ kind: "boolean" });
     if (type.name === "char") return Object.freeze({ kind: "character" });
-    if (type.name === "float32" || type.name === "float64") {
-      return Object.freeze({ kind: "number" });
+    if (type.name === "float16" || type.name === "float32" || type.name === "float64") {
+      return Object.freeze({
+        kind: "number",
+        operandConversion: type.name === "float64"
+          ? Object.freeze({ kind: "identity" })
+          : Object.freeze({
+              kind: "primitive-cast",
+              targetType: Object.freeze({ kind: "source-primitive", name: "float64" }),
+            }),
+      });
     }
     return Object.freeze({ kind: "integer" });
   }

@@ -19,6 +19,7 @@ import { orderMojoValues } from "./support.js";
 import type { MojoValuePlanner } from "./support.js";
 import { withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
+import { planMojoNumericConversion } from "./numeric.js";
 
 export function planMojoTemplateExpression(
   expression: Node,
@@ -50,7 +51,6 @@ export function planMojoTemplateExpression(
       : Object.freeze({ before: value.before, values: Object.freeze([value.value]) });
     const converted = planStringification(
       selected.values[0]!,
-      substitution.type,
       substitution.conversion,
       selection.resultType,
       context,
@@ -88,7 +88,6 @@ export function planMojoTemplateExpression(
 
 function planStringification(
   expression: MojoExpression,
-  sourceType: MojoTargetTypeRef,
   conversion: MojoTemplateStringConversion,
   resultType: MojoTargetTypeRef,
   context: MojoPlanningContext,
@@ -111,21 +110,22 @@ function planStringification(
     case "boolean":
       return isJsString(resultType)
         ? jsStringCall("boolean_to_string", expression, context)
-        : nativeString(expression);
-    case "number":
+        : Object.freeze({
+            kind: "conditional",
+            condition: expression,
+            whenTrue: Object.freeze({ kind: "string-literal", value: "true" }),
+            whenFalse: Object.freeze({ kind: "string-literal", value: "false" }),
+          });
+    case "number": {
+      const operand = planMojoNumericConversion(expression, conversion.operandConversion, context);
       return isJsString(resultType)
-        ? jsStringCall(
-            "number_to_string",
-            sourceType.kind === "source-primitive" && sourceType.name === "float32"
-              ? Object.freeze({
-                  kind: "construct",
-                  type: Object.freeze({ kind: "source-primitive", name: "float64" }),
-                  arguments: Object.freeze([{ value: expression }]),
-                })
-              : expression,
-            context,
-          )
-        : nativeString(expression);
+        ? jsStringCall("number_to_string", operand, context)
+        : Object.freeze({
+            kind: "call",
+            callee: mojoModuleMemberExpression(context, ["tsonic_runtime", "number_string"], "source_number_to_string"),
+            arguments: Object.freeze([{ value: operand }]),
+          });
+    }
     case "integer":
     case "character":
       return isJsString(resultType)
@@ -156,7 +156,6 @@ function planStringification(
           name: "value",
           arguments: Object.freeze([]),
         }),
-        conversion.sourceType.value,
         conversion.value,
         resultType,
         context,
@@ -182,7 +181,6 @@ function planStringification(
         registerMojoTypeImports(member.type, context);
         const selected = planStringification(
           Object.freeze({ kind: "proven-union-member", receiver: expression, type: member.type }),
-          member.type,
           member.conversion,
           resultType,
           context,
