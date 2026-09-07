@@ -59,7 +59,9 @@ function printExpressionAtPrecedence(
     case "qualified-path": return text(renderQualifiedPath(expression.segments, context));
     case "type-value": return requiredMojoTypeDocument(expression.type, context);
     case "string-literal": return text(quoteMojoString(expression.value));
-    case "number-literal": return text(expression.text);
+    case "number-literal": return text(expression.text.replace(
+      /^(\d+(?:\.\d*)?|\.\d+)[eE]\+?(-?\d+)$/u, "$1e$2",
+    ));
     case "bool-literal": return text(expression.value ? "True" : "False");
     case "none-literal": return text("None");
     case "tuple": {
@@ -232,7 +234,8 @@ function printBinaryDocument(
   context: MojoPrintContext,
   precedence: number,
 ): MojoDocument {
-  if (expression.operator === "and" || expression.operator === "or") {
+  if (expression.operator === "and" || expression.operator === "or" ||
+    expression.operator === "+" || expression.operator === "*") {
     const operands: MojoExpression[] = [];
     let current: MojoExpression = expression;
     while (current.kind === "binary" && current.operator === expression.operator) {
@@ -242,19 +245,19 @@ function printBinaryDocument(
     operands.push(current);
     operands.reverse();
     const documents = operands.map((operand) => printMojoExpressionDocument(operand, context, precedence + 1));
-    return chooseLayout(join(text(` ${expression.operator} `), documents), parenthesizeWhenBroken(join(
+    return parenthesizeWhenBroken(join(
       concat(line, text(`${expression.operator} `)),
       documents,
-    )));
+    ));
   }
   const left = printMojoExpressionDocument(expression.left, context, precedence === 40 ? precedence + 1 : precedence);
   const right = printMojoExpressionDocument(expression.right, context, precedence + 1);
-  return chooseLayout(concat(left, text(` ${expression.operator} `), right), parenthesizeWhenBroken(concat(
+  return parenthesizeWhenBroken(concat(
     left,
     line,
     text(`${expression.operator} `),
     right,
-  )));
+  ));
 }
 
 function parenthesizeWhenBroken(document: MojoDocument): MojoDocument {

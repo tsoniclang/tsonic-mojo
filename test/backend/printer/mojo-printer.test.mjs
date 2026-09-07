@@ -14,6 +14,31 @@ function statementModule(statements) {
   };
 }
 
+test("printer gives long binary chains one continuation region without reassociation", () => {
+  const call = (name) => ({ kind: "call", callee: { kind: "path", path: name }, arguments: [] });
+  const first = call("first_value_with_a_meaningful_name");
+  const second = call("second_value_with_a_meaningful_name");
+  const third = call("third_value_with_a_meaningful_name");
+  const expression = { kind: "binary", operator: "+",
+    left: { kind: "binary", operator: "+", left: first, right: second }, right: third };
+  const printed = printMojoModule(statementModule([{ kind: "return", expression }]));
+  assert.match(printed, /return \(\n        first_value_with_a_meaningful_name\(\)\n        \+ second_value_with_a_meaningful_name\(\)\n        \+ third_value_with_a_meaningful_name\(\)\n    \)/u);
+  assert.equal(expression.left.left, first);
+  assert.equal(expression.left.right, second);
+  assert.equal(expression.right, third);
+  const nested = { ...expression, left: first,
+    right: { kind: "binary", operator: "+", left: second, right: third } };
+  assert.match(printMojoModule(statementModule([{ kind: "return", expression: nested }])),
+    /\+ \([^]*second_value_with_a_meaningful_name\(\)[^]*third_value_with_a_meaningful_name\(\)[^]*\)/u);
+});
+
+test("printer normalizes decimal exponent spelling without changing hexadecimal digits", () => {
+  const printed = printMojoModule(statementModule(["1e+21", "1E-7", "0x1e21"].map((value) => ({
+    kind: "discard", expression: { kind: "number-literal", text: value },
+  }))));
+  assert.match(printed, /_ = 1e21\n    _ = 1e-7\n    _ = 0x1e21/u);
+});
+
 test("printer separates top-level compound declarations with two blank lines", () => {
   const module = statementModule([{ kind: "pass" }]);
   module.imports = [{ kind: "module", modulePath: ["example"] }];
@@ -50,7 +75,7 @@ test("printer keeps subscript evaluation intact while allowing bracket line brea
     initializer: { kind: "binary", operator: "and", left: compare(path("indexed")),
       right: compare({ kind: "element", receiver: path("values"), index: scalar("0") }) },
   }]);
-  assert.match(printMojoModule(module), /indexed == Float64\(28\) and values\[\n        Float64\(0\)\n    \] == Float64\(28\)/u);
+  assert.match(printMojoModule(module), /indexed == Float64\(28\) and values\[\s*Float64\(0\)\s*\] == Float64\(28\)/u);
   const sideEffect = { kind: "call", callee: path("next_index"), arguments: [] };
   module.declarations[0].statements[0].initializer.right.left.index = sideEffect;
   const printed = printMojoModule(module);
