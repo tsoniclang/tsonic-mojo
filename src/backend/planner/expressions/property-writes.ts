@@ -1,4 +1,5 @@
 import type { Node } from "@tsonic/tsts";
+import { mojoCompoundRightType, planMojoCompoundValue } from "./numeric.js";
 import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 import {
   appendMojoPlanningDiagnostic,
@@ -42,6 +43,7 @@ export function planMojoProjectPropertyWrite(
   operator: string,
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
+  operationNode: Node,
 ): MojoPreparedMutation | undefined {
   const selection = context.program.queries.propertySelection(node);
   if (selection?.kind !== "project-method" && selection?.kind !== "project-accessor" &&
@@ -154,16 +156,11 @@ export function planMojoProjectPropertyWrite(
     });
     const ordered = orderMojoValues([
       Object.freeze({ plan: mojoValue(current), type: readType, role: "property_write_current" }),
-      Object.freeze({ plan: value, type: writeType, role: "property_write_value" }),
+      Object.freeze({ plan: value, type: mojoCompoundRightType(operationNode, writeType, context), role: "property_write_value" }),
     ], context, true);
     before = Object.freeze([...location.before, ...ordered.before]);
     previousValue = ordered.values[0]!;
-    assigned = Object.freeze({
-      kind: "binary",
-      operator: operator.slice(0, -1),
-      left: previousValue,
-      right: ordered.values[1]!,
-    });
+    assigned = planMojoCompoundValue(operationNode, operator, previousValue, ordered.values[1]!, context);
   } else {
     const ordered = orderMojoValues([
       Object.freeze({ plan: value, type: writeType, role: "property_write_value" }),
@@ -217,6 +214,7 @@ export function planMojoProviderPropertyMethodWrite(
   operator: string,
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
+  operationNode: Node,
 ): MojoPreparedMutation | undefined {
   const selection = context.program.queries.propertySelection(node);
   if (selection?.kind !== "provider") return undefined;
@@ -253,7 +251,7 @@ export function planMojoProviderPropertyMethodWrite(
   let assigned: MojoExpression;
   let previousValue: MojoExpression | undefined;
   const orderedValue = orderMojoValues([
-    Object.freeze({ plan: value, type: write.parameterTypes[0]!, role: "property_write_value" }),
+    Object.freeze({ plan: value, type: mojoCompoundRightType(operationNode, write.parameterTypes[0]!, context), role: "property_write_value" }),
   ], context, true);
   if (operator !== "=") {
     const read = selection.readOperation;
@@ -305,12 +303,7 @@ export function planMojoProviderPropertyMethodWrite(
       ...orderedValue.before,
     ]);
     previousValue = orderedCurrent.values[0]!;
-    assigned = Object.freeze({
-      kind: "binary",
-      operator: operator.slice(0, -1),
-      left: previousValue,
-      right: orderedValue.values[0]!,
-    });
+    assigned = planMojoCompoundValue(operationNode, operator, previousValue, orderedValue.values[0]!, context);
   } else {
     before = Object.freeze([...before, ...orderedValue.before]);
     assigned = orderedValue.values[0]!;

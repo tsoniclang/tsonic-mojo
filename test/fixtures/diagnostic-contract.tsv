@@ -1,6 +1,7 @@
 # contractVersion=1
 # baselineProductionCount=618
 code	ownerLayer	classification	auditDisposition	reachableSourceProof	nativeProof	mutationProof	replacementCode
+MOJO_BITWISE_OPERANDS_NOT_CLOSED	analysis	exact-rejection	retain-exact-guard	test/integration/generated-mojo/numeric-operators.test.mjs	../mojo-pudding/packages/language/runner.mojo	-	-
 MOJO_ANALYZED_MODULE_MISSING	planning	internal-invariant	reviewed-other	-	-	-	-
 MOJO_ARRAY_LITERAL_ELEMENT_CONVERSION_UNPROVEN	analysis	internal-invariant	reviewed-other	-	-	-	-
 MOJO_ARRAY_LITERAL_ELEMENT_NOT_CLOSED	analysis	internal-invariant	reviewed-other	-	-	-	-
@@ -471,7 +472,6 @@ MOJO_PUBLIC_CALLABLE_STORAGE_MISSING	planning	internal-invariant	reviewed-other	
 MOJO_PUBLIC_RUNTIME_VALUE_COPY_UNAVAILABLE	analysis	exact-rejection	retain-exact-guard	-	-	-	-
 MOJO_PUBLIC_RUNTIME_VALUE_STORAGE_MISSING	planning	internal-invariant	reviewed-other	-	-	-	-
 MOJO_RAW_POINTER_EVIDENCE_CONFLICT	analysis	internal-invariant	reviewed-other	-	-	-	-
-MOJO_RAW_POINTER_IDENTITY_NOT_REPRESENTABLE	analysis	internal-invariant	reviewed-other	-	-	-	-
 MOJO_RAW_POINTER_RESULT_NOT_CLOSED	analysis	internal-invariant	reviewed-other	-	-	-	-
 MOJO_REASSIGNED_PARAMETER_COPY_UNPROVEN	analysis	exact-rejection	reviewed-other	-	-	-	-
 MOJO_RECURSIVE_CALLABLE_CARRIER_NOT_CLOSED	analysis	internal-invariant	reviewed-other	-	-	-	-

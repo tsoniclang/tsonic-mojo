@@ -8,11 +8,11 @@ const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 const runtimeRoot = resolve(repositoryRoot, "../mojo-runtime");
 const pixi = process.env.TSONIC_MOJO_PIXI ?? join(homedir(), ".pixi", "bin", "pixi");
 const fixtures = [
-  ["class-inheritance.mojo", /unexpected|expected|inherit|parent/iu],
-  ["dynamic-trait-value.mojo", /trait|type|parameter/iu],
-  ["generator.mojo", /yield|unexpected|expected/iu],
-  ["async-iteration.mojo", /async for|unexpected|expected/iu],
-  ["async-context-manager.mojo", /async with|unexpected|expected/iu],
+  ["class-inheritance.mojo", 5, /structs only conform to traits/iu],
+  ["dynamic-trait-value.mojo", 7, /invalid call.*AnyTrait\[Counter\]/iu],
+  ["generator.mojo", 2, /unexpected token in expression/iu],
+  ["async-iteration.mojo", 2, /expected '\(' for argument list/iu],
+  ["async-context-manager.mojo", 2, /expected '\(' for argument list/iu],
 ];
 
 if (!existsSync(pixi)) throw new Error(`Pinned Mojo pixi executable is absent at '${pixi}'.`);
@@ -22,7 +22,8 @@ if (!existsSync(join(runtimeRoot, "pixi.toml"))) {
 
 const outputRoot = join(repositoryRoot, ".temp", "native-limit-artifacts");
 mkdirSync(outputRoot, { recursive: true });
-for (const [file, expected] of fixtures) {
+const failures = [];
+for (const [file, line, expected] of fixtures) {
     const source = join(repositoryRoot, "test", "fixtures", "native-limits", file);
     const output = join(outputRoot, `${basename(file, ".mojo")}.mojopkg`);
     const result = spawnSync(pixi, ["run", "mojo", "build", source, "-o", output], {
@@ -32,13 +33,22 @@ for (const [file, expected] of fixtures) {
       maxBuffer: 4 * 1024 * 1024,
       env: { ...process.env, MODULAR_MAX_MEMORY_GB: "4" },
     });
-    if (result.error !== undefined) throw result.error;
+    if (result.error !== undefined) {
+      failures.push(`${file}: ${result.error.message}`);
+      continue;
+    }
     if (result.status === 0) {
-      throw new Error(`Pinned Mojo unexpectedly accepted native-limit probe '${file}'.`);
+      failures.push(`Pinned Mojo unexpectedly accepted native-limit probe '${file}'.`);
+      continue;
     }
     const diagnostics = `${result.stdout}\n${result.stderr}`;
-    if (!expected.test(diagnostics)) {
-      throw new Error(`Native-limit probe '${file}' failed without its expected diagnostic:\n${diagnostics}`);
+    const selectedErrors = diagnostics.split("\n").filter((message) =>
+      message.startsWith(`${source}:${line}:`) && message.includes(": error: ")
+    ).map((message) => message.slice(message.indexOf(": error: ") + 9));
+    if (!selectedErrors.some((message) => expected.test(message))) {
+      failures.push(`Native-limit probe '${file}' failed without its expected diagnostic:\n${diagnostics}`);
+      continue;
     }
     process.stdout.write(`proved ${file}\n`);
 }
+if (failures.length !== 0) throw new Error(failures.join("\n\n"));

@@ -26,3 +26,20 @@ The current foundation provides one complete vertical slice:
 Unsupported syntax or missing/ambiguous semantic evidence rejects before
 materialization. The planner has syntax traversal and sealed target queries,
 but no checker, source-fact writer, provider callback, or semantic fallback.
+
+Source `number` bitwise operators (`~`, `&`, `|`, `^`, `<<`, `>>`, `>>>`)
+and compound assignments retain 32-bit TypeScript numeric semantics on both
+profiles. Explicit integral carriers use native operations. Compound writes
+evaluate the location, read its value, evaluate the right operand, then write.
+
+Raw-pointer equality and hashing consume supplied addresses. Native-pointer
+load, store and element offsets require an explicit `unsafeContext`. The retired
+object-binding marker is not supported. Layout-backed raw-memory conversions
+(`toRawPointer` and `reinterpretRawPointer`) are not implemented: a source layout
+fact alone does not prove native storage layout or ownership.
+
+The pinned Mojo compiler has a reproduced runtime defect when forwarding a
+borrowed `String` to a non-inlined variadic function. It reproduces in a small
+standard-library-only program and affects Tsumo's array-call execution. Full
+Tsumo runtime acceptance is therefore not certified on this compiler pin;
+successful native compilation alone is not an execution proof.

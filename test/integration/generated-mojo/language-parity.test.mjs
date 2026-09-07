@@ -196,7 +196,7 @@ test("project classes retain reference identity and declaration-owned private st
   assert.ok(source);
   assert.match(source.text, /struct _CounterState/u);
   assert.match(source.text, /var _value: Int32/u);
-  assert.match(source.text, /struct Counter\(ImplicitlyCopyable, Equatable\)[\s\S]*ArcPointer\[_CounterState\]/u);
+  assert.match(source.text, /struct Counter\(Equatable, ImplicitlyCopyable\)[\s\S]*ArcPointer\[_CounterState\]/u);
   assert.doesNotMatch(source.text, /#value/u);
 });
 
@@ -645,7 +645,8 @@ test("capture-free block-bodied callable expressions lower to one direct functio
   assert.deepEqual(result.diagnostics, []);
   const source = artifactTexts(result).find(({ text }) => text.includes("def _callable"));
   assert.ok(source);
-  assert.match(source.text, /Callable\[Tuple\[\], Int32\]/u);
+  assert.match(source.text, /var value = _callable/u);
+  assert.doesNotMatch(source.text, /var value: Callable/u);
   assert.match(source.text, /def _callable\(\) -> Int32:[\s\S]*return Int32\(1\)/u);
   assert.match(source.text, /_ = value\(\)/u);
   assert.doesNotMatch(source.text, /allocate_callable_environment|_callable_environment/u);
@@ -872,24 +873,26 @@ test("raw pointer identity is closed only from exact source-core facts", () => {
   const result = compileMojo({
     files: {
       "index.ts": [
-        'import { bindRawPointer, equalRawPointer, hashRawPointer } from "@tsonic/core/lang.js";',
-        'import type { float64 } from "@tsonic/core/types.js";',
-        "class Box { value: float64 = 1; }",
-        "export function main(): void {",
-        "  const box = new Box();",
-        "  const first = bindRawPointer(box);",
-        "  const second = bindRawPointer(box);",
-        "  const same = equalRawPointer(first, second);",
-        "  const hash = hashRawPointer(first);",
-        "  if (!same || hash < 0) return;",
+        'import { equalRawPointer as equal, hashRawPointer } from "@tsonic/core/lang.js";',
+        'import * as core from "@tsonic/core/lang.js";',
+        'import type { RawPointer, float64 } from "@tsonic/core/types.js";',
+        "export function same(first: RawPointer | undefined, second: RawPointer | undefined): boolean {",
+        "  return equal(first, second);",
         "}",
+        "export function hash(pointer: RawPointer | undefined): float64 {",
+        "  return hashRawPointer(pointer);",
+        "}",
+        "export function absent(): boolean {",
+        "  return core.equalRawPointer(undefined, undefined);",
+        "}",
+        "export function main(): void {}",
       ].join("\n"),
     },
   });
   assert.deepEqual(result.diagnostics, []);
-  const generated = artifactTexts(result).find(({ text }) => text.includes("struct Box"));
+  const generated = artifactTexts(result).find(({ text }) => text.includes("def same"));
   assert.ok(generated);
-  assert.match(generated.text, /raw_pointer_from_arc\(box\._state\)/u);
+  assert.match(generated.text, /Optional\[RawPointer\]/u);
   assert.match(generated.text, /equal_raw_pointer\(/u);
   assert.match(generated.text, /hash_raw_pointer\(/u);
   assert.doesNotMatch(generated.text, /bindRawPointer|equalRawPointer|hashRawPointer/u);
@@ -915,7 +918,7 @@ test("discriminated project unions select one exact object constituent and commo
   const generated = artifactTexts(result).find(({ text }) => text.includes("def area"));
   assert.ok(generated);
   assert.match(generated.text, /area\(Shape\(Circle\("circle", Int32\(2\)\)\)\)/u);
-  assert.match(generated.text, /\.isa\[Circle\]\(\)/u);
+  assert.match(generated.text, /\.isa\[\s*Circle,?\s*\]\(\)/u);
   assert.match(generated.text, /shape\.unsafe_get\[Circle\]\(\).*\.radius/u);
   assert.match(generated.text, /shape\.unsafe_get\[Square\]\(\).*\.side/u);
 
@@ -979,7 +982,7 @@ test("project interface index signatures retain exact map-backed storage and sou
   assert.match(source.text, /var _index: Dict\[String, Int32\]/u);
   assert.match(source.text, /for _object_index_key in _object_spread\._state\[\]\._index\.keys\(\):/u);
   assert.match(source.text, /\._state\[\]\._index\["first"\] \+= Int32\(4\)/u);
-  assert.match(source.text, /\._state\[\]\._index\[name\]/u);
+  assert.match(source.text, /\._state\[\]\._index\[\s*name\s*\]/u);
 });
 
 test("readonly project index signatures reject exact selected writes", () => {

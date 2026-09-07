@@ -315,7 +315,7 @@ export function classifyMojoValueConversion(
       const absent = expected.members.filter((member): member is Extract<MojoTargetTypeRef, {
         readonly kind: "null" | "undefined";
       }> => member.kind === "null" || member.kind === "undefined");
-      const value = selectUnionMemberConversion(actual.value, expected.members, projectRelationships);
+      const value = classify(actual.value, expected);
       if (absent.length === 1 && value.kind === "resolved") {
         return {
           kind: "resolved",
@@ -324,12 +324,7 @@ export function classifyMojoValueConversion(
             sourceType: actual,
             targetType: expected,
             absentType: absent[0]!,
-            valueConversion: Object.freeze({
-              kind: "union-inject",
-              targetType: expected,
-              memberType: value.targetType,
-              valueConversion: value.conversion,
-            }),
+            valueConversion: value.conversion,
           }),
         };
       }

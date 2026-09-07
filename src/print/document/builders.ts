@@ -58,6 +58,19 @@ export function ifBreak(
   return Object.freeze({ kind: "if-break", broken, flat });
 }
 
+export function chooseLayout(preferred: MojoDocument, expanded: MojoDocument): MojoDocument {
+  return Object.freeze({ kind: "choice", preferred, expanded });
+}
+
+export function parenthesizedLayout(document: MojoDocument): MojoDocument {
+  return chooseLayout(document, group(concat(
+    ifBreak(text("(")),
+    indent(4, concat(ifBreak(hardLine), document)),
+    ifBreak(hardLine),
+    ifBreak(text(")")),
+  )));
+}
+
 export function delimitedList(
   open: string,
   documents: readonly MojoDocument[],

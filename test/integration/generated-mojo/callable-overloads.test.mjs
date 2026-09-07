@@ -23,7 +23,7 @@ export function main(): void { value(1); value("text"); }`,
   assert.equal((source.match(/^def value\(/gmu) ?? []).length, 1);
   assert.match(source, /def _value_overload\(input: Int32\) -> Int32:/u);
   assert.match(source, /def _value_overload_2\(input: String\) -> String:/u);
-  assert.match(source, /value\(Variant\[String, Int32\]\(input\)\)/u);
+  assert.match(source, /value\(\s*Variant\[String, Int32\]\(input\),?\s*\)/u);
   assert.match(source, /_value_overload\(Int32\(1\)\)/u);
   assert.match(source, /_value_overload_2\("text"\)/u);
 });

@@ -645,7 +645,7 @@
       "analysisProof": "test/integration/generated-mojo/language-parity.test.mjs",
       "emissionProof": "test/integration/generated-mojo/language-parity.test.mjs",
       "nativeProof": "../mojo-pudding/scripts/verify.sh",
-      "note": "Exact source-core facts close raw-pointer identity plus typed native-pointer load, store, and offset only under explicit unsafe authorization."
+      "note": "Exact facts close supplied raw-address equality/hash and explicit unsafe native-pointer load/store/element-offset. Layout-backed raw-memory conversions are not implemented; the retired object-binding marker is absent."
     },
     {
       "id": "providers.cargo-dependencies",

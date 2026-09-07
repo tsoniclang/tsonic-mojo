@@ -129,25 +129,6 @@ if (selection.kind === "native-pointer") {
   ]), Object.freeze({ kind: "tuple", elements: Object.freeze([]) }));
 }
 if (selection.kind === "raw-pointer") {
-  if (selection.operation === "bind") {
-    const identity = planValue(selection.identityExpression, context, selection.identityType);
-    const state = context.program.queries.projectState(selection.identityType);
-    return identity === undefined
-      ? undefined
-      : withMojoValue(identity.before, Object.freeze({
-          kind: "call",
-          callee: mojoModuleMemberExpression(
-            context,
-            ["tsonic_runtime"],
-            state?.storage === "erased"
-              ? "raw_pointer_from_shared_reference"
-              : "raw_pointer_from_arc",
-          ),
-          arguments: Object.freeze([Object.freeze({
-            value: Object.freeze({ kind: "member", receiver: identity.value, name: "_state" }),
-          })]),
-        }));
-  }
   if (selection.operation === "equal") {
     const left = planValue(selection.leftExpression, context, selection.leftType);
     const right = planValue(selection.rightExpression, context, selection.rightType);

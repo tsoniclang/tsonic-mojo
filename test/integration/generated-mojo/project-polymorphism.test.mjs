@@ -26,8 +26,8 @@ export function main(): void {
   assert.deepEqual(result.diagnostics, []);
   const source = generatedModule(result);
   assert.match(source, /var _value_dispatch: def\(ProjectObject\) thin -> Int32/u);
-  assert.match(source, /_downcast_Derived_dispatch: def\([\s\S]*ProjectObject[\s\S]*\) thin -> Optional\[ProjectObject\]/u);
-  assert.doesNotMatch(source, /_downcast_Derived_dispatch: def\([\s\S]*\) thin -> Optional\[Derived\]/u);
+  assert.match(source, /_downcast_Derived_dispatch: def\([\s\S]*ProjectObject[\s\S]*\) thin -> Optional\[\s*ProjectObject,?\s*\]/u);
+  assert.doesNotMatch(source, /_downcast_Derived_dispatch: def\([\s\S]*\) thin -> Optional\[\s*Derived,?\s*\]/u);
   assert.match(source, /var value: Base = Derived\(\)\._as_Base\(\)/u);
   assert.match(source, /_ = value\.value\(\)/u);
 });
@@ -171,7 +171,7 @@ export function main(): void {
   });
   assert.deepEqual(result.diagnostics, []);
   const source = generatedModule(result);
-  assert.match(source, /struct Child\(ImplicitlyCopyable, Equatable\)/u);
+  assert.match(source, /struct Child\(Equatable, ImplicitlyCopyable\)/u);
   assert.match(source, /def get_value\(self\) -> Int32/u);
   assert.match(source, /def next\(self\) -> Int32/u);
   assert.match(source, /Counter\(\)\._as_Child\(\)/u);

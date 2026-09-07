@@ -110,7 +110,7 @@ export function analyzeMojoCall(
     callNode,
     sourceCall,
     context.source,
-    resolve,
+    context.expressionTypes,
   );
   if (explicitSafety.kind === "unsupported") return explicitSafety;
   if (explicitSafety.kind === "resolved") {
@@ -131,7 +131,6 @@ export function analyzeMojoCall(
     call: callNode,
     sourceCall,
     source: context.source,
-    projectTypes: context.projectTypes,
     resolveType: resolve,
   });
   if (rawPointer.kind === "unsupported") return rawPointer;

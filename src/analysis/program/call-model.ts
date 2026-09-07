@@ -101,13 +101,6 @@ export type MojoCallSelection =
     }
   | {
       readonly kind: "raw-pointer";
-      readonly operation: "bind";
-      readonly identityExpression: Node;
-      readonly identityType: MojoTargetTypeRef;
-      readonly resultType: MojoTargetTypeRef;
-    }
-  | {
-      readonly kind: "raw-pointer";
       readonly operation: "equal";
       readonly leftExpression: Node;
       readonly leftType: MojoTargetTypeRef;

@@ -1,4 +1,4 @@
-import type { MojoCatchClause, MojoStatement } from "../../backend/target-ast/index.js";
+import type { MojoCatchClause, MojoExpression, MojoStatement } from "../../backend/target-ast/index.js";
 import {
   block,
   concat,
@@ -6,6 +6,7 @@ import {
   group,
   hardLine,
   join,
+  parenthesizedLayout,
   text,
 } from "../document/builders.js";
 import type { MojoDocument } from "../document/model.js";
@@ -13,6 +14,13 @@ import type { MojoPrintContext } from "./context.js";
 import { printMojoExpressionDocument } from "./expressions.js";
 import { printMojoFunctionDocument } from "./declarations.js";
 import { requiredMojoTypeDocument } from "./types.js";
+
+function printStatementValue(expression: MojoExpression, context: MojoPrintContext): MojoDocument {
+  const document = printMojoExpressionDocument(expression, context);
+  return expression.kind === "binary" || expression.kind === "conditional"
+    ? document
+    : parenthesizedLayout(document);
+}
 
 export function printMojoStatementDocument(
   statement: MojoStatement,
@@ -22,7 +30,7 @@ export function printMojoStatementDocument(
     case "local-function": return printMojoFunctionDocument(statement.declaration, context);
     case "return": return statement.expression === undefined
       ? text("return")
-      : group(concat(text("return "), printMojoExpressionDocument(statement.expression, context)));
+      : group(concat(text("return "), printStatementValue(statement.expression, context)));
     case "variable": return group(concat(
       text(`${statement.compileTime === true ? "comptime" : statement.reference === true ? "ref" : "var"} ${statement.name}`),
       statement.type === undefined
@@ -30,7 +38,7 @@ export function printMojoStatementDocument(
         : concat(text(": "), requiredMojoTypeDocument(statement.type, context)),
       statement.initializer === undefined
         ? emptyDocument
-        : concat(text(" = "), printMojoExpressionDocument(statement.initializer, context)),
+        : concat(text(" = "), printStatementValue(statement.initializer, context)),
     ));
     case "tuple-variable": {
       const names = statement.names.length === 1
@@ -44,7 +52,7 @@ export function printMojoStatementDocument(
     case "assignment": return group(concat(
       printMojoExpressionDocument(statement.left, context),
       text(` ${statement.operator} `),
-      printMojoExpressionDocument(statement.right, context),
+      printStatementValue(statement.right, context),
     ));
     case "expression": return printMojoExpressionDocument(statement.expression, context);
     case "discard": return group(concat(

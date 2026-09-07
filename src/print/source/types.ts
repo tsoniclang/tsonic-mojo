@@ -143,7 +143,7 @@ export function printMojoTypeDocument(
               : concat(text(" "), requiredMojoTypeDocument(type.errorType, context)),
           )
         : emptyDocument;
-      return group(concat(
+      return concat(
         text(type.asynchronous ? "async def" : "def"),
         generics,
         parameters,
@@ -152,7 +152,7 @@ export function printMojoTypeDocument(
         error,
         text(" -> "),
         printMojoTypeDocument(type.result, context) ?? text("None"),
-      ));
+      );
     }
   }
 }

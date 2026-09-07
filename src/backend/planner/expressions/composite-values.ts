@@ -1,4 +1,5 @@
 import type { Node } from "@tsonic/tsts";
+import { planMojoNumericExpression } from "./numeric.js";
 import {
   BinaryExpression_Left,
   BinaryExpression_Right,
@@ -56,8 +57,6 @@ const binaryOperatorText = new Map<string, string>([
   ["KindLessThanEqualsToken", "<="], ["KindGreaterThanToken", ">"],
   ["KindGreaterThanEqualsToken", ">="], ["KindAmpersandAmpersandToken", "and"],
   ["KindBarBarToken", "or"], ["KindAsteriskAsteriskToken", "**"],
-  ["KindAmpersandToken", "&"], ["KindBarToken", "|"], ["KindCaretToken", "^"],
-  ["KindLessThanLessThanToken", "<<"], ["KindGreaterThanGreaterThanToken", ">>"],
 ]);
 
 export function planArrayLiteral(
@@ -336,6 +335,9 @@ export function planBinary(
   context: MojoPlanningContext,
   planNested: MojoCompositeValuePlanner,
 ): MojoValuePlan | undefined {
+  if (context.program.queries.intrinsicExpressionSelection(node)?.kind === "numeric") {
+    return planMojoNumericExpression(node, context, planNested);
+  }
   const { ast } = context.program.source;
   const typeTest = context.program.queries.typeTestSelection(node);
   if (typeTest !== undefined) return planMojoTypeTest(typeTest, context, planNested);

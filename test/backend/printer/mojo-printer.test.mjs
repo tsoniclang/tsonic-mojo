@@ -14,12 +14,178 @@ function statementModule(statements) {
   };
 }
 
+test("printer gives long binary chains one continuation region without reassociation", () => {
+  const call = (name) => ({ kind: "call", callee: { kind: "path", path: name }, arguments: [] });
+  const first = call("first_value_with_a_meaningful_name");
+  const second = call("second_value_with_a_meaningful_name");
+  const third = call("third_value_with_a_meaningful_name");
+  const expression = { kind: "binary", operator: "+",
+    left: { kind: "binary", operator: "+", left: first, right: second }, right: third };
+  const printed = printMojoModule(statementModule([{ kind: "return", expression }]));
+  assert.match(printed, /return \(\n        first_value_with_a_meaningful_name\(\)\n        \+ second_value_with_a_meaningful_name\(\)\n        \+ third_value_with_a_meaningful_name\(\)\n    \)/u);
+  assert.equal(expression.left.left, first);
+  assert.equal(expression.left.right, second);
+  assert.equal(expression.right, third);
+  const nested = { ...expression, left: first,
+    right: { kind: "binary", operator: "+", left: second, right: third } };
+  assert.match(printMojoModule(statementModule([{ kind: "return", expression: nested }])),
+    /\+ \([^]*second_value_with_a_meaningful_name\(\)[^]*third_value_with_a_meaningful_name\(\)[^]*\)/u);
+});
+
+test("printer normalizes decimal exponent spelling without changing hexadecimal digits", () => {
+  const printed = printMojoModule(statementModule(["1e+21", "1E-7", "0x1e21"].map((value) => ({
+    kind: "discard", expression: { kind: "number-literal", text: value },
+  }))));
+  assert.match(printed, /_ = 1e21\n    _ = 1e-7\n    _ = 0x1e21/u);
+});
+
+test("printer separates top-level compound declarations with two blank lines", () => {
+  const module = statementModule([{ kind: "pass" }]);
+  module.imports = [{ kind: "module", modulePath: ["example"] }];
+  module.declarations.push({ ...module.declarations[0], name: "second" });
+  const printed = printMojoModule(module);
+  assert.match(printed, /import example\n\n\ndef choose/u);
+  assert.match(printed, /    pass\n\n\ndef second/u);
+});
+
+test("printer keeps an early type annotation flat when the initializer can break", () => {
+  const module = statementModule([{
+    kind: "variable", name: "candidate",
+    type: { kind: "optional", value: { kind: "source-primitive", name: "float64" } },
+    initializer: {
+      kind: "call", callee: { kind: "path", path: "create_optional" },
+      arguments: [{ value: { kind: "path", path: "selected_argument_with_a_long_but_meaningful_name" } }],
+    },
+  }]);
+  module.imports = [{ kind: "symbols", modulePath: ["std", "collections"], symbols: [{ name: "Optional" }] }];
+  const printed = printMojoModule(module);
+  assert.match(printed, /var candidate: Optional\[Float64\] = create_optional\(\n/u);
+  assert.doesNotMatch(printed, /Optional\[\n/u);
+});
+
+test("printer keeps subscript evaluation intact while allowing bracket line breaks", () => {
+  const numeric = { kind: "source-primitive", name: "float64" };
+  const scalar = (value) => ({
+    kind: "construct", type: numeric, arguments: [{ value: { kind: "number-literal", text: value } }],
+  });
+  const path = (name) => ({ kind: "path", path: name });
+  const compare = (left) => ({ kind: "binary", operator: "==", left, right: scalar("28") });
+  const module = statementModule([{
+    kind: "variable", name: "_binary_left_2", type: { kind: "source-primitive", name: "bool" },
+    initializer: { kind: "binary", operator: "and", left: compare(path("indexed")),
+      right: compare({ kind: "element", receiver: path("values"), index: scalar("0") }) },
+  }]);
+  assert.match(printMojoModule(module), /indexed == Float64\(28\) and values\[\s*Float64\(0\)\s*\] == Float64\(28\)/u);
+  const sideEffect = { kind: "call", callee: path("next_index"), arguments: [] };
+  module.declarations[0].statements[0].initializer.right.left.index = sideEffect;
+  const printed = printMojoModule(module);
+  assert.equal(printed.match(/next_index\(\)/gu)?.length, 1);
+  assert.doesNotMatch(printed, /next_index\(\),\s*\]/u);
+});
+
+test("printer keeps native callable parameter and result layouts independent", () => {
+  const object = { kind: "target-named", id: "project-object", modulePath: [], name: "ProjectObject" };
+  const signature = {
+    kind: "function", genericParameters: [], parameters: [{ type: object, convention: "imm" }],
+    result: { kind: "optional", value: object }, raises: false, asynchronous: false, thin: true,
+  };
+  const module = {
+    modulePath: [], typeAliases: [],
+    imports: [{ kind: "symbols", modulePath: ["std", "collections"], symbols: [{ name: "Optional" }] }],
+    declarations: [{ kind: "struct", name: "BaseScore", genericParameters: [], conformances: [], methods: [],
+      fields: [{ name: "_downcast_DerivedScore_dispatch", type: signature, compileTime: false }] }],
+  };
+  const printed = printMojoModule(module);
+  assert.match(printed, /def\(ProjectObject\) thin -> Optional\[\n        ProjectObject,\n    \]/u);
+  assert.equal(signature.parameters.length, 1);
+  assert.equal(signature.result.value, object);
+});
+
+test("printer keeps a short expression flat after its declaration prefix breaks", () => {
+  const call = (name) => ({ kind: "call", callee: { kind: "path", path: name }, arguments: [] });
+  const printed = printMojoModule(statementModule([{
+    kind: "variable", name: "selected_condition_with_full_annotation",
+    type: { kind: "source-primitive", name: "bool" },
+    initializer: { kind: "binary", operator: "or", left: call("first_condition"), right: call("second_condition") },
+  }]));
+  assert.match(printed, /= \(\n        first_condition\(\) or second_condition\(\)\n    \)/u);
+  assert.equal((printed.match(/first_condition\(\)/gu) ?? []).length, 1);
+  assert.equal((printed.match(/second_condition\(\)/gu) ?? []).length, 1);
+});
+
+test("printer preserves nested conditional branches with one evaluation of each operand", () => {
+  const call = (name) => ({ kind: "call", callee: { kind: "path", path: name }, arguments: [] });
+  const expression = {
+    kind: "conditional", condition: call("first_condition"), whenTrue: call("first_selected_result"),
+    whenFalse: { kind: "conditional", condition: call("second_condition"),
+      whenTrue: call("second_selected_result"), whenFalse: call("final_selected_result") },
+  };
+  const printed = printMojoModule(statementModule([{ kind: "return", expression }]));
+  assert.match(printed, /return first_selected_result\(\)/u);
+  for (const name of ["first_condition", "first_selected_result", "second_condition", "second_selected_result", "final_selected_result"]) {
+    assert.equal(printed.split(`${name}()`).length - 1, 1);
+  }
+  assert.match(printed, /first_selected_result\(\)\s+if first_condition\(\)\s+else \(/u);
+});
+
+test("printer can break a long result annotation without changing the type", () => {
+  const module = statementModule([{ kind: "pass" }]);
+  module.declarations[0] = {
+    ...module.declarations[0], name: "selected_operation_operation_operation_operation_closed", raises: true,
+    errorType: { kind: "target-named", id: "error", modulePath: [], name: "Error" },
+  };
+  assert.match(printMojoModule(module), / raises Error -> \(\n    Bool\n\):/u);
+});
+
+test("printer orders conformance syntax canonically without changing the selected set", () => {
+  const module = {
+    modulePath: [], imports: [], typeAliases: [],
+    declarations: [{
+      kind: "struct", name: "Value", genericParameters: [], fields: [], methods: [],
+      conformances: ["ImplicitlyCopyable", "Equatable"].map((name) => ({
+        kind: "target-named", id: name, modulePath: [], name,
+      })),
+    }],
+  };
+  assert.match(printMojoModule(module), /struct Value\(Equatable, ImplicitlyCopyable\):/u);
+  assert.equal(module.declarations[0].conformances[0].name, "ImplicitlyCopyable");
+});
+
 test("printer separates a terminal nested try from its containing finally", () => {
   const inner = { kind: "try", statements: [{ kind: "pass" }], catches: [{ statements: [{ kind: "pass" }] }] };
   const outer = { kind: "try", statements: [inner], catches: [], finallyStatements: [{ kind: "pass" }] };
   assert.match(printMojoModule(statementModule([outer])), /        except:\n            pass\n        pass\n    finally:/u);
   const separated = { ...outer, statements: [inner, { kind: "pass" }] };
   assert.equal(printMojoModule(statementModule([outer])), printMojoModule(statementModule([separated])));
+});
+
+test("printer keeps scalar literals intact while breaking their enclosing operation", () => {
+  const value = { kind: "construct", type: { kind: "source-primitive", name: "float64" },
+    arguments: [{ value: { kind: "number-literal", text: "100" } }],
+  };
+  const expression = { kind: "binary", operator: "+",
+    left: { kind: "path", path: "first_meaningful_operand_with_a_long_name" },
+    right: { kind: "binary", operator: "*", left: value,
+      right: { kind: "path", path: "second_meaningful_operand_with_a_long_name" } },
+  };
+  const printed = printMojoModule(statementModule([{ kind: "return", expression }]));
+  assert.match(printed, /Float64\(100\)/u);
+  assert.doesNotMatch(printed, /Float64\(\n/u);
+});
+
+test("printer chooses string delimiters without changing escaped characters", () => {
+  const examples = [
+    ["plain", '"plain"'],
+    ['say "hello"', `'say "hello"'`],
+    ["it's fine", '"it\'s fine"'],
+    ['"\\ud800"', `'"\\\\ud800"'`],
+    ['"\\"', `'"\\\\"'`],
+    ['"\n"', `'"\\n"'`],
+  ];
+  for (const [value, literal] of examples) {
+    const printed = printMojoModule(statementModule([{ kind: "return", expression: { kind: "string-literal", value } }]));
+    assert.ok(printed.includes(`return ${literal}\n`), printed);
+  }
 });
 
 test("printer preserves branch regions while spelling a single conditional tail as elif", () => {
@@ -164,6 +330,7 @@ test("printer emits typed declarations and structured control flow", () => {
     printMojoModule(module),
     [
       "from std.collections import List, Optional as Maybe",
+      "",
       "",
       "struct Counter:",
       "    var value: Int32",

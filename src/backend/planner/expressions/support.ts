@@ -268,6 +268,14 @@ export function prepareMojoReceiver(
   registerMojoTypeImports(actualType, context);
   const receiverName = allocateMojoSyntheticName(context, "optional_receiver");
   const receiverPath: MojoExpression = Object.freeze({ kind: "path", path: receiverName });
+  const explicitCopy = context.program.lifecycle.capabilities(actualType).copy === "explicit";
+  const present: MojoExpression = Object.freeze({
+    kind: "method-call",
+    receiver: receiverPath,
+    name: "value",
+    arguments: Object.freeze([]),
+  });
+  const valueName = explicitCopy ? allocateMojoSyntheticName(context, "optional_value") : undefined;
   return Object.freeze({
     kind: "optional",
     before: Object.freeze([
@@ -276,16 +284,20 @@ export function prepareMojoReceiver(
         kind: "variable",
         name: receiverName,
         type: actualType,
-        initializer: receiver.value,
+        initializer: explicitCopy && isStableMojoLocation(receiver.value)
+          ? Object.freeze({ kind: "copy", expression: receiver.value })
+          : receiver.value,
       }),
     ]),
     condition: receiverPath,
-    plan: mojoValue(Object.freeze({
-      kind: "method-call",
-      receiver: receiverPath,
-      name: "value",
-      arguments: Object.freeze([]),
-    })),
+    plan: valueName === undefined
+      ? mojoValue(present)
+      : withMojoValue([Object.freeze({
+          kind: "variable",
+          name: valueName,
+          reference: true,
+          initializer: present,
+        })], Object.freeze({ kind: "path", path: valueName })),
   });
 }
 

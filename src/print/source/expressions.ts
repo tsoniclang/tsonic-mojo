@@ -5,6 +5,7 @@ import type {
   MojoParameter,
 } from "../../backend/target-ast/index.js";
 import {
+  chooseLayout,
   concat,
   delimitedList,
   emptyDocument,
@@ -58,7 +59,9 @@ function printExpressionAtPrecedence(
     case "qualified-path": return text(renderQualifiedPath(expression.segments, context));
     case "type-value": return requiredMojoTypeDocument(expression.type, context);
     case "string-literal": return text(quoteMojoString(expression.value));
-    case "number-literal": return text(expression.text);
+    case "number-literal": return text(expression.text.replace(
+      /^(\d+(?:\.\d*)?|\.\d+)[eE]\+?(-?\d+)$/u, "$1e$2",
+    ));
     case "bool-literal": return text(expression.value ? "True" : "False");
     case "none-literal": return text("None");
     case "tuple": {
@@ -89,15 +92,18 @@ function printExpressionAtPrecedence(
       printMojoExpressionDocument(expression.operand, context, unaryPrecedence),
     ));
     case "binary": return printBinaryDocument(expression, context, precedence);
-    case "conditional": return parenthesizeWhenBroken(concat(
-      printMojoExpressionDocument(expression.whenTrue, context, conditionalPrecedence + 1),
-      line,
-      text("if "),
-      printMojoExpressionDocument(expression.condition, context, conditionalPrecedence + 1),
-      line,
-      text("else "),
-      printMojoExpressionDocument(expression.whenFalse, context, conditionalPrecedence),
-    ));
+    case "conditional": {
+      const whenTrue = printMojoExpressionDocument(expression.whenTrue, context, conditionalPrecedence + 1);
+      const condition = printMojoExpressionDocument(expression.condition, context, conditionalPrecedence + 1);
+      const whenFalseValue = printMojoExpressionDocument(expression.whenFalse, context, conditionalPrecedence);
+      const whenFalse = expression.whenFalse.kind === "conditional"
+        ? parenthesizeWhenBroken(whenFalseValue)
+        : whenFalseValue;
+      return chooseLayout(
+        concat(whenTrue, text(" if "), condition, text(" else "), whenFalse),
+        parenthesizeWhenBroken(concat(whenTrue, line, text("if "), condition, line, text("else "), whenFalse)),
+      );
+    }
     case "call": return group(concat(
       printMojoExpressionDocument(expression.callee, context, postfixPrecedence),
       expression.genericArguments === undefined || expression.genericArguments.length === 0
@@ -119,9 +125,9 @@ function printExpressionAtPrecedence(
     );
     case "element": return concat(
       printMojoExpressionDocument(expression.receiver, context, postfixPrecedence),
-      text("["),
-      printMojoExpressionDocument(expression.index, context),
-      text("]"),
+      delimitedList("[", [printMojoExpressionDocument(expression.index, context)], "]", {
+        trailingComma: false,
+      }),
     );
     case "proven-union-member": return concat(
       printMojoExpressionDocument(expression.receiver, context, postfixPrecedence),
@@ -144,13 +150,22 @@ function printExpressionAtPrecedence(
         : concat(text(":"), printMojoExpressionDocument(expression.step, context)),
       text("]"),
     );
-    case "construct": return group(concat(
-      requiredMojoTypeDocument(expression.type, context),
-      expression.genericArguments === undefined || expression.genericArguments.length === 0
-        ? emptyDocument
-        : printGenericArguments(expression.genericArguments, context),
-      printCallArguments(expression.arguments, context),
-    ));
+    case "construct": {
+      const argument = expression.arguments.length === 1 ? expression.arguments[0] : undefined;
+      const scalarLiteral = expression.type.kind === "source-primitive" &&
+        argument !== undefined && argument.name === undefined && argument.spread !== true &&
+        (argument.value.kind === "number-literal" || argument.value.kind === "bool-literal" ||
+          (argument.value.kind === "unary" && argument.value.operand.kind === "number-literal"));
+      return group(concat(
+        requiredMojoTypeDocument(expression.type, context),
+        expression.genericArguments === undefined || expression.genericArguments.length === 0
+          ? emptyDocument
+          : printGenericArguments(expression.genericArguments, context),
+        scalarLiteral
+          ? concat(text("("), printMojoExpressionDocument(argument.value, context), text(")"))
+          : printCallArguments(expression.arguments, context),
+      ));
+    }
     case "forced-comptime": return concat(
       text("comptime"),
       delimitedList("(", [printMojoExpressionDocument(expression.expression, context)], ")"),
@@ -219,7 +234,8 @@ function printBinaryDocument(
   context: MojoPrintContext,
   precedence: number,
 ): MojoDocument {
-  if (expression.operator === "and" || expression.operator === "or") {
+  if (expression.operator === "and" || expression.operator === "or" ||
+    expression.operator === "+" || expression.operator === "*") {
     const operands: MojoExpression[] = [];
     let current: MojoExpression = expression;
     while (current.kind === "binary" && current.operator === expression.operator) {
@@ -228,23 +244,26 @@ function printBinaryDocument(
     }
     operands.push(current);
     operands.reverse();
+    const documents = operands.map((operand) => printMojoExpressionDocument(operand, context, precedence + 1));
     return parenthesizeWhenBroken(join(
       concat(line, text(`${expression.operator} `)),
-      operands.map((operand) => printMojoExpressionDocument(operand, context, precedence + 1)),
+      documents,
     ));
   }
+  const left = printMojoExpressionDocument(expression.left, context, precedence === 40 ? precedence + 1 : precedence);
+  const right = printMojoExpressionDocument(expression.right, context, precedence + 1);
   return parenthesizeWhenBroken(concat(
-    printMojoExpressionDocument(expression.left, context, precedence === 40 ? precedence + 1 : precedence),
+    left,
     line,
     text(`${expression.operator} `),
-    printMojoExpressionDocument(expression.right, context, precedence + 1),
+    right,
   ));
 }
 
 function parenthesizeWhenBroken(document: MojoDocument): MojoDocument {
   return group(concat(
     ifBreak(text("(")),
-    indent(4, concat(ifBreak(hardLine), document)),
+    indent(4, concat(ifBreak(hardLine), group(document))),
     ifBreak(hardLine),
     ifBreak(text(")")),
   ));
@@ -354,7 +373,10 @@ function binaryOperatorPrecedence(operator: string): number {
 }
 
 function quoteMojoString(value: string): string {
-  return JSON.stringify(value).replace(/\\u2028/gu, "\\u{2028}").replace(/\\u2029/gu, "\\u{2029}");
+  const doubleQuoted = JSON.stringify(value).replace(/\\u2028/gu, "\\u{2028}").replace(/\\u2029/gu, "\\u{2029}");
+  const singleQuoted = `'${doubleQuoted.slice(1, -1).replace(/\\.|'/gu, (token) =>
+    token === '\\"' ? '"' : token === "'" ? "\\'" : token)}'`;
+  return singleQuoted.length < doubleQuoted.length ? singleQuoted : doubleQuoted;
 }
 
 function renderQualifiedPath(

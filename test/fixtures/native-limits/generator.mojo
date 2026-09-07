@@ -1,2 +1,2 @@
-fn values():
+def values():
     yield 1
