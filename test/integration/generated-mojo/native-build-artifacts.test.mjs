@@ -8,7 +8,7 @@ function outputPlan(outputType) {
       packageName: "native_fixture",
       outputType,
       project: { kind: "generated" },
-      compilerProvider: {},
+      compilerProvider: { command: { executable: "mojo", arguments: [], workingDirectory: process.cwd() } },
       toolchain: {
         kind: "pixi-mojo",
         compilerVersion: "1.1.0.dev2026083005",

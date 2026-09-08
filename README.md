@@ -4,6 +4,20 @@ The Mojo target pack for Tsonic. It consumes finalized TSTS source semantics,
 seals a target-owned Mojo program, plans typed Mojo syntax, and materializes a
 deterministic Pixi/Mojo source project.
 
+Generation requires the pinned Mojo compiler. The pure AST printer produces
+source, then artifact materialization runs `mojo format` in bounded batches in
+a private staging directory. Only a completely formatted output set is returned
+for atomic publication; formatter/version failures produce
+`MOJO_SOURCE_FORMATTING_FAILED`, never unformatted fallback output. Non-Mojo
+artifacts remain unchanged. Imported native package sources are adopted
+byte-for-byte, not regenerated; their owners maintain their canonical formatting.
+
+By default `mojo` must be on PATH. The existing `options.compiler` command may
+instead select an explicit executable, arguments and working directory (for
+example a project's locked Pixi wrapper). This same command supplies native
+provider queries and formatting. Run the test suite in that pinned SDK
+environment, for example `pixi run --manifest-path ../mojo-runtime/pixi.toml npm test`.
+
 The supported compiler is pinned to Mojo `1.1.0.dev2026083005`. Native Mojo is
 the default source profile; JavaScript semantics are enabled only by selecting
 the `js` surface, and Node APIs are supplied independently by

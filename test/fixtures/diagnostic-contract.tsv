@@ -515,6 +515,7 @@ MOJO_SOURCE_CALLABLE_SPECIALIZATION_KIND_CONFLICT	analysis	internal-invariant	re
 MOJO_SOURCE_CALLABLE_SPECIALIZATION_NOT_SEALED	planning	internal-invariant	reviewed-other	-	-	-	-
 MOJO_SOURCE_CALLABLE_SPECIALIZATION_SHAPE_UNSUPPORTED	analysis	target-gap	split-or-delete	-	-	-	-
 MOJO_SOURCE_CALLABLE_SPECIALIZATION_UNCLOSED	analysis	internal-invariant	reviewed-other	-	-	-	-
+MOJO_SOURCE_FORMATTING_FAILED	materialization	exact-rejection	retain-exact-guard	test/backend/emission/mojo-format.test.mjs#full-target-compilation	test/backend/emission/mojo-format.test.mjs#native-formatting	test/backend/emission/mojo-format.test.mjs#later-batch-failure	-
 MOJO_SOURCE_METHOD_SPECIALIZATION_NOT_SEALED	planning	internal-invariant	reviewed-other	-	-	-	-
 MOJO_SOURCE_MODULE_DECLARATION_MISSING	analysis	internal-invariant	reviewed-other	-	-	-	-
 MOJO_SOURCE_MODULE_IDENTITY_COLLISION	analysis	exact-rejection	reviewed-other	-	-	-	-
