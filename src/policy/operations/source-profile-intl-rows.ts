@@ -14,6 +14,16 @@ export const mojoIntlSourceProfileCallRows: readonly MojoSourceProfileCallRow[] 
     target: Object.freeze({ kind: "function", modulePath: Object.freeze(["tsonic_js"]), name: "intl_datetime_format_new" }),
   }),
   ...jsInstanceRows("IntlDateTimeFormat", "imm", [["resolvedOptions", "resolved_options", true]]),
+  Object.freeze({
+    profile: "js", kind: "construct", owner: "IntlNumberFormatConstructor", member: "constructor", raises: true,
+    parameterContract: Object.freeze(["js-data", "js-data"]),
+    target: Object.freeze({ kind: "function", modulePath: Object.freeze(["tsonic_js"]), name: "intl_number_format_new" }),
+  }),
+  ...[["format", "format"], ["formatToParts", "format_to_parts"]].map(([member, name]): MojoSourceProfileCallRow => Object.freeze({
+    profile: "js", kind: "call", owner: "IntlNumberFormat", member, raises: true,
+    parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["selected-argument"]),
+    target: Object.freeze({ kind: "instance", name, receiver: "imm" }),
+  })),
   ...[0, 1].flatMap((argumentCount) => [
     ["format", "format"], ["formatToParts", "format_to_parts"],
   ].map(([member, name]): MojoSourceProfileCallRow => Object.freeze({

@@ -26,6 +26,10 @@ const propertyOwners: ReadonlyMap<string, IntlPropertyOwner> = new Map([
     target: "IntlFormatPart",
     members: new Map([["type", "type"], ["value", "value"]]),
   }],
+  ["IntlNumberFormatPart", {
+    target: "IntlFormatPart",
+    members: new Map([["type", "type"], ["value", "value"]]),
+  }],
 ]);
 
 export function mojoIntlSourceProfileProperty(

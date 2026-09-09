@@ -8,6 +8,8 @@ const typeNames: ReadonlyMap<string, string> = new Map([
   ["IntlDateTimeFormat", "IntlDateTimeFormat"],
   ["IntlResolvedDateTimeFormatOptions", "IntlResolvedDateTimeFormatOptions"],
   ["IntlDateTimeFormatPart", "IntlFormatPart"],
+  ["IntlNumberFormat", "IntlNumberFormat"],
+  ["IntlNumberFormatPart", "IntlFormatPart"],
 ]);
 
 export function mojoIntlSourceProfileType(name: string): MojoTargetTypeRef | undefined {
