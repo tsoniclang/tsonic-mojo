@@ -2,7 +2,6 @@ import type {
   AstReader,
   Node,
   ReadonlySourceFactResolver,
-  SourceFile,
   Symbol,
 } from "@tsonic/tsts";
 import { providerVirtualDeclarationFactKey } from "@tsonic/tsts";
@@ -41,18 +40,18 @@ export interface MojoSourceProfileRegistry {
   ): MojoSourceProfileTypeIdentity | undefined;
   declarationIdentity(
     declaration: Node | undefined,
-    source: TargetSourceProgram,
   ): MojoSourceProfileDeclarationIdentity | undefined;
 }
 
 export function createMojoSourceProfileRegistry(
-  sourceFiles: readonly SourceFile[],
-  ast: AstReader,
+  source: TargetSourceProgram,
   jsEnabled: boolean,
 ): MojoSourceProfileRegistry {
+  const { ast } = source;
   const owners = new Map<MojoSourceProfileKind, string>();
   const ambiguous = new Set<MojoSourceProfileKind>();
-  for (const sourceFile of sourceFiles) {
+  for (const sourceFile of source.sourceFiles) {
+    if (sourceFile === undefined) continue;
     const fileName = normalizeFileName(ast.getFileName(sourceFile));
     const profile = profileForFileName(fileName, jsEnabled);
     if (profile === undefined || ambiguous.has(profile)) continue;
@@ -102,7 +101,6 @@ export function createMojoSourceProfileRegistry(
     },
     declarationIdentity(
       declaration: Node | undefined,
-      source: TargetSourceProgram,
     ) {
       if (declaration === undefined) return undefined;
       const provider = jsProviderDeclarationIdentity(

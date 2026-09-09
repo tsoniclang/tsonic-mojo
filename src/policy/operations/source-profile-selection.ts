@@ -1,5 +1,5 @@
-import type { Node, ResolvedSourceCallInfo } from "@tsonic/tsts";
-import type { TargetSourceProgram } from "@tsonic/target-api/source";
+import type { AstReader, Node, ResolvedSourceCallInfo } from "@tsonic/tsts";
+import type { SourceFileSemantics } from "@tsonic/target-api/source";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type {
   MojoSourceProfileDeclarationIdentity,
@@ -110,19 +110,18 @@ export type MojoSourceProfileCallRowSelection =
   | { readonly kind: "unsupported"; readonly code: string; readonly reason: string };
 
 export function selectMojoSourceProfileCallRow(
-  source: TargetSourceProgram,
   call: ResolvedSourceCallInfo,
   profiles: MojoSourceProfileRegistry,
   argumentTypes: readonly (MojoTargetTypeRef | undefined)[],
+  context: { readonly ast: AstReader; readonly semantics: SourceFileSemantics },
 ): MojoSourceProfileCallRowSelection {
-  const semantics = source.semantics.forNode(call.call);
+  const { ast, semantics } = context;
   const signatureDeclaration = semantics.declarations.signatureDeclaration(call.selectedSignature);
   const identity = profiles.declarationIdentity(
     signatureDeclaration,
-    source,
   );
   if (identity === undefined) return { kind: "not-source-profile" };
-  const expectedKind = source.ast.is.IsNewExpression(call.call) ? "construct" : "call";
+  const expectedKind = ast.is.IsNewExpression(call.call) ? "construct" : "call";
   const owner = identity.declaringName ?? identity.name;
   const member = expectedKind === "construct"
     ? "constructor"
@@ -141,7 +140,6 @@ export function selectMojoSourceProfileCallRow(
   ].flatMap((declaration) => {
     const selected = profiles.declarationIdentity(
       declaration,
-      source,
     );
     return selected === undefined ? [] : [selected];
   });
@@ -191,7 +189,6 @@ function sourceProfileArgumentCarriersMatch(
 }
 
 export function selectedMojoSourceProfileDeclarationIdentity(
-  source: TargetSourceProgram,
   profiles: MojoSourceProfileRegistry,
   declarations: readonly (Node | undefined)[],
 ): MojoSourceProfileDeclarationIdentity | undefined {
@@ -200,7 +197,6 @@ export function selectedMojoSourceProfileDeclarationIdentity(
     if (declaration === undefined) continue;
     const identity = profiles.declarationIdentity(
       declaration,
-      source,
     );
     if (identity === undefined) continue;
     if (selected !== undefined && !sameSourceProfileIdentity(selected, identity)) return undefined;

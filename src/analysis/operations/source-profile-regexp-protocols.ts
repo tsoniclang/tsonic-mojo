@@ -34,7 +34,6 @@ export function analyzeSourceProfileRegExpProtocolCall(
   );
   const identity = context.sourceProfiles.declarationIdentity(
     signatureDeclaration,
-    context.source,
   );
   const protocolKind = identity?.profile === "js" &&
       (identity.declaringName ?? identity.name) === jsRegExpSourceProfileIdentity.owners.string

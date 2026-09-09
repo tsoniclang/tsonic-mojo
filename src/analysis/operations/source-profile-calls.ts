@@ -45,10 +45,10 @@ export function analyzeSourceProfileCall(
   const sourceArgumentTypes = sourceCall.sourceArguments.map((argument) =>
     context.expressionTypes.get(argument.expression) ?? resolve(argument.type));
   const selected = selectMojoSourceProfileCallRow(
-    context.source,
     sourceCall,
     context.sourceProfiles,
     sourceArgumentTypes,
+    { ast: context.source.ast, semantics: context.source.semantics.forNode(sourceCall.call) },
   );
   if (selected.kind === "not-source-profile") return undefined;
   if (selected.kind === "unsupported") return selected;

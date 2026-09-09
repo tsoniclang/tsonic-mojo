@@ -248,7 +248,6 @@ function analyzeSourceProfileProperty(
   context: MojoProviderPropertyAnalysisContext,
 ): MojoPropertyAnalysis | undefined {
   const identity = selectedMojoSourceProfileDeclarationIdentity(
-    context.source,
     context.sourceProfiles,
     [source.selectedDeclaration, source.selectedReadDeclaration, source.selectedWriteDeclaration],
   );

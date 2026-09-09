@@ -30,7 +30,8 @@ test("generic borrowed strings retain their selected element carrier", () => {
     function insert<T>(values: T[], value: T): number { return values.push(value); }
     export function main(): void { insert<string>([], "header.html"); }
   `);
-  assert.match(source, /\.push\(values=\[value\]\)/u);
+  assert.match(source, /def insert\[T: Copyable & Deinitable\]/u);
+  assert.match(source, /\.push\(values=\[value\.copy\(\)\]\)/u);
   assert.doesNotMatch(source, /\.push\(value\)/u);
 });
 
