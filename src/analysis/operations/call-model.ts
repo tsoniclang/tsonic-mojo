@@ -244,7 +244,7 @@ export type MojoCallSelection =
   | {
       readonly kind: "json-stringify";
       readonly arguments: readonly MojoAnalyzedCallArgument[];
-      readonly replacer: "none" | "callable";
+      readonly replacer: "none" | "callable" | "property-list";
       readonly space: "none" | "number" | "string";
       readonly runtimeResultType: MojoTargetTypeRef;
       readonly resultType: MojoTargetTypeRef;

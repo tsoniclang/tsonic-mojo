@@ -2,18 +2,19 @@ import type { Node } from "@tsonic/tsts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import { collectionShape, jsValueBoxConversion } from "../../policy/conversions/javascript-conversions.js";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
-import type { MojoJsValueField, MojoJsValueProjection, MojoJsValueGenericParameter } from "../../target-model/conversions/js-value-graph.js";
+import type { MojoJsValueField, MojoJsValueProjection, MojoJsValueGenericParameter, MojoJsValueAccessor } from "../../target-model/conversions/js-value-graph.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoTargetTypeKey } from "../../target-model/types/key.js";
 import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
 import type { MojoStructuralObjectCatalog } from "../bindings/structural-objects.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
-import type { MojoAnalyzedClass, MojoAnalyzedProjectCallable } from "../program/model.js";
+import type { MojoAnalyzedClass, MojoAnalyzedProjectCallable, MojoAnalyzedAccessorProperty } from "../program/model.js";
 import { selectMojoJsonMethod } from "./js-value-json-method.js";
 import { sourceValueGenericParameters } from "./js-value-generics.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import { mojoProjectFieldStoragePath } from "../../target-model/types/project-storage.js";
 import type { MojoSourceModuleCatalog } from "../source-modules/model.js";
+import { selectMojoSourceValueAccessors } from "./js-value-accessors.js";
 
 export interface MojoJsValueGraphContext {
   readonly source: TargetSourceProgram;
@@ -24,6 +25,7 @@ export interface MojoJsValueGraphContext {
   readonly classByTypeId: ReadonlyMap<string, MojoAnalyzedClass>;
   readonly genericParameters: ReadonlyMap<string, MojoJsValueGenericParameter>;
   readonly modules: MojoSourceModuleCatalog;
+  readonly accessorByDeclaration: WeakMap<Node, MojoAnalyzedAccessorProperty>;
 }
 
 export type MojoJsValueGraphSelection =
@@ -89,7 +91,7 @@ export function selectMojoJsValueConversion(
         fields.push(Object.freeze({ sourceName: field.sourceName, projection,
           access: Object.freeze({ kind: "structural", index }) }));
       }
-      return finish({ id, sourceType: type, kind: "object", identity: "structural", sourceCopy, fields: Object.freeze(fields) });
+      return finish({ id, sourceType: type, kind: "object", identity: "structural", sourceCopy, fields: Object.freeze(fields), accessors: Object.freeze([]) });
     }
     const owner = context.projectRelationships.definitionForType(type);
     const project = owner === undefined ? undefined : context.classByTypeId.get(owner.id);
@@ -141,7 +143,16 @@ export function selectMojoJsValueConversion(
       if (selected.kind === "unsupported") return reject(selected.reason);
       const resultProjection = selected.kind === "resolved" ? visit(selected.resultType) : undefined;
       if (selected.kind === "resolved" && resultProjection === undefined) return undefined;
+      const selectedAccessors = selectMojoSourceValueAccessors(type, new Set(fields.keys()), context);
+      if (selectedAccessors === undefined) return reject("A source-value property lookup has no exact accessor contract.");
+      const accessors: MojoJsValueAccessor[] = [];
+      for (const accessor of selectedAccessors) {
+        const resultProjection = visit(accessor.resultType);
+        if (resultProjection === undefined) return undefined;
+        accessors.push(Object.freeze({ ...accessor, resultProjection }));
+      }
       return finish({ id, sourceType: type, kind: "object", sourceCopy, fields: Object.freeze([...fields.values()]),
+        accessors: Object.freeze(accessors),
         identity: project.polymorphic ? "project-polymorphic" : project.stateStorage === "direct" ? "project-direct" : "project-erased",
         ...(selected.kind !== "resolved" ? {} : { toJson: Object.freeze({
           declaration: selected.declaration, name: selected.name, passesPropertyKey: selected.passesPropertyKey,

@@ -13,6 +13,7 @@ function graph(declaration) {
     definitions: [{
       id: "object", kind: "object", sourceType: objectType, genericParameters: [],
       identity: "project-direct", sourceCopy: "implicit",
+      accessors: [],
       fields: [{ sourceName: "count", projection: "number", access: { kind: "project", declaration, path: ["count"] } }],
       toJson: { declaration, name: "toJSON", passesPropertyKey: false, resultType: numberType, resultProjection: "number" },
     }, {

@@ -1,5 +1,6 @@
 import type { ResolvedSourceCallInfo, Type } from "@tsonic/tsts";
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
+import { collectionShape } from "../../policy/conversions/javascript-conversions.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoCallAnalysis, MojoCallAnalysisContext } from "./calls.js";
 import { analyzeArguments } from "./call-arguments.js";
@@ -150,7 +151,7 @@ export function analyzeMojoJsonStringify(
   const conversionOverrides = new Map<number, import("../../target-model/conversions/model.js").MojoValueConversion>([
     [0, valueConversion.conversion],
   ]);
-  let replacer: "none" | "callable" = "none";
+  let replacer: "none" | "callable" | "property-list" = "none";
   const replacerArgument = sourceCall.sourceArguments[1];
   if (replacerArgument !== undefined) {
     const replacerType = context.expressionTypes.get(replacerArgument.expression) ??
@@ -166,13 +167,19 @@ export function analyzeMojoJsonStringify(
       replacer = "callable";
       parameterTypes[1] = selected.type;
       if (selected.conversion !== undefined) conversionOverrides.set(1, selected.conversion);
+    } else if (replacerType !== undefined && collectionShape(replacerType)?.kind === "js-array") {
+      const conversion = context.conversions.classify(replacerType, mojoDynamicTargetType("js"));
+      if (conversion.kind === "unsupported") return unsupported("MOJO_JSON_STRINGIFY_PROPERTY_LIST_UNCLOSED", conversion.reason);
+      replacer = "property-list";
+      parameterTypes[1] = mojoDynamicTargetType("js");
+      conversionOverrides.set(1, conversion.conversion);
     } else if (replacerType?.kind === "null" || replacerType?.kind === "undefined") {
       parameterTypes[1] = replacerType;
       conversionOverrides.set(1, Object.freeze({ kind: "identity" }));
     } else {
       return unsupported(
         "MOJO_JSON_STRINGIFY_REPLACER_UNSUPPORTED",
-        "JSON.stringify supports an exact two-parameter replacer callback, null, undefined, or omission.",
+        "JSON.stringify requires an exact replacer callback, source-array property list, null, undefined, or omission.",
       );
     }
   }

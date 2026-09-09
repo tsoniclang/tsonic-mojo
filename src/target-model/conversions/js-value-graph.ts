@@ -23,6 +23,14 @@ export interface MojoJsValueJsonMethod {
   readonly resultProjection: string;
 }
 
+export interface MojoJsValueAccessor {
+  readonly sourceName: string;
+  readonly declaration: Node;
+  readonly name: string;
+  readonly resultType: MojoTargetTypeRef;
+  readonly resultProjection: string;
+}
+
 export interface MojoJsValueGenericParameter extends MojoProviderTargetGenericParameter {
   readonly identity: string;
 }
@@ -53,6 +61,7 @@ export type MojoJsValueProjection = ProjectionIdentity & (
   | {
       readonly kind: "object";
       readonly fields: readonly MojoJsValueField[];
+      readonly accessors: readonly MojoJsValueAccessor[];
       readonly identity: "structural" | "project-direct" | "project-erased" | "project-polymorphic";
       readonly sourceCopy: "implicit" | "explicit";
       readonly toJson?: MojoJsValueJsonMethod;
@@ -65,5 +74,6 @@ export function mojoJsValueGraphTypes(graph: MojoJsValueGraph): readonly MojoTar
     ...(definition.kind !== "object" || definition.toJson === undefined ? [] : [
       definition.toJson.resultType,
     ]),
+    ...(definition.kind !== "object" ? [] : definition.accessors.map((accessor) => accessor.resultType)),
   ]));
 }

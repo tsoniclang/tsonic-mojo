@@ -172,6 +172,7 @@ export interface MojoAnalyzedAccessorProperty {
   readonly kind: "accessor-property";
   readonly declarations: readonly Node[];
   readonly sourceName: string;
+  readonly runtimeProperty: boolean;
   readonly read?: MojoAnalyzedCallableSignature;
   readonly write?: MojoAnalyzedCallableSignature;
   readonly ownerType: MojoTargetTypeRef;

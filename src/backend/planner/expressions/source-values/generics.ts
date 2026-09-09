@@ -27,10 +27,14 @@ export function sourceValueProjectionInContext(
       ...alternative, sourceType: mojoTargetTypeInContext(alternative.sourceType, context),
     }))),
   });
-  if (projection.kind === "object" && projection.toJson !== undefined) return Object.freeze({
-    ...projection, sourceType, genericParameters, toJson: Object.freeze({
+  if (projection.kind === "object") return Object.freeze({
+    ...projection, sourceType, genericParameters,
+    accessors: Object.freeze(projection.accessors.map((accessor) => Object.freeze({
+      ...accessor, resultType: mojoTargetTypeInContext(accessor.resultType, context),
+    }))),
+    ...(projection.toJson === undefined ? {} : { toJson: Object.freeze({
       ...projection.toJson, resultType: mojoTargetTypeInContext(projection.toJson.resultType, context),
-    }),
+    }) }),
   });
   return Object.freeze({ ...projection, sourceType, genericParameters });
 }

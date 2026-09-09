@@ -133,10 +133,9 @@ test("JSON.stringify retains an exact project toJSON projection until serializat
   assert.match(source, /\bjson_stringify_with_replacer\b/u);
 });
 
-test("open Object.assign and property-list JSON replacers reject at the exact call boundary", () => {
+test("open Object.assign rejects at the exact call boundary", () => {
   for (const [body, code] of [
     ["Object.assign({ value: 1 }, { other: 2 });", "MOJO_OBJECT_ASSIGN_FIELD_RELATION_UNPROVEN"],
-    ["JSON.stringify({ value: 1 }, ['value']);", "MOJO_JSON_STRINGIFY_REPLACER_UNSUPPORTED"],
   ]) {
     const result = compileMojo({
       surfaces: ["js"],

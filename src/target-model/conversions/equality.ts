@@ -140,6 +140,9 @@ function projectionEquals(left: MojoJsValueProjection, right: MojoJsValueProject
     case "object": {
       const candidate = right as typeof left;
       if (left.sourceCopy !== candidate.sourceCopy || left.identity !== candidate.identity ||
+        !entriesEqual(left.accessors, candidate.accessors, (accessor, other) =>
+          accessor.sourceName === other.sourceName && accessor.declaration === other.declaration && accessor.name === other.name &&
+          accessor.resultProjection === other.resultProjection && mojoTargetTypeEquals(accessor.resultType, other.resultType)) ||
         !entriesEqual(left.fields, candidate.fields, (field, other) => {
           if (field.sourceName !== other.sourceName || field.projection !== other.projection || field.access.kind !== other.access.kind) return false;
           return field.access.kind === "structural" ? other.access.kind === "structural" && field.access.index === other.access.index :

@@ -117,3 +117,24 @@ export function main(): void {
   assert.match(output, /JsString\("last"\)/u);
   assert.doesNotMatch(output, /js_value_from_object_entries/u);
 });
+
+test("JSON property lists retain exact inherited getter calls independently of own fields", () => {
+  const output = generated(`
+class Options {
+  own = 1;
+  reads = 0;
+  get inherited(): number { this.reads += 1; return 2; }
+}
+export function main(): void {
+  const options = new Options();
+  Object.keys(options);
+  JSON.stringify(options);
+  JSON.stringify(options, ["inherited", "own", "inherited"], 2);
+  JSON.stringify(options, ["own"], " ");
+}
+`);
+  assert.match(output, /json_stringify_with_property_list_and_space_number\(/u);
+  assert.match(output, /json_stringify_with_property_list_and_space_string\(/u);
+  assert.match(output, /def property_reader\(/u);
+  assert.match(output, /JsString\("inherited"\)/u);
+});

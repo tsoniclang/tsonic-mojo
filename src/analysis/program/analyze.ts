@@ -302,6 +302,12 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
   });
 
   const locationNames = createNameAllocator();
+  const sourceValueAccessors = new WeakMap<Node, import("./model.js").MojoAnalyzedAccessorProperty>();
+  for (const owner of [...classes, ...interfaces]) {
+    for (const property of owner.accessorProperties) {
+      for (const declaration of property.declarations) sourceValueAccessors.set(declaration, property);
+    }
+  }
   const sourceValueGenericParameters = new Map([
     ...topLevelCallableContracts,
     ...classes,
@@ -318,6 +324,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
       callableByDeclaration, classByTypeId,
       genericParameters: sourceValueGenericParameters,
       modules,
+      accessorByDeclaration: sourceValueAccessors,
     }),
   });
   for (const declaration of addressedStorageDeclarations) {

@@ -249,6 +249,7 @@ export function analyzeMojoInterface(
       kind: "accessor-property",
       declarations: Object.freeze([...draft.declarations]),
       sourceName: draft.sourceName,
+      runtimeProperty: true,
       ...(draft.read === undefined ? {} : { read: draft.read }),
       ...(draft.write === undefined ? {} : { write: draft.write }),
       ownerType: targetType,

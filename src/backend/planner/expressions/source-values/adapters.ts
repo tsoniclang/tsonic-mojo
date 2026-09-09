@@ -4,20 +4,19 @@ import { mojoNativeErrorType } from "../../../../target-model/types/error-domain
 import { mojoFieldwiseInitDecorators, mojoStaticMethodDecorators } from "../../../target-ast/index.js";
 import type { MojoExpression, MojoFunctionDeclaration, MojoStatement, MojoStructDeclaration } from "../../../target-ast/index.js";
 import {
-  allocateMojoSyntheticDeclarationName, appendMojoPlanningDiagnostic,
-  mojoModuleMemberExpression, withMojoDeferredExecution, withMojoErrorType, withMojoLocalNameScope,
+  allocateMojoSyntheticDeclarationName,
+  mojoModuleMemberExpression, withMojoDeferredExecution, withMojoLocalNameScope,
 } from "../../program/context.js";
 import type { MojoPlanningContext } from "../../program/context.js";
 import { registerMojoTypeImports } from "../../types/imports.js";
 import { mojoProjectStateValue } from "../../declarations/state-storage.js";
-import { adaptMojoValueErrorDomain } from "../error-domains.js";
-import { mojoValue } from "../value-plan.js";
 import type { MojoValuePlan } from "../value-plan.js";
 import {
   boolType, call, callableType, construct, element, erasedContextType, intType,
   jsStringType, jsValueType, member, method, named, number, path, returned, stringType, tupleType,
 } from "./syntax.js";
 import { sourceValueGenericArguments } from "./generics.js";
+import { planSourceValueMethod } from "./methods.js";
 
 export type SourceValueReader = (projection: string, expression: MojoExpression, context: MojoPlanningContext) => MojoValuePlan | undefined;
 type ReferenceProjection = Extract<MojoJsValueProjection, { readonly kind: "object" | "array" }>;
@@ -102,22 +101,22 @@ export function planMojoSourceView(
     add("value", [intType], jsValueType, indexedBranches(valueBranches, construct(jsValueType)));
     if (projection.toJson !== undefined) {
       const selected = projection.toJson;
-      const implementation = context.program.queries.callableImplementation(selected.declaration);
-      if (implementation === undefined) {
-        appendMojoPlanningDiagnostic(context, "MOJO_SOURCE_VALUE_TO_JSON_NOT_SEALED",
-          "The selected source-value toJSON method has no sealed implementation.", selected.declaration);
-        return undefined;
+      const body = planSourceValueMethod(selected, source, selected.passesPropertyKey ? [index] : [], adapterContext, read);
+      if (body === undefined) return undefined;
+      add("to_json", [stringType], jsValueType, body, true);
+    }
+    if (projection.accessors.length !== 0) {
+      const statements: MojoStatement[] = [];
+      for (const accessor of projection.accessors) {
+        const body = planSourceValueMethod(accessor, source, [], adapterContext, read);
+        if (body === undefined) return undefined;
+        statements.push(Object.freeze({ kind: "if", condition: Object.freeze({
+          kind: "binary", operator: "==", left: index,
+          right: construct(jsStringType, [Object.freeze({ kind: "string-literal", value: accessor.sourceName })]),
+        }), thenStatements: body }));
       }
-      const raisingContext = withMojoErrorType(adapterContext, mojoNativeErrorType());
-      const invocation = adaptMojoValueErrorDomain(
-        mojoValue(method(source, selected.name, selected.passesPropertyKey ? [index] : [])),
-        selected.resultType, implementation.raises ? implementation.errorType : undefined,
-        mojoNativeErrorType(), selected.declaration, raisingContext,
-      );
-      if (invocation === undefined) return undefined;
-      const converted = read(selected.resultProjection, invocation.value, raisingContext);
-      if (converted === undefined) return undefined;
-      add("to_json", [stringType], jsValueType, [...invocation.before, ...converted.before, returned(converted.value)], true);
+      statements.push(returned(construct(jsValueType)));
+      add("property_reader", [jsStringType], jsValueType, Object.freeze(statements), true);
     }
   }
   registerMojoTypeImports(erasedContextType, context);
@@ -156,10 +155,12 @@ export function planMojoSourceView(
   }
   return Object.freeze([
     Object.freeze({ kind: "variable", name: "environment", initializer: environment }),
-    returned(call(mojoModuleMemberExpression(context, ["tsonic_js"], projection.kind === "array"
-      ? "js_value_from_source_array" : "js_value_from_source_object"), [
-      identity, ...callbacks.map((callback) => construct(callback.type, [path("environment"), member(adapterExpression, callback.name)])),
-    ])),
+    returned(Object.freeze({ kind: "call", callee: mojoModuleMemberExpression(context, ["tsonic_js"], projection.kind === "array"
+      ? "js_value_from_source_array" : "js_value_from_source_object"), arguments: Object.freeze([
+      Object.freeze({ name: "identity", value: identity }), ...callbacks.map((callback) => Object.freeze({ name: callback.name,
+        value: construct(callback.type, [path("environment"), member(adapterExpression, callback.name)]),
+      })),
+    ]) })),
   ]);
 }
 
