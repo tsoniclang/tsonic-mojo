@@ -98,7 +98,6 @@ function analyzeSourceProfileDelete(
   context: MojoElementAnalysisContext,
 ): MojoElementAnalysis {
   const identity = selectedMojoSourceProfileDeclarationIdentity(
-    context.source,
     context.sourceProfiles,
     [source.selectedDeclaration],
   );
@@ -216,7 +215,6 @@ function analyzeSourceProfileElement(
   context: MojoElementAnalysisContext,
 ): MojoElementAnalysis | undefined {
   const identity = selectedMojoSourceProfileDeclarationIdentity(
-    context.source,
     context.sourceProfiles,
     [source.selectedDeclaration],
   );

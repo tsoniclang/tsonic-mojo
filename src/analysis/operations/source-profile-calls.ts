@@ -45,10 +45,10 @@ export function analyzeSourceProfileCall(
   const sourceArgumentTypes = sourceCall.sourceArguments.map((argument) =>
     context.expressionTypes.get(argument.expression) ?? resolve(argument.type));
   const selected = selectMojoSourceProfileCallRow(
-    context.source,
     sourceCall,
     context.sourceProfiles,
     sourceArgumentTypes,
+    { ast: context.source.ast, semantics: context.source.semantics.forNode(sourceCall.call) },
   );
   if (selected.kind === "not-source-profile") return undefined;
   if (selected.kind === "unsupported") return selected;
@@ -68,8 +68,10 @@ export function analyzeSourceProfileCall(
   const parameterTypes: MojoTargetTypeRef[] = [];
   const targetArguments: {
     readonly convention: "imm";
-    readonly position: "positional-or-keyword";
+    readonly position: "positional-or-keyword" | "keyword";
     readonly variadic: boolean;
+    readonly nativeName?: string;
+    readonly restPacking?: "list";
     readonly passing: "plain";
     readonly callableConsumption?: "immediate";
   }[] = [];
@@ -149,8 +151,12 @@ export function analyzeSourceProfileCall(
       : undefined;
     targetArguments.push(Object.freeze({
       convention: "imm",
-      position: "positional-or-keyword",
+      position: parameter.rest && selected.row.restParameterName !== undefined
+        ? "keyword" : "positional-or-keyword",
       variadic: parameter.rest,
+      ...(parameter.rest && selected.row.restParameterName !== undefined
+        ? { restPacking: "list" as const, nativeName: selected.row.restParameterName }
+        : {}),
       ...(variadicCollectionType === undefined ? {} : { variadicCollectionType }),
       passing: "plain",
       ...(callback?.parameterIndex === parameterIndex

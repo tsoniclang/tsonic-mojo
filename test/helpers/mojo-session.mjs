@@ -33,6 +33,10 @@ export function createMojoSession({
   compilerOptions = {},
 } = {}) {
   const pack = createMojoTargetPack();
+  target = { ...target, options: {
+    ...target.options,
+    compiler: target.options?.compiler ?? { executable: "mojo", workingDirectory: process.cwd() },
+  } };
   target = surfaces.length === 0 || target.surfaces !== undefined
     ? target
     : { ...target, surfaces };

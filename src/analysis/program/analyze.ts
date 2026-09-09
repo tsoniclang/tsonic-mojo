@@ -69,8 +69,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
       !ast.isDeclarationFile(sourceFile),
   ));
   const sourceProfiles = createMojoSourceProfileRegistry(
-    input.source.sourceFiles.filter((sourceFile): sourceFile is SourceFile => sourceFile !== undefined),
-    ast,
+    input.source,
     jsEnabled,
   );
   const diagnostics: TargetDiagnostic[] = [];

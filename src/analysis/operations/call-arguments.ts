@@ -17,6 +17,7 @@ export interface MojoCallArgumentTarget {
   readonly position: "positional" | "positional-or-keyword" | "keyword";
   readonly nativeName?: string;
   readonly variadic?: boolean;
+  readonly restPacking?: "list";
   readonly variadicCollectionType?: MojoTargetTypeRef;
   readonly passing?: "plain" | "consume";
   readonly callableConsumption?: "immediate" | "retained";
@@ -99,9 +100,14 @@ export function analyzeArguments(
       const parameterIndex = binding.sourceParameterIndex;
       const target = targetArguments[parameterIndex];
       const spreadSequence = binding.sourceForm === "spread-sequence";
+      const restElementType = parameterTypes[parameterIndex];
       const parameterType = spreadSequence
-        ? target?.variadicCollectionType ?? parameterTypes[parameterIndex]
-        : parameterTypes[parameterIndex];
+        ? target?.variadicCollectionType ?? (target?.restPacking === "list"
+          ? restElementType === undefined
+            ? undefined
+            : Object.freeze({ kind: "list" as const, element: restElementType })
+          : restElementType)
+        : restElementType;
       if (parameterType === undefined || target === undefined) {
         return {
           kind: "unsupported",
@@ -170,6 +176,10 @@ export function analyzeArguments(
         valueOwnership,
       );
       if (disposition.kind === "unsupported") return disposition;
+      const packingCopy = target.restPacking === "list" && !spreadSequence &&
+        conversion.conversion.kind === "identity" &&
+        (binding.sourceForm === "spread-element" || valueOwnership(sourceExpression) !== "fresh") &&
+        lifecycle.capabilities(parameterType).copy === "explicit";
       const callableConsumption = target.callableConsumption !== undefined
         ? target.callableConsumption
         : requiresErasedCallable(parameterType) ? "retained" : undefined;
@@ -184,7 +194,8 @@ export function analyzeArguments(
         sourceType,
         parameterType,
         conversion: conversion.conversion,
-        disposition: disposition.disposition,
+        disposition: packingCopy
+          ? Object.freeze({ kind: "copy" as const }) : disposition.disposition,
         spread: spreadSequence,
         position: target.position,
         parameterIndex,

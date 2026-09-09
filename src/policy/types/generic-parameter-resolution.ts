@@ -44,6 +44,7 @@ export function resolveMojoGenericParameterType(
       mojoSourceGenericLifecycleRequirements(owner, selectedType, {
         source: context,
         semantics: context.semantics,
+        sourceProfiles: context.sourceProfiles,
       }),
     );
     if (constraintNode !== undefined) {

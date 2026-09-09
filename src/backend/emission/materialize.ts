@@ -6,10 +6,11 @@ import {
   printMojoNativeBuildManifest,
 } from "../../print/project/native-build-manifest.js";
 import { printMojoModule } from "../../print/source/index.js";
+import { formatMojoCompileOutput } from "./mojo-format.js";
 
 export function materializeMojoOutputPlan(plan: MojoOutputPlan): TargetCompileOutput {
   const components = new Map(plan.components.map((component) => [component.id, component]));
-  const artifacts: import("@tsonic/target-api/artifacts").TargetArtifact[] = plan.sources.map(
+  const sources = plan.sources.map(
     (source) => {
       const component = components.get(source.componentId);
       if (component === undefined) {
@@ -25,6 +26,12 @@ export function materializeMojoOutputPlan(plan: MojoOutputPlan): TargetCompileOu
       });
     },
   );
+  const formatted = formatMojoCompileOutput(
+    Object.freeze({ artifacts: Object.freeze(sources) }),
+    plan.configuration.compilerProvider.command,
+    plan.configuration.toolchain.compilerVersion,
+  );
+  const artifacts: import("@tsonic/target-api/artifacts").TargetArtifact[] = [...formatted.artifacts];
   for (const runtime of plan.runtimePackages) {
     for (const source of runtime.sources) {
       artifacts.push(Object.freeze<TargetSourceFile>({

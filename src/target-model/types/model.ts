@@ -122,6 +122,7 @@ export interface MojoProviderTargetArgument {
   readonly position: MojoCallArgumentPosition;
   readonly nativeName?: string;
   readonly variadic?: boolean;
+  readonly restPacking?: "list";
 }
 
 export interface MojoProviderTargetGenericParameter {

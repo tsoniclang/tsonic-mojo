@@ -450,6 +450,7 @@ export function analyzeMojoTypeParameters(
       ? mojoSourceGenericLifecycleRequirements(input.declaration, parameterType, {
           source: input.source,
           semantics: input.source.semantics.forFile(input.sourceFile),
+          sourceProfiles: input.sourceProfiles,
         }).map(mojoLifecycleTraitTargetType)
       : classified.parameter.kind === "origin"
         ? [Object.freeze({

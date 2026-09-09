@@ -751,7 +751,9 @@ test("runtime package artifacts retain the exact analyzed Mojo sources", () => {
       packageName: "fixture",
       outputType: "bin",
       project: { kind: "generated" },
-      compilerProvider: configuration(),
+      compilerProvider: { ...configuration(), command: {
+        executable: "mojo", arguments: [], workingDirectory: process.cwd(),
+      } },
       toolchain: {
         kind: "pixi-mojo",
         compilerVersion: "1.1.0.dev2026083005",
@@ -791,6 +793,9 @@ test("runtime package artifacts retain the exact analyzed Mojo sources", () => {
     ],
   );
   const project = output.artifacts.find(({ path }) => path === "pixi.toml");
+  for (const source of packagePlan.sources) {
+    assert.equal(output.artifacts.find(({ path }) => path === `packages/probe/${source.path}`).text, source.text);
+  }
   assert.match(project.text, /-I 'packages'/u);
   assert.doesNotMatch(project.text, new RegExp(importRoot.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"));
 });

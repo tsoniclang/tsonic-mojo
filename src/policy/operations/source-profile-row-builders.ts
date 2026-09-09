@@ -29,6 +29,7 @@ export const jsInstanceParameterRow = (
   member: string,
   receiver: "imm" | "mut",
   parameterContract: readonly MojoSourceProfileParameterContract[],
+  restParameterName?: string,
 ): MojoSourceProfileCallRow => Object.freeze({
   profile: "js",
   kind: "call",
@@ -36,6 +37,7 @@ export const jsInstanceParameterRow = (
   member,
   parameterContract: Object.freeze([...parameterContract]),
   parameterContractMode: "overrides",
+  ...(restParameterName === undefined ? {} : { restParameterName }),
   target: Object.freeze({ kind: "instance", name: snakeCase(member), receiver }),
 });
 
@@ -46,6 +48,7 @@ export const receiverArgument = (index: number): MojoSourceProfileParameterContr
 export const jsStaticRows = (
   owner: string,
   methods: readonly (string | readonly [string, string, boolean?])[],
+  restParameterName?: string,
 ): readonly MojoSourceProfileCallRow[] => methods.map((method) => {
   const [member, name, raises] = typeof method === "string"
     ? [method, `${snakeCase(owner.replace(/Constructor$/u, ""))}_${snakeCase(method)}`, false] as const
@@ -55,6 +58,7 @@ export const jsStaticRows = (
     kind: "call" as const,
     owner,
     member,
+    ...(restParameterName === undefined ? {} : { restParameterName }),
     target: Object.freeze({ kind: "function" as const, modulePath: Object.freeze(["tsonic_js"]), name }),
     ...(raises === true ? { raises: true } : {}),
   });
@@ -125,6 +129,7 @@ export const jsConstructorRows: readonly MojoSourceProfileCallRow[] = Object.fre
     kind: "construct",
     owner: "ArrayConstructor",
     member: "constructor",
+    restParameterName: "items",
     target: Object.freeze({ kind: "function", modulePath: Object.freeze(["tsonic_js"]), name: "array_new" }),
     resultContract: Object.freeze({ kind: "constructed-explicit-arguments" }),
   }),

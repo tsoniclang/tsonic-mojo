@@ -145,3 +145,30 @@ test("provider packages reject duplicate public aliases", () => {
     /alias 'math' is duplicated/u,
   );
 });
+
+test("provider rest collections are explicit immutable contracts on exact rest signatures", () => {
+  const input = definition();
+  const source = structuredClone(sourceFunction);
+  source.signatures[0].parameters = [{
+    name: "items", type: { kind: "array", elementType: { kind: "number" } }, rest: true,
+  }];
+  input.modules[0].exports = [source];
+  input.operations[0].target.arguments = [{
+    convention: "imm", position: "positional-or-keyword", variadic: true, restPacking: "list",
+  }];
+  input.operations[0].parameterTypes = [{ kind: "source-primitive", name: "float64" }];
+  const [{ definition: captured }] = createMojoProviderPackage(input).createTargetContributions({});
+  assert.equal(captured.operations[0].target.arguments[0].restPacking, "list");
+  assert.ok(Object.isFrozen(captured.operations[0].target.arguments[0]));
+  const mutations = [
+    (value) => { value.operations[0].target.arguments[0].variadic = false; },
+    (value) => { value.operations[0].target.arguments[0].restPacking = "tuple"; },
+    (value) => { value.operations[0].target.arguments[0].convention = "mut"; },
+    (value) => { value.modules[0].exports[0].signatures[0].parameters[0].rest = false; },
+  ];
+  for (const mutate of mutations) {
+    const invalid = structuredClone(input);
+    mutate(invalid);
+    assert.throws(() => createMojoProviderPackage(invalid), /invalid rest collection contract/u);
+  }
+});
