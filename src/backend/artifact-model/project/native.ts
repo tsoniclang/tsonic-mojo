@@ -21,7 +21,7 @@ export interface MojoNativeBuildTranslationUnit {
   readonly language: "c" | "c++";
   readonly sourcePath: string;
   readonly objectPath: string;
-  readonly standard: "c11" | "c++17";
+  readonly standard: "c11" | "c++17" | "c++20";
 }
 
 export function createMojoNativeBuildPlan(

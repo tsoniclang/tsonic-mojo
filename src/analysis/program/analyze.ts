@@ -34,12 +34,12 @@ import type {
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import { analyzeMojoSourceModules } from "../source-modules/index.js";
-import { analyzeMojoModuleBindings } from "./module-bindings.js";
-import type { MojoExecutableRegionAnalysisEnvironment } from "./executable-regions.js";
-import type { MojoAnalyzedModuleRegionFacts } from "./module-effects.js";
-import { collectMojoDeclarationDrafts } from "./declaration-drafts.js";
-import { collectMojoAddressedStorageDeclarations } from "./addressed-storage.js";
-import { analyzeMojoProjectDeclarations } from "./declarations.js";
+import { analyzeMojoModuleBindings } from "../module-initialization/bindings.js";
+import type { MojoExecutableRegionAnalysisEnvironment } from "../control-flow/analyze.js";
+import type { MojoAnalyzedModuleRegionFacts } from "../module-initialization/effects.js";
+import { collectMojoDeclarationDrafts } from "../declarations/drafts.js";
+import { collectMojoAddressedStorageDeclarations } from "../storage/addressed.js";
+import { analyzeMojoProjectDeclarations } from "../declarations/analyze.js";
 import { createMojoStructuralObjectCatalog } from "../bindings/structural-objects.js";
 import { finalizeMojoProgramEffects } from "./program-effects-finalization.js";
 import { finalizeMojoProgramResult } from "./program-result-finalization.js";
@@ -47,8 +47,8 @@ import {
   createMojoLifecycleResolver,
   createMojoValueOwnershipResolver,
 } from "../lifecycle/index.js";
-import { createMojoProgramNameEnvironment } from "./name-environment.js";
-import { analyzeMojoProgramInitializationRegions } from "./initialization-regions.js";
+import { createMojoProgramNameEnvironment } from "../names/environment.js";
+import { analyzeMojoProgramInitializationRegions } from "../module-initialization/regions.js";
 
 export function analyzeMojoTargetProgram(
   request: MojoTargetAnalysisRequest,

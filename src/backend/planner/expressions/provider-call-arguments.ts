@@ -1,4 +1,4 @@
-import type { MojoCallSelection } from "../../../analysis/program/call-model.js";
+import type { MojoCallSelection } from "../../../analysis/operations/call-model.js";
 import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 import {
   allocateMojoSyntheticName,

@@ -110,17 +110,17 @@ export const jsReceiverFunctionRows = (
   });
 });
 
-export const jsReceiverArrayRow = (
+export const jsReceiverIteratorRow = (
   owner: string,
   member: string,
-  element: Extract<MojoSourceProfileResultContract, { readonly kind: "receiver-array" }>["element"],
+  element: Extract<MojoSourceProfileResultContract, { readonly kind: "receiver-iterator" }>["element"],
 ): MojoSourceProfileCallRow => Object.freeze({
   profile: "js",
   kind: "call",
   owner,
   member,
   target: Object.freeze({ kind: "instance", name: snakeCase(member), receiver: "imm" }),
-  resultContract: Object.freeze({ kind: "receiver-array", element }),
+  resultContract: Object.freeze({ kind: "receiver-iterator", element }),
 });
 
 export const jsConstructorRows: readonly MojoSourceProfileCallRow[] = Object.freeze([
@@ -148,6 +148,21 @@ export const jsConstructorRows: readonly MojoSourceProfileCallRow[] = Object.fre
     }),
     resultContract: Object.freeze({ kind: "constructed-explicit-arguments" }),
   })),
+  Object.freeze({
+    profile: "js",
+    kind: "construct",
+    owner: "MapConstructor",
+    member: "constructor",
+    argumentCount: 1,
+    raises: true,
+    parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["selected-argument"]),
+    target: Object.freeze({
+      kind: "function",
+      modulePath: Object.freeze(["tsonic_js"]),
+      name: "map_new",
+    }),
+    resultContract: Object.freeze({ kind: "constructed-explicit-arguments" }),
+  }),
   Object.freeze({
     profile: "js",
     kind: "construct",

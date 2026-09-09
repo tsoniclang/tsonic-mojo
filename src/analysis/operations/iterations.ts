@@ -231,6 +231,12 @@ function targetIterationContract(
   readonly elementType: MojoTargetTypeRef;
 } | undefined {
   if (kind === "for-of") {
+    if (iterable.kind === "target-named" &&
+      iterable.id === "tsonic.mojo.js.JsIterator" &&
+      iterable.genericArguments?.length === 1 &&
+      iterable.genericArguments[0]?.kind === "type") {
+      return { target: "native-values", elementType: iterable.genericArguments[0].type };
+    }
     const regexpIteratorElement = sourceProfileRegExpIteratorElement(iterable);
     if (regexpIteratorElement !== undefined) {
       return { target: "js-array-values", elementType: regexpIteratorElement };

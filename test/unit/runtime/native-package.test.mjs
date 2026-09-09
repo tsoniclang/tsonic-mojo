@@ -30,13 +30,17 @@ test("native runtime dialects are exact, immutable and fingerprinted", () => {
   const c = analyzeMojoRuntimeNativePackage(fixture({ language: "c", standard: "c11", path: "native.c" }), "fixture");
   assert.equal(c.translationUnits[0].language, "c");
   assert.notEqual(c.digest, result.digest);
+  const modern = analyzeMojoRuntimeNativePackage(fixture({ ...selected, standard: "c++20" }), "fixture");
+  assert.equal(modern.translationUnits[0].standard, "c++20");
+  assert.notEqual(modern.digest, result.digest);
 });
 
 test("mismatched or unsupported native languages never reach a compiler", () => {
   for (const unit of [
     { language: "c", standard: "c++17", path: "native.c" },
     { language: "c++", standard: "c11", path: "native.cpp" },
-    { language: "c++", standard: "c++20", path: "native.cpp" },
+    { language: "c", standard: "c++20", path: "native.c" },
+    { language: "c++", standard: "c++26", path: "native.cpp" },
     { language: "c++", standard: "c++17", path: "native.c" },
     { language: "c", standard: "c11", path: "native.cpp" },
     { language: "c++", standard: "c++17", path: "../native.cpp" },

@@ -6,7 +6,7 @@ import type {
   MojoStatement,
 } from "../../target-ast/index.js";
 import type { MojoTargetProgram } from "../../../analysis/program/model.js";
-import { normalizeMojoDeclarations } from "../../normalization/index.js";
+import { normalizeMojoDeclarations } from "../../target-ast/normalization/index.js";
 import { mojoOutputPlanningDiagnostic } from "./plan-support.js";
 
 export function planBinaryEntry(
@@ -239,4 +239,3 @@ function uniqueModulePaths(paths: readonly (readonly string[])[]): readonly (rea
     .sort(([left], [right]) => left.localeCompare(right, "en"))
     .map(([, path]) => path));
 }
-

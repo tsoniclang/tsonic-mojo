@@ -9,7 +9,7 @@ export interface MojoRuntimeEnvironmentDependency {
 
 export interface MojoRuntimeNativeTranslationUnit {
   readonly language: "c" | "c++";
-  readonly standard: "c11" | "c++17";
+  readonly standard: "c11" | "c++17" | "c++20";
   readonly path: string;
   readonly digest: string;
   readonly text: string;
@@ -78,7 +78,7 @@ interface RuntimeNativeManifest {
   readonly dependencies?: Readonly<Record<string, string>>;
   readonly translationUnits?: readonly {
     readonly language: "c" | "c++";
-    readonly standard: "c11" | "c++17";
+    readonly standard: "c11" | "c++17" | "c++20";
     readonly path: string;
   }[];
   readonly includeDirectories?: readonly string[];
@@ -126,7 +126,7 @@ function parseManifest(text: string, packageName: string): RuntimeNativeManifest
       requireExactFields(unit, ["language", "standard", "path"],
         `Mojo runtime translation unit for '${packageName}'`);
       if (!((unit.language === "c" && unit.standard === "c11") ||
-        (unit.language === "c++" && unit.standard === "c++17")) || typeof unit.path !== "string") {
+        (unit.language === "c++" && (unit.standard === "c++17" || unit.standard === "c++20"))) || typeof unit.path !== "string") {
         throw new Error(`Mojo runtime manifest for '${packageName}' has an unsupported translation unit.`);
       }
     }

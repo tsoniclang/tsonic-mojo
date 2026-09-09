@@ -10,7 +10,7 @@ import type {
 } from "../../target-ast/index.js";
 import type { MojoTargetProgram } from "../../../analysis/program/model.js";
 import { normalizeMojoIdentifier } from "../../../target-model/names/identifiers.js";
-import { normalizeMojoDeclarations } from "../../normalization/index.js";
+import { normalizeMojoDeclarations } from "../../target-ast/normalization/index.js";
 import {
   mojoOutputPlanningDiagnostic,
   sortedMojoImports,
@@ -308,4 +308,3 @@ function compareModulePaths(left: readonly string[], right: readonly string[]): 
 function sameModulePath(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((segment, index) => segment === right[index]);
 }
-

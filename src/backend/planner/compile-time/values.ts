@@ -1,5 +1,5 @@
 import type { Node } from "@tsonic/tsts";
-import type { MojoCallSelection } from "../../../analysis/program/call-model.js";
+import type { MojoCallSelection } from "../../../analysis/operations/call-model.js";
 import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import type { MojoValuePlanner } from "../expressions/support.js";

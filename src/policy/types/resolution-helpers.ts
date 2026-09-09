@@ -10,6 +10,7 @@ import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoNamedLifecycleContract } from "../../target-model/lifecycle/model.js";
 import type { MojoTypeResolution, MojoTypeResolutionContext } from "./resolution.js";
+import { canonicalMojoIteratorResult } from "./js-iterator.js";
 
 export function resolveTypeParameter(
   symbol: ReturnType<MojoTypeResolutionContext["semantics"]["declarations"]["typeSymbol"]>,
@@ -59,7 +60,10 @@ export function resolveUnion(
       type: { kind: "optional", value: members[undefinedIndex === 0 ? 1 : 0]! },
     };
   }
-  return { kind: "resolved", type: { kind: "union", members: Object.freeze(members) } };
+  return {
+    kind: "resolved",
+    type: canonicalMojoIteratorResult(members) ?? { kind: "union", members: Object.freeze(members) },
+  };
 }
 
 function authoredUnionMemberNodes(

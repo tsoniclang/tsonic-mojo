@@ -333,7 +333,7 @@ function closeSourceProfileResult(
       conversion: Object.freeze({ kind: "identity" }),
     });
   }
-  if (row.resultContract?.kind === "receiver-array") {
+  if (row.resultContract?.kind === "receiver-iterator") {
     if (sourceReceiverType?.kind !== "target-named") {
       return {
         kind: "unsupported",
@@ -369,9 +369,9 @@ function closeSourceProfileResult(
     return Object.freeze({
       kind: "resolved",
       type: mojoNamedTargetType(
-        "tsonic.mojo.js.JsArray",
+        "tsonic.mojo.js.JsIterator",
         ["tsonic_js"],
-        "JsArray",
+        "JsIterator",
         [elementType],
       ),
       conversion: Object.freeze({ kind: "identity" }),

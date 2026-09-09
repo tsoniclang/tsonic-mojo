@@ -19,12 +19,12 @@ import { walkSourceTree } from "../../source/syntax/traversal.js";
 import {
   analyzeMojoExecutableBindingProjection,
   analyzeMojoExecutableRegion,
-} from "../program/executable-regions.js";
+} from "../control-flow/analyze.js";
 import type {
   MojoExecutableRegionAnalysisEnvironment,
-} from "../program/executable-regions.js";
+} from "../control-flow/analyze.js";
 import { recordMojoExecutableRegionConversionUses } from "../conversions/uses.js";
-import { allocateMojoLocalBindings } from "../program/local-bindings.js";
+import { allocateMojoLocalBindings } from "../bindings/local.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 import { resolveMojoTargetType } from "../../policy/types/resolution.js";
 import { mojoParameterConvention } from "../representations/index.js";

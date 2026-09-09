@@ -33,10 +33,10 @@ export type {
   MojoBindingPatternSelection,
   MojoObjectLiteralContribution,
   MojoObjectLiteralSelection,
-} from "./binding-and-object-model.js";
-export type { MojoAnalyzedCallArgument, MojoCallSelection } from "./call-model.js";
-import type { MojoCallableParameterAdapter } from "./dispatch-model.js";
-import type { MojoAnalyzedModuleBinding } from "./module-model.js";
+} from "../bindings/model.js";
+export type { MojoAnalyzedCallArgument, MojoCallSelection } from "../operations/call-model.js";
+import type { MojoCallableParameterAdapter } from "../objects/polymorphism/model.js";
+import type { MojoAnalyzedModuleBinding } from "../module-initialization/model.js";
 
 export interface MojoTargetAnalysisRequest {
   readonly input: TargetCompileInput;
@@ -234,7 +234,7 @@ export interface MojoAnalyzedInterface {
   readonly stateStorage: "direct" | "erased";
 }
 
-export type * from "./dispatch-model.js";
+export type * from "../objects/polymorphism/model.js";
 export interface MojoAnalyzedEnumMember {
   readonly kind: "enum-member";
   readonly declaration: Node;
@@ -278,7 +278,7 @@ export type MojoAnalyzedDeclaration =
   | MojoAnalyzedEnum
   | MojoAnalyzedTypeAlias;
 
-export type * from "./module-model.js";
-export type * from "./construction-model.js";
-export type * from "./operation-model.js";
+export type * from "../module-initialization/model.js";
+export type * from "../declarations/construction-model.js";
+export type * from "../operations/model.js";
 export type * from "./program-model.js";

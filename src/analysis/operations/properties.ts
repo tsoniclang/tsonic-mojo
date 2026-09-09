@@ -21,6 +21,8 @@ import type { MojoSourceProfileRegistry } from "../../policy/types/source-profil
 import { selectedMojoSourceProfileDeclarationIdentity } from "../../policy/operations/source-profile-selection.js";
 import { analyzeStaticProviderProperty } from "./static-provider-properties.js";
 import { sourceProfileRegExpPropertyAccess } from "../../policy/operations/source-profile-regexp-properties.js";
+import { mojoIteratorResultProperty } from "../../policy/types/js-iterator.js";
+import { analyzeMojoIteratorResultProperty } from "./iterator-result-properties.js";
 import {
   classifyMojoSourceResultConversion,
   mojoConvertedValueType,
@@ -52,6 +54,8 @@ export function analyzeMojoProviderProperty(
       reason: "Selected provider property has no delete operation contract.",
     };
   }
+  const iteratorResult = analyzeMojoIteratorResultProperty(source, context);
+  if (iteratorResult !== undefined) return iteratorResult;
   const sourceProfile = analyzeSourceProfileProperty(source, context);
   if (sourceProfile !== undefined) return sourceProfile;
   const exactSubjects = source.accessMode === "read"
@@ -429,6 +433,14 @@ function sourceProfilePropertyAccess(
     ? sourceProfileRegExpPropertyAccess(owner, member, receiver)
     : undefined;
   if (regexp !== undefined) return regexp;
+  if (profile === "js" && (owner === "IteratorYieldResult" || owner === "IteratorReturnResult")) {
+    const resultType = mojoIteratorResultProperty(receiver, member);
+    return resultType === undefined ? undefined : {
+      read: Object.freeze({ kind: "method", name: member === "done" ? "get_done" : "get_value" }),
+      write: Object.freeze({ kind: "method", name: member === "done" ? "set_done" : "set_value" }),
+      resultType, storageType: resultType, raises: false,
+    };
+  }
   if (owner === "Error") {
     const nativeString = Object.freeze({ kind: "native-string" as const });
     if (member === "name" || member === "message") {

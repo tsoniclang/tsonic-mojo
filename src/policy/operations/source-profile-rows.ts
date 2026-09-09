@@ -7,7 +7,7 @@ import {
   jsConstructorRows,
   jsInstanceParameterRow,
   jsInstanceRows,
-  jsReceiverArrayRow,
+  jsReceiverIteratorRow,
   jsReceiverFunctionRow,
   jsReceiverFunctionRows,
   jsStaticRows,
@@ -19,6 +19,7 @@ import {
 import { mojoRegExpSourceProfileCallRows } from "./source-profile-regexp-rows.js";
 
 export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Object.freeze([
+  ...jsInstanceRows("Iterator", "imm", ["next"]),
   ...sourceErrorRows,
   ...jsConstructorRows,
   ...mojoRegExpSourceProfileCallRows,
@@ -158,9 +159,9 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     jsInstanceParameterRow(owner, "has", "imm", [receiverArgument(0)]),
   ]),
   ...["Map", "ReadonlyMap"].flatMap((owner) => [
-    jsReceiverArrayRow(owner, "keys", Object.freeze({ kind: "receiver-argument", index: 0 })),
-    jsReceiverArrayRow(owner, "values", Object.freeze({ kind: "receiver-argument", index: 1 })),
-    jsReceiverArrayRow(owner, "entries", Object.freeze({
+    jsReceiverIteratorRow(owner, "keys", Object.freeze({ kind: "receiver-argument", index: 0 })),
+    jsReceiverIteratorRow(owner, "values", Object.freeze({ kind: "receiver-argument", index: 1 })),
+    jsReceiverIteratorRow(owner, "entries", Object.freeze({
       kind: "tuple",
       indexes: Object.freeze([0, 1]),
     })),
@@ -179,9 +180,9 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     ].map((member) => jsInstanceParameterRow(owner, member, "imm", [receiverType])),
   ]),
   ...["Set", "ReadonlySet"].flatMap((owner) => [
-    jsReceiverArrayRow(owner, "keys", Object.freeze({ kind: "receiver-argument", index: 0 })),
-    jsReceiverArrayRow(owner, "values", Object.freeze({ kind: "receiver-argument", index: 0 })),
-    jsReceiverArrayRow(owner, "entries", Object.freeze({
+    jsReceiverIteratorRow(owner, "keys", Object.freeze({ kind: "receiver-argument", index: 0 })),
+    jsReceiverIteratorRow(owner, "values", Object.freeze({ kind: "receiver-argument", index: 0 })),
+    jsReceiverIteratorRow(owner, "entries", Object.freeze({
       kind: "tuple",
       indexes: Object.freeze([0, 0]),
     })),

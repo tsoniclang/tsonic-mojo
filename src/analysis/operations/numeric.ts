@@ -3,7 +3,7 @@ import { BinaryExpression_Left, BinaryExpression_Right, PrefixUnaryExpression_Op
 import { mojoBitwiseOperators, selectMojoNumericOperation } from "../../policy/operations/numeric.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoIntrinsicExpressionSelection } from "../program/model.js";
-import { isMojoAssignmentOperator } from "../program/syntax-validation.js";
+import { isMojoAssignmentOperator } from "../control-flow/syntax-validation.js";
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 
 export function analyzeMojoNumericOperation(

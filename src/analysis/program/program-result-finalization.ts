@@ -15,13 +15,13 @@ import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { analyzeMojoRuntimePackages } from "../runtime/references.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import { analyzeMojoTemplateExpression } from "../operations/template-expressions.js";
-import { closeMojoErrorType } from "./effects.js";
-import { validateMojoExecutableRegionSyntax } from "./syntax-validation.js";
+import { closeMojoErrorType } from "../resources/effects.js";
+import { validateMojoExecutableRegionSyntax } from "../control-flow/syntax-validation.js";
 import { createMojoProgramQueries } from "./queries.js";
-import { finalizeMojoModuleBindingTypes } from "./module-bindings.js";
-import { finalizeMojoModuleEffects } from "./module-effects.js";
-import { analyzeMojoModuleInitialization } from "./module-initialization.js";
-import { finalizeMojoPublicModuleBindingAbis } from "./public-abi.js";
+import { finalizeMojoModuleBindingTypes } from "../module-initialization/bindings.js";
+import { finalizeMojoModuleEffects } from "../module-initialization/effects.js";
+import { analyzeMojoModuleInitialization } from "../module-initialization/analyze.js";
+import { finalizeMojoPublicModuleBindingAbis } from "../module-initialization/public-abi.js";
 import {
   createMojoRepresentationCatalog,
   mojoCallableImplementationAdapterTypes,
@@ -32,8 +32,8 @@ import {
 import { createMojoProjectDispatchPlan } from "../project-types/dispatch.js";
 import { createMojoSourceCallableSpecializationPlan } from "../callables/specializations.js";
 import { analyzeMojoCallableImplementationAdapters } from "../callables/implementation-adapters.js";
-import type { MojoAnalyzedModuleRegionFacts } from "./module-effects.js";
-import type { MojoExecutableRegionAnalysisEnvironment } from "./executable-regions.js";
+import type { MojoAnalyzedModuleRegionFacts } from "../module-initialization/effects.js";
+import type { MojoExecutableRegionAnalysisEnvironment } from "../control-flow/analyze.js";
 import type {
   MojoAnalyzedClass,
   MojoAnalyzedDeclaration,

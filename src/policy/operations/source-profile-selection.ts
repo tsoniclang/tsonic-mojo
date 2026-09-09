@@ -68,7 +68,7 @@ export type MojoSourceProfileResultContract =
       readonly indexes?: readonly number[];
     }
   | {
-      readonly kind: "receiver-array";
+      readonly kind: "receiver-iterator";
       readonly element:
         | { readonly kind: "receiver-argument"; readonly index: number }
         | { readonly kind: "tuple"; readonly indexes: readonly number[] };
