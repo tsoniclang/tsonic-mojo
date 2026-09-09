@@ -129,6 +129,7 @@ export const jsConstructorRows: readonly MojoSourceProfileCallRow[] = Object.fre
     kind: "construct",
     owner: "ArrayConstructor",
     member: "constructor",
+    raises: true,
     restParameterName: "items",
     target: Object.freeze({ kind: "function", modulePath: Object.freeze(["tsonic_js"]), name: "array_new" }),
     resultContract: Object.freeze({ kind: "constructed-explicit-arguments" }),
@@ -153,6 +154,7 @@ export const jsConstructorRows: readonly MojoSourceProfileCallRow[] = Object.fre
     owner: "SetConstructor",
     member: "constructor",
     argumentCount: 1,
+    raises: true,
     parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["selected-argument"]),
     target: Object.freeze({
       kind: "function",

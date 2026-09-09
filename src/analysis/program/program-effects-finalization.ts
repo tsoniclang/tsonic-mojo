@@ -90,6 +90,7 @@ export function finalizeMojoProgramEffects(
     propertySelections,
     propertyNodes,
     elementSelections,
+    iterationSelections,
     resourceManagementSelections,
     resourceDeclarations,
     valueSelections,
@@ -154,6 +155,7 @@ export function finalizeMojoProgramEffects(
     callDependencies,
     propertySelections,
     elementSelections,
+    iterationSelections,
     resourceManagementSelections,
     valueSelections,
   });

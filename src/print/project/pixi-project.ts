@@ -46,7 +46,7 @@ export function printPixiProject(plan: MojoOutputPlan): string {
     if (taskName === undefined) continue;
     const commands = package_.translationUnits.map((unit) => [
       `mkdir -p ${shellQuote(parentPath(unit.objectPath))} &&`,
-      `${plan.configuration.toolchain.cCompiler} -O3 -fPIC -std=${unit.standard}`,
+      `${shellEnvironmentPath(unit.language === "c" ? plan.configuration.toolchain.cCompiler.path : plan.configuration.toolchain.cxxCompiler.path)} -O3 -fPIC -std=${unit.standard}`,
       `-I"$CONDA_PREFIX/include"`,
       ...package_.includeDirectories.map((path) =>
         `-I${shellEnvironmentPath(path)}`),

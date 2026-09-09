@@ -247,7 +247,7 @@ function targetIterationContract(
       iterable.genericArguments?.length === 1 &&
       iterable.genericArguments[0]?.kind === "type") {
       return {
-        target: "js-array-values",
+        target: "js-array-live-values",
         elementType: iterable.genericArguments[0].type,
       };
     }

@@ -15,7 +15,8 @@ function outputPlan(outputType) {
         channels: ["conda-forge", "https://conda.modular.com/max-nightly/"],
         platforms: ["linux-64"],
         commandEnvironment: "posix",
-        cCompiler: "cc",
+        cCompiler: { environmentVariable: "CONDA_PREFIX", path: "bin/gcc" },
+        cxxCompiler: { environmentVariable: "CONDA_PREFIX", path: "bin/g++" },
       },
     },
     components: [{
@@ -38,6 +39,7 @@ function outputPlan(outputType) {
         digest: "1".repeat(64),
         includeDirectories: ["include/example"],
         translationUnits: [{
+          language: "c",
           sourcePath: "packages/.native/native_runtime/native.c",
           objectPath: "build/native/native_runtime/native.o",
           standard: "c11",
@@ -58,14 +60,15 @@ test("library precompilation publishes native link inputs without passing linker
   assert.match(project.text, /mojo precompile/u);
   assert.doesNotMatch(project.text, /mojo precompile[^\n]*-Xlinker/u);
   assert.deepEqual(JSON.parse(native.text), {
-    schemaVersion: 2,
+    schemaVersion: 3,
     toolchain: {
       kind: "pixi-mojo",
       compilerVersion: "1.1.0.dev2026083005",
       channels: ["conda-forge", "https://conda.modular.com/max-nightly/"],
       platforms: ["linux-64"],
       commandEnvironment: "posix",
-      cCompiler: "cc",
+      cCompiler: { environmentVariable: "CONDA_PREFIX", path: "bin/gcc" },
+      cxxCompiler: { environmentVariable: "CONDA_PREFIX", path: "bin/g++" },
     },
     components: [{
       id: "native-fixture", packageName: "native_fixture", root: true,
@@ -79,6 +82,7 @@ test("library precompilation publishes native link inputs without passing linker
       digest: "1".repeat(64),
       includeDirectories: ["include/example"],
       translationUnits: [{
+        language: "c",
         sourcePath: "packages/.native/native_runtime/native.c",
         objectPath: "build/native/native_runtime/native.o",
         standard: "c11",
@@ -110,4 +114,22 @@ test("binary builds consume the same native inputs at their final link", () => {
   assert.match(project.text, /-Xlinker \\"\$CONDA_PREFIX\/lib\/libexample\.a\\"/u);
   assert.match(project.text, /-Xlinker -L\\"\$CONDA_PREFIX\/lib\\"/u);
   assert.match(project.text, /-Xlinker -lpthread/u);
+});
+
+test("native runtime units select the pinned compiler for their exact language", () => {
+  const plan = outputPlan("bin");
+  plan.nativeBuild.packages[0].translationUnits.push({
+    language: "c++", standard: "c++17",
+    sourcePath: "packages/.native/native_runtime/numeric.cpp",
+    objectPath: "build/native/native_runtime/numeric.o",
+  });
+  const output = materializeMojoOutputPlan(plan);
+  const project = output.artifacts.find(({ path }) => path === "pixi.toml").text;
+  assert.ok(project.includes('\\"$CONDA_PREFIX/bin/gcc\\" -O3 -fPIC -std=c11'));
+  assert.ok(project.includes('\\"$CONDA_PREFIX/bin/g++\\" -O3 -fPIC -std=c++17'));
+  assert.ok(project.includes("-Xlinker 'build/native/native_runtime/numeric.o'"));
+  const manifest = JSON.parse(output.artifacts.find(({ path }) => path === "mojo-native-build.json").text);
+  assert.deepEqual(manifest.packages[0].translationUnits.map(({ language, standard }) => [language, standard]), [
+    ["c", "c11"], ["c++", "c++17"],
+  ]);
 });

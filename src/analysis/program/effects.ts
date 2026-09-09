@@ -32,8 +32,9 @@ export function mojoConversionRaises(conversion: MojoValueConversion): boolean {
     case "js-to-native-string": return true;
     case "native-error-result-unwrap": return true;
     case "collection-map":
-      return conversion.elementConversion !== undefined &&
-        mojoConversionRaises(conversion.elementConversion);
+      return conversion.source === "js-array" ||
+        (conversion.elementConversion !== undefined &&
+          mojoConversionRaises(conversion.elementConversion));
     case "optional-some":
     case "optional-map":
     case "optional-present":

@@ -4,7 +4,7 @@ import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { analyzeMojoIteration } from "../operations/iterations.js";
 import { analyzeMojoResourceManagement } from "../resources/management.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
-import { mojoOperationErrorTypes } from "./effects.js";
+import { mojoNativeErrorType, mojoOperationErrorTypes } from "./effects.js";
 import { resolveExecutableRegionType as resolveType } from "./executable-region-support.js";
 import { analyzeMojoExecutableBindingProjection } from "./executable-region-bindings.js";
 import type { MojoExecutableRegionAnalysisInput } from "./executable-regions.js";
@@ -24,7 +24,8 @@ export function analyzeMojoIterationAndResources(options: {
     input,
   } = options;
   const { ast } = input.source;
-for (const node of iterationNodes) {
+  const resourceErrorTypes: MojoTargetTypeRef[] = [];
+  for (const node of iterationNodes) {
     const selected = semantics.operations.iteration(node);
     const iterable = Node_Expression(ast, node);
     if (selected === undefined || iterable === undefined) {
@@ -62,9 +63,11 @@ for (const node of iterationNodes) {
       input.diagnostics.push(diagnostic(iteration.code, iteration.reason, node));
     } else {
       input.iterationSelections.set(node, iteration.selection);
+      if (iteration.selection.target === "js-array-live-values") {
+        resourceErrorTypes.push(mojoNativeErrorType());
+      }
     }
   }
-  const resourceErrorTypes: MojoTargetTypeRef[] = [];
   for (const declaration of resourceDeclarations) {
     const sourceInfo = semantics.operations.resourceManagement(declaration);
     if (sourceInfo === undefined) {
@@ -102,4 +105,3 @@ for (const node of iterationNodes) {
   }
   return resourceErrorTypes;
 }
-

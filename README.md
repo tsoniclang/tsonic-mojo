@@ -23,7 +23,7 @@ the default source profile; JavaScript semantics are enabled only by selecting
 the `js` surface, and Node APIs are supplied independently by
 `@tsonic/mojo-nodejs`.
 
-The current foundation provides one complete vertical slice:
+The target preserves these compilation boundaries:
 
 - an ordered compilation session and deterministic generated/user-owned
   project modes;
@@ -65,6 +65,26 @@ fact alone does not prove native storage layout or ownership.
 
 The pinned Mojo compiler has a reproduced runtime defect when forwarding a
 borrowed `String` to a non-inlined variadic function. It reproduces in a small
-standard-library-only program and affects Tsumo's array-call execution. Full
-Tsumo runtime acceptance is therefore not certified on this compiler pin;
-successful native compilation alone is not an execution proof.
+standard-library-only program. Owned collection APIs use the explicit list ABI
+described above, so that defect no longer governs Tsumo's collection calls.
+Imported native variadic APIs retain their native contract; the upstream defect
+is not claimed fixed. Pudding and Tsumo require native execution proofs, not just
+successful generation or compilation.
+
+Array joining and default sorting use source value coercions, including decimal
+number spelling, lowercase booleans and UTF-16 ordering. `Array.from` creates a
+new collection; array `for...of` reads the live collection in source order.
+Sparse reads cannot silently disappear or manufacture a value incompatible with
+the selected element carrier.
+
+Native runtime package manifests declare C11 or C++17 translation units explicitly.
+The schema-3 native build manifest retains each unit's language and standard and
+selects compiler paths inside the pinned Pixi environment. The common runtime
+uses a bounded C ABI to the C++ standard library's shortest-round-trip numeric
+conversion; source decimal/exponent formatting remains common runtime policy.
+
+The target follows the same twelve top-level layers as C# and Rust. This is not
+a claim of complete behavioral parity: generators, native asynchronous iterator
+protocols and some provider contracts remain unsupported. The retained parity
+inventory is a lane/proof index, not a complete enumeration of all Node exports,
+members or overloads.

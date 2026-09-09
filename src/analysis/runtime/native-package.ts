@@ -8,8 +8,8 @@ export interface MojoRuntimeEnvironmentDependency {
 }
 
 export interface MojoRuntimeNativeTranslationUnit {
-  readonly language: "c";
-  readonly standard: "c11";
+  readonly language: "c" | "c++";
+  readonly standard: "c11" | "c++17";
   readonly path: string;
   readonly digest: string;
   readonly text: string;
@@ -77,8 +77,8 @@ interface RuntimeNativeManifest {
   readonly contractVersion: 1;
   readonly dependencies?: Readonly<Record<string, string>>;
   readonly translationUnits?: readonly {
-    readonly language: "c";
-    readonly standard: "c11";
+    readonly language: "c" | "c++";
+    readonly standard: "c11" | "c++17";
     readonly path: string;
   }[];
   readonly includeDirectories?: readonly string[];
@@ -125,8 +125,8 @@ function parseManifest(text: string, packageName: string): RuntimeNativeManifest
       }
       requireExactFields(unit, ["language", "standard", "path"],
         `Mojo runtime translation unit for '${packageName}'`);
-      if (unit.language !== "c" || unit.standard !== "c11" ||
-        typeof unit.path !== "string") {
+      if (!((unit.language === "c" && unit.standard === "c11") ||
+        (unit.language === "c++" && unit.standard === "c++17")) || typeof unit.path !== "string") {
         throw new Error(`Mojo runtime manifest for '${packageName}' has an unsupported translation unit.`);
       }
     }
@@ -189,8 +189,8 @@ function orderedTranslationUnits(
   const seen = new Set<string>();
   const units = (input ?? []).map((unit) => {
     requireRelativePath(unit.path, packageName, "translation unit");
-    if (!unit.path.endsWith(".c")) {
-      throw new Error(`Mojo runtime translation unit '${unit.path}' is not a C source file.`);
+    if (!unit.path.endsWith(unit.language === "c" ? ".c" : ".cpp")) {
+      throw new Error(`Mojo runtime translation unit '${unit.path}' does not match its declared language.`);
     }
     if (seen.has(unit.path)) {
       throw new Error(`Mojo runtime translation unit '${unit.path}' is duplicated.`);
@@ -211,7 +211,9 @@ function orderedTranslationUnits(
       language: unit.language,
       standard: unit.standard,
       path: relativePath,
-      digest: createHash("sha256").update(bytes).digest("hex"),
+      digest: createHash("sha256").update(JSON.stringify({
+        language: unit.language, standard: unit.standard, path: relativePath,
+      })).update(bytes).digest("hex"),
       text: utf8Decoder.decode(bytes),
     });
   });
