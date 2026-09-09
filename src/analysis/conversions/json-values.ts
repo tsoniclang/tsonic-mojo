@@ -28,12 +28,23 @@ export function selectMojoJsonValueConversion(
   source: MojoTargetTypeRef,
   context: MojoJsonValueConversionContext,
 ): MojoJsonValueConversionSelection {
-  return select(source, context, new Set(), true);
+  return select(source, { ...context, includeSelectedToJson: true }, new Set(), true);
+}
+
+export function selectMojoDataValueConversion(
+  source: MojoTargetTypeRef,
+  context: MojoJsonValueConversionContext,
+): MojoJsonValueConversionSelection {
+  return select(source, { ...context, includeSelectedToJson: false }, new Set(), false);
+}
+
+interface ProjectionContext extends MojoJsonValueConversionContext {
+  readonly includeSelectedToJson: boolean;
 }
 
 function select(
   source: MojoTargetTypeRef,
-  context: MojoJsonValueConversionContext,
+  context: ProjectionContext,
   ancestors: ReadonlySet<string>,
   applySelectedToJson: boolean,
 ): MojoJsonValueConversionSelection {
@@ -48,7 +59,7 @@ function select(
   }
   const next = new Set(ancestors);
   next.add(key);
-  if (applySelectedToJson) {
+  if (applySelectedToJson && context.includeSelectedToJson) {
     const projection = selectedProjectToJson(source, context, next);
     if (projection.kind !== "absent") return projection;
   }
@@ -164,7 +175,7 @@ type ProjectToJsonSelection =
 
 function selectedProjectToJson(
   sourceType: MojoTargetTypeRef,
-  context: MojoJsonValueConversionContext,
+  context: ProjectionContext,
   ancestors: ReadonlySet<string>,
 ): ProjectToJsonSelection {
   const definition = context.projectRelationships.definitionForType(sourceType);

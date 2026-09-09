@@ -95,6 +95,7 @@ export type MojoSourceProfileParameterContract =
   | "float64"
   | "js-string"
   | "js-value"
+  | "js-data"
   | "native-string"
   | "selected-argument"
   | { readonly kind: "optional"; readonly value: MojoSourceProfileParameterContract }

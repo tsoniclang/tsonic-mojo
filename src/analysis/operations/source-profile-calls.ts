@@ -2,6 +2,10 @@ import type { Node, ResolvedSourceCallInfo, Type } from "@tsonic/tsts";
 import type { MojoTargetGenericArgument, MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
 import { classifyMojoRefinedValueConversion } from "../refinements/value.js";
+import {
+  selectedSourceProfileArgumentType,
+  sourceProfileDataArgumentConversions,
+} from "./source-profile-data-arguments.js";
 import { selectMojoSourceProfileCallRow } from "../../policy/operations/source-profile-selection.js";
 import type {
   MojoSourceProfileCallRow,
@@ -166,6 +170,14 @@ export function analyzeSourceProfileCall(
         : {}),
     }));
   }
+  const dataConversions = sourceProfileDataArgumentConversions(
+    parameterContract ?? [], sourceCall, resolve, context,
+  );
+  if (dataConversions.kind === "unsupported") return dataConversions;
+  const parameterConversions = new Map(dataConversions.conversions);
+  if (callback?.conversion !== undefined) {
+    parameterConversions.set(callback.parameterIndex, callback.conversion);
+  }
   const arguments_ = analyzeArguments(
     context.source.ast,
     sourceCall,
@@ -176,9 +188,7 @@ export function analyzeSourceProfileCall(
     context.valueRefinements,
     context.lifecycle,
     context.valueOwnership,
-    callback?.conversion === undefined
-      ? undefined
-      : new Map([[callback.parameterIndex, callback.conversion]]),
+    parameterConversions,
     undefined,
     context.projectRelationships,
     context.contextualizeCallableArgument,
@@ -542,26 +552,11 @@ function sourceProfileParameterType(
         "JsString",
       );
     case "js-value":
+    case "js-data":
       return mojoDynamicTargetType("js");
     case "native-string":
       return mojoStringTargetType();
     case "selected-argument":
       return undefined;
   }
-}
-
-function selectedSourceProfileArgumentType(
-  parameterIndex: number,
-  sourceCall: ResolvedSourceCallInfo,
-  resolve: (type: Type, authoredTypeNode?: Node) => MojoTargetTypeRef | undefined,
-  expressionTypes: WeakMap<Node, MojoTargetTypeRef>,
-): MojoTargetTypeRef | undefined {
-  const bindings = sourceCall.sourceArgumentBindings.filter((binding) =>
-    binding.sourceParameterIndex === parameterIndex);
-  const argumentIndexes = [...new Set(bindings.map((binding) => binding.sourceArgumentIndex))];
-  if (bindings.length === 0 || argumentIndexes.length !== 1) return undefined;
-  const argument = sourceCall.sourceArguments[argumentIndexes[0]!];
-  const selectedTypes = bindings.map((binding) => binding.selectedArgumentType);
-  if (argument === undefined || selectedTypes.some((type) => type !== selectedTypes[0])) return undefined;
-  return expressionTypes.get(argument.expression) ?? resolve(selectedTypes[0]!);
 }

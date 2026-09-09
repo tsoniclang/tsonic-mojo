@@ -246,10 +246,16 @@ interface String {
   normalize(form?: UnicodeNormalizationForm): string;
   toLowerCase(): string;
   toUpperCase(): string;
+  toLocaleLowerCase(locales?: string | readonly string[]): string;
+  toLocaleUpperCase(locales?: string | readonly string[]): string;
+  localeCompare(that: string, locales?: string | readonly string[], options?: IntlCollatorOptions): number;
   isWellFormed(): boolean;
   toWellFormed(): string;
 }
 type UnicodeNormalizationForm = "NFC" | "NFD" | "NFKC" | "NFKD";
+interface IntlCollatorOptions {
+  collation?: string;
+}
 interface StringConstructor {
   new (value?: unknown): String;
   (value?: unknown): string;

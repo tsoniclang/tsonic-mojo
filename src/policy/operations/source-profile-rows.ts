@@ -18,12 +18,14 @@ import {
 } from "./source-profile-row-builders.js";
 import { mojoRegExpSourceProfileCallRows } from "./source-profile-regexp-rows.js";
 import { mojoDateSourceProfileCallRows } from "./source-profile-date-rows.js";
+import { mojoLocaleSourceProfileCallRows } from "./source-profile-locale-rows.js";
 
 export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Object.freeze([
   ...jsInstanceRows("Iterator", "imm", ["next"]),
   ...sourceErrorRows,
   ...jsConstructorRows,
   ...mojoRegExpSourceProfileCallRows,
+  ...mojoLocaleSourceProfileCallRows,
   Object.freeze({
     profile: "js",
     kind: "call",
