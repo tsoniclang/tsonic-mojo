@@ -19,6 +19,7 @@ import { closeMojoErrorType } from "../resources/effects.js";
 import { validateMojoExecutableRegionSyntax } from "../control-flow/syntax-validation.js";
 import { createMojoProgramQueries } from "./queries.js";
 import { collectMojoSourceModuleConstructions } from "../source-modules/construction.js";
+import { closeMojoSourceModuleEntryPackages } from "../source-modules/entry-packages.js";
 import { finalizeMojoModuleBindingTypes } from "../module-initialization/bindings.js";
 import { finalizeMojoModuleEffects } from "../module-initialization/effects.js";
 import { analyzeMojoModuleInitialization } from "../module-initialization/analyze.js";
@@ -437,6 +438,11 @@ export function finalizeMojoProgramResult(
     diagnostics.push(diagnostic(issue.code, issue.message, issue.node));
   }
   if (diagnostics.length > 0) return rejectedTargetStage(diagnostics);
+  const entryPackages = closeMojoSourceModuleEntryPackages(modules, sourceModuleConstructions.entries);
+  for (const issue of entryPackages.issues) {
+    diagnostics.push(diagnostic(issue.code, issue.message, issue.node));
+  }
+  if (diagnostics.length > 0) return rejectedTargetStage(diagnostics);
   return resolvedTargetStage(Object.freeze({
     host: Object.freeze({
       paths: Object.freeze({ ...hostInput.paths }),
@@ -451,7 +457,7 @@ export function finalizeMojoProgramResult(
     projectRelationships: environment.projectRelationships,
     sourceCallableSpecializations,
     projectDispatch,
-    modules,
+    modules: entryPackages.modules,
     sourceModuleConstructions: sourceModuleConstructions.entries,
     analyzedModules: finalizedModules,
     moduleInitialization: moduleInitialization.catalog,
