@@ -886,7 +886,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/array_test.mojo",
+      "runtimeProof": "../mojo-js/tests/arrays/array_test.mojo",
       "note": "Exact generated selection and direct native JsArray behavior cover this Array lane."
     },
     {
@@ -899,7 +899,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/array_test.mojo",
+      "runtimeProof": "../mojo-js/tests/arrays/array_test.mojo",
       "note": "Exact generated selection and direct native JsArray behavior cover this Array lane."
     },
     {
@@ -912,7 +912,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/array_test.mojo",
+      "runtimeProof": "../mojo-js/tests/arrays/array_test.mojo",
       "note": "Exact generated selection and direct native JsArray behavior cover this Array lane."
     },
     {
@@ -925,7 +925,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/array_test.mojo",
+      "runtimeProof": "../mojo-js/tests/arrays/array_test.mojo",
       "note": "Exact generated selection and direct native JsArray behavior cover this Array lane."
     },
     {
@@ -938,7 +938,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/array_test.mojo",
+      "runtimeProof": "../mojo-js/tests/arrays/array_test.mojo",
       "note": "Exact generated selection and direct native JsArray behavior cover this Array lane."
     },
     {
@@ -951,7 +951,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/array_test.mojo",
+      "runtimeProof": "../mojo-js/tests/arrays/array_test.mojo",
       "note": "Exact generated selection and direct native JsArray behavior cover this Array lane."
     },
     {
@@ -964,7 +964,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/array_test.mojo",
+      "runtimeProof": "../mojo-js/tests/arrays/array_test.mojo",
       "note": "Exact generated selection and direct native JsArray behavior cover this Array lane."
     },
     {
@@ -977,7 +977,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/array_test.mojo",
+      "runtimeProof": "../mojo-js/tests/arrays/array_test.mojo",
       "note": "Exact generated selection and direct native JsArray behavior cover this Array lane."
     },
     {
@@ -990,7 +990,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/array_test.mojo",
+      "runtimeProof": "../mojo-js/tests/arrays/array_test.mojo",
       "note": "Exact generated selection and direct native JsArray behavior cover this Array lane."
     },
     {
@@ -1003,7 +1003,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/array_test.mojo",
+      "runtimeProof": "../mojo-js/tests/arrays/array_test.mojo",
       "note": "Exact generated selection and direct native JsArray behavior cover this Array lane."
     },
     {
@@ -1016,7 +1016,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/array_test.mojo",
+      "runtimeProof": "../mojo-js/tests/arrays/array_test.mojo",
       "note": "Exact generated selection and direct native JsArray behavior cover this Array lane."
     },
     {
@@ -1029,7 +1029,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/array_test.mojo",
+      "runtimeProof": "../mojo-js/tests/arrays/array_test.mojo",
       "note": "Exact generated selection and direct native JsArray behavior cover this Array lane."
     },
     {
@@ -1042,7 +1042,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/array_test.mojo",
+      "runtimeProof": "../mojo-js/tests/arrays/array_test.mojo",
       "note": "Exact generated selection and direct native JsArray behavior cover this Array lane."
     },
     {
@@ -1055,7 +1055,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/array_test.mojo",
+      "runtimeProof": "../mojo-js/tests/arrays/array_test.mojo",
       "note": "Exact generated selection and direct native JsArray behavior cover this Array lane."
     },
     {
@@ -1068,7 +1068,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/array_test.mojo",
+      "runtimeProof": "../mojo-js/tests/arrays/array_test.mojo",
       "note": "Exact generated selection and direct native JsArray behavior cover this Array lane."
     },
     {
@@ -1081,7 +1081,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/array_test.mojo",
+      "runtimeProof": "../mojo-js/tests/arrays/array_test.mojo",
       "note": "Exact generated selection and direct native JsArray behavior cover this Array lane."
     },
     {
@@ -1094,7 +1094,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/array_test.mojo",
+      "runtimeProof": "../mojo-js/tests/arrays/array_test.mojo",
       "note": "Exact generated selection and direct native JsArray behavior cover this Array lane."
     },
     {
@@ -1107,7 +1107,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/array_test.mojo",
+      "runtimeProof": "../mojo-js/tests/arrays/array_test.mojo",
       "note": "Exact generated selection and direct native JsArray behavior cover this Array lane."
     },
     {
@@ -1120,7 +1120,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/array_test.mojo",
+      "runtimeProof": "../mojo-js/tests/arrays/array_test.mojo",
       "note": "Exact generated selection and direct native JsArray behavior cover this Array lane."
     },
     {
@@ -1133,7 +1133,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/array_test.mojo",
+      "runtimeProof": "../mojo-js/tests/arrays/array_test.mojo",
       "note": "Exact generated selection and direct native JsArray behavior cover this Array lane."
     },
     {
@@ -1146,7 +1146,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/array_test.mojo",
+      "runtimeProof": "../mojo-js/tests/arrays/array_test.mojo",
       "note": "Exact generated selection and direct native JsArray behavior cover this Array lane."
     },
     {
@@ -1159,7 +1159,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/array_test.mojo",
+      "runtimeProof": "../mojo-js/tests/arrays/array_test.mojo",
       "note": "Exact generated selection and direct native JsArray behavior cover this Array lane."
     },
     {
@@ -1172,7 +1172,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/array_test.mojo",
+      "runtimeProof": "../mojo-js/tests/arrays/array_test.mojo",
       "note": "Exact generated selection and direct native JsArray behavior cover this Array lane."
     },
     {
@@ -1185,7 +1185,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/array_test.mojo",
+      "runtimeProof": "../mojo-js/tests/arrays/array_test.mojo",
       "note": "Exact generated selection and direct native JsArray behavior cover this Array lane."
     },
     {
@@ -1198,7 +1198,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/array_test.mojo",
+      "runtimeProof": "../mojo-js/tests/arrays/array_test.mojo",
       "note": "Exact generated selection and direct native JsArray behavior cover this Array lane."
     },
     {
@@ -1211,7 +1211,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact generated selection and direct UTF-16 JsString behavior cover this String lane."
     },
     {
@@ -1224,7 +1224,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact generated selection and direct UTF-16 JsString behavior cover this String lane."
     },
     {
@@ -1237,7 +1237,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact generated selection and direct UTF-16 JsString behavior cover this String lane."
     },
     {
@@ -1250,7 +1250,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact generated selection and direct UTF-16 JsString behavior cover this String lane."
     },
     {
@@ -1263,7 +1263,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact generated selection and direct UTF-16 JsString behavior cover this String lane."
     },
     {
@@ -1276,7 +1276,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact generated selection and direct UTF-16 JsString behavior cover this String lane."
     },
     {
@@ -1289,7 +1289,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact generated selection and direct UTF-16 JsString behavior cover this String lane."
     },
     {
@@ -1302,7 +1302,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact generated selection and direct UTF-16 JsString behavior cover this String lane."
     },
     {
@@ -1315,7 +1315,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact generated selection and direct UTF-16 JsString behavior cover this String lane."
     },
     {
@@ -1328,7 +1328,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact generated selection and direct UTF-16 JsString behavior cover this String lane."
     },
     {
@@ -1341,7 +1341,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact generated selection and direct UTF-16 JsString behavior cover this String lane."
     },
     {
@@ -1354,7 +1354,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact generated selection and direct UTF-16 JsString behavior cover this String lane."
     },
     {
@@ -1367,7 +1367,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact generated selection and direct UTF-16 JsString behavior cover this String lane."
     },
     {
@@ -1380,7 +1380,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact generated selection and direct UTF-16 JsString behavior cover this String lane."
     },
     {
@@ -1393,7 +1393,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact generated selection and direct UTF-16 JsString behavior cover this String lane."
     },
     {
@@ -1406,7 +1406,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact generated selection and direct UTF-16 JsString behavior cover this String lane."
     },
     {
@@ -1419,7 +1419,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact generated selection and direct UTF-16 JsString behavior cover this String lane."
     },
     {
@@ -1432,7 +1432,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact generated selection and direct UTF-16 JsString behavior cover this String lane."
     },
     {
@@ -1445,7 +1445,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact generated selection and direct UTF-16 JsString behavior cover this String lane."
     },
     {
@@ -1458,7 +1458,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact generated selection and direct UTF-16 JsString behavior cover this String lane."
     },
     {
@@ -1471,7 +1471,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact generated selection and direct UTF-16 JsString behavior cover this String lane."
     },
     {
@@ -1484,7 +1484,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact generated selection and direct UTF-16 JsString behavior cover this String lane."
     },
     {
@@ -1497,7 +1497,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact generated selection and direct UTF-16 JsString behavior cover this String lane."
     },
     {
@@ -1510,7 +1510,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact generated selection and direct UTF-16 JsString behavior cover this String lane."
     },
     {
@@ -1523,7 +1523,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact generated selection and direct UTF-16 JsString behavior cover this String lane."
     },
     {
@@ -1536,7 +1536,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact generated selection and direct UTF-16 JsString behavior cover this String lane."
     },
     {
@@ -1549,7 +1549,7 @@
       "sourceProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact ECMAScript RegExp selection is proven through generated Mojo here; QuickJS-backed native behavior and the differential oracle are proven in the mojo-js runtime bank."
     },
     {
@@ -1562,7 +1562,7 @@
       "sourceProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact ECMAScript RegExp selection is proven through generated Mojo here; QuickJS-backed native behavior and the differential oracle are proven in the mojo-js runtime bank."
     },
     {
@@ -1575,7 +1575,7 @@
       "sourceProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact ECMAScript RegExp selection is proven through generated Mojo here; QuickJS-backed native behavior and the differential oracle are proven in the mojo-js runtime bank."
     },
     {
@@ -1588,7 +1588,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct native numeric behavior cover this Math lane."
     },
     {
@@ -1601,7 +1601,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct native numeric behavior cover this Math lane."
     },
     {
@@ -1614,7 +1614,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct native numeric behavior cover this Math lane."
     },
     {
@@ -1627,7 +1627,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct native numeric behavior cover this Math lane."
     },
     {
@@ -1640,7 +1640,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct native numeric behavior cover this Math lane."
     },
     {
@@ -1653,7 +1653,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct native numeric behavior cover this Math lane."
     },
     {
@@ -1666,7 +1666,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct native numeric behavior cover this Math lane."
     },
     {
@@ -1679,7 +1679,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct native numeric behavior cover this Math lane."
     },
     {
@@ -1692,7 +1692,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct native numeric behavior cover this Math lane."
     },
     {
@@ -1705,7 +1705,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct native numeric behavior cover this Math lane."
     },
     {
@@ -1718,7 +1718,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct native numeric behavior cover this Math lane."
     },
     {
@@ -1731,7 +1731,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct native numeric behavior cover this Math lane."
     },
     {
@@ -1744,7 +1744,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct native numeric behavior cover this Math lane."
     },
     {
@@ -1757,7 +1757,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct native numeric behavior cover this Math lane."
     },
     {
@@ -1770,7 +1770,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct native numeric behavior cover this Math lane."
     },
     {
@@ -1783,7 +1783,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct native numeric behavior cover this Math lane."
     },
     {
@@ -1796,7 +1796,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct native numeric behavior cover this Math lane."
     },
     {
@@ -1809,7 +1809,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct native numeric behavior cover this Math lane."
     },
     {
@@ -1822,7 +1822,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct native numeric behavior cover this Math lane."
     },
     {
@@ -1835,7 +1835,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct native numeric behavior cover this Math lane."
     },
     {
@@ -1848,7 +1848,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct native numeric behavior cover this Math lane."
     },
     {
@@ -1861,7 +1861,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct native numeric behavior cover this Math lane."
     },
     {
@@ -1874,7 +1874,7 @@
       "sourceProof": "test/integration/generated-mojo/js-values.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-values.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-values.test.mjs",
-      "runtimeProof": "../mojo-js/tests/value_test.mojo",
+      "runtimeProof": "../mojo-js/tests/values/value_test.mojo",
       "note": "The closed JsValue graph proves this JSON lane without an open dynamic fallback."
     },
     {
@@ -1887,7 +1887,7 @@
       "sourceProof": "test/integration/generated-mojo/js-values.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-values.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-values.test.mjs",
-      "runtimeProof": "../mojo-js/tests/value_test.mojo",
+      "runtimeProof": "../mojo-js/tests/values/value_test.mojo",
       "note": "The closed JsValue graph proves this JSON lane without an open dynamic fallback."
     },
     {
@@ -1900,7 +1900,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -1913,7 +1913,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -1926,7 +1926,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -1939,7 +1939,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -1952,7 +1952,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -1965,7 +1965,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -1978,7 +1978,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -1991,7 +1991,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -2004,7 +2004,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -2017,7 +2017,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -2030,7 +2030,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -2043,7 +2043,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -2056,7 +2056,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -2069,7 +2069,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -2082,7 +2082,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -2095,7 +2095,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -2108,7 +2108,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -2121,7 +2121,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -2134,7 +2134,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -2147,7 +2147,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -2160,7 +2160,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -2173,7 +2173,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -2186,7 +2186,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -2199,7 +2199,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -2212,7 +2212,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -2225,7 +2225,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -2238,7 +2238,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -2251,7 +2251,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -2264,7 +2264,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -2277,7 +2277,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/collections_test.mojo",
+      "runtimeProof": "../mojo-js/tests/collections/collections_test.mojo",
       "note": "Exact generated selection, iteration, callback, and direct native collection behavior cover this lane."
     },
     {
@@ -2290,7 +2290,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct UTC Date behavior cover this lane."
     },
     {
@@ -2303,7 +2303,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct UTC Date behavior cover this lane."
     },
     {
@@ -2316,7 +2316,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct UTC Date behavior cover this lane."
     },
     {
@@ -2329,7 +2329,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct UTC Date behavior cover this lane."
     },
     {
@@ -2342,7 +2342,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct UTC Date behavior cover this lane."
     },
     {
@@ -2355,7 +2355,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct UTC Date behavior cover this lane."
     },
     {
@@ -2368,7 +2368,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct UTC Date behavior cover this lane."
     },
     {
@@ -2381,7 +2381,7 @@
       "sourceProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "runtimeProof": "../mojo-js/tests/regexp_test.mojo",
+      "runtimeProof": "../mojo-js/tests/regexp/regexp_test.mojo",
       "note": "Exact ECMAScript RegExp selection is proven through generated Mojo here; QuickJS-backed native behavior and the differential oracle are proven in the mojo-js runtime bank."
     },
     {
@@ -2394,7 +2394,7 @@
       "sourceProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "runtimeProof": "../mojo-js/tests/regexp_test.mojo",
+      "runtimeProof": "../mojo-js/tests/regexp/regexp_test.mojo",
       "note": "Exact ECMAScript RegExp selection is proven through generated Mojo here; QuickJS-backed native behavior and the differential oracle are proven in the mojo-js runtime bank."
     },
     {
@@ -2407,7 +2407,7 @@
       "sourceProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "runtimeProof": "../mojo-js/tests/regexp_test.mojo",
+      "runtimeProof": "../mojo-js/tests/regexp/regexp_test.mojo",
       "note": "Exact ECMAScript RegExp selection is proven through generated Mojo here; QuickJS-backed native behavior and the differential oracle are proven in the mojo-js runtime bank."
     },
     {
@@ -2420,7 +2420,7 @@
       "sourceProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "runtimeProof": "../mojo-js/tests/regexp_test.mojo",
+      "runtimeProof": "../mojo-js/tests/regexp/regexp_test.mojo",
       "note": "Exact ECMAScript RegExp selection is proven through generated Mojo here; QuickJS-backed native behavior and the differential oracle are proven in the mojo-js runtime bank."
     },
     {
@@ -2433,7 +2433,7 @@
       "sourceProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "runtimeProof": "../mojo-js/tests/regexp_test.mojo",
+      "runtimeProof": "../mojo-js/tests/regexp/regexp_test.mojo",
       "note": "Exact ECMAScript RegExp selection is proven through generated Mojo here; QuickJS-backed native behavior and the differential oracle are proven in the mojo-js runtime bank."
     },
     {
@@ -2446,7 +2446,7 @@
       "sourceProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "runtimeProof": "../mojo-js/tests/regexp_test.mojo",
+      "runtimeProof": "../mojo-js/tests/regexp/regexp_test.mojo",
       "note": "Exact ECMAScript RegExp selection is proven through generated Mojo here; QuickJS-backed native behavior and the differential oracle are proven in the mojo-js runtime bank."
     },
     {
@@ -2459,7 +2459,7 @@
       "sourceProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "runtimeProof": "../mojo-js/tests/regexp_test.mojo",
+      "runtimeProof": "../mojo-js/tests/regexp/regexp_test.mojo",
       "note": "Exact ECMAScript RegExp selection is proven through generated Mojo here; QuickJS-backed native behavior and the differential oracle are proven in the mojo-js runtime bank."
     },
     {
@@ -2472,7 +2472,7 @@
       "sourceProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "runtimeProof": "../mojo-js/tests/regexp_test.mojo",
+      "runtimeProof": "../mojo-js/tests/regexp/regexp_test.mojo",
       "note": "Exact ECMAScript RegExp selection is proven through generated Mojo here; QuickJS-backed native behavior and the differential oracle are proven in the mojo-js runtime bank."
     },
     {
@@ -2485,7 +2485,7 @@
       "sourceProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "runtimeProof": "../mojo-js/tests/regexp_test.mojo",
+      "runtimeProof": "../mojo-js/tests/regexp/regexp_test.mojo",
       "note": "Literal and dynamic RegExp construction select the bounded QuickJS-backed ECMAScript implementation, including modern grammar and stateful flags."
     },
     {
@@ -2498,7 +2498,7 @@
       "sourceProof": "test/integration/generated-mojo/js-values.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-values.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-values.test.mjs",
-      "runtimeProof": "../mojo-js/tests/value_test.mojo",
+      "runtimeProof": "../mojo-js/tests/values/value_test.mojo",
       "note": "Function replacers and one exact checker-selected project toJSON method retain source order, receiver identity, and property keys through native serialization."
     },
     {
@@ -2537,7 +2537,7 @@
       "sourceProof": "test/integration/generated-mojo/js-values.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-values.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-values.test.mjs",
-      "runtimeProof": "../mojo-js/tests/value_test.mojo",
+      "runtimeProof": "../mojo-js/tests/values/value_test.mojo",
       "note": "Object keys, values, and entries operate on the closed identity-preserving JsValue graph."
     },
     {
@@ -2550,7 +2550,7 @@
       "sourceProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "runtimeProof": "../mojo-js/tests/value_test.mojo",
+      "runtimeProof": "../mojo-js/tests/values/value_test.mojo",
       "note": "Object.assign mutates and returns one identity when every selected source field maps to a unique writable field of the same closed structural carrier."
     },
     {
@@ -2576,7 +2576,7 @@
       "sourceProof": "test/integration/generated-mojo/js-values.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-values.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-values.test.mjs",
-      "runtimeProof": "../mojo-js/tests/value_test.mojo",
+      "runtimeProof": "../mojo-js/tests/values/value_test.mojo",
       "note": "The closed JsValue graph proves the exact Object identity operation."
     },
     {
@@ -2589,7 +2589,7 @@
       "sourceProof": "test/integration/generated-mojo/js-values.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-values.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-values.test.mjs",
-      "runtimeProof": "../mojo-js/tests/value_test.mojo",
+      "runtimeProof": "../mojo-js/tests/values/value_test.mojo",
       "note": "The closed JsValue graph proves the exact Object identity operation."
     },
     {
@@ -2602,7 +2602,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct native scalar behavior cover this lane."
     },
     {
@@ -2615,7 +2615,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct native scalar behavior cover this lane."
     },
     {
@@ -2628,7 +2628,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "Exact generated selection and direct native scalar behavior cover this lane."
     },
     {
@@ -2641,7 +2641,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/value_test.mojo",
+      "runtimeProof": "../mojo-js/tests/values/value_test.mojo",
       "note": "Exact generated selection and direct native scalar behavior cover this lane."
     },
     {
@@ -2706,7 +2706,7 @@
       "sourceProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-callbacks.test.mjs",
-      "runtimeProof": "../mojo-js/tests/math_date_test.mojo",
+      "runtimeProof": "../mojo-js/tests/numbers/math_date_test.mojo",
       "note": "UTC setters and deterministic Date strings are selected and implemented natively."
     },
     {
@@ -2719,7 +2719,7 @@
       "sourceProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact String normalization selects the pinned ICU-backed runtime for NFC, NFD, NFKC, and NFKD; generated selection is proven here and native behavior in the mojo-js runtime bank."
     },
     {
@@ -2745,7 +2745,7 @@
       "sourceProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "runtimeProof": "../mojo-js/tests/regexp_test.mojo",
+      "runtimeProof": "../mojo-js/tests/regexp/regexp_test.mojo",
       "note": "Exact ECMAScript RegExp selection is proven through generated Mojo here; QuickJS-backed native behavior and the differential oracle are proven in the mojo-js runtime bank."
     },
     {
@@ -2758,7 +2758,7 @@
       "sourceProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "emissionProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "runtimeProof": "../mojo-js/tests/string_test.mojo",
+      "runtimeProof": "../mojo-js/tests/strings/string_test.mojo",
       "note": "Exact ECMAScript RegExp selection is proven through generated Mojo here; QuickJS-backed native behavior and the differential oracle are proven in the mojo-js runtime bank."
     },
     {
