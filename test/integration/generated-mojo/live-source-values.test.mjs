@@ -8,6 +8,23 @@ function generated(source) {
   return artifactTexts(result).filter(({ path }) => path.endsWith(".mojo")).map(({ text }) => text).join("\n");
 }
 
+test("locale option getters use selected property readers rather than eager data snapshots", () => {
+  const output = generated(`
+class Options {
+  reads = 0;
+  get style(): "currency" { return "currency"; }
+  get currency(): string { this.reads += 1; return "USD"; }
+}
+export function main(): void {
+  const options = new Options();
+  console.log((12.5).toLocaleString("en-US", options), options.reads);
+}
+`);
+  assert.match(output, /property_reader/u);
+  assert.match(output, /number_to_locale_string\(/u);
+  assert.doesNotMatch(output, /js_value_from_object_entries/u);
+});
+
 test("unknown assignments retain their source owner rather than snapshotting fields", () => {
   const output = generated(`
 class Counter { count = 1; }

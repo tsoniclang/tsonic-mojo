@@ -21,6 +21,8 @@ import type { MojoSourceProfileRegistry } from "../../policy/types/source-profil
 import { selectedMojoSourceProfileDeclarationIdentity } from "../../policy/operations/source-profile-selection.js";
 import { analyzeStaticProviderProperty } from "./static-provider-properties.js";
 import { sourceProfileRegExpPropertyAccess } from "../../policy/operations/source-profile-regexp-properties.js";
+import { mojoIntlSourceProfileProperty } from "../../policy/operations/source-profile-intl-properties.js";
+import type { MojoSourceProfilePropertyAccessPolicy } from "../../policy/operations/source-profile-property-model.js";
 import { mojoIteratorResultProperty } from "../../policy/types/js-iterator.js";
 import { analyzeMojoIteratorResultProperty } from "./iterator-result-properties.js";
 import {
@@ -420,19 +422,13 @@ function sourceProfilePropertyAccess(
   owner: string,
   member: string,
   receiver: MojoTargetTypeRef,
-): {
-  readonly read:
-    | { readonly kind: "member" | "method"; readonly name: string }
-    | { readonly kind: "function"; readonly modulePath: readonly string[]; readonly name: string };
-  readonly write?: { readonly kind: "member" | "method"; readonly name: string };
-  readonly resultType?: MojoTargetTypeRef;
-  readonly storageType?: MojoTargetTypeRef;
-  readonly raises: boolean;
-} | undefined {
+): MojoSourceProfilePropertyAccessPolicy | undefined {
   const regexp = profile === "js"
     ? sourceProfileRegExpPropertyAccess(owner, member, receiver)
     : undefined;
   if (regexp !== undefined) return regexp;
+  const intl = profile === "js" ? mojoIntlSourceProfileProperty(owner, member, receiver) : undefined;
+  if (intl !== undefined) return intl;
   if (profile === "js" && (owner === "IteratorYieldResult" || owner === "IteratorReturnResult")) {
     const resultType = mojoIteratorResultProperty(receiver, member);
     return resultType === undefined ? undefined : {

@@ -1,11 +1,6 @@
 import { jsRegExpSourceProfileIdentity } from "@tsonic/js-source-profile";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
-
-export interface MojoSourceProfilePropertyAccessPolicy {
-  readonly read: { readonly kind: "member" | "method"; readonly name: string };
-  readonly write?: { readonly kind: "member" | "method"; readonly name: string };
-  readonly raises: boolean;
-}
+import type { MojoSourceProfilePropertyAccessPolicy } from "./source-profile-property-model.js";
 
 const identity = jsRegExpSourceProfileIdentity;
 const owners = identity.owners;

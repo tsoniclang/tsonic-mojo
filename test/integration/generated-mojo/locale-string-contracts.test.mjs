@@ -25,7 +25,7 @@ test("locale string calls use exact native receivers and closed data arguments",
   assert.match(output, /string_to_locale_lower_case\(/u);
   assert.match(output, /string_to_locale_upper_case\(/u);
   assert.match(output, /string_locale_compare\(/u);
-  assert.match(output, /js_value_from_object_entries\(/u);
+  assert.match(output, /js_value_from_source_object\(/u);
   assert.doesNotMatch(output, /json_projection|\.toJSON\(/u);
 });
 
@@ -44,14 +44,15 @@ test("same-spelled source methods do not select locale runtime operations", () =
   assert.doesNotMatch(output, /string_locale_compare|string_to_locale_lower_case/u);
 });
 
-test("closed locale data conversion does not permit executable option discovery", () => {
-  const result = compileMojo({ surfaces: ["js"], files: { "index.ts": `
+test("locale options have their own live field view independent from selected JSON", () => {
+  const output = generated(`
     class Options {
       numeric: boolean = true;
       toJSON(): { numeric: boolean } { return { numeric: true }; }
     }
     export function main(): void { "2".localeCompare("10", "en", new Options()); }
-  ` } });
-  assert.notEqual(result.diagnostics.length, 0);
-  assert.equal(artifactTexts(result).length, 0);
+  `);
+  assert.match(output, /js_value_from_source_object\(/u);
+  assert.match(output, /string_locale_compare\(/u);
+  assert.doesNotMatch(output, /js_value_from_object_entries|js_value_from_json_projection/u);
 });

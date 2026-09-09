@@ -34,6 +34,7 @@ import { implicitHeapLifecycle, nativeSetLifecycle } from "./lifecycle-contracts
 import { resolveMojoJsRegExpSourceProfileType } from "./js-regexp.js";
 import { resolveMojoGenericParameterType } from "./generic-parameter-resolution.js";
 import { mojoIteratorResultMember, mojoIteratorResultType } from "./js-iterator.js";
+import { mojoIntlSourceProfileType } from "./js-intl.js";
 
 export { providerOwnerMatches } from "./resolution-helpers.js";
 
@@ -290,6 +291,10 @@ function resolveMojoTargetTypeWithState(
       return context.jsEnabled
         ? { kind: "resolved", type: { kind: "symbol" } }
         : { kind: "unsupported", reason: "TypeScript symbol values require the explicit JavaScript surface" };
+    }
+    if (sourceProfile?.profile === "js") {
+      const intl = mojoIntlSourceProfileType(sourceProfile.name);
+      if (intl !== undefined) return { kind: "resolved", type: intl };
     }
     if (sourceProfile?.name === "Date") {
       return sourceProfile.profile === "js"
