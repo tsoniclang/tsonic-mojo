@@ -1,7 +1,7 @@
 import type { Node, ResolvedSourceCallInfo, Type } from "@tsonic/tsts";
 import type { MojoTargetGenericArgument, MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
-import { classifyMojoRefinedValueConversion } from "../refinements/value.js";
+import { mojoValueConversionNarrowing } from "../refinements/value.js";
 import {
   selectedSourceProfileArgumentType,
   sourceProfileDataArgumentConversions,
@@ -77,6 +77,7 @@ export function analyzeSourceProfileCall(
     readonly variadic: boolean;
     readonly nativeName?: string;
     readonly restPacking?: "list";
+    readonly variadicCollectionType?: MojoTargetTypeRef;
     readonly passing: "plain";
     readonly callableConsumption?: "immediate";
   }[] = [];
@@ -203,6 +204,7 @@ export function analyzeSourceProfileCall(
     context.expressionTypes,
     context.valueRefinements,
     context.lifecycle,
+    context.conversions,
     context.valueOwnership,
     parameterConversions,
     undefined,
@@ -241,6 +243,7 @@ export function analyzeSourceProfileCall(
         arguments: Object.freeze(targetArguments),
       });
   let receiver: Node | undefined;
+  let runtimeReceiverType = sourceReceiverType;
   let receiverConversion;
   if (selected.row.target.kind === "instance" || selected.row.target.receiver !== undefined) {
     if (sourceReceiver === undefined || sourceReceiverType === undefined) {
@@ -259,13 +262,18 @@ export function analyzeSourceProfileCall(
       };
     }
     receiver = sourceReceiver.expression;
-    const conversion = classifyMojoRefinedValueConversion(
+    runtimeReceiverType = selected.row.receiverContract === undefined ? sourceReceiverType :
+      sourceProfileParameterType(selected.row.receiverContract, sourceReceiverType);
+    if (runtimeReceiverType === undefined) return {
+      kind: "unsupported", code: "MOJO_SOURCE_PROFILE_RECEIVER_CONTRACT_INVALID",
+      reason: "The selected source-profile receiver contract has no exact native carrier.",
+    };
+    const conversion = context.conversions.classify(
       sourceReceiverType,
-      sourceReceiverType,
-      sourceCall.sourceReceiver === undefined
+      runtimeReceiverType,
+      mojoValueConversionNarrowing(sourceCall.sourceReceiver === undefined
         ? undefined
-        : context.valueRefinements.get(sourceCall.sourceReceiver.expression),
-      context.projectRelationships,
+        : context.valueRefinements.get(sourceCall.sourceReceiver.expression)),
     );
     if (conversion.kind === "unsupported") return {
       kind: "unsupported",
@@ -290,7 +298,7 @@ export function analyzeSourceProfileCall(
       kind: "provider",
       operation: Object.freeze({
         target,
-        ...(sourceReceiverType === undefined ? {} : { receiverType: sourceReceiverType }),
+        ...(runtimeReceiverType === undefined ? {} : { receiverType: runtimeReceiverType }),
         parameterTypes: Object.freeze(parameterTypes),
         resultType: result.type,
         genericArguments: Object.freeze(genericArguments),

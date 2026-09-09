@@ -3,11 +3,13 @@ import type {
   MojoValueConversion,
 } from "./model.js";
 import type { MojoTargetTypeRef } from "../types/model.js";
+import { mojoJsValueGraphTypes } from "./js-value-graph.js";
 
 export function mojoValueConversionRepresentationTypes(
   conversion: MojoValueConversion,
 ): readonly MojoTargetTypeRef[] {
   switch (conversion.kind) {
+    case "js-value-graph": return Object.freeze([conversion.targetType, ...mojoJsValueGraphTypes(conversion.graph)]);
     case "identity":
     case "js-to-native-string":
       return Object.freeze([]);
@@ -35,53 +37,12 @@ export function mojoValueConversionRepresentationTypes(
         conversion.targetType,
         ...(conversion.source === "number" ? [conversion.sourceType] : []),
       ]);
-    case "js-structural-object-box":
-      return Object.freeze([
-        conversion.sourceType,
-        conversion.targetType,
-        ...conversion.fields.flatMap((field) => [
-          field.sourceType,
-          ...mojoValueConversionRepresentationTypes(field.conversion),
-        ]),
-      ]);
-    case "js-sequence-box":
     case "js-data-rest":
       return Object.freeze([
         conversion.sourceType,
         conversion.targetType,
         conversion.elementType,
         ...mojoValueConversionRepresentationTypes(conversion.elementConversion),
-      ]);
-    case "js-tuple-box":
-      return Object.freeze([
-        conversion.sourceType,
-        conversion.targetType,
-        ...conversion.elements.flatMap((element) => [
-          element.sourceType,
-          ...mojoValueConversionRepresentationTypes(element.conversion),
-        ]),
-      ]);
-    case "js-optional-box":
-      return Object.freeze([
-        conversion.sourceType,
-        conversion.targetType,
-        ...mojoValueConversionRepresentationTypes(conversion.valueConversion),
-      ]);
-    case "js-union-box":
-      return Object.freeze([
-        conversion.sourceType,
-        conversion.targetType,
-        ...conversion.members.flatMap((member) => [
-          member.sourceType,
-          ...mojoValueConversionRepresentationTypes(member.conversion),
-        ]),
-      ]);
-    case "js-selected-to-json":
-      return Object.freeze([
-        conversion.sourceType,
-        conversion.targetType,
-        conversion.resultType,
-        ...mojoValueConversionRepresentationTypes(conversion.resultConversion),
       ]);
     case "collection-map":
       return Object.freeze([

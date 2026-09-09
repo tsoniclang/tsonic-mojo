@@ -300,6 +300,7 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     kind: "call",
     owner: "Object",
     member: "hasOwnProperty",
+    receiverContract: "js-value",
     argumentCount: 1,
     parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["js-string"]),
     target: Object.freeze({

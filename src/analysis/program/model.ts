@@ -142,6 +142,7 @@ export interface MojoAnalyzedClassField {
   readonly ownerTypeParameters: readonly import("../../target-model/types/project.js").MojoProjectTypeParameterDefinition[];
   readonly initializer?: Node;
   readonly visibility: "public" | "private";
+  readonly ownProperty: boolean;
 }
 
 export interface MojoAnalyzedInterfaceField {

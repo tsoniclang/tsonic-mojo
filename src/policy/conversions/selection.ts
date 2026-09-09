@@ -13,7 +13,10 @@ export type MojoConversionClassification =
   | { readonly kind: "resolved"; readonly conversion: MojoValueConversion }
   | { readonly kind: "unsupported"; readonly reason: string };
 
+export type MojoSourceValueProjectionSelector = (type: MojoTargetTypeRef) => MojoConversionClassification;
+
 export interface MojoConversionIndex {
+  classify(actual: MojoTargetTypeRef, expected: MojoTargetTypeRef, narrowing?: MojoValueConversionNarrowing): MojoConversionClassification;
   record(
     expression: Node,
     actual: MojoTargetTypeRef,
@@ -33,9 +36,13 @@ export interface MojoConversionIndex {
 }
 
 export function createMojoConversionIndex(
-  narrowingForExpression: (expression: Node) => MojoValueConversionNarrowing | undefined = () => undefined,
-  projectRelationships?: MojoProjectTypeRelationships,
+  input: {
+    readonly narrowingForExpression: (expression: Node) => MojoValueConversionNarrowing | undefined;
+    readonly projectRelationships: MojoProjectTypeRelationships;
+    readonly sourceValueProjection: MojoSourceValueProjectionSelector;
+  },
 ): MojoConversionIndex {
+  const { narrowingForExpression, projectRelationships, sourceValueProjection } = input;
   const byExpression = new WeakMap<Node, Map<string, MojoValueConversion>>();
   const finalizedCallableKeys = new WeakMap<Node, Set<string>>();
   const representationTypesByKey = new Map<string, MojoTargetTypeRef>();
@@ -55,17 +62,22 @@ export function createMojoConversionIndex(
     }
   };
   const index: MojoConversionIndex = {
+    classify(actual, expected, narrowing) {
+      if (sealed) throw new Error("Mojo conversions cannot be classified after analysis is sealed.");
+      const result = classifyMojoValueConversion(actual, expected, narrowing, projectRelationships, sourceValueProjection);
+      if (result.kind === "resolved") retainConversion(actual, expected, result.conversion);
+      return result;
+    },
     record(
       expression: Node,
       actual: MojoTargetTypeRef,
       expected: MojoTargetTypeRef,
     ): MojoConversionClassification {
       if (sealed) throw new Error("Mojo conversions cannot be recorded after analysis is sealed.");
-      const classified = classifyMojoValueConversion(
+      const classified = index.classify(
         actual,
         expected,
         narrowingForExpression(expression),
-        projectRelationships,
       );
       if (classified.kind === "unsupported") return classified;
       const key = mojoTargetTypeKey(expected);
@@ -79,7 +91,6 @@ export function createMojoConversionIndex(
       }
       entries.set(key, classified.conversion);
       byExpression.set(expression, entries);
-      retainConversion(actual, expected, classified.conversion);
       return classified;
     },
     finalizeCallable(
@@ -88,7 +99,7 @@ export function createMojoConversionIndex(
       expected: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
     ): MojoConversionClassification {
       if (sealed) throw new Error("Mojo conversions cannot be finalized after analysis is sealed.");
-      const classified = classifyMojoValueConversion(actual, expected, undefined, projectRelationships);
+      const classified = index.classify(actual, expected);
       if (classified.kind === "unsupported") return classified;
       const key = mojoTargetTypeKey(expected);
       const finalized = finalizedCallableKeys.get(expression) ?? new Set<string>();
@@ -105,7 +116,6 @@ export function createMojoConversionIndex(
       finalized.add(key);
       byExpression.set(expression, entries);
       finalizedCallableKeys.set(expression, finalized);
-      retainConversion(actual, expected, classified.conversion);
       return classified;
     },
     get(
@@ -132,6 +142,7 @@ export function classifyMojoValueConversion(
   expected: MojoTargetTypeRef,
   narrowing?: MojoValueConversionNarrowing,
   projectRelationships?: MojoProjectTypeRelationships,
+  sourceValueProjection?: MojoSourceValueProjectionSelector,
 ): MojoConversionClassification {
   const classify = (
     source: MojoTargetTypeRef,
@@ -142,6 +153,7 @@ export function classifyMojoValueConversion(
     target,
     selectedNarrowing,
     projectRelationships,
+    sourceValueProjection,
   );
   if (narrowing !== undefined && mojoTargetTypeEquals(actual, narrowing.selectedType)) {
     const members = narrowing.selectedType.members.map((sourceType) => {
@@ -228,6 +240,7 @@ export function classifyMojoValueConversion(
     }
   }
   if (isJsValue(expected)) {
+    if (sourceValueProjection !== undefined) return sourceValueProjection(actual);
     const conversion = jsValueBoxConversion(actual, expected);
     if (conversion !== undefined) {
       return {
@@ -335,7 +348,7 @@ export function classifyMojoValueConversion(
     }
     if (actual.kind === "union") {
       const members = actual.members.map((sourceType) => {
-        const selected = selectUnionMemberConversion(sourceType, expected.members, projectRelationships);
+        const selected = selectUnionMemberConversion(sourceType, expected.members, projectRelationships, sourceValueProjection);
         return selected.kind === "resolved"
           ? Object.freeze({
               sourceType,
@@ -360,7 +373,7 @@ export function classifyMojoValueConversion(
         };
       }
     } else {
-      const selected = selectUnionMemberConversion(actual, expected.members, projectRelationships);
+      const selected = selectUnionMemberConversion(actual, expected.members, projectRelationships, sourceValueProjection);
       if (selected.kind === "resolved") {
         return {
           kind: "resolved",
@@ -406,6 +419,7 @@ function selectUnionMemberConversion(
   actual: MojoTargetTypeRef,
   members: readonly MojoTargetTypeRef[],
   projectRelationships?: MojoProjectTypeRelationships,
+  sourceValueProjection?: MojoSourceValueProjectionSelector,
 ): UnionMemberConversion {
   const exact = members.filter((member) => mojoTargetTypeEquals(actual, member));
   if (exact.length === 1) {
@@ -417,7 +431,7 @@ function selectUnionMemberConversion(
   }
   if (exact.length > 1) return Object.freeze({ kind: "unsupported" });
   const converted = members.flatMap((member) => {
-    const conversion = classifyMojoValueConversion(actual, member, undefined, projectRelationships);
+    const conversion = classifyMojoValueConversion(actual, member, undefined, projectRelationships, sourceValueProjection);
     return conversion.kind === "resolved"
       ? [Object.freeze({ targetType: member, conversion: conversion.conversion })]
       : [];

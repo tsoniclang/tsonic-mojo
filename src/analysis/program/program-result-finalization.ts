@@ -323,6 +323,7 @@ export function finalizeMojoProgramResult(
   const source = targetSourceSyntaxProgram(checkedSource);
   const sourceNavigation = snapshotTargetPlanningSourceNavigation(checkedSource);
   const queries = createMojoProgramQueries({
+    callableImplementations: finalizedByDeclaration,
     sourceNavigation,
     bindingNames,
     bindingSourceFiles,

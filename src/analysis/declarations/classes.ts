@@ -134,6 +134,7 @@ export function analyzeMojoClass(
         ownerTypeParameters: definition.typeParameters,
         ...(initializer === undefined ? {} : { initializer }),
         visibility: privateMember ? "private" : "public",
+        ownProperty: !ast.is.IsPrivateIdentifier(nameNode),
       }));
       continue;
     }

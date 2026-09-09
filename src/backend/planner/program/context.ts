@@ -31,6 +31,7 @@ export interface MojoPlanningContext {
   readonly importedSymbolNames: Map<string, string>;
   readonly typeAliases: Map<string, MojoTypeAliasUse>;
   readonly syntheticDeclarations: MojoDeclaration[];
+  readonly sourceValueFunctions: Map<string, string>;
   readonly callableArtifactNames: WeakMap<Node, string>;
   readonly bindingOverrides: ReadonlyMap<Node, MojoBindingPlanOverride>;
   readonly genericSubstitutions?: MojoTargetTypeSubstitutions;
@@ -102,6 +103,7 @@ export function createMojoPlanningContext(
     importedSymbolNames: new Map<string, string>(),
     typeAliases: new Map<string, MojoTypeAliasUse>(),
     syntheticDeclarations: [],
+    sourceValueFunctions: new Map<string, string>(),
     callableArtifactNames: new WeakMap<Node, string>(),
     bindingOverrides: new Map<Node, MojoBindingPlanOverride>(),
   };

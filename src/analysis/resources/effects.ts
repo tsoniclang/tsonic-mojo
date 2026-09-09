@@ -23,12 +23,6 @@ export function providerCallRequiresRaisingConversion(
 
 export function mojoConversionRaises(conversion: MojoValueConversion): boolean {
   switch (conversion.kind) {
-    case "js-structural-object-box":
-    case "js-sequence-box":
-    case "js-tuple-box":
-    case "js-optional-box":
-    case "js-union-box": return true;
-    case "js-selected-to-json": return true;
     case "js-to-native-string": return true;
     case "native-error-result-unwrap": return true;
     case "js-data-rest": return mojoConversionRaises(conversion.elementConversion);

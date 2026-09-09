@@ -5,7 +5,8 @@ import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoAnalyzedCallArgument } from "../program/model.js";
 import type { MojoValueRefinementSelection } from "../refinements/model.js";
-import { classifyMojoRefinedValueConversion } from "../refinements/value.js";
+import { mojoValueConversionNarrowing } from "../refinements/value.js";
+import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
 import type { MojoArgumentDisposition } from "../representations/model.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 import type { MojoValueOwnership } from "../../target-model/lifecycle/model.js";
@@ -45,6 +46,7 @@ export function analyzeArguments(
   expressionTypes: WeakMap<Node, MojoTargetTypeRef>,
   valueRefinements: WeakMap<Node, MojoValueRefinementSelection>,
   lifecycle: MojoLifecycleResolver,
+  conversions: Pick<MojoConversionIndex, "classify">,
   valueOwnership: (expression: Node) => MojoValueOwnership,
   conversionOverrides?: MojoArgumentConversionMap,
   contextualAggregate?: (expression: Node, targetType: MojoTargetTypeRef) => boolean,
@@ -150,13 +152,12 @@ export function analyzeArguments(
         ? conversionOverrides?.get(binding)
         : undefined;
       const conversion = overriddenConversion === undefined
-        ? classifyMojoRefinedValueConversion(
+        ? conversions.classify(
             sourceType,
             parameterType,
-            binding.sourceForm === "value"
+            mojoValueConversionNarrowing(binding.sourceForm === "value"
               ? valueRefinements.get(sourceExpression)
-              : undefined,
-            projectRelationships,
+              : undefined),
           )
         : { kind: "resolved" as const, conversion: overriddenConversion };
       if (conversion.kind === "unsupported") {

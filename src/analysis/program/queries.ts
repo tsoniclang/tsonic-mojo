@@ -27,6 +27,7 @@ import type {
 } from "./model.js";
 
 export interface MojoProgramQueryIndexes {
+  readonly callableImplementations: WeakMap<Node, import("./model.js").MojoAnalyzedFunction>;
   readonly sourceNavigation: TargetPlanningSourceNavigation;
   readonly bindingNames: WeakMap<Node, string>;
   readonly bindingSourceFiles: WeakMap<Node, SourceFile>;
@@ -65,6 +66,9 @@ export function createMojoProgramQueries(
   indexes: MojoProgramQueryIndexes,
 ): MojoProgramQueries {
   return Object.freeze({
+    callableImplementation(declaration: Node) {
+      return indexes.callableImplementations.get(declaration);
+    },
     bindingName(referenceOrDeclaration: Node): string | undefined {
       return indexes.bindingNames.get(referenceOrDeclaration);
     },

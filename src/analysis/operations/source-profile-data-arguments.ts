@@ -2,7 +2,6 @@ import type { AstReader, Node, ResolvedSourceCallInfo, Type } from "@tsonic/tsts
 import type { MojoSourceProfileParameterContract } from "../../policy/operations/source-profile-selection.js";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
-import { selectMojoDataValueConversion } from "../conversions/json-values.js";
 import type { MojoCallAnalysisContext } from "./calls.js";
 import type { MojoArgumentConversionMap, MojoSelectedArgumentBinding } from "./call-argument-conversions.js";
 import type { MojoCallArgumentTarget } from "./call-arguments.js";
@@ -57,13 +56,7 @@ export function sourceProfileDataArgumentConversions(
       code: "MOJO_SOURCE_PROFILE_DATA_SPREAD_NOT_CLOSED",
       reason: "A data rest spread requires an exact homogeneous source and native JsValue list ABI.",
     };
-    const conversion = selectMojoDataValueConversion(sourceType, {
-      source: context.source,
-      structuralObjects: context.structuralObjects,
-      projectRelationships: context.projectRelationships,
-      lifecycle: context.lifecycle,
-      callableByDeclaration: context.callableByDeclaration,
-    });
+    const conversion = context.conversions.classify(sourceType, jsValueType);
     if (conversion.kind === "unsupported") return {
       kind: "unsupported",
       code: "MOJO_SOURCE_PROFILE_DATA_ARGUMENT_NOT_CLOSED",

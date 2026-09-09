@@ -20,6 +20,7 @@ export interface MojoSourceProfileCallRowBase {
   readonly parameterContractMode?: "exact" | "overrides";
   readonly restParameterName?: string;
   readonly receiverCapability?: "integer";
+  readonly receiverContract?: MojoSourceProfileParameterContract;
   readonly raises?: boolean;
   readonly callback?: MojoSourceProfileCallbackContract;
   readonly resultContract?: MojoSourceProfileResultContract;

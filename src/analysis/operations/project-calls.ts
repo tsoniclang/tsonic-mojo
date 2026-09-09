@@ -116,6 +116,7 @@ export function analyzeProjectCall(
     context.expressionTypes,
     context.valueRefinements,
     context.lifecycle,
+    context.conversions,
     context.valueOwnership,
     undefined,
     (expression) => context.source.ast.is.IsObjectLiteralExpression(expression),

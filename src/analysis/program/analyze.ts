@@ -6,6 +6,7 @@ import type {
 } from "@tsonic/target-api/artifacts";
 import { analyzeAndSealMojoCallableExpression } from "../callables/expressions.js";
 import { createMojoConversionIndex } from "../../policy/conversions/selection.js";
+import { selectMojoJsValueConversion } from "../conversions/js-value-graph.js";
 import { mojoValueConversionNarrowing } from "../refinements/value.js";
 import { createMojoProjectTypeCatalog } from "../project-types/catalog.js";
 import { createMojoProjectTypeRelationships } from "../project-types/relationships.js";
@@ -209,10 +210,6 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
   for (const issue of projectRelationships.issues) {
     diagnostics.push(diagnostic(issue.code, issue.message, issue.node));
   }
-  const conversions = createMojoConversionIndex(
-    (expression) => mojoValueConversionNarrowing(valueRefinements.get(expression)),
-    projectRelationships,
-  );
   const lifecycle = createMojoLifecycleResolver({ projectTypes, providerSemantics });
   const valueOwnership = createMojoValueOwnershipResolver({
     source: input.source,
@@ -305,6 +302,23 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
   });
 
   const locationNames = createNameAllocator();
+  const sourceValueGenericParameters = new Map([
+    ...topLevelCallableContracts,
+    ...classes,
+    ...interfaces,
+    ...typeAliases,
+    ...classes.flatMap((class_) => class_.callableContracts),
+  ].flatMap((declaration) => declaration.typeParameters.map((parameter) =>
+    [parameter.identity, parameter] as const)));
+  const conversions = createMojoConversionIndex({
+    narrowingForExpression: (expression) => mojoValueConversionNarrowing(valueRefinements.get(expression)),
+    projectRelationships,
+    sourceValueProjection: (type) => selectMojoJsValueConversion(type, {
+      source: input.source, structuralObjects, projectRelationships, lifecycle,
+      callableByDeclaration, classByTypeId,
+      genericParameters: sourceValueGenericParameters,
+    }),
+  });
   for (const declaration of addressedStorageDeclarations) {
     const bindingName = bindingNames.get(declaration);
     if (bindingName !== undefined) {

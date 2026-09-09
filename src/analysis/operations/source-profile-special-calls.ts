@@ -4,7 +4,6 @@ import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoCallAnalysis, MojoCallAnalysisContext } from "./calls.js";
 import { analyzeArguments } from "./call-arguments.js";
 import { parameterBindingConversions } from "./call-argument-conversions.js";
-import { selectMojoJsonValueConversion } from "../conversions/json-values.js";
 import { selectMojoSourceProfileCallback } from "./source-profile-callbacks.js";
 import {
   mojoDynamicTargetType,
@@ -90,6 +89,7 @@ export function analyzeMojoObjectAssign(
     context.expressionTypes,
     context.valueRefinements,
     context.lifecycle,
+    context.conversions,
     context.valueOwnership,
     parameterBindingConversions(sourceCall, new Map([
       [0, Object.freeze({ kind: "identity" as const })],
@@ -138,13 +138,7 @@ export function analyzeMojoJsonStringify(
       "JSON.stringify requires one exact source value carrier.",
     );
   }
-  const valueConversion = selectMojoJsonValueConversion(valueType, {
-    source: context.source,
-    structuralObjects: context.structuralObjects,
-    projectRelationships: context.projectRelationships,
-    lifecycle: context.lifecycle,
-    callableByDeclaration: context.callableByDeclaration,
-  });
+  const valueConversion = context.conversions.classify(valueType, mojoDynamicTargetType("js"));
   if (valueConversion.kind === "unsupported") {
     return unsupported(
       "MOJO_JSON_STRINGIFY_VALUE_UNSUPPORTED",
@@ -231,6 +225,7 @@ export function analyzeMojoJsonStringify(
     context.expressionTypes,
     context.valueRefinements,
     context.lifecycle,
+    context.conversions,
     context.valueOwnership,
     parameterBindingConversions(sourceCall, conversionOverrides),
     undefined,

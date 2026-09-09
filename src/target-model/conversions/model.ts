@@ -22,6 +22,12 @@ export type MojoTruthinessConversion =
     };
 
 export type MojoValueConversion =
+  | {
+      readonly kind: "js-value-graph";
+      readonly sourceType: MojoTargetTypeRef;
+      readonly targetType: MojoTargetTypeRef;
+      readonly graph: import("./js-value-graph.js").MojoJsValueGraph;
+    }
   | { readonly kind: "identity" }
   | {
       readonly kind: "project-view";
@@ -56,61 +62,6 @@ export type MojoValueConversion =
           readonly source: "bool" | "string" | "native-string" | "symbol" | "null" | "undefined";
         }
     ))
-  | {
-      readonly kind: "js-structural-object-box";
-      readonly sourceType: MojoTargetTypeRef;
-      readonly targetType: MojoTargetTypeRef;
-      readonly fields: readonly {
-        readonly sourceName: string;
-        readonly storageIndex: number;
-        readonly sourceType: MojoTargetTypeRef;
-        readonly conversion: MojoValueConversion;
-      }[];
-    }
-  | {
-      readonly kind: "js-sequence-box";
-      readonly sourceType: MojoTargetTypeRef;
-      readonly targetType: MojoTargetTypeRef;
-      readonly source: "js-array";
-      readonly elementType: MojoTargetTypeRef;
-      readonly elementConversion: MojoValueConversion;
-    }
-  | {
-      readonly kind: "js-tuple-box";
-      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "tuple" | "fixed-array" }>;
-      readonly targetType: MojoTargetTypeRef;
-      readonly elements: readonly {
-        readonly index: number;
-        readonly sourceType: MojoTargetTypeRef;
-        readonly conversion: MojoValueConversion;
-      }[];
-    }
-  | {
-      readonly kind: "js-optional-box";
-      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "optional" }>;
-      readonly targetType: MojoTargetTypeRef;
-      readonly valueConversion: MojoValueConversion;
-    }
-  | {
-      readonly kind: "js-union-box";
-      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
-      readonly targetType: MojoTargetTypeRef;
-      readonly members: readonly {
-        readonly sourceType: MojoTargetTypeRef;
-        readonly conversion: MojoValueConversion;
-      }[];
-    }
-  | {
-      readonly kind: "js-selected-to-json";
-      readonly sourceType: MojoTargetTypeRef;
-      readonly targetType: MojoTargetTypeRef;
-      readonly declaration: import("@tsonic/tsts").Node;
-      readonly methodName: string;
-      readonly passesPropertyKey: boolean;
-      readonly resultType: MojoTargetTypeRef;
-      readonly resultConversion: MojoValueConversion;
-      readonly sourceCopy: "implicit" | "explicit";
-    }
   | {
       readonly kind: "js-data-rest";
       readonly sourceType: MojoTargetTypeRef;
