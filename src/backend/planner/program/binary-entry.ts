@@ -8,6 +8,7 @@ import type {
 import type { MojoTargetProgram } from "../../../analysis/program/model.js";
 import { normalizeMojoDeclarations } from "../../target-ast/normalization/index.js";
 import { mojoOutputPlanningDiagnostic } from "./plan-support.js";
+import { planMojoSourceModuleEntries } from "./source-module-entries.js";
 
 export function planBinaryEntry(
   program: MojoTargetProgram,
@@ -24,6 +25,8 @@ export function planBinaryEntry(
     return undefined;
   }
   const importedName = "_entry";
+  const sourceModuleEntries = planMojoSourceModuleEntries(program, diagnostics);
+  if (diagnostics.length !== 0) return undefined;
   const analyzedEntry = program.queries.moduleForId(entry.id);
   const initialization = program.moduleInitialization.componentForModuleId(entry.id);
   const initializationOwner = initialization === undefined
@@ -51,7 +54,7 @@ export function planBinaryEntry(
   ];
   const asynchronousBootstrap = function_.asynchronous || initialization.asynchronous;
   const sourceEntryRaises = function_.raises || initialization.raises;
-  const binaryRaises = sourceEntryRaises ||
+  const binaryRaises = sourceEntryRaises || program.sourceModuleConstructions.length !== 0 ||
     program.binaryEpilogues.some((epilogue) => epilogue.raises === true);
   const bootstrapName = "_async_entry";
   const call = (path: string) => Object.freeze({
@@ -110,6 +113,7 @@ export function planBinaryEntry(
   const module: MojoSourceModule = Object.freeze({
     modulePath: Object.freeze([]),
     imports: Object.freeze([
+      ...sourceModuleEntries.imports,
       Object.freeze({
         kind: "symbols" as const,
         modulePath: entry.modulePath,
@@ -149,8 +153,9 @@ export function planBinaryEntry(
         resultType: Object.freeze({ kind: "unit" as const }),
         asynchronous: false,
         raises: binaryRaises,
-        statements: Object.freeze(asynchronousBootstrap
-          ? [
+        statements: Object.freeze([
+          ...sourceModuleEntries.statements,
+          ...(asynchronousBootstrap ? [
               Object.freeze({
                 kind: "expression" as const,
                 expression: Object.freeze({
@@ -173,6 +178,7 @@ export function planBinaryEntry(
               ...binarySourceBoundaryStatements(sourceBootstrapStatements, sourceEntryRaises),
               ...binaryEpilogueStatements(program),
             ]),
+        ]),
       }),
     ]),
   });

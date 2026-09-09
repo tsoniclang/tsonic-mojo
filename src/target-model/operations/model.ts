@@ -12,6 +12,7 @@ export type MojoProviderOperationForm =
     }
   | {
       readonly kind: "function-call";
+      readonly sourceModule?: import("./source-module.js").MojoSourceModuleArgument;
       readonly modulePath: readonly string[];
       readonly ownerPath?: readonly string[];
       readonly name: string;

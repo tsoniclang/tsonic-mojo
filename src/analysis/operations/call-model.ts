@@ -201,6 +201,7 @@ export type MojoCallSelection =
     }
   | {
       readonly kind: "provider";
+      readonly sourceModule?: import("../source-modules/construction.js").MojoSourceModuleConstruction;
       readonly operation: MojoSelectedProviderOperation;
       readonly arguments: readonly MojoAnalyzedCallArgument[];
       readonly receiver?: Node;

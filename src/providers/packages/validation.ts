@@ -14,6 +14,7 @@ import {
   validateMojoProviderType,
 } from "./type-validation.js";
 import { selectMojoProviderSurfaceMembers, validateMojoProviderSurfaceMembers } from "./surface-members.js";
+import { validateMojoSourceModuleArgument } from "./source-module-validation.js";
 
 const identifierPattern = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 
@@ -233,6 +234,7 @@ function validateOperation(
     throw new Error(`Provider operation signature '${operation.signatureId}' is not owned by its declared export/member identity.`);
   }
   validateMojoProviderType(operation.resultType);
+  validateMojoSourceModuleArgument(operation);
   for (const type of operation.parameterTypes ?? []) validateMojoProviderType(type);
   if (operation.receiverType !== undefined) validateMojoProviderType(operation.receiverType);
   if (operation.errorType !== undefined) {

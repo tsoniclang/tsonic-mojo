@@ -17,7 +17,12 @@ export function planMojoProviderCallArguments(
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
 ): readonly PlannedMojoCallArgument[] | undefined {
-  const planned = planSelectedArguments(selection.arguments, context, planValue);
+  const planned = planSelectedArguments(selection.arguments, context, (expression, planning, expectedType) => {
+    if (selection.sourceModule?.argument === expression) {
+      return withMojoValue([], Object.freeze({ kind: "string-literal", value: selection.sourceModule.identity }));
+    }
+    return planValue(expression, planning, expectedType);
+  });
   if (planned === undefined) return undefined;
   const target = selection.operation.target;
   if (target.kind !== "function-call" && target.kind !== "instance-call") return undefined;

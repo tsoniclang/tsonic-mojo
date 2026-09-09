@@ -18,6 +18,7 @@ import { analyzeMojoTemplateExpression } from "../operations/template-expression
 import { closeMojoErrorType } from "../resources/effects.js";
 import { validateMojoExecutableRegionSyntax } from "../control-flow/syntax-validation.js";
 import { createMojoProgramQueries } from "./queries.js";
+import { collectMojoSourceModuleConstructions } from "../source-modules/construction.js";
 import { finalizeMojoModuleBindingTypes } from "../module-initialization/bindings.js";
 import { finalizeMojoModuleEffects } from "../module-initialization/effects.js";
 import { analyzeMojoModuleInitialization } from "../module-initialization/analyze.js";
@@ -426,6 +427,16 @@ export function finalizeMojoProgramResult(
   const lifecycle = environment.lifecycle.seal(
     representations.carriers().map((carrier) => carrier.type),
   );
+  const sourceModuleConstructions = collectMojoSourceModuleConstructions({
+    calls: environment.callNodes,
+    selections: callSelections,
+    modules,
+    binaryOutput: configuration.outputType === "bin",
+  });
+  for (const issue of sourceModuleConstructions.issues) {
+    diagnostics.push(diagnostic(issue.code, issue.message, issue.node));
+  }
+  if (diagnostics.length > 0) return rejectedTargetStage(diagnostics);
   return resolvedTargetStage(Object.freeze({
     host: Object.freeze({
       paths: Object.freeze({ ...hostInput.paths }),
@@ -441,6 +452,7 @@ export function finalizeMojoProgramResult(
     sourceCallableSpecializations,
     projectDispatch,
     modules,
+    sourceModuleConstructions: sourceModuleConstructions.entries,
     analyzedModules: finalizedModules,
     moduleInitialization: moduleInitialization.catalog,
     ...(binaryEntry === undefined ? {} : { binaryEntry }),
