@@ -21,6 +21,7 @@ import { registerMojoTypeImports } from "../types/imports.js";
 import { mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { convertMojoJsonValue } from "./js-value-conversions.js";
+import { convertMojoDataRest } from "./js-data-rest-conversion.js";
 import { adaptMojoRaisingCallableError } from "./callable-error-adapter.js";
 import {
   convertMojoCollection,
@@ -183,6 +184,9 @@ export function convertMojoValue(
   conversion: MojoValueConversion,
   context: MojoPlanningContext,
 ): MojoValuePlan | undefined {
+  if (conversion.kind === "js-data-rest") {
+    return convertMojoDataRest(plan, conversion, context, convertMojoValue);
+  }
   if (conversion.kind === "js-structural-object-box" ||
     conversion.kind === "js-sequence-box" || conversion.kind === "js-tuple-box" ||
     conversion.kind === "js-optional-box" || conversion.kind === "js-union-box" ||
@@ -531,6 +535,7 @@ export function applyMojoConversion(
     case "js-optional-box":
     case "js-union-box":
     case "js-selected-to-json":
+    case "js-data-rest":
       return undefined;
     case "primitive-cast":
     case "reference-copy":

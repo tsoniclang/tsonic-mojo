@@ -31,6 +31,7 @@ export function mojoConversionRaises(conversion: MojoValueConversion): boolean {
     case "js-selected-to-json": return true;
     case "js-to-native-string": return true;
     case "native-error-result-unwrap": return true;
+    case "js-data-rest": return mojoConversionRaises(conversion.elementConversion);
     case "collection-map":
       return conversion.source === "js-array" ||
         (conversion.elementConversion !== undefined &&

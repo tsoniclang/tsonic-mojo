@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { parameterBindingConversions } from "../../../dist/analysis/operations/call-argument-conversions.js";
+import { selectedMojoSpreadElementType } from "../../../dist/analysis/operations/call-argument-carriers.js";
 
 test("parameter conversion policies attach to exact selected binding objects", () => {
   const first = Object.freeze({ sourceArgumentIndex: 0, sourceParameterIndex: 0, sourceForm: "value" });
@@ -36,4 +37,18 @@ test("omitted parameters do not manufacture argument occurrences", () => {
   const binding = Object.freeze({ sourceArgumentIndex: 0, sourceParameterIndex: 0, sourceForm: "value" });
   assert.equal(parameterBindingConversions({ sourceArgumentBindings: [binding] }, new Map([[1, { kind: "identity" }]])).size, 0);
   assert.equal(parameterBindingConversions({ sourceArgumentBindings: [] }, new Map([[0, { kind: "identity" }]])).size, 0);
+});
+
+test("tuple spread slots retain their own heterogeneous carrier", () => {
+  const text = Object.freeze({ kind: "native-string" });
+  const number = Object.freeze({ kind: "source-primitive", name: "float64" });
+  const tuple = Object.freeze({ kind: "tuple", elements: [text, number] });
+  assert.equal(selectedMojoSpreadElementType(tuple, 0), text);
+  assert.equal(selectedMojoSpreadElementType(tuple, 1), number);
+  for (const index of [undefined, -1, 0.5, 2, NaN, Infinity]) {
+    assert.equal(selectedMojoSpreadElementType(tuple, index), undefined);
+  }
+  const array = Object.freeze({ kind: "target-named", id: "tsonic.mojo.js.JsArray",
+    genericArguments: [{ kind: "type", type: number }] });
+  assert.equal(selectedMojoSpreadElementType(array, 4), number);
 });

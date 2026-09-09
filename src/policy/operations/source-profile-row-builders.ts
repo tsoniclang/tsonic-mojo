@@ -49,6 +49,7 @@ export const jsStaticRows = (
   owner: string,
   methods: readonly (string | readonly [string, string, boolean?])[],
   restParameterName?: string,
+  parameterContract?: readonly MojoSourceProfileParameterContract[],
 ): readonly MojoSourceProfileCallRow[] => methods.map((method) => {
   const [member, name, raises] = typeof method === "string"
     ? [method, `${snakeCase(owner.replace(/Constructor$/u, ""))}_${snakeCase(method)}`, false] as const
@@ -59,6 +60,10 @@ export const jsStaticRows = (
     owner,
     member,
     ...(restParameterName === undefined ? {} : { restParameterName }),
+    ...(parameterContract === undefined ? {} : {
+      parameterContract: Object.freeze([...parameterContract]),
+      parameterContractMode: "overrides" as const,
+    }),
     target: Object.freeze({ kind: "function" as const, modulePath: Object.freeze(["tsonic_js"]), name }),
     ...(raises === true ? { raises: true } : {}),
   });

@@ -12,6 +12,7 @@ import type { MojoValueOwnership } from "../../target-model/lifecycle/model.js";
 import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
 import { classifyMojoSourceResultConversion } from "./call-results.js";
 import type { MojoArgumentConversionMap } from "./call-argument-conversions.js";
+import { selectedMojoArgumentCarrier } from "./call-argument-carriers.js";
 
 export interface MojoCallArgumentTarget {
   readonly convention: "imm" | "mut" | "var" | "ref" | "out" | "deinit";
@@ -123,16 +124,13 @@ export function analyzeArguments(
           reason: `Source call argument ${sourceArgumentIndex} supplies an open sequence to a non-variadic Mojo parameter.`,
         };
       }
-      const selectedBindingType = resolve(binding.selectedArgumentType);
       const contextualCallableType = binding.sourceForm === "value" &&
           parameterType.kind === "callable"
         ? contextualizeCallable?.(sourceExpression, parameterType)
         : undefined;
-      const selectedSourceType = binding.sourceForm === "spread-element"
-        ? spreadElementType(sourceContainerType!, binding.spreadElementIndex) ?? selectedBindingType
-        : binding.sourceForm === "spread-sequence"
-          ? sourceContainerType
-          : contextualCallableType ?? expressionTypes.get(sourceExpression) ?? selectedBindingType;
+      const selectedSourceType = contextualCallableType ?? selectedMojoArgumentCarrier(
+        ast, sourceCall, binding, expressionTypes, resolve,
+      )?.type;
       const sourceType = selectedSourceType ??
         (binding.sourceForm === "value" &&
             contextualAggregate?.(sourceExpression, parameterType) === true
@@ -219,16 +217,6 @@ function requiresErasedCallable(type: MojoTargetTypeRef): boolean {
     case "union": return type.members.some(requiresErasedCallable);
     default: return false;
   }
-}
-
-function spreadElementType(
-  source: MojoTargetTypeRef,
-  index: number | undefined,
-): MojoTargetTypeRef | undefined {
-  if (index === undefined) return undefined;
-  if (source.kind === "tuple") return source.elements[index];
-  if (source.kind === "fixed-array" || source.kind === "list") return source.element;
-  return undefined;
 }
 
 export function analyzeMojoArgumentDisposition(

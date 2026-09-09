@@ -70,3 +70,19 @@ test("ordinary project methods are not classified as runtime collection operatio
   `);
   assert.doesNotMatch(source, /\.push\(values=/u);
 });
+
+test("data rest arguments retain heterogeneous conversions and typed spread materialization", () => {
+  const source = generated(`
+    export function main(): void {
+      const pair: [string, boolean] = ["label", true];
+      const values: number[] = [1, 2];
+      console.log("prefix", 3, false, ...pair, ...values, "suffix");
+    }
+  `);
+  assert.match(source, /console_log\(data=/u);
+  assert.match(source, /js_value_from_number\(/u);
+  assert.match(source, /js_value_from_bool\(/u);
+  assert.match(source, /\.get\(\w+\)/u);
+  assert.match(source, /js_value_from_undefined\(\)/u);
+  assert.doesNotMatch(source, /console_log\([^\n]*\*/u);
+});

@@ -111,6 +111,14 @@ export type MojoValueConversion =
       readonly resultConversion: MojoValueConversion;
       readonly sourceCopy: "implicit" | "explicit";
     }
+  | {
+      readonly kind: "js-data-rest";
+      readonly sourceType: MojoTargetTypeRef;
+      readonly targetType: Extract<MojoTargetTypeRef, { readonly kind: "list" }>;
+      readonly source: "js-array" | "sequence";
+      readonly elementType: MojoTargetTypeRef;
+      readonly elementConversion: MojoValueConversion;
+    }
   | { readonly kind: "native-to-js-string"; readonly targetType: MojoTargetTypeRef }
   | { readonly kind: "js-to-native-string" }
   | {

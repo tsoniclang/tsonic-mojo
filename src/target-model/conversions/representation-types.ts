@@ -45,6 +45,7 @@ export function mojoValueConversionRepresentationTypes(
         ]),
       ]);
     case "js-sequence-box":
+    case "js-data-rest":
       return Object.freeze([
         conversion.sourceType,
         conversion.targetType,

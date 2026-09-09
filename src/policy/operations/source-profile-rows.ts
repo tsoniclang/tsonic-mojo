@@ -427,5 +427,5 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     ["info", "console_info"],
     ["log", "console_log"],
     ["warn", "console_warn"],
-  ], "data"),
+  ], "data", ["js-data"]),
 ]);

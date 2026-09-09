@@ -122,6 +122,7 @@ export function analyzeSourceProfileCall(
       ? callback.type
       : explicitContract === "selected-argument"
         ? selectedSourceProfileArgumentType(
+            context.source.ast,
             parameterIndex,
             sourceCall,
             resolve,
@@ -147,7 +148,9 @@ export function analyzeSourceProfileCall(
     }
     parameterTypes.push(target);
     const variadicCollectionType = parameter.rest
-      ? explicitContract === undefined
+      ? selected.row.restParameterName !== undefined
+        ? Object.freeze({ kind: "list" as const, element: target })
+        : explicitContract === undefined
         ? presentType
         : mojoNamedTargetType(
             "tsonic.mojo.js.JsArray",
@@ -172,7 +175,7 @@ export function analyzeSourceProfileCall(
     }));
   }
   const dataConversions = sourceProfileDataArgumentConversions(
-    parameterContract ?? [], sourceCall, resolve, context,
+    parameterContract ?? [], sourceCall, resolve, targetArguments, context,
   );
   if (dataConversions.kind === "unsupported") return dataConversions;
   const parameterConversions = new Map(dataConversions.conversions);
