@@ -28,6 +28,7 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     owner: "ArrayConstructor",
     member: "from",
     argumentCount: 1,
+    raises: true,
     parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["selected-argument"]),
     target: Object.freeze({
       kind: "function",
@@ -45,6 +46,7 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     owner: "ArrayConstructor",
     member: "from",
     argumentCount: 2,
+    raises: true,
     parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(([
       "selected-argument",
       "selected-argument",
@@ -61,7 +63,7 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     callback: Object.freeze({
       parameterIndex: 1,
       result: "preserve",
-      errorMode: "propagate",
+      errorMode: "native",
       variants: Object.freeze([
         Object.freeze({ arity: 1, targetName: "array_from_map_value" }),
         Object.freeze({ arity: 2, targetName: "array_from_map_with_index" }),
@@ -69,10 +71,10 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     }),
   }),
   ...jsReceiverFunctionRows("String", "native_string", [
-    "at", "charAt", "charCodeAt", "codePointAt", "endsWith", "includes",
-    "indexOf", "lastIndexOf", "padEnd", "padStart",
-    ["repeat", "repeat", true], "slice", "startsWith",
-    "substr", "substring", ["toLowerCase", "to_lower_case", true], "toString",
+    ["at", "at", true], ["charAt", "char_at", true], "charCodeAt", "codePointAt", "endsWith", "includes",
+    "indexOf", "lastIndexOf", ["padEnd", "pad_end", true], ["padStart", "pad_start", true],
+    ["repeat", "repeat", true], ["slice", "slice", true], "startsWith",
+    ["substr", "substr", true], ["substring", "substring", true], ["toLowerCase", "to_lower_case", true], "toString",
     ["toUpperCase", "to_upper_case", true], "toWellFormed",
     "trim", "trimEnd", "trimLeft", "trimRight", "trimStart", "valueOf", "isWellFormed",
   ]),
@@ -93,6 +95,7 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     jsInstanceParameterRow(owner, "indexOf", "imm", [receiverArgument(0), "float64"]),
     Object.freeze({
       ...jsInstanceParameterRow(owner, "join", "imm", ["native-string"]),
+      raises: true,
       target: Object.freeze({
         kind: "function" as const,
         modulePath: Object.freeze(["tsonic_js"]),
@@ -116,7 +119,7 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
         `array_${snakeCase(member)}_value`,
         `array_${snakeCase(member)}_with_index`,
         `array_${snakeCase(member)}_with_array`,
-      ])),
+      ], undefined, member.startsWith("find") ? "native" : "propagate")),
     jsCallbackRow(owner, "reduce", "imm", "preserve", [
       "array_reduce_from_first_zero",
       "array_reduce_from_first_accumulator",
@@ -138,6 +141,7 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     owner: "Array",
     member: "sort",
     argumentCount: 0,
+    raises: true,
     target: Object.freeze({ kind: "instance", name: "sort", receiver: "imm" }),
   }),
   jsCallbackRow("Array", "sort", "imm", "float64", [
@@ -263,7 +267,7 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     "Number", "toPrecision", "number_to_precision_digits", 1, ["float64"], true,
   ),
   ...jsStaticRows("StringConstructor", [
-    ["fromCharCode", "native_string_from_char_code"],
+    ["fromCharCode", "native_string_from_char_code", true],
     ["fromCodePoint", "native_string_from_code_point", true],
   ], "codes"),
   ...jsStaticRows("DateConstructor", ["now", ["parse", "date_parse_native"], ["UTC", "date_utc"]]),

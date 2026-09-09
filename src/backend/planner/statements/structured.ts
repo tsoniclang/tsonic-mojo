@@ -48,6 +48,7 @@ import {
 } from "../compile-time/values.js";
 import { planMojoBindingProjection } from "../bindings/patterns.js";
 import { mojoValue } from "../expressions/value-plan.js";
+import { planMojoLiveArrayIteration } from "./array-iteration.js";
 
 export function planMojoFunctionStatements(
   function_: MojoAnalyzedFunction,
@@ -356,7 +357,7 @@ function planStatement(
     if (selection === undefined || body === undefined) return undefined;
     const sourceIterable = planMojoValue(selection.iterable, context);
     if (sourceIterable === undefined) return undefined;
-    const iterable = selection.target === "native-values"
+    const iterable = selection.target === "native-values" || selection.target === "js-array-live-values"
       ? sourceIterable.value
       : Object.freeze({
           kind: "method-call" as const,
@@ -383,6 +384,11 @@ function planStatement(
       }
     }
     const compileTime = isMojoCompileTimeIteration(selection.iterable, context);
+    if (selection.target === "js-array-live-values") {
+      return statements === undefined
+        ? undefined
+        : planMojoLiveArrayIteration(selection, sourceIterable, statements, context);
+    }
     return statements === undefined
       ? undefined
       : Object.freeze([...sourceIterable.before, {
@@ -439,7 +445,7 @@ function planStatement(
 }
 
 function mojoIterationMethod(
-  target: Exclude<MojoIterationSelection["target"], "native-values">,
+  target: Exclude<MojoIterationSelection["target"], "native-values" | "js-array-live-values">,
 ): string {
   switch (target) {
     case "dictionary-keys": return "keys";

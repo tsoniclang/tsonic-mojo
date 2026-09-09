@@ -300,6 +300,7 @@ interface MojoIterationSelectionBase {
 
 type MojoValueIterationTarget =
   | "native-values"
+  | "js-array-live-values"
   | "js-array-values"
   | "js-map-entries"
   | "js-set-values"

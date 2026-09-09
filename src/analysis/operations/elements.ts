@@ -415,15 +415,19 @@ function sourceProfileElementReadContract(
         }),
         operationResultType: valueType,
         expressionType: valueType,
-        raises: false,
+        raises: true,
       });
     }
     return semantics.types.isStringLike(presentSourceRead)
       ? Object.freeze({
-          access: Object.freeze({ kind: "method", name: "get_index" }),
+          access: Object.freeze({
+            kind: "function",
+            modulePath: Object.freeze(["tsonic_js"]),
+            name: "native_string_get_index",
+          }),
           operationResultType: Object.freeze({ kind: "optional", value: valueType }),
           expressionType: Object.freeze({ kind: "optional", value: valueType }),
-          raises: false,
+          raises: true,
         })
       : undefined;
   }

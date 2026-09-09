@@ -28,6 +28,7 @@ export interface MojoConversionIndex {
     expression: Node,
     expected: MojoTargetTypeRef,
   ): MojoValueConversion | undefined;
+  recordedFor(expression: Node): readonly MojoValueConversion[];
   representationTypes(): readonly MojoTargetTypeRef[];
 }
 
@@ -113,6 +114,9 @@ export function createMojoConversionIndex(
     ): MojoValueConversion | undefined {
       sealed = true;
       return byExpression.get(expression)?.get(mojoTargetTypeKey(expected));
+    },
+    recordedFor(expression: Node): readonly MojoValueConversion[] {
+      return Object.freeze([...(byExpression.get(expression)?.values() ?? [])]);
     },
     representationTypes(): readonly MojoTargetTypeRef[] {
       return Object.freeze([...representationTypesByKey.entries()]

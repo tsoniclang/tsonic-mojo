@@ -5,7 +5,7 @@ export const mojoNativeBuildManifestPath = "mojo-native-build.json";
 
 export function printMojoNativeBuildManifest(plan: MojoOutputPlan): string {
   const manifest = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     toolchain: {
       kind: plan.configuration.toolchain.kind,
       compilerVersion: plan.configuration.toolchain.compilerVersion,
@@ -13,6 +13,7 @@ export function printMojoNativeBuildManifest(plan: MojoOutputPlan): string {
       platforms: plan.configuration.toolchain.platforms,
       commandEnvironment: plan.configuration.toolchain.commandEnvironment,
       cCompiler: plan.configuration.toolchain.cCompiler,
+      cxxCompiler: plan.configuration.toolchain.cxxCompiler,
     },
     components: createMojoComponentBuilds(plan),
     dependencies: plan.nativeBuild.dependencies,

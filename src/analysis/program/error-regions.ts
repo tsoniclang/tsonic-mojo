@@ -9,10 +9,12 @@ import {
   TryStatement_TryBlock,
 } from "@tsonic/target-api/source";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
+import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type {
   MojoCallSelection,
   MojoElementSelection,
+  MojoIterationSelection,
   MojoPropertySelection,
   MojoResourceManagementSelection,
   MojoValueSelection,
@@ -29,11 +31,13 @@ import { mojoTemplateStringConversionRaises } from "../operations/template-expre
 
 export interface MojoErrorRegionIndexes {
   readonly source: TargetSourceProgram;
+  readonly conversions: Pick<MojoConversionIndex, "recordedFor">;
   readonly expressionTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly callSelections: WeakMap<Node, MojoCallSelection>;
   readonly callDependencies: WeakMap<Node, Node>;
   readonly propertySelections: WeakMap<Node, MojoPropertySelection>;
   readonly elementSelections: WeakMap<Node, MojoElementSelection>;
+  readonly iterationSelections: WeakMap<Node, MojoIterationSelection>;
   readonly resourceManagementSelections: WeakMap<Node, MojoResourceManagementSelection>;
   readonly valueSelections: WeakMap<Node, MojoValueSelection>;
 }
@@ -226,6 +230,15 @@ export function directMojoNodeErrorTypes(
   const addNativeConversionError = (raises: boolean): void => {
     if (raises) errors.push(mojoNativeErrorType());
   };
+  addNativeConversionError(indexes.conversions.recordedFor(node).some(mojoConversionRaises));
+  if (indexes.iterationSelections.get(node)?.target === "js-array-live-values") {
+    errors.push(mojoNativeErrorType());
+  }
+  if (ast.is.IsSpreadElement(node)) {
+    const expression = Node_Expression(ast, node);
+    const type = expression === undefined ? undefined : indexes.expressionTypes.get(expression);
+    addNativeConversionError(type?.kind === "target-named" && type.id === "tsonic.mojo.js.JsArray");
+  }
   if (ast.kindName(node) === "KindTemplateExpression") {
     const resultType = indexes.expressionTypes.get(node);
     if (resultType !== undefined) {

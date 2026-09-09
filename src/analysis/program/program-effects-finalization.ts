@@ -90,6 +90,7 @@ export function finalizeMojoProgramEffects(
     propertySelections,
     propertyNodes,
     elementSelections,
+    iterationSelections,
     resourceManagementSelections,
     resourceDeclarations,
     valueSelections,
@@ -149,11 +150,13 @@ export function finalizeMojoProgramEffects(
 
   const errorRegionIndexes = Object.freeze({
     source,
+    conversions,
     expressionTypes,
     callSelections,
     callDependencies,
     propertySelections,
     elementSelections,
+    iterationSelections,
     resourceManagementSelections,
     valueSelections,
   });
