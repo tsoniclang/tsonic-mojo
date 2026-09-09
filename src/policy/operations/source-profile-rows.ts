@@ -220,6 +220,11 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
   }),
   jsReceiverFunctionRow("Number", "toString", "number_to_string", 0, []),
   Object.freeze({
+    profile: "js", kind: "call", owner: "Number", member: "toLocaleString", raises: true,
+    parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["js-data", "js-data"]),
+    target: Object.freeze({ kind: "function", modulePath: Object.freeze(["tsonic_js"]), name: "number_to_locale_string", receiver: "imm" }),
+  }),
+  Object.freeze({
     ...jsReceiverFunctionRow(
       "Number", "toString", "number_to_string_radix", 1, ["float64"], true,
     ),
