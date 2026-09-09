@@ -260,7 +260,8 @@ function planNativeClosure(
   planValue: MojoValuePlanner,
   widenedCallableType?: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
 ): MojoValuePlan | undefined {
-  const deferredContext = withMojoDeferredExecution(context);
+  const errorType = widenedCallableType?.errorType ?? selection.errorType;
+  const deferredContext = withMojoErrorType(withMojoDeferredExecution(context), errorType);
   const parameterPrelude = planMojoParameterPrelude(
     selection.parameters,
     deferredContext,
@@ -280,7 +281,6 @@ function planNativeClosure(
   })));
   const resultType = widenedCallableType?.result ?? selection.resultType;
   const raises = widenedCallableType?.raises ?? selection.raises;
-  const errorType = widenedCallableType?.errorType ?? selection.errorType;
   if (parameterPrelude.length !== 0 || body.before.length !== 0) {
     const name = allocateMojoSyntheticName(context, "closure");
     return withMojoValue(Object.freeze([Object.freeze({

@@ -38,19 +38,21 @@ test("conversion effects cover constructors, bindings and returns but stop at ca
       items: int32[];
       constructor() { this.items = [0]; }
     }
-    export function returned(): int32[] { return [0]; }
-    export function local(): int32[] { const items: int32[] = [0]; return items; }
-    export function nested(): int32[] { const get = (): int32[] => [0]; return get(); }
-    export function caught(): boolean {
-      try { const items: int32[] = [0]; return items.length === 1; } catch { return false; }
+    export function returned(values: number[]): int32[] { return values; }
+    export function local(values: number[]): int32[] { const items: int32[] = values; return items; }
+    export function nested(values: number[]): int32[] { const get = (): int32[] => values; return get(); }
+    export function caught(values: number[]): boolean {
+      try { const items: int32[] = values; return items.length === 1; } catch { return false; }
     }
+    export function literal(): int32[] { return [0]; }
     export function plain(): number { return 1; }
-    export function main(): void { new Values(); returned(); local(); nested(); caught(); plain(); }
+    export function main(): void { new Values(); returned([0]); local([0]); nested([0]); caught([0]); plain(); }
   `);
   assert.match(output, /def __init__\(out self\) raises Error:/u);
   for (const name of ["returned", "local", "nested"]) {
-    assert.match(output, new RegExp(`def ${name}\\(\\) raises Error`, "u"));
+    assert.match(output, new RegExp(`def ${name}\\(values: JsArray\\[Float64\\]\\) raises Error`, "u"));
   }
-  assert.match(output, /def caught\(\) -> Bool/u);
+  assert.match(output, /def caught\(values: JsArray\[Float64\]\) -> Bool/u);
+  assert.match(output, /def literal\(\) -> JsArray\[Int32\]/u);
   assert.match(output, /def plain\(\) -> Float64/u);
 });
