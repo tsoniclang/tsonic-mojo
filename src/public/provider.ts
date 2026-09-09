@@ -1,4 +1,5 @@
 export { createMojoProviderPackage } from "../providers/packages/package.js";
+export { mojoSourceErrorType } from "../target-model/types/error-domains.js";
 export type {
   MojoProviderModuleAlias,
   MojoProviderModuleDefinition,
