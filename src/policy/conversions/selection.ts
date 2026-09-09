@@ -8,6 +8,8 @@ import { mojoTargetTypeKey } from "../../target-model/types/key.js";
 import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
 import { collectionShape, isJsString, isJsValue, jsValueBoxConversion, sameConversion } from "./javascript-conversions.js";
 import { mojoValueConversionRepresentationTypes } from "../../target-model/conversions/representation-types.js";
+import type { MojoJsValueGraph } from "../../target-model/conversions/js-value-graph.js";
+import { mojoJsValueGraphEquals } from "../../target-model/conversions/equality.js";
 
 export type MojoConversionClassification =
   | { readonly kind: "resolved"; readonly conversion: MojoValueConversion }
@@ -33,6 +35,7 @@ export interface MojoConversionIndex {
   ): MojoValueConversion | undefined;
   recordedFor(expression: Node): readonly MojoValueConversion[];
   representationTypes(): readonly MojoTargetTypeRef[];
+  sourceValueGraphs(): readonly MojoJsValueGraph[];
 }
 
 export function createMojoConversionIndex(
@@ -42,7 +45,19 @@ export function createMojoConversionIndex(
     readonly sourceValueProjection: MojoSourceValueProjectionSelector;
   },
 ): MojoConversionIndex {
-  const { narrowingForExpression, projectRelationships, sourceValueProjection } = input;
+  const { narrowingForExpression, projectRelationships } = input;
+  const sourceGraphs = new Map<string, MojoJsValueGraph>();
+  const sourceValueProjection: MojoSourceValueProjectionSelector = (type) => {
+    const result = input.sourceValueProjection(type);
+    if (result.kind === "resolved" && result.conversion.kind === "js-value-graph") {
+      const previous = sourceGraphs.get(result.conversion.graph.root);
+      if (previous !== undefined && !mojoJsValueGraphEquals(previous, result.conversion.graph)) {
+        return { kind: "unsupported", reason: "An exact source-value projection acquired conflicting semantic definitions." };
+      }
+      sourceGraphs.set(result.conversion.graph.root, result.conversion.graph);
+    }
+    return result;
+  };
   const byExpression = new WeakMap<Node, Map<string, MojoValueConversion>>();
   const finalizedCallableKeys = new WeakMap<Node, Set<string>>();
   const representationTypesByKey = new Map<string, MojoTargetTypeRef>();
@@ -62,6 +77,7 @@ export function createMojoConversionIndex(
     }
   };
   const index: MojoConversionIndex = {
+    sourceValueGraphs: () => Object.freeze([...sourceGraphs.values()]),
     classify(actual, expected, narrowing) {
       if (sealed) throw new Error("Mojo conversions cannot be classified after analysis is sealed.");
       const result = classifyMojoValueConversion(actual, expected, narrowing, projectRelationships, sourceValueProjection);

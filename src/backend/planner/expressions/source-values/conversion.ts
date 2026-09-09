@@ -3,7 +3,7 @@ import type { MojoJsValueProjection } from "../../../../target-model/conversions
 import { mojoTargetTypeKey } from "../../../../target-model/types/key.js";
 import type { MojoExpression, MojoFunctionDeclaration, MojoStatement } from "../../../target-ast/index.js";
 import {
-  allocateMojoSyntheticDeclarationName, mojoTargetTypeInContext, withMojoDeferredExecution, withMojoLocalNameScope,
+  allocateMojoSyntheticDeclarationName, allocateMojoSyntheticName, mojoTargetTypeInContext, withMojoDeferredExecution, withMojoLocalNameScope,
 } from "../../program/context.js";
 import type { MojoPlanningContext } from "../../program/context.js";
 import { registerMojoTypeImports } from "../../types/imports.js";
@@ -28,7 +28,7 @@ export function convertMojoSourceValue(
   for (const definition of definitions.values()) {
     if (definition.kind === "scalar") continue;
     const type = mojoTargetTypeInContext(definition.sourceType, context);
-    const key = mojoTargetTypeKey(type);
+    const key = `${definition.kind}:${mojoTargetTypeKey(type)}`;
     let name = context.sourceValueFunctions.get(key);
     if (name === undefined) {
       name = allocateMojoSyntheticDeclarationName(context, "source_value");
@@ -76,6 +76,23 @@ function planProjection(
     case "scalar": throw new Error("Scalar source projections must be inlined.");
     case "array":
     case "object": return planMojoSourceView(projection, context, read);
+    case "polymorphic": {
+      const statements: MojoStatement[] = [];
+      for (const alternative of projection.alternatives) {
+        const route = context.program.projectDispatch.downcastFor(projection.sourceType, alternative.sourceType);
+        if (route === undefined) throw new Error("A sealed source-value projection lost its exact concrete dispatch route.");
+        const name = allocateMojoSyntheticName(context, "source_view");
+        const converted = read(alternative.projection, method(path(name), "value"), context);
+        if (converted === undefined) return undefined;
+        statements.push(Object.freeze({ kind: "variable", name,
+          initializer: method(path("source"), route.name),
+        }), Object.freeze({ kind: "if", condition: path(name),
+          thenStatements: Object.freeze([...converted.before, returned(converted.value)]),
+        }));
+      }
+      const base = read(projection.baseProjection, path("source"), context);
+      return base === undefined ? undefined : Object.freeze([...statements, ...base.before, returned(base.value)]);
+    }
     case "optional": {
       const value = read(projection.value, method(path("source"), "value"), context);
       return value === undefined ? undefined : Object.freeze([

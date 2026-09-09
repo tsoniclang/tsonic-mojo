@@ -97,3 +97,23 @@ export function main(): void {
   assert.match(output, /JsString\("count"\)/u);
   assert.doesNotMatch(output, /JsString\("#secret"\)/u);
 });
+
+test("base-typed live views select concrete own fields through sealed project dispatch", () => {
+  const output = generated(`
+class Base { first = 1; }
+class Middle extends Base { middle = 2; }
+class Leaf extends Middle { last = 3; }
+function retain(value: Base): unknown { return value; }
+export function main(): void {
+  const leaf = new Leaf();
+  const saved = retain(leaf);
+  leaf.last = 4;
+  JSON.stringify(saved);
+  Object.is(saved, retain(leaf));
+}
+`);
+  assert.match(output, /try_as_Leaf\(/u);
+  assert.match(output, /WeakReferenceIdentity|weak_identity/u);
+  assert.match(output, /JsString\("last"\)/u);
+  assert.doesNotMatch(output, /js_value_from_object_entries/u);
+});

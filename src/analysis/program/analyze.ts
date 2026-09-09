@@ -317,6 +317,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
       source: input.source, structuralObjects, projectRelationships, lifecycle,
       callableByDeclaration, classByTypeId,
       genericParameters: sourceValueGenericParameters,
+      modules,
     }),
   });
   for (const declaration of addressedStorageDeclarations) {

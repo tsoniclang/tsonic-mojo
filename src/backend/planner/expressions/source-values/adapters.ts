@@ -79,8 +79,19 @@ export function planMojoSourceView(
       if (field.access.kind === "structural") {
         fieldValue = element(Object.freeze({ kind: "postfix-deref", expression: member(source, "_state") }), field.access.index);
       } else {
-        const state = mojoProjectStateValue(source, projection.sourceType, context);
-        if (state !== undefined) fieldValue = member(state, field.access.name);
+        let state: MojoExpression | undefined;
+        if (projection.identity === "project-polymorphic") {
+          const storage = context.program.queries.projectState(projection.sourceType);
+          if (storage !== undefined) {
+            registerMojoTypeImports(storage.stateType, context);
+            state = Object.freeze({ kind: "method-call", receiver: member(source, "_object"), name: "state",
+              genericArguments: Object.freeze([{ kind: "type", type: storage.stateType }]), arguments: Object.freeze([]),
+            });
+          }
+        } else {
+          state = mojoProjectStateValue(source, projection.sourceType, context);
+        }
+        if (state !== undefined) fieldValue = field.access.path.reduce((receiver, name) => member(receiver, name), state);
       }
       if (fieldValue === undefined) return undefined;
       const converted = read(field.projection, fieldValue, adapterContext);
@@ -138,8 +149,10 @@ export function planMojoSourceView(
     registerMojoTypeImports(identityType, context);
     identity = construct(identityType, [member(path("source"), "_state")]);
   } else {
-    identity = method(projection.kind === "object" && projection.identity === "project-erased"
-      ? member(path("source"), "_state") : path("source"), "weak_identity");
+    const receiver = projection.kind !== "object" ? path("source") :
+      projection.identity === "project-polymorphic" ? member(path("source"), "_object") :
+        projection.identity === "project-erased" ? member(path("source"), "_state") : path("source");
+    identity = method(receiver, "weak_identity");
   }
   return Object.freeze([
     Object.freeze({ kind: "variable", name: "environment", initializer: environment }),

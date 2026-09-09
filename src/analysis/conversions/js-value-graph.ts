@@ -11,6 +11,9 @@ import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 import type { MojoAnalyzedClass, MojoAnalyzedProjectCallable } from "../program/model.js";
 import { selectMojoJsonMethod } from "./js-value-json-method.js";
 import { sourceValueGenericParameters } from "./js-value-generics.js";
+import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
+import { mojoProjectFieldStoragePath } from "../../target-model/types/project-storage.js";
+import type { MojoSourceModuleCatalog } from "../source-modules/model.js";
 
 export interface MojoJsValueGraphContext {
   readonly source: TargetSourceProgram;
@@ -20,6 +23,7 @@ export interface MojoJsValueGraphContext {
   readonly callableByDeclaration: WeakMap<Node, MojoAnalyzedProjectCallable>;
   readonly classByTypeId: ReadonlyMap<string, MojoAnalyzedClass>;
   readonly genericParameters: ReadonlyMap<string, MojoJsValueGenericParameter>;
+  readonly modules: MojoSourceModuleCatalog;
 }
 
 export type MojoJsValueGraphSelection =
@@ -40,8 +44,8 @@ export function selectMojoJsValueConversion(
   const visiting = new Set<string>();
   let failure: string | undefined;
   const reject = (reason: string): undefined => { failure ??= reason; return undefined; };
-  const visit = (type: MojoTargetTypeRef): string | undefined => {
-    const id = mojoTargetTypeKey(type);
+  const visit = (type: MojoTargetTypeRef, exactConcrete = false): string | undefined => {
+    const id = `${exactConcrete ? "concrete:" : ""}${mojoTargetTypeKey(type)}`;
     if (definitions.has(id) || visiting.has(id)) return id;
     if (definitions.size + visiting.size >= 65536) return reject("The closed source-value graph exceeds its type budget.");
     visiting.add(id);
@@ -90,23 +94,55 @@ export function selectMojoJsValueConversion(
     const owner = context.projectRelationships.definitionForType(type);
     const project = owner === undefined ? undefined : context.classByTypeId.get(owner.id);
     if (project !== undefined) {
-      if (project.polymorphic) return reject("A polymorphic source view requires a closed concrete own-field dispatch inventory.");
-      const fields: MojoJsValueField[] = [];
-      for (const field of project.fields) {
+      if (project.polymorphic && !exactConcrete) {
+        const sourceComponent = context.modules.forSourceFile(project.sourceFile)?.componentId;
+        if (sourceComponent === undefined) return reject("A source-value view has no exact component owner.");
+        const candidates = context.projectRelationships.concreteClassesFor(project.definition)
+          .filter((candidate) => candidate !== project.definition)
+          .sort((left, right) =>
+            (context.projectRelationships.classLineage(right)?.length ?? 0) -
+              (context.projectRelationships.classLineage(left)?.length ?? 0) || left.id.localeCompare(right.id, "en"));
+        const alternatives = [];
+        for (const candidate of candidates) {
+          if (candidate.typeParameters.length !== 0 ||
+            context.modules.forSourceFile(candidate.sourceFile)?.componentId !== sourceComponent) {
+            return reject("A polymorphic source-value family has no closed concrete route in its component.");
+          }
+          const candidateType = context.projectRelationships.openType(candidate);
+          const relationship = context.projectRelationships.relationship(candidateType, project.definition);
+          if (relationship.kind !== "related" || !mojoTargetTypeEquals(relationship.targetType, type)) continue;
+          const projection = visit(candidateType, true);
+          if (projection === undefined) return undefined;
+          alternatives.push(Object.freeze({ sourceType: candidateType, projection }));
+        }
+        const baseProjection = visit(type, true);
+        return baseProjection === undefined ? undefined : finish({
+          id, sourceType: type, kind: "polymorphic", alternatives: Object.freeze(alternatives), baseProjection,
+        });
+      }
+      const lineage = context.projectRelationships.classLineage(project.definition);
+      if (lineage === undefined) return reject("A concrete own-field view has no exact inheritance storage path.");
+      const fields = new Map<string, MojoJsValueField>();
+      for (const [ownerIndex, fieldOwner] of lineage.entries()) {
+        const fieldClass = context.classByTypeId.get(fieldOwner.id);
+        if (fieldClass === undefined) return reject("An inherited own-field owner has no analyzed class.");
+        for (const field of fieldClass.fields) {
         if (!field.ownProperty) continue;
         const fieldType = context.projectRelationships.instantiateMemberType(field.declaration, type, field.type);
         if (fieldType === undefined) return reject(`Project field '${field.sourceName}' has no exact instantiated carrier.`);
         const projection = visit(fieldType);
         if (projection === undefined) return undefined;
-        fields.push(Object.freeze({ sourceName: field.sourceName, projection,
-          access: Object.freeze({ kind: "project", declaration: field.declaration, name: field.name }) }));
+        fields.set(field.sourceName, Object.freeze({ sourceName: field.sourceName, projection,
+          access: Object.freeze({ kind: "project", declaration: field.declaration,
+            path: mojoProjectFieldStoragePath(lineage.length - ownerIndex - 1, field.name) }) }));
+        }
       }
       const selected = selectMojoJsonMethod(type, context);
       if (selected.kind === "unsupported") return reject(selected.reason);
       const resultProjection = selected.kind === "resolved" ? visit(selected.resultType) : undefined;
       if (selected.kind === "resolved" && resultProjection === undefined) return undefined;
-      return finish({ id, sourceType: type, kind: "object", sourceCopy, fields: Object.freeze(fields),
-        identity: project.stateStorage === "direct" ? "project-direct" : "project-erased",
+      return finish({ id, sourceType: type, kind: "object", sourceCopy, fields: Object.freeze([...fields.values()]),
+        identity: project.polymorphic ? "project-polymorphic" : project.stateStorage === "direct" ? "project-direct" : "project-erased",
         ...(selected.kind !== "resolved" ? {} : { toJson: Object.freeze({
           declaration: selected.declaration, name: selected.name, passesPropertyKey: selected.passesPropertyKey,
           resultType: selected.resultType, resultProjection: resultProjection!,

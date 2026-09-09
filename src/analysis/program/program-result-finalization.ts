@@ -32,6 +32,7 @@ import {
   mojoRepresentationRootTypes,
 } from "../representations/index.js";
 import { createMojoProjectDispatchPlan } from "../project-types/dispatch.js";
+import { sourceValueDispatchIssues } from "../conversions/js-value-finalization.js";
 import { createMojoSourceCallableSpecializationPlan } from "../callables/specializations.js";
 import { analyzeMojoCallableImplementationAdapters } from "../callables/implementation-adapters.js";
 import type { MojoAnalyzedModuleRegionFacts } from "../module-initialization/effects.js";
@@ -389,6 +390,9 @@ export function finalizeMojoProgramResult(
   });
   for (const issue of projectDispatch.issues) {
     diagnostics.push(diagnostic(issue.code, issue.message, issue.node));
+  }
+  for (const issue of sourceValueDispatchIssues(conversions.sourceValueGraphs(), projectDispatch, environment.projectRelationships)) {
+    diagnostics.push(diagnostic("MOJO_SOURCE_VALUE_DISPATCH_UNCLOSED", issue.message, issue.node));
   }
   if (diagnostics.length > 0) return rejectedTargetStage(diagnostics);
   const representations = createMojoRepresentationCatalog({

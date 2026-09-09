@@ -21,6 +21,12 @@ export function sourceValueProjectionInContext(
       ...member, sourceType: mojoTargetTypeInContext(member.sourceType, context),
     }))),
   });
+  if (projection.kind === "polymorphic") return Object.freeze({
+    ...projection, sourceType, genericParameters,
+    alternatives: Object.freeze(projection.alternatives.map((alternative) => Object.freeze({
+      ...alternative, sourceType: mojoTargetTypeInContext(alternative.sourceType, context),
+    }))),
+  });
   if (projection.kind === "object" && projection.toJson !== undefined) return Object.freeze({
     ...projection, sourceType, genericParameters, toJson: Object.freeze({
       ...projection.toJson, resultType: mojoTargetTypeInContext(projection.toJson.resultType, context),

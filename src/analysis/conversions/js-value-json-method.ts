@@ -37,7 +37,13 @@ export function selectMojoJsonMethod(
   const property = properties[0]!;
   const declarations = [...new Set([property.symbol, ...property.rootSymbols].flatMap((symbol) =>
     semantics.declarations.symbolDeclarations(symbol)))];
-  const callables = [...new Set(declarations.map((declaration) => context.callableByDeclaration.get(declaration))
+  const selectedDeclarations = new Set<Node>();
+  for (const declaration of declarations) {
+    const selected = context.projectRelationships.memberImplementation(definition, declaration);
+    if (selected.kind !== "resolved") return unsupported("A toJSON property has no exact project member implementation.");
+    selectedDeclarations.add(selected.implementation.declaration);
+  }
+  const callables = [...new Set([...selectedDeclarations].map((declaration) => context.callableByDeclaration.get(declaration))
     .filter((callable): callable is MojoAnalyzedProjectCallable => callable !== undefined))];
   if (callables.length !== 1) return unsupported("A toJSON property must select one exact analyzed method.");
   const contract = callables[0]!.contract;

@@ -12,7 +12,7 @@ export interface MojoJsValueField {
   readonly projection: string;
   readonly access:
     | { readonly kind: "structural"; readonly index: number }
-    | { readonly kind: "project"; readonly declaration: Node; readonly name: string };
+    | { readonly kind: "project"; readonly declaration: Node; readonly path: readonly string[] };
 }
 
 export interface MojoJsValueJsonMethod {
@@ -41,6 +41,11 @@ export type MojoJsValueProjection = ProjectionIdentity & (
   | { readonly kind: "optional"; readonly value: string }
   | { readonly kind: "union"; readonly members: readonly { readonly sourceType: MojoTargetTypeRef; readonly projection: string }[] }
   | {
+      readonly kind: "polymorphic";
+      readonly alternatives: readonly { readonly sourceType: MojoTargetTypeRef; readonly projection: string }[];
+      readonly baseProjection: string;
+    }
+  | {
       readonly kind: "array";
       readonly element: string;
       readonly sourceCopy: "implicit" | "explicit";
@@ -48,7 +53,7 @@ export type MojoJsValueProjection = ProjectionIdentity & (
   | {
       readonly kind: "object";
       readonly fields: readonly MojoJsValueField[];
-      readonly identity: "structural" | "project-direct" | "project-erased";
+      readonly identity: "structural" | "project-direct" | "project-erased" | "project-polymorphic";
       readonly sourceCopy: "implicit" | "explicit";
       readonly toJson?: MojoJsValueJsonMethod;
     }
