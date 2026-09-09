@@ -41,6 +41,17 @@ Unsupported syntax or missing/ambiguous semantic evidence rejects before
 materialization. The planner has syntax traversal and sealed target queries,
 but no checker, source-fact writer, provider callback, or semantic fallback.
 
+Provider rest parameters may explicitly declare `restPacking: "list"` on their
+final immutable target argument. `parameterTypes` supplies the exact element
+carrier; the native parameter receives one `List` of those elements, not native
+variadic arguments. For example, `values.push(first(), second())` emits one
+`values.push(values=[first(), second()])` call. Spread inputs are consumed in
+source order before evaluating the following argument. The runtime, not the
+compiler, defines the operation over that collection. Owned JS and Node runtime
+entrypoints use this contract; imported native variadic APIs keep their declared
+ABI. The collection can require temporary allocation; this is not a claim that
+native variadic compilation is fixed.
+
 Source `number` bitwise operators (`~`, `&`, `|`, `^`, `<<`, `>>`, `>>>`)
 and compound assignments retain 32-bit TypeScript numeric semantics on both
 profiles. Explicit integral carriers use native operations. Compound writes

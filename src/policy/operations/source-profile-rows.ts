@@ -69,18 +69,24 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     }),
   }),
   ...jsReceiverFunctionRows("String", "native_string", [
-    "at", "charAt", "charCodeAt", "codePointAt", "concat", "endsWith", "includes",
+    "at", "charAt", "charCodeAt", "codePointAt", "endsWith", "includes",
     "indexOf", "lastIndexOf", "padEnd", "padStart",
     ["repeat", "repeat", true], "slice", "startsWith",
     "substr", "substring", ["toLowerCase", "to_lower_case", true], "toString",
     ["toUpperCase", "to_upper_case", true], "toWellFormed",
     "trim", "trimEnd", "trimLeft", "trimRight", "trimStart", "valueOf", "isWellFormed",
   ]),
+  Object.freeze({
+    profile: "js", kind: "call", owner: "String", member: "concat",
+    restParameterName: "others",
+    target: Object.freeze({ kind: "function", modulePath: Object.freeze(["tsonic_js"]),
+      name: "native_string_concat", receiver: "imm" }),
+  }),
   ...jsInstanceRows("Array", "imm", ["copyWithin", "pop", "reverse", "shift"]),
   jsInstanceParameterRow("Array", "fill", "imm", [receiverArgument(0), "float64", "float64"]),
-  jsInstanceParameterRow("Array", "push", "imm", [receiverArgument(0)]),
-  jsInstanceParameterRow("Array", "splice", "imm", ["float64", "float64", receiverArgument(0)]),
-  jsInstanceParameterRow("Array", "unshift", "imm", [receiverArgument(0)]),
+  jsInstanceParameterRow("Array", "push", "imm", [receiverArgument(0)], "values"),
+  jsInstanceParameterRow("Array", "splice", "imm", ["float64", "float64", receiverArgument(0)], "items"),
+  jsInstanceParameterRow("Array", "unshift", "imm", [receiverArgument(0)], "values"),
   ...["Array", "ReadonlyArray"].flatMap((owner) => [
     jsInstanceParameterRow(owner, "at", "imm", ["float64"]),
     jsInstanceParameterRow(owner, "includes", "imm", [receiverArgument(0), "float64"]),
@@ -259,7 +265,7 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
   ...jsStaticRows("StringConstructor", [
     ["fromCharCode", "native_string_from_char_code"],
     ["fromCodePoint", "native_string_from_code_point", true],
-  ]),
+  ], "codes"),
   ...jsStaticRows("DateConstructor", ["now", ["parse", "date_parse_native"], ["UTC", "date_utc"]]),
   Object.freeze({
     profile: "js",
@@ -427,15 +433,16 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
   }),
   ...jsStaticRows("Math", [
     "abs", "acos", "acosh", "asin", "asinh", "atan", "atan2", "atanh", "cbrt", "ceil",
-    "clz32", "cos", "cosh", "exp", "expm1", "floor", "fround", "hypot", "imul", "log",
-    "log10", "log1p", "log2", "max", "min", "pow", "random", "round", "sign", "sin",
+    "clz32", "cos", "cosh", "exp", "expm1", "floor", "fround", "imul", "log",
+    "log10", "log1p", "log2", "pow", "random", "round", "sign", "sin",
     "sinh", "sqrt", "tan", "tanh", "trunc",
   ]),
+  ...jsStaticRows("Math", ["hypot", "max", "min"], "values"),
   ...jsStaticRows("Console", [
     ["debug", "console_debug"],
     ["error", "console_error"],
     ["info", "console_info"],
     ["log", "console_log"],
     ["warn", "console_warn"],
-  ]),
+  ], "data"),
 ]);

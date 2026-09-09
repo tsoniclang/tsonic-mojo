@@ -17,6 +17,7 @@ export interface MojoCallArgumentTarget {
   readonly position: "positional" | "positional-or-keyword" | "keyword";
   readonly nativeName?: string;
   readonly variadic?: boolean;
+  readonly restPacking?: "list";
   readonly variadicCollectionType?: MojoTargetTypeRef;
   readonly passing?: "plain" | "consume";
   readonly callableConsumption?: "immediate" | "retained";
@@ -99,9 +100,14 @@ export function analyzeArguments(
       const parameterIndex = binding.sourceParameterIndex;
       const target = targetArguments[parameterIndex];
       const spreadSequence = binding.sourceForm === "spread-sequence";
+      const restElementType = parameterTypes[parameterIndex];
       const parameterType = spreadSequence
-        ? target?.variadicCollectionType ?? parameterTypes[parameterIndex]
-        : parameterTypes[parameterIndex];
+        ? target?.variadicCollectionType ?? (target?.restPacking === "list"
+          ? restElementType === undefined
+            ? undefined
+            : Object.freeze({ kind: "list" as const, element: restElementType })
+          : restElementType)
+        : restElementType;
       if (parameterType === undefined || target === undefined) {
         return {
           kind: "unsupported",

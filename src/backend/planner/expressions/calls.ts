@@ -32,6 +32,7 @@ import {
   planMojoObjectAssign,
 } from "./source-profile-special-calls.js";
 import { planMojoProjectConstruction } from "./project-construction.js";
+import { planMojoProviderCallArguments } from "./provider-call-arguments.js";
 
 export function planMojoCall(
   node: Node,
@@ -355,7 +356,7 @@ export function planMojoCall(
     );
     return undefined;
   }
-  const plannedArguments = planSelectedArguments(selection.arguments, context, planValue);
+  const plannedArguments = planMojoProviderCallArguments(selection, context, planValue);
   if (plannedArguments === undefined) return undefined;
   let call: MojoExpression;
   let before: readonly MojoStatement[];

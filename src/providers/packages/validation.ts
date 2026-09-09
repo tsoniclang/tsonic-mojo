@@ -355,7 +355,13 @@ function validateOperation(
       if (parameter.defaultArgument !== undefined) validateMojoProviderGenericArgument(parameter.defaultArgument);
       genericNames.add(parameter.name);
     }
-    for (const argument of operation.target.arguments) {
+    for (const [argumentIndex, argument] of operation.target.arguments.entries()) {
+      if (argument.restPacking !== undefined &&
+        (argument.restPacking !== "list" || argument.variadic !== true ||
+          argument.convention !== "imm" || argumentIndex !== operation.target.arguments.length - 1 ||
+          signature?.declaration.parameters[argumentIndex]?.rest !== true)) {
+        throw new Error(`Provider operation '${operation.exportId}' has an invalid rest collection contract.`);
+      }
       if (argument.position === "keyword" && argument.nativeName === undefined) {
         throw new Error(`Provider operation '${operation.exportId}' has a keyword argument without its exact Mojo name.`);
       }
@@ -385,7 +391,7 @@ function validateOperationArgument(
   exportId: string,
   role: string,
 ): void {
-  if (argument.variadic === true) {
+  if (argument.variadic === true || argument.restPacking !== undefined) {
     throw new Error(`Provider operation '${exportId}' has a variadic ${role} operand.`);
   }
   if (argument.position === "keyword" && argument.nativeName === undefined) {

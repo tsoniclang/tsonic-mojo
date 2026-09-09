@@ -68,8 +68,10 @@ export function analyzeSourceProfileCall(
   const parameterTypes: MojoTargetTypeRef[] = [];
   const targetArguments: {
     readonly convention: "imm";
-    readonly position: "positional-or-keyword";
+    readonly position: "positional-or-keyword" | "keyword";
     readonly variadic: boolean;
+    readonly nativeName?: string;
+    readonly restPacking?: "list";
     readonly passing: "plain";
     readonly callableConsumption?: "immediate";
   }[] = [];
@@ -149,8 +151,12 @@ export function analyzeSourceProfileCall(
       : undefined;
     targetArguments.push(Object.freeze({
       convention: "imm",
-      position: "positional-or-keyword",
+      position: parameter.rest && selected.row.restParameterName !== undefined
+        ? "keyword" : "positional-or-keyword",
       variadic: parameter.rest,
+      ...(parameter.rest && selected.row.restParameterName !== undefined
+        ? { restPacking: "list" as const, nativeName: selected.row.restParameterName }
+        : {}),
       ...(variadicCollectionType === undefined ? {} : { variadicCollectionType }),
       passing: "plain",
       ...(callback?.parameterIndex === parameterIndex
