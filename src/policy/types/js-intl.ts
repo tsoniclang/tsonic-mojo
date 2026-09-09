@@ -5,6 +5,9 @@ import { implicitHeapLifecycle } from "./lifecycle-contracts.js";
 const typeNames: ReadonlyMap<string, string> = new Map([
   ["IntlCollator", "IntlCollator"],
   ["IntlResolvedCollatorOptions", "IntlResolvedCollatorOptions"],
+  ["IntlDateTimeFormat", "IntlDateTimeFormat"],
+  ["IntlResolvedDateTimeFormatOptions", "IntlResolvedDateTimeFormatOptions"],
+  ["IntlDateTimeFormatPart", "IntlFormatPart"],
 ]);
 
 export function mojoIntlSourceProfileType(name: string): MojoTargetTypeRef | undefined {
