@@ -13,6 +13,7 @@ import {
   validateMojoProviderGenericArgument,
   validateMojoProviderType,
 } from "./type-validation.js";
+import { selectMojoProviderSurfaceMembers, validateMojoProviderSurfaceMembers } from "./surface-members.js";
 
 const identifierPattern = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 
@@ -36,6 +37,12 @@ interface ProviderDeclarationIndex {
 export function validateMojoProviderPackageDefinition(
   definition: MojoProviderPackageDefinition,
 ): void {
+  if (definition.surfaceMembers !== undefined) {
+    const surfaces = validateMojoProviderSurfaceMembers(definition);
+    validateMojoProviderPackageDefinition(selectMojoProviderSurfaceMembers(definition, []));
+    validateMojoProviderPackageDefinition(selectMojoProviderSurfaceMembers(definition, surfaces));
+    return;
+  }
   requireText(definition.id, "id");
   requireText(definition.displayName, "displayName");
   requireText(definition.version, "version");

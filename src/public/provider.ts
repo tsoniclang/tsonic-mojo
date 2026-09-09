@@ -6,6 +6,7 @@ export type {
   MojoProviderPackageDefinition,
   MojoProviderPackageImplementation,
   MojoProviderRuntimePackage,
+  MojoProviderSurfaceMembers,
   MojoProviderTypeDefinition,
 } from "../providers/packages/model.js";
 export type {

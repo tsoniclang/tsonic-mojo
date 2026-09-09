@@ -1,6 +1,7 @@
 import type {
   ProviderDeclarationKind,
   ProviderExportDeclaration,
+  ProviderMemberDeclaration,
 } from "@tsonic/tsts";
 import type {
   TargetCapabilityContribution,
@@ -99,8 +100,19 @@ export interface MojoProviderPackageDefinition {
   readonly modules: readonly MojoProviderModuleDefinition[];
   readonly types?: readonly MojoProviderTypeDefinition[];
   readonly operations: readonly MojoProviderOperationDefinition[];
+  readonly surfaceMembers?: readonly MojoProviderSurfaceMembers[];
   readonly binaryEpilogues?: readonly MojoProviderBinaryEpilogue[];
   readonly runtimePackages: readonly MojoProviderRuntimePackage[];
+}
+
+export interface MojoProviderSurfaceMembers {
+  readonly id: string;
+  readonly requiredSurfaces: readonly string[];
+  readonly declarations: readonly {
+    readonly exportId: string;
+    readonly members: readonly ProviderMemberDeclaration[];
+  }[];
+  readonly operations: readonly MojoProviderOperationDefinition[];
 }
 
 export interface MojoProviderExportRow {
