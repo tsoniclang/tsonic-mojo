@@ -176,6 +176,10 @@ export function analyzeArguments(
         valueOwnership,
       );
       if (disposition.kind === "unsupported") return disposition;
+      const packingCopy = target.restPacking === "list" && !spreadSequence &&
+        conversion.conversion.kind === "identity" &&
+        (binding.sourceForm === "spread-element" || valueOwnership(sourceExpression) !== "fresh") &&
+        lifecycle.capabilities(parameterType).copy === "explicit";
       const callableConsumption = target.callableConsumption !== undefined
         ? target.callableConsumption
         : requiresErasedCallable(parameterType) ? "retained" : undefined;
@@ -190,7 +194,8 @@ export function analyzeArguments(
         sourceType,
         parameterType,
         conversion: conversion.conversion,
-        disposition: disposition.disposition,
+        disposition: packingCopy
+          ? Object.freeze({ kind: "copy" as const }) : disposition.disposition,
         spread: spreadSequence,
         position: target.position,
         parameterIndex,

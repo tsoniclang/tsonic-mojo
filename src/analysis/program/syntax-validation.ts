@@ -341,7 +341,10 @@ export function validateMojoExecutableRegionSyntax(
     }
     if (ast.is.IsCallExpression(expression) || ast.is.IsNewExpression(expression)) {
       if (calls.get(expression) === undefined) return;
-      for (const argument of ast.arguments(expression)) validateExpression(argument);
+      for (const argument of ast.arguments(expression)) {
+        validateExpression(argument !== undefined && ast.is.IsSpreadElement(argument)
+          ? Node_Expression(ast, argument) : argument);
+      }
       return;
     }
     if (ast.is.IsPropertyAccessExpression(expression)) {
