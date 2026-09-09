@@ -3,6 +3,7 @@ import { classifyMojoValueConversion } from "../../policy/conversions/selection.
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoCallAnalysis, MojoCallAnalysisContext } from "./calls.js";
 import { analyzeArguments } from "./call-arguments.js";
+import { parameterBindingConversions } from "./call-argument-conversions.js";
 import { selectMojoJsonValueConversion } from "../conversions/json-values.js";
 import { selectMojoSourceProfileCallback } from "./source-profile-callbacks.js";
 import {
@@ -90,10 +91,10 @@ export function analyzeMojoObjectAssign(
     context.valueRefinements,
     context.lifecycle,
     context.valueOwnership,
-    new Map([
+    parameterBindingConversions(sourceCall, new Map([
       [0, Object.freeze({ kind: "identity" as const })],
       [1, Object.freeze({ kind: "identity" as const })],
-    ]),
+    ])),
     undefined,
     context.projectRelationships,
     context.contextualizeCallableArgument,
@@ -231,7 +232,7 @@ export function analyzeMojoJsonStringify(
     context.valueRefinements,
     context.lifecycle,
     context.valueOwnership,
-    conversionOverrides,
+    parameterBindingConversions(sourceCall, conversionOverrides),
     undefined,
     context.projectRelationships,
     context.contextualizeCallableArgument,

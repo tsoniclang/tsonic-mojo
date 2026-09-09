@@ -25,6 +25,7 @@ import {
 } from "./call-arguments.js";
 import { selectMojoSourceProfileCallback } from "./source-profile-callbacks.js";
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
+import { parameterBindingConversions } from "./call-argument-conversions.js";
 import {
   mojoNativeErrorType,
 } from "../../target-model/types/error-domains.js";
@@ -176,7 +177,19 @@ export function analyzeSourceProfileCall(
   if (dataConversions.kind === "unsupported") return dataConversions;
   const parameterConversions = new Map(dataConversions.conversions);
   if (callback?.conversion !== undefined) {
-    parameterConversions.set(callback.parameterIndex, callback.conversion);
+    const selectedCallback = parameterBindingConversions(sourceCall, new Map([
+      [callback.parameterIndex, callback.conversion],
+    ]));
+    for (const [binding, conversion] of selectedCallback) {
+      if (parameterConversions.has(binding)) {
+        return {
+          kind: "unsupported",
+          code: "MOJO_SOURCE_PROFILE_ARGUMENT_CONVERSION_CONFLICT",
+          reason: "One exact source argument binding selected both data and callback conversions.",
+        };
+      }
+      parameterConversions.set(binding, conversion);
+    }
   }
   const arguments_ = analyzeArguments(
     context.source.ast,

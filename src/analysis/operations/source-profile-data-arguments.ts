@@ -4,6 +4,7 @@ import type { MojoValueConversion } from "../../target-model/conversions/model.j
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { selectMojoDataValueConversion } from "../conversions/json-values.js";
 import type { MojoCallAnalysisContext } from "./calls.js";
+import type { MojoArgumentConversionMap, MojoSelectedArgumentBinding } from "./call-argument-conversions.js";
 
 export function selectedSourceProfileArgumentType(
   parameterIndex: number,
@@ -27,9 +28,9 @@ export function sourceProfileDataArgumentConversions(
   resolve: (type: Type, authoredTypeNode?: Node) => MojoTargetTypeRef | undefined,
   context: MojoCallAnalysisContext,
 ):
-  | { readonly kind: "resolved"; readonly conversions: ReadonlyMap<number, MojoValueConversion> }
+  | { readonly kind: "resolved"; readonly conversions: MojoArgumentConversionMap }
   | { readonly kind: "unsupported"; readonly code: string; readonly reason: string } {
-  const conversions = new Map<number, MojoValueConversion>();
+  const conversions = new Map<MojoSelectedArgumentBinding, MojoValueConversion>();
   for (const [parameterIndex, contract] of contracts.entries()) {
     if (contract !== "js-data" || !sourceCall.sourceArgumentBindings.some(
       (binding) => binding.sourceParameterIndex === parameterIndex,
@@ -54,7 +55,9 @@ export function sourceProfileDataArgumentConversions(
       code: "MOJO_SOURCE_PROFILE_DATA_ARGUMENT_NOT_CLOSED",
       reason: conversion.reason,
     };
-    conversions.set(parameterIndex, conversion.conversion);
+    for (const binding of sourceCall.sourceArgumentBindings) {
+      if (binding.sourceParameterIndex === parameterIndex) conversions.set(binding, conversion.conversion);
+    }
   }
   return Object.freeze({ kind: "resolved", conversions });
 }

@@ -11,6 +11,7 @@ import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 import type { MojoValueOwnership } from "../../target-model/lifecycle/model.js";
 import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
 import { classifyMojoSourceResultConversion } from "./call-results.js";
+import type { MojoArgumentConversionMap } from "./call-argument-conversions.js";
 
 export interface MojoCallArgumentTarget {
   readonly convention: "imm" | "mut" | "var" | "ref" | "out" | "deinit";
@@ -44,7 +45,7 @@ export function analyzeArguments(
   valueRefinements: WeakMap<Node, MojoValueRefinementSelection>,
   lifecycle: MojoLifecycleResolver,
   valueOwnership: (expression: Node) => MojoValueOwnership,
-  conversionOverrides?: ReadonlyMap<number, MojoValueConversion>,
+  conversionOverrides?: MojoArgumentConversionMap,
   contextualAggregate?: (expression: Node, targetType: MojoTargetTypeRef) => boolean,
   projectRelationships?: MojoProjectTypeRelationships,
   contextualizeCallable?: (
@@ -148,7 +149,7 @@ export function analyzeArguments(
         expressionTypes.set(sourceExpression, sourceType);
       }
       const overriddenConversion = contextualCallableType === undefined
-        ? conversionOverrides?.get(parameterIndex)
+        ? conversionOverrides?.get(binding)
         : undefined;
       const conversion = overriddenConversion === undefined
         ? classifyMojoRefinedValueConversion(
