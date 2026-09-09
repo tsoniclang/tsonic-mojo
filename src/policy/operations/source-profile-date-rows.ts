@@ -28,6 +28,15 @@ const setters = Object.freeze([
 ] as const);
 
 export const mojoDateSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Object.freeze([
+  ...[
+    ["toLocaleString", "date_to_locale_string"],
+    ["toLocaleDateString", "date_to_locale_date_string"],
+    ["toLocaleTimeString", "date_to_locale_time_string"],
+  ].map(([member, name]): MojoSourceProfileCallRow => Object.freeze({
+    profile: "js", kind: "call", owner: "Date", member: member!, raises: true,
+    parameterContract: Object.freeze(["js-data", "js-data"]),
+    target: Object.freeze({ kind: "function", modulePath: Object.freeze(["tsonic_js"]), name: name!, receiver: "imm" }),
+  })),
   ...jsInstanceRows("Date", "imm", ["getTime", "valueOf"]),
   ...fields.flatMap(([source, target]) => [
     ...jsInstanceRows("Date", "imm", [[`getUTC${source}`, `get_utc_${target}`]]),

@@ -376,6 +376,19 @@ interface Date {
   toString(): string;
   toDateString(): string;
   toTimeString(): string;
+  toLocaleString(locales?: string | readonly string[], options?: IntlDateTimeFormatOptions): string;
+  toLocaleDateString(locales?: string | readonly string[], options?: IntlDateTimeFormatOptions): string;
+  toLocaleTimeString(locales?: string | readonly string[], options?: IntlDateTimeFormatOptions): string;
+}
+interface IntlDateTimeFormatOptions {
+  formatMatcher?: "basic" | "best fit";
+  calendar?: string;
+  numberingSystem?: string;
+  hourCycle?: "h11" | "h12" | "h23" | "h24";
+  dayPeriod?: "long" | "short" | "narrow";
+  fractionalSecondDigits?: 1 | 2 | 3;
+  dateStyle?: "full" | "long" | "medium" | "short";
+  timeStyle?: "full" | "long" | "medium" | "short";
 }
 interface DateConstructor {
   new (): Date;
