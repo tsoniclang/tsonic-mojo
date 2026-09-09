@@ -150,6 +150,7 @@ export function finalizeMojoProgramEffects(
 
   const errorRegionIndexes = Object.freeze({
     source,
+    conversions,
     expressionTypes,
     callSelections,
     callDependencies,

@@ -71,10 +71,10 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     }),
   }),
   ...jsReceiverFunctionRows("String", "native_string", [
-    "at", "charAt", "charCodeAt", "codePointAt", "endsWith", "includes",
-    "indexOf", "lastIndexOf", "padEnd", "padStart",
-    ["repeat", "repeat", true], "slice", "startsWith",
-    "substr", "substring", ["toLowerCase", "to_lower_case", true], "toString",
+    ["at", "at", true], ["charAt", "char_at", true], "charCodeAt", "codePointAt", "endsWith", "includes",
+    "indexOf", "lastIndexOf", ["padEnd", "pad_end", true], ["padStart", "pad_start", true],
+    ["repeat", "repeat", true], ["slice", "slice", true], "startsWith",
+    ["substr", "substr", true], ["substring", "substring", true], ["toLowerCase", "to_lower_case", true], "toString",
     ["toUpperCase", "to_upper_case", true], "toWellFormed",
     "trim", "trimEnd", "trimLeft", "trimRight", "trimStart", "valueOf", "isWellFormed",
   ]),
@@ -267,7 +267,7 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     "Number", "toPrecision", "number_to_precision_digits", 1, ["float64"], true,
   ),
   ...jsStaticRows("StringConstructor", [
-    ["fromCharCode", "native_string_from_char_code"],
+    ["fromCharCode", "native_string_from_char_code", true],
     ["fromCodePoint", "native_string_from_code_point", true],
   ], "codes"),
   ...jsStaticRows("DateConstructor", ["now", ["parse", "date_parse_native"], ["UTC", "date_utc"]]),

@@ -56,6 +56,11 @@ test("source-package components compile once behind content-addressed Mojo artif
   assert.ok(project);
   assert.match(project.text, /mojo precompile/u);
   assert.match(project.text, /build\/components\/[0-9a-f]{64}\/tsonic_dep_[0-9a-f]+\.mojoc/u);
-  assert.match(project.text, /depends-on = \["build_tsonic_dep_[0-9a-f]+"\]/u);
+  const buildDependencies = project.text.match(/^build = .*depends-on = \[([^\]]+)\]/mu);
+  assert.ok(buildDependencies);
+  assert.deepEqual(buildDependencies[1].match(/"[^"]+"/gu)?.sort(), [
+    '"build_native_tsonic_runtime"',
+    `"build_${dependencySource.split("/")[1]}"`,
+  ].sort());
   assert.doesNotMatch(project.text, /-I 'components\/tsonic_dep_/u);
 });
