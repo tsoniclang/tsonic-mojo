@@ -332,6 +332,15 @@ interface ReadonlySet<T> {
 interface Date {
   getTime(): number;
   valueOf(): number;
+  getFullYear(): number;
+  getMonth(): number;
+  getDate(): number;
+  getDay(): number;
+  getHours(): number;
+  getMinutes(): number;
+  getSeconds(): number;
+  getMilliseconds(): number;
+  getTimezoneOffset(): number;
   getUTCFullYear(): number;
   getUTCMonth(): number;
   getUTCDate(): number;
@@ -341,6 +350,13 @@ interface Date {
   getUTCSeconds(): number;
   getUTCMilliseconds(): number;
   setTime(time: number): number;
+  setMilliseconds(ms: number): number;
+  setSeconds(sec: number, ms?: number): number;
+  setMinutes(min: number, sec?: number, ms?: number): number;
+  setHours(hours: number, min?: number, sec?: number, ms?: number): number;
+  setDate(date: number): number;
+  setMonth(month: number, date?: number): number;
+  setFullYear(year: number, month?: number, date?: number): number;
   setUTCMilliseconds(ms: number): number;
   setUTCSeconds(sec: number, ms?: number): number;
   setUTCMinutes(min: number, sec?: number, ms?: number): number;
@@ -350,16 +366,20 @@ interface Date {
   setUTCFullYear(year: number, month?: number, date?: number): number;
   toISOString(): string;
   toUTCString(): string;
-  toJSON(): string;
+  toJSON(): string | null;
   toString(): string;
+  toDateString(): string;
+  toTimeString(): string;
 }
 interface DateConstructor {
   new (): Date;
   new (value: number): Date;
   new (value: string): Date;
+  new (value: Date): Date;
+  new (year: number, monthIndex: number, date?: number, hours?: number, minutes?: number, seconds?: number, ms?: number): Date;
   now(): number;
   parse(value: string): number;
-  UTC(year: number, monthIndex: number, date?: number, hours?: number, minutes?: number, seconds?: number, ms?: number): number;
+  UTC(year: number, monthIndex?: number, date?: number, hours?: number, minutes?: number, seconds?: number, ms?: number): number;
 }
 declare var Date: DateConstructor;
 

@@ -17,6 +17,7 @@ import {
   sourceErrorRows,
 } from "./source-profile-row-builders.js";
 import { mojoRegExpSourceProfileCallRows } from "./source-profile-regexp-rows.js";
+import { mojoDateSourceProfileCallRows } from "./source-profile-date-rows.js";
 
 export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Object.freeze([
   ...jsInstanceRows("Iterator", "imm", ["next"]),
@@ -190,37 +191,7 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
   ...["Set", "ReadonlySet"].map((owner) => jsCallbackRow(owner, "forEach", "imm", "preserve", [
     "set_for_each_zero", "set_for_each_value", "set_for_each_value_key", "set_for_each_with_set",
   ])),
-  ...jsInstanceRows("Date", "imm", [
-    "getTime", ["getUTCDate", "get_utc_date"], ["getUTCDay", "get_utc_day"],
-    ["getUTCFullYear", "get_utc_full_year"], ["getUTCHours", "get_utc_hours"],
-    ["getUTCMilliseconds", "get_utc_milliseconds"], ["getUTCMinutes", "get_utc_minutes"],
-    ["getUTCMonth", "get_utc_month"], ["getUTCSeconds", "get_utc_seconds"],
-    "valueOf",
-  ]),
-  ...jsReceiverFunctionRows("Date", "date", [
-    ["toJSON", "to_json_native"],
-    ["toString", "to_string_native"],
-    ["toUTCString", "to_utc_string_native"],
-  ]),
-  ...jsInstanceRows("Date", "mut", [
-    "setTime", ["setUTCDate", "set_utc_date"], ["setUTCFullYear", "set_utc_full_year"],
-    ["setUTCHours", "set_utc_hours"], ["setUTCMilliseconds", "set_utc_milliseconds"],
-    ["setUTCMinutes", "set_utc_minutes"], ["setUTCMonth", "set_utc_month"],
-    ["setUTCSeconds", "set_utc_seconds"],
-  ]),
-  Object.freeze({
-    profile: "js",
-    kind: "call",
-    owner: "Date",
-    member: "toISOString",
-    target: Object.freeze({
-      kind: "function",
-      modulePath: Object.freeze(["tsonic_js"]),
-      name: "date_to_iso_string_native",
-      receiver: "imm",
-    }),
-    raises: true,
-  }),
+  ...mojoDateSourceProfileCallRows,
   Object.freeze({
     profile: "js",
     kind: "call",
@@ -271,7 +242,7 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     ["fromCharCode", "native_string_from_char_code", true],
     ["fromCodePoint", "native_string_from_code_point", true],
   ], "codes"),
-  ...jsStaticRows("DateConstructor", ["now", ["parse", "date_parse_native"], ["UTC", "date_utc"]]),
+
   Object.freeze({
     profile: "js",
     kind: "call",

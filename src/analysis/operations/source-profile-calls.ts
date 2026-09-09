@@ -127,7 +127,9 @@ export function analyzeSourceProfileCall(
         : sourceProfileParameterType(explicitContract, sourceReceiverType);
     const presentType = resolved === undefined
       ? undefined
-      : sourceProfilePresentArgumentType(parameter.acceptsOmission, resolved);
+      : explicitContract === undefined
+        ? sourceProfilePresentArgumentType(parameter.acceptsOmission, resolved)
+        : resolved;
     const target = parameter.rest === true && presentType !== undefined && explicitContract === undefined
       ? restCallableElementType(presentType)
       : presentType;
@@ -520,6 +522,10 @@ function sourceProfileParameterType(
   receiver: MojoTargetTypeRef | undefined,
 ): MojoTargetTypeRef | undefined {
   if (typeof contract !== "string") {
+    if (contract.kind === "optional") {
+      const value = sourceProfileParameterType(contract.value, receiver);
+      return value === undefined ? undefined : Object.freeze({ kind: "optional", value });
+    }
     if (contract.kind === "receiver") return receiver;
     const value = receiver?.kind === "optional" ? receiver.value : receiver;
     if (value?.kind !== "target-named") return undefined;

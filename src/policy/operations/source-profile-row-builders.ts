@@ -181,14 +181,7 @@ export const jsConstructorRows: readonly MojoSourceProfileCallRow[] = Object.fre
       indexes: Object.freeze([0]),
     }),
   }),
-  ...[0, 1].map((argumentCount): MojoSourceProfileCallRow => Object.freeze({
-    profile: "js",
-    kind: "construct",
-    owner: "DateConstructor",
-    member: "constructor",
-    argumentCount,
-    target: Object.freeze({ kind: "function", modulePath: Object.freeze(["tsonic_js"]), name: "date_new" }),
-  })),
+
 ]);
 
 export const sourceErrorRows: readonly MojoSourceProfileCallRow[] = Object.freeze(
