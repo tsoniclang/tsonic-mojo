@@ -1,6 +1,12 @@
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readFileSync } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import {
+  requireMojoNativeDirectory,
+  requireMojoNativeRelativePath,
+  snapshotMojoNativeFile,
+  type MojoRuntimeNativeAsset,
+} from "./native-files.js";
 
 export interface MojoRuntimeEnvironmentDependency {
   readonly name: string;
@@ -19,7 +25,9 @@ export interface MojoRuntimeNativePackagePlan {
   readonly digest: string;
   readonly dependencies: readonly MojoRuntimeEnvironmentDependency[];
   readonly translationUnits: readonly MojoRuntimeNativeTranslationUnit[];
+  readonly assets: readonly MojoRuntimeNativeAsset[];
   readonly includeDirectories: readonly string[];
+  readonly sourceIncludeDirectories: readonly string[];
   readonly staticLibraries: readonly string[];
   readonly dynamicLibraries: readonly string[];
 }
@@ -30,8 +38,9 @@ export function analyzeMojoRuntimeNativePackage(
 ): MojoRuntimeNativePackagePlan | undefined {
   const manifestPath = join(importRoot, `${packageName}.runtime.json`);
   if (!existsSync(manifestPath)) return undefined;
-  requireRegularFile(manifestPath, `Mojo runtime manifest for '${packageName}'`);
-  const manifest = parseManifest(readFileSync(manifestPath, "utf8"), packageName);
+  const manifest = parseManifest(snapshotMojoNativeFile(
+    importRoot, `${packageName}.runtime.json`, 1_048_576,
+  ).file.text, packageName);
   const dependencies = orderedDependencies(manifest.dependencies, packageName);
   const includeDirectories = orderedEnvironmentPaths(
     manifest.includeDirectories,
@@ -44,12 +53,16 @@ export function analyzeMojoRuntimeNativePackage(
     "static library",
   );
   const dynamicLibraries = orderedDynamicLibraries(manifest.dynamicLibraries, packageName);
-  const translationUnits = orderedTranslationUnits(
-    manifest.translationUnits,
-    manifestPath,
-    importRoot,
-    packageName,
+  const { translationUnits, assets } = orderedNativeFiles(manifest, importRoot);
+  const sourceIncludeDirectories = orderedEnvironmentPaths(
+    manifest.sourceIncludeDirectories, packageName, "source include directory",
   );
+  for (const directory of sourceIncludeDirectories) {
+    requireMojoNativeDirectory(importRoot, directory.split("/"));
+    if (![...translationUnits, ...assets].some((file) => file.path.startsWith(`${directory}/`))) {
+      throw new Error(`Mojo runtime source include directory '${directory}' has no published files.`);
+    }
+  }
   if (translationUnits.length === 0 && staticLibraries.length === 0 &&
     dynamicLibraries.length === 0) {
     throw new Error(`Mojo runtime manifest for '${packageName}' declares no native work.`);
@@ -59,15 +72,23 @@ export function analyzeMojoRuntimeNativePackage(
     dependencies,
     translationUnits: translationUnits.map(({ language, standard, path, digest }) =>
       Object.freeze({ language, standard, path, digest })),
+    assets: assets.map(({ path, digest }) => Object.freeze({ path, digest })),
     includeDirectories,
+    sourceIncludeDirectories,
     staticLibraries,
     dynamicLibraries,
   });
+  const digest = createHash("sha256").update(JSON.stringify(contract)).digest("hex");
   return Object.freeze({
-    digest: createHash("sha256").update(JSON.stringify(contract)).digest("hex"),
+    digest,
     dependencies,
-    translationUnits,
+    translationUnits: Object.freeze(translationUnits.map((unit) => Object.freeze({
+      ...unit,
+      digest: createHash("sha256").update(digest).update(unit.digest).digest("hex"),
+    }))),
+    assets,
     includeDirectories,
+    sourceIncludeDirectories,
     staticLibraries,
     dynamicLibraries,
   });
@@ -82,6 +103,8 @@ interface RuntimeNativeManifest {
     readonly path: string;
   }[];
   readonly includeDirectories?: readonly string[];
+  readonly sourceIncludeDirectories?: readonly string[];
+  readonly assets?: readonly string[];
   readonly staticLibraries?: readonly string[];
   readonly dynamicLibraries?: readonly string[];
 }
@@ -105,6 +128,8 @@ function parseManifest(text: string, packageName: string): RuntimeNativeManifest
     "dependencies",
     "translationUnits",
     "includeDirectories",
+    "sourceIncludeDirectories",
+    "assets",
     "staticLibraries",
     "dynamicLibraries",
   ], `Mojo runtime manifest for '${packageName}'`);
@@ -113,6 +138,11 @@ function parseManifest(text: string, packageName: string): RuntimeNativeManifest
   }
   requireOptionalStringRecord(value.dependencies, packageName, "dependencies");
   requireOptionalStringArray(value.includeDirectories, packageName, "includeDirectories");
+  requireOptionalStringArray(value.sourceIncludeDirectories, packageName, "sourceIncludeDirectories");
+  requireOptionalStringArray(value.assets, packageName, "assets");
+  if (Array.isArray(value.assets) && value.assets.length > 256) {
+    throw new Error(`Mojo runtime manifest for '${packageName}' declares too many assets.`);
+  }
   requireOptionalStringArray(value.staticLibraries, packageName, "staticLibraries");
   requireOptionalStringArray(value.dynamicLibraries, packageName, "dynamicLibraries");
   if (value.translationUnits !== undefined) {
@@ -163,7 +193,7 @@ function orderedEnvironmentPaths(
     throw new Error(`Mojo runtime manifest for '${packageName}' declares too many ${label}s.`);
   }
   return Object.freeze([...new Set(values.map((path) => {
-    requireRelativePath(path, packageName, label);
+    requireMojoNativeRelativePath(path, label);
     return path;
   }))].sort((left, right) => left.localeCompare(right, "en")));
 }
@@ -179,60 +209,44 @@ function orderedDynamicLibraries(
   return Object.freeze([...new Set(values)].sort((left, right) => left.localeCompare(right, "en")));
 }
 
-function orderedTranslationUnits(
-  input: RuntimeNativeManifest["translationUnits"],
-  manifestPath: string,
+function orderedNativeFiles(
+  manifest: RuntimeNativeManifest,
   importRoot: string,
-  packageName: string,
-): readonly MojoRuntimeNativeTranslationUnit[] {
-  let totalBytes = 0;
+): {
+  readonly translationUnits: readonly MojoRuntimeNativeTranslationUnit[];
+  readonly assets: readonly MojoRuntimeNativeAsset[];
+} {
+  let remainingBytes = 67_108_864;
   const seen = new Set<string>();
-  const units = (input ?? []).map((unit) => {
-    requireRelativePath(unit.path, packageName, "translation unit");
+  function capture(path: string): MojoRuntimeNativeAsset {
+    if (seen.has(path)) throw new Error(`Mojo runtime native path '${path}' is duplicated.`);
+    seen.add(path);
+    const snapshot = snapshotMojoNativeFile(importRoot, path, remainingBytes);
+    remainingBytes -= snapshot.byteLength;
+    return snapshot.file;
+  }
+  const units = (manifest.translationUnits ?? []).map((unit) => {
+    requireMojoNativeRelativePath(unit.path, "translation unit");
     if (!unit.path.endsWith(unit.language === "c" ? ".c" : ".cpp")) {
       throw new Error(`Mojo runtime translation unit '${unit.path}' does not match its declared language.`);
     }
-    if (seen.has(unit.path)) {
-      throw new Error(`Mojo runtime translation unit '${unit.path}' is duplicated.`);
-    }
-    seen.add(unit.path);
-    const path = resolve(dirname(manifestPath), unit.path);
-    const relativePath = relative(importRoot, path).split(sep).join("/");
-    if (relativePath.startsWith("../") || relativePath.split("/").includes("..")) {
-      throw new Error(`Mojo runtime translation unit '${unit.path}' escapes its import root.`);
-    }
-    requireRegularFile(path, `Mojo runtime translation unit '${unit.path}'`);
-    const bytes = readFileSync(path);
-    totalBytes += bytes.byteLength;
-    if (!Number.isSafeInteger(totalBytes) || totalBytes > 67_108_864) {
-      throw new Error(`Mojo runtime native sources for '${packageName}' exceed 67108864 bytes.`);
-    }
+    const source = capture(unit.path);
     return Object.freeze({
       language: unit.language,
       standard: unit.standard,
-      path: relativePath,
+      path: source.path,
       digest: createHash("sha256").update(JSON.stringify({
-        language: unit.language, standard: unit.standard, path: relativePath,
-      })).update(bytes).digest("hex"),
-      text: utf8Decoder.decode(bytes),
+        language: unit.language, standard: unit.standard, path: source.path,
+        digest: source.digest,
+      })).digest("hex"),
+      text: source.text,
     });
   });
-  return Object.freeze(units.sort((left, right) => left.path.localeCompare(right.path, "en")));
-}
-
-function requireRegularFile(path: string, label: string): void {
-  const entry = lstatSync(path);
-  if (entry.isSymbolicLink() || !entry.isFile()) {
-    throw new Error(`${label} must be one regular file.`);
-  }
-}
-
-function requireRelativePath(path: string, packageName: string, label: string): void {
-  if (path.length === 0 || path.includes("\\") || path.startsWith("/") ||
-    path.split("/").some((segment) => segment.length === 0 || segment === "." || segment === "..") ||
-    !/^[A-Za-z0-9_./+-]+$/u.test(path)) {
-    throw new Error(`Mojo runtime manifest for '${packageName}' has invalid ${label} path '${path}'.`);
-  }
+  const assets = (manifest.assets ?? []).map(capture);
+  return Object.freeze({
+    translationUnits: Object.freeze(units.sort((left, right) => left.path.localeCompare(right.path, "en"))),
+    assets: Object.freeze(assets.sort((left, right) => left.path.localeCompare(right.path, "en"))),
+  });
 }
 
 function requireExactFields(
@@ -272,5 +286,3 @@ function requireOptionalStringArray(
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-
-const utf8Decoder = new TextDecoder("utf-8", { fatal: true });

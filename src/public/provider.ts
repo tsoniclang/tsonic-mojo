@@ -26,6 +26,7 @@ export {
 export {
   mojoCallableTargetType,
   mojoDynamicTargetType,
+  mojoDictionaryTargetType,
   mojoFutureTargetType,
   mojoListTargetType,
   mojoNamedTargetType,

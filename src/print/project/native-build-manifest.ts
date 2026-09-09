@@ -5,7 +5,7 @@ export const mojoNativeBuildManifestPath = "mojo-native-build.json";
 
 export function printMojoNativeBuildManifest(plan: MojoOutputPlan): string {
   const manifest = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     toolchain: {
       kind: plan.configuration.toolchain.kind,
       compilerVersion: plan.configuration.toolchain.compilerVersion,
@@ -23,6 +23,7 @@ export function printMojoNativeBuildManifest(plan: MojoOutputPlan): string {
         packageName: package_.packageName,
         digest: package_.digest,
         includeDirectories: package_.includeDirectories,
+        sourceIncludeDirectories: package_.sourceIncludeDirectories,
         translationUnits: package_.translationUnits,
       })),
     libraryDirectories: plan.nativeBuild.dependencies.length === 0

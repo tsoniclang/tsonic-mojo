@@ -14,6 +14,7 @@ export interface MojoNativeBuildPackage {
   readonly packageName: string;
   readonly digest: string;
   readonly includeDirectories: readonly string[];
+  readonly sourceIncludeDirectories: readonly string[];
   readonly translationUnits: readonly MojoNativeBuildTranslationUnit[];
 }
 
@@ -49,6 +50,8 @@ export function createMojoNativeBuildPlan(
       packageName: runtime.packageName,
       digest: native.digest,
       includeDirectories: native.includeDirectories,
+      sourceIncludeDirectories: Object.freeze(native.sourceIncludeDirectories.map((directory) =>
+        `packages/.native/${runtime.packageName}/${directory}`)),
       translationUnits: Object.freeze(native.translationUnits.map((unit) => Object.freeze({
         language: unit.language,
         sourcePath: `packages/.native/${runtime.packageName}/${unit.path}`,

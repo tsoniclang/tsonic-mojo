@@ -50,6 +50,7 @@ export function printPixiProject(plan: MojoOutputPlan): string {
       `-I"$CONDA_PREFIX/include"`,
       ...package_.includeDirectories.map((path) =>
         `-I${shellEnvironmentPath(path)}`),
+      ...package_.sourceIncludeDirectories.map((path) => `-I${shellQuote(path)}`),
       "-c",
       shellQuote(unit.sourcePath),
       "-o",

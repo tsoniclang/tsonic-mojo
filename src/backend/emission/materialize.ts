@@ -41,7 +41,8 @@ export function materializeMojoOutputPlan(plan: MojoOutputPlan): TargetCompileOu
         text: source.text,
       }));
     }
-    for (const source of runtime.native?.translationUnits ?? []) {
+    const native = runtime.native;
+    for (const source of native === undefined ? [] : [...native.translationUnits, ...native.assets]) {
       artifacts.push(Object.freeze({
         kind: "asset",
         path: `packages/.native/${runtime.packageName}/${source.path}`,
