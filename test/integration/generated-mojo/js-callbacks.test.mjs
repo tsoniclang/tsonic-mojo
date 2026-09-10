@@ -131,9 +131,9 @@ test("JavaScript predicate callbacks use native immediate adapters", () => {
   assert.match(source, /array_some_value\(values, _callable_2\)/u);
   assert.doesNotMatch(source, /lambda/u);
   assert.match(source, /return js_truthy_number\(value\)/u);
-  assert.match(source, /return len\(.+\) != 0/u);
+  assert.match(source, /return \(.+\)\.byte_length\(\) != 0/u);
   assert.doesNotMatch(source, /js_truthy_number\(_immediate_callback\(/u);
-  assert.doesNotMatch(source, /len\(_immediate_callback_2\(/u);
+  assert.doesNotMatch(source, /_immediate_callback_2\([^\n]*\.byte_length\(/u);
   assert.doesNotMatch(source, /adapt_truthy_|widen_callable|RaisingCallable/u);
 });
 
