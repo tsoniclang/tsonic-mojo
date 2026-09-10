@@ -15,6 +15,7 @@ import { analyzeMojoObjectLiteral } from "../objects/object-literals.js";
 import { analyzeMojoArrayLiteral } from "../aggregates/array-literals.js";
 import { analyzeMojoProviderRecordLiteral } from "../objects/provider-records.js";
 import { analyzeMojoStructuralObjectLiteral } from "../objects/structural-object-literals.js";
+import { collectMojoDeferredExpression } from "../expressions/deferred.js";
 import type {
   MojoProjectTypeCatalog,
   MojoProjectTypeRelationships,
@@ -125,6 +126,7 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly arrayLiteralSelections: WeakMap<Node, MojoArrayLiteralSelection>;
   readonly objectLiteralNodes: Set<Node>;
   readonly templateExpressionNodes: Set<Node>;
+  readonly awaitExpressionNodes: Set<Node>;
   readonly bindingPatternSelections: WeakMap<Node, MojoBindingPatternSelection>;
   readonly bindingProjections: WeakMap<Node, MojoBindingProjectionPlan>;
   readonly exitValueTransfers: WeakSet<Node>;
@@ -361,10 +363,8 @@ export function analyzeMojoExecutableRegion(
         input.expressionTypes.set(node, intrinsic.selection.resultType);
       }
     }
-    if (ast.kindName(node) === "KindTemplateExpression") {
-      input.templateExpressionNodes.add(node);
-    }
     if (!isMojoExpressionNode(node, ast) || !isRuntimeValueOccurrence(node, input)) return;
+    collectMojoDeferredExpression(node, ast, input);
     const inferred = inferMojoExpressionType(node, ast, input.expressionTypes);
     if (inferred !== undefined) input.expressionTypes.set(node, inferred);
     const numeric = analyzeMojoNumericOperation(node, ast, input.expressionTypes);

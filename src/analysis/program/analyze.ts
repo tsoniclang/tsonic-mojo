@@ -119,6 +119,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
   const callableDeclarationByExpression = new WeakMap<Node, Node>();
   const templateExpressionSelections = new WeakMap<Node, MojoTemplateExpressionSelection>();
   const templateExpressionNodes = new Set<Node>();
+  const awaitExpressionNodes = new Set<Node>();
   const bindingPatternSelections = new WeakMap<Node, MojoBindingPatternSelection>();
   const bindingProjections = new WeakMap<Node, MojoBindingProjectionPlan>();
   const exitValueTransfers = new WeakSet<Node>();
@@ -418,6 +419,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     arrayLiteralSelections,
     objectLiteralNodes,
     templateExpressionNodes,
+    awaitExpressionNodes,
     bindingPatternSelections,
     bindingProjections,
     exitValueTransfers,

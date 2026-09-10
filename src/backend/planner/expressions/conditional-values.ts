@@ -220,23 +220,9 @@ export function planAwait(
   const inner = Node_Expression(context.program.source.ast, node);
   const plan = inner === undefined ? undefined : planValue(inner, context);
   const type = inner === undefined ? undefined : context.program.queries.expressionType(inner);
-  if (plan === undefined || type?.kind !== "future") {
-    appendMojoPlanningDiagnostic(
-      context,
-      "MOJO_AWAIT_OPERAND_NOT_CLOSED",
-      "Await requires one exact finalized Mojo future carrier.",
-      node,
-    );
-    return undefined;
-  }
-  if (type.domain === "js") {
-    appendMojoPlanningDiagnostic(
-      context,
-      "MOJO_JS_PROMISE_AWAIT_RUNTIME_MISSING",
-      "JavaScript Promise awaiting requires the closed Mojo JS scheduler contract.",
-      node,
-    );
-    return undefined;
+  if (plan === undefined) return undefined;
+  if (type?.kind !== "future" || type.domain === "js") {
+    throw new Error("A sealed Mojo await lost its admitted native future carrier.");
   }
   const taskFactory = type.raises ? "create_raising_task" : "create_task";
   registerMojoSymbolImport(context, ["tsonic_runtime"], taskFactory);

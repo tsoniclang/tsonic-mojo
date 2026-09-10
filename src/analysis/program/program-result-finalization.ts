@@ -15,6 +15,7 @@ import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { analyzeMojoRuntimePackages } from "../runtime/references.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import { analyzeMojoTemplateExpression } from "../operations/template-expressions.js";
+import { analyzeMojoAwaitExpressions } from "../expressions/await.js";
 import { closeMojoErrorType } from "../resources/effects.js";
 import { validateMojoExecutableRegionSyntax } from "../control-flow/syntax-validation.js";
 import { createMojoProgramQueries } from "./queries.js";
@@ -267,6 +268,9 @@ export function finalizeMojoProgramResult(
       templateExpressionSelections.set(expression, template.selection);
     }
   }
+  diagnostics.push(...analyzeMojoAwaitExpressions(
+    environment.awaitExpressionNodes, checkedSource.ast, expressionTypes,
+  ));
 
   for (const [root, rootKind] of executableRegionRoots) {
     validateMojoExecutableRegionSyntax(
