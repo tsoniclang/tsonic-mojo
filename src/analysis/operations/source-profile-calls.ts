@@ -25,6 +25,7 @@ import {
 } from "./call-arguments.js";
 import { selectMojoSourceProfileCallback } from "./source-profile-callbacks.js";
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
+import { selectMojoSourceValueResult } from "../../policy/conversions/source-value-result.js";
 import { parameterBindingConversions } from "./call-argument-conversions.js";
 import {
   mojoNativeErrorType,
@@ -212,7 +213,8 @@ export function analyzeSourceProfileCall(
   );
   if (arguments_.kind === "unsupported") return arguments_;
   const genericArguments: MojoTargetGenericArgument[] = [];
-  for (const selectedArgument of sourceCall.sourceSelectedMethodTypeArguments ?? []) {
+  for (const selectedArgument of selected.row.genericArguments === "erased"
+    ? [] : sourceCall.sourceSelectedMethodTypeArguments ?? []) {
     const argument = resolve(selectedArgument.selectedType, selectedArgument.explicitTypeNode);
     if (argument === undefined) {
       return {
@@ -420,6 +422,13 @@ function closeSourceProfileResult(
       code: "MOJO_SOURCE_PROFILE_RESULT_NOT_CLOSED",
       reason: "The selected source-profile call result has no exact Mojo carrier.",
     };
+  }
+  if (row.runtimeResultContract?.kind === "source-value") {
+    const runtimeType = Object.freeze({ kind: "dynamic" as const, domain: "js" as const });
+    const conversion = selectMojoSourceValueResult(selectedResult);
+    return conversion === undefined
+      ? { kind: "unsupported", code: "MOJO_SOURCE_PROFILE_RUNTIME_RESULT_CONVERSION_UNPROVEN", reason: "A cloned source value requires a closed scalar or JsValue result; cloning cannot restore source prototypes or provider branding." }
+      : { kind: "resolved", type: runtimeType, conversion };
   }
   if (row.runtimeResultContract?.kind === "native-error-result") {
     const runtimeType = mojoRegExpNativeResultType(selectedResult);

@@ -22,6 +22,14 @@ import { mojoLocaleSourceProfileCallRows } from "./source-profile-locale-rows.js
 import { mojoIntlSourceProfileCallRows } from "./source-profile-intl-rows.js";
 
 export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Object.freeze([
+  Object.freeze({
+    profile: "js", kind: "call", owner: "Global", member: "structuredClone", argumentCount: 1,
+    genericArguments: "erased",
+    parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["js-data"]),
+    runtimeResultContract: Object.freeze({ kind: "source-value" }),
+    target: Object.freeze({ kind: "function", modulePath: Object.freeze(["tsonic_js"]), name: "js_value_structured_clone" }),
+    raises: true,
+  }),
   ...jsInstanceRows("Iterator", "imm", ["next"]),
   ...sourceErrorRows,
   ...jsConstructorRows,

@@ -156,6 +156,8 @@ declare var Set: SetConstructor;
 `.trim();
 
 const jsCoreDeclarations = `
+declare function structuredClone<T>(value: T): T;
+
 ${commonDeclarations}
 
 interface ObjectConstructor {

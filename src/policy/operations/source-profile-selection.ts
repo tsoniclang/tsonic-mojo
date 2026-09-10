@@ -19,6 +19,7 @@ export interface MojoSourceProfileCallRowBase {
   readonly parameterContract?: readonly MojoSourceProfileParameterContract[];
   readonly parameterContractMode?: "exact" | "overrides";
   readonly restParameterName?: string;
+  readonly genericArguments?: "selected" | "erased";
   readonly receiverCapability?: "integer";
   readonly receiverContract?: MojoSourceProfileParameterContract;
   readonly raises?: boolean;
@@ -29,7 +30,8 @@ export interface MojoSourceProfileCallRowBase {
         readonly kind: "optional-source-union";
         readonly absence: "null" | "undefined";
       }
-    | { readonly kind: "native-error-result" };
+    | { readonly kind: "native-error-result" }
+    | { readonly kind: "source-value" };
 }
 
 export type MojoSourceProfileCallRow = MojoSourceProfileCallRowBase & (
