@@ -323,14 +323,14 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
   const conversions = createMojoConversionIndex({
     narrowingForExpression: (expression) => mojoValueConversionNarrowing(valueRefinements.get(expression)),
     projectRelationships,
-    sourceValueProjection: (type) => selectMojoJsValueConversion(type, {
+    sourceValueProjection: (type, protocol) => selectMojoJsValueConversion(type, {
       source: input.source, structuralObjects, projectRelationships, lifecycle,
       callableByDeclaration, classByTypeId,
       genericParameters: sourceValueGenericParameters,
       modules,
       accessorByDeclaration: sourceValueAccessors,
       providerSourceValueFactory: providerSourceValues.factoryForType,
-    }),
+    }, protocol),
     sourceValueExtraction: providerSourceValues.extractionForType,
     parameterCopy: (type) => lifecycle.capabilities(type).copy,
   });

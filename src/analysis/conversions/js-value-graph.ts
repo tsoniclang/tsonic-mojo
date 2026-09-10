@@ -2,7 +2,7 @@ import type { Node } from "@tsonic/tsts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import { collectionShape, jsValueBoxConversion } from "../../policy/conversions/javascript-conversions.js";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
-import type { MojoJsValueField, MojoJsValueProjection, MojoJsValueGenericParameter, MojoJsValueAccessor } from "../../target-model/conversions/js-value-graph.js";
+import type { MojoJsValueField, MojoJsValueProjection, MojoJsValueGenericParameter, MojoJsValueAccessor, MojoSourceValueProtocol } from "../../target-model/conversions/js-value-graph.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoTargetTypeKey } from "../../target-model/types/key.js";
 import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
@@ -43,13 +43,14 @@ type ProjectionDraft = {
 export function selectMojoJsValueConversion(
   sourceType: MojoTargetTypeRef,
   context: MojoJsValueGraphContext,
+  protocol: MojoSourceValueProtocol = "value",
 ): MojoJsValueGraphSelection {
   const definitions = new Map<string, MojoJsValueProjection>();
   const visiting = new Set<string>();
   let failure: string | undefined;
   const reject = (reason: string): undefined => { failure ??= reason; return undefined; };
   const visit = (type: MojoTargetTypeRef, exactConcrete = false): string | undefined => {
-    const id = `${exactConcrete ? "concrete:" : ""}${mojoTargetTypeKey(type)}`;
+    const id = `${protocol}:${exactConcrete ? "concrete:" : ""}${mojoTargetTypeKey(type)}`;
     if (definitions.has(id) || visiting.has(id)) return id;
     if (definitions.size + visiting.size >= 65536) return reject("The closed source-value graph exceeds its type budget.");
     visiting.add(id);
@@ -143,7 +144,7 @@ export function selectMojoJsValueConversion(
             path: mojoProjectFieldStoragePath(lineage.length - ownerIndex - 1, field.name) }) }));
         }
       }
-      const selected = selectMojoJsonMethod(type, context);
+      const selected = protocol === "value" ? selectMojoJsonMethod(type, context) : Object.freeze({ kind: "absent" as const });
       if (selected.kind === "unsupported") return reject(selected.reason);
       const resultProjection = selected.kind === "resolved" ? visit(selected.resultType) : undefined;
       if (selected.kind === "resolved" && resultProjection === undefined) return undefined;
@@ -173,6 +174,6 @@ export function selectMojoJsValueConversion(
   const definition = definitions.get(root)!;
   return Object.freeze({ kind: "resolved", conversion: definition.kind === "scalar" ? definition.conversion : Object.freeze({
     kind: "js-value-graph", sourceType, targetType,
-    graph: Object.freeze({ root, definitions: Object.freeze([...definitions.values()].sort((left, right) => left.id.localeCompare(right.id, "en"))) }),
+    graph: Object.freeze({ protocol, root, definitions: Object.freeze([...definitions.values()].sort((left, right) => left.id.localeCompare(right.id, "en"))) }),
   }) });
 }

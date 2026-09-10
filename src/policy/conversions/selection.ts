@@ -7,7 +7,7 @@ import { mojoTargetTypeKey } from "../../target-model/types/key.js";
 import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
 import { collectionShape, isJsString, isJsValue, jsValueBoxConversion, sameConversion } from "./javascript-conversions.js";
 import { mojoValueConversionRepresentationTypes } from "../../target-model/conversions/representation-types.js";
-import type { MojoJsValueGraph } from "../../target-model/conversions/js-value-graph.js";
+import type { MojoJsValueGraph, MojoSourceValueProtocol } from "../../target-model/conversions/js-value-graph.js";
 import { mojoJsValueGraphEquals } from "../../target-model/conversions/equality.js";
 import type { MojoSourceValueFunction } from "../../target-model/conversions/source-value-function.js";
 import { classifyTruthiness } from "./truthiness.js";
@@ -17,11 +17,12 @@ export type MojoConversionClassification =
   | { readonly kind: "resolved"; readonly conversion: MojoValueConversion }
   | { readonly kind: "unsupported"; readonly reason: string };
 
-export type MojoSourceValueProjectionSelector = (type: MojoTargetTypeRef) => MojoConversionClassification;
+export type MojoSourceValueProjectionSelector = (type: MojoTargetTypeRef, protocol?: MojoSourceValueProtocol) => MojoConversionClassification;
 export type MojoSourceValueExtractionSelector = (type: MojoTargetTypeRef) => MojoSourceValueFunction | undefined;
 export type MojoParameterCopySelector = (type: MojoTargetTypeRef) => MojoCopyCapability;
 
 export interface MojoConversionIndex {
+  projectData(actual: MojoTargetTypeRef): MojoConversionClassification;
   classify(actual: MojoTargetTypeRef, expected: MojoTargetTypeRef, narrowing?: MojoValueConversionNarrowing): MojoConversionClassification;
   record(
     expression: Node,
@@ -53,8 +54,8 @@ export function createMojoConversionIndex(
 ): MojoConversionIndex {
   const { narrowingForExpression, projectRelationships } = input;
   const sourceGraphs = new Map<string, MojoJsValueGraph>();
-  const sourceValueProjection: MojoSourceValueProjectionSelector = (type) => {
-    const result = input.sourceValueProjection(type);
+  const sourceValueProjection: MojoSourceValueProjectionSelector = (type, protocol = "value") => {
+    const result = input.sourceValueProjection(type, protocol);
     if (result.kind === "resolved" && result.conversion.kind === "js-value-graph") {
       const previous = sourceGraphs.get(result.conversion.graph.root);
       if (previous !== undefined && !mojoJsValueGraphEquals(previous, result.conversion.graph)) {
@@ -84,6 +85,12 @@ export function createMojoConversionIndex(
   };
   const index: MojoConversionIndex = {
     sourceValueGraphs: () => Object.freeze([...sourceGraphs.values()]),
+    projectData(actual) {
+      if (sealed) throw new Error("Mojo data projections cannot be classified after analysis is sealed.");
+      const result = sourceValueProjection(actual, "data");
+      if (result.kind === "resolved") retainConversion(actual, Object.freeze({ kind: "dynamic", domain: "js" }), result.conversion);
+      return result;
+    },
     classify(actual, expected, narrowing) {
       if (sealed) throw new Error("Mojo conversions cannot be classified after analysis is sealed.");
       const result = classifyMojoValueConversion(actual, expected, narrowing, projectRelationships, sourceValueProjection, input.sourceValueExtraction, input.parameterCopy);

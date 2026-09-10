@@ -127,7 +127,7 @@ function truthinessEquals(left: MojoTruthinessConversion, right: MojoTruthinessC
 }
 
 export function mojoJsValueGraphEquals(left: MojoJsValueGraph, right: MojoJsValueGraph): boolean {
-  return left.root === right.root && entriesEqual(left.definitions, right.definitions, projectionEquals);
+  return left.protocol === right.protocol && left.root === right.root && entriesEqual(left.definitions, right.definitions, projectionEquals);
 }
 
 function projectionEquals(left: MojoJsValueProjection, right: MojoJsValueProjection): boolean {
