@@ -156,7 +156,11 @@ export function planPrefixUnary(
   }
   const operandNode = PrefixUnaryExpression_Operand(context.program.source.ast, node);
   const operator = prefixOperator(context.program.source.ast.operatorKindName(node));
-  const operand = operandNode === undefined ? undefined : planValue(operandNode, context);
+  const operand = operandNode === undefined ? undefined : planValue(
+    operandNode,
+    context,
+    operator === "not" ? { kind: "source-primitive", name: "bool" } : undefined,
+  );
   return operator === undefined || operand === undefined
     ? undefined
     : withMojoValue(operand.before, { kind: "unary", operator, operand: operand.value });

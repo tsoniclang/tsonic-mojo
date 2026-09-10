@@ -1,6 +1,7 @@
 import type { MojoTargetTypeRef } from "../types/model.js";
 
 export type MojoTruthinessConversion =
+  | { readonly kind: "boolean" }
   | { readonly kind: "integer" }
   | { readonly kind: "float" }
   | { readonly kind: "string" }

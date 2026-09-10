@@ -446,6 +446,7 @@ export function planMojoTruthiness(
   context: MojoPlanningContext,
 ): MojoExpression | undefined {
   switch (conversion.kind) {
+    case "boolean": return expression;
     case "always-true": return Object.freeze({ kind: "bool-literal", value: true });
     case "always-false": return Object.freeze({ kind: "bool-literal", value: false });
     case "integer": return Object.freeze({

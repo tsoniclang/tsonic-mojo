@@ -13,7 +13,7 @@ export function classifyTruthiness(type: MojoTargetTypeRef): MojoTruthinessConve
     return Object.freeze({ kind: "dynamic" });
   }
   if (type.kind === "source-primitive") {
-    if (type.name === "bool") return undefined;
+    if (type.name === "bool") return Object.freeze({ kind: "boolean" });
     if (type.name === "float32" || type.name === "float64") {
       return Object.freeze({ kind: "float" });
     }

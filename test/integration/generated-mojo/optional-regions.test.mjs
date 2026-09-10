@@ -12,6 +12,17 @@ function compile(source, surfaces = []) {
   return generated.text;
 }
 
+test("logical negation and conditional selection consume optional boolean payloads once", () => {
+  const generated = compile(`
+export function negate(next: () => boolean | undefined): boolean { return !next(); }
+export function choose(next: () => boolean | undefined): number { return next() ? 1 : 2; }
+`, ["js"]);
+  assert.equal((generated.match(/next\.call\(/gu) ?? []).length, 2);
+  assert.equal((generated.match(/var _truthiness_source: Optional\[Bool\]/gu) ?? []).length, 2);
+  assert.match(generated, /not \(_truthiness_source\.value\(\) if Bool\(_truthiness_source\) else False\)/u);
+  assert.doesNotMatch(generated, /return not next\.call\(\)/u);
+});
+
 const cases = [
   ["project field", `
 interface Box { value: number; }
