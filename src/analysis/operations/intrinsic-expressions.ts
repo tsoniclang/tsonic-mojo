@@ -2,6 +2,7 @@ import type { AstReader, Node } from "@tsonic/tsts";
 import { Node_Expression } from "@tsonic/target-api/source";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoIntrinsicExpressionSelection } from "../program/model.js";
+import { mojoPrimitiveRuntimeCategory } from "../../policy/types/primitive-runtime.js";
 
 export type MojoIntrinsicExpressionAnalysis =
   | { readonly kind: "not-intrinsic" }
@@ -68,12 +69,7 @@ function mojoTypeofResult(
     case "callable":
     case "function": return "function";
     case "source-primitive":
-      if (type.name === "bool") return "boolean";
-      if (type.name === "char") return "string";
-      return type.name === "int64" || type.name === "uint64" ||
-        type.name === "int128" || type.name === "uint128"
-        ? "bigint"
-        : "number";
+      return mojoPrimitiveRuntimeCategory(type.name);
     case "target-named":
       return type.id === "tsonic.mojo.js.JsString" ? "string" : "object";
     case "reference": return mojoTypeofResult(type.value);

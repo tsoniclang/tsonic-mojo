@@ -65,7 +65,7 @@ export type MojoValueConversion =
       readonly targetType: MojoTargetTypeRef;
     } & (
       | {
-          readonly source: "number";
+          readonly source: "number" | "bigint";
           readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "source-primitive" }>;
         }
       | {
