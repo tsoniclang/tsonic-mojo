@@ -10,7 +10,7 @@ import { isTriviallyPureMojoValue, orderMojoValues } from "../expressions/suppor
 import type { MojoValuePlanner } from "../expressions/support.js";
 import { registerMojoTypeImports } from "../types/imports.js";
 import { applyMojoConversion } from "../expressions/support.js";
-import { withMojoValue } from "../expressions/value-plan.js";
+import { consumeMojoValue, withMojoValue } from "../expressions/value-plan.js";
 import type { MojoValuePlan } from "../expressions/value-plan.js";
 import { planDictionaryKey } from "../expressions/conditional-values.js";
 import { planMojoPolymorphicObjectLiteral } from "./polymorphism/object-literals.js";
@@ -244,7 +244,7 @@ export function planMojoProviderRecordLiteral(
       left: Object.freeze({ kind: "member", receiver: record, name: field.targetName }),
       right: ordered.values[index]!,
     })),
-  ]), record);
+  ]), consumeMojoValue(record, selection.targetType, context.program.lifecycle));
 }
 
 export function planMojoStructuralObjectLiteral(

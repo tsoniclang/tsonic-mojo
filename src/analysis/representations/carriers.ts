@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import type { AstReader, Node, SourceFile } from "@tsonic/tsts";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoTargetTypeKey } from "../../target-model/types/key.js";
+import { namedType } from "../../policy/types/resolution-helpers.js";
+import { implicitHeapLifecycle } from "../../policy/types/lifecycle-contracts.js";
 import type { MojoValueRefinementSelection } from "../refinements/model.js";
 import type { MojoAnalyzedParameter } from "../program/model.js";
 import type {
@@ -204,7 +206,12 @@ export function createMojoRepresentationCatalog(
       recordTypeUse(parameter.bodyType);
       recordTypeUse(parameter.callType);
     }
-    for (const capture of selection.captures) recordTypeUse(capture.type);
+    for (const capture of selection.captures) {
+      recordTypeUse(capture.type);
+      if (capture.storage === "location") recordTypeUse(namedType(
+        "tsonic.mojo.runtime.Location", ["tsonic_runtime"], "Location", [capture.type], implicitHeapLifecycle,
+      ));
+    }
     if (selection.errorType !== undefined) recordTypeUse(selection.errorType);
   }
   for (const sourceFile of input.sourceFiles) {

@@ -12,6 +12,7 @@ import { mojoJsValueGraphEquals } from "../../target-model/conversions/equality.
 import type { MojoSourceValueFunction } from "../../target-model/conversions/source-value-function.js";
 import { classifyTruthiness } from "./truthiness.js";
 import { classifyCallableAdaptation } from "./callable-adaptation.js";
+import { selectMojoSourceValueResult } from "./source-value-result.js";
 import type { MojoCopyCapability } from "../../target-model/lifecycle/model.js";
 
 export type MojoConversionClassification =
@@ -151,6 +152,8 @@ export function createMojoConversionIndex(
         finalized.add(key);
         finalizedCallableKeys.set(expression, finalized);
       }
+      const identity = index.finalizeCallable(expression, actual, actual);
+      if (identity.kind === "unsupported") reasons.push(identity.reason);
       return Object.freeze(reasons);
     },
     finalizeCallable(
@@ -320,6 +323,8 @@ export function classifyMojoValueConversion(
     }
   }
   if (isJsValue(actual)) {
+    const selected = selectMojoSourceValueResult(expected);
+    if (selected !== undefined) return { kind: "resolved", conversion: selected };
     const extraction = sourceValueExtraction?.(expected);
     if (extraction !== undefined) {
       return {

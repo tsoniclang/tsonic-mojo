@@ -38,6 +38,7 @@ import type {
 import { callArgumentExpectedType } from "../expected-types/expressions.js";
 import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
 import { isMojoAssignmentOperator } from "../control-flow/syntax-validation.js";
+import { mojoSourceValueEqualityKind } from "../../policy/operations/source-value-equality.js";
 
 export function recordMojoExecutableRegionConversionUses(
   root: Node,
@@ -194,6 +195,11 @@ export function recordMojoExecutableRegionConversionUses(
       const leftType = left === undefined ? undefined : expressionTypes.get(left);
       const rightType = right === undefined ? undefined : expressionTypes.get(right);
       if (isEquality(operator) && (isExactNullish(leftType) || isExactNullish(rightType))) {
+        visitExpression(left);
+        visitExpression(right);
+        return;
+      }
+      if (mojoSourceValueEqualityKind(operator, leftType, rightType) !== undefined) {
         visitExpression(left);
         visitExpression(right);
         return;

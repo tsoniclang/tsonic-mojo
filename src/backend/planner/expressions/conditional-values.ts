@@ -1,5 +1,6 @@
 import type { Node } from "@tsonic/tsts";
 import { planMojoNumericExpression } from "./numeric.js";
+import { planMojoSourceValueEquality } from "./source-value-equality.js";
 import {
   ConditionalExpression_Condition,
   ConditionalExpression_WhenFalse,
@@ -260,6 +261,7 @@ export function planMojoTypeTest(
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
 ): MojoValuePlan | undefined {
+  if (selection.kind === "source-value-equality") return planMojoSourceValueEquality(selection, context, planValue);
   if (selection.kind === "nullish-comparison") {
     const left = planValue(selection.left, context);
     const right = planValue(selection.right, context);

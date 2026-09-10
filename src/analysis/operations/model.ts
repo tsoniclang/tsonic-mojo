@@ -154,6 +154,13 @@ export type MojoIntrinsicExpressionSelection =
 
 export type MojoTypeTestSelection =
   | {
+      readonly kind: "source-value-equality";
+      readonly left: Node;
+      readonly right: Node;
+      readonly operandType: Extract<MojoTargetTypeRef, { readonly kind: "dynamic" }>;
+      readonly equal: boolean;
+    }
+  | {
       readonly kind: "nullish-comparison";
       readonly left: Node;
       readonly right: Node;

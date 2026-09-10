@@ -29,6 +29,17 @@ export function consumeMojoValue(
     : Object.freeze({ kind: "consume", expression: value });
 }
 
+export function retainMojoValue(
+  value: MojoExpression,
+  type: MojoTargetTypeRef,
+  lifecycle: MojoLifecycleResolver,
+): MojoExpression {
+  return lifecycle.capabilities(type).copy !== "explicit" ||
+    value.kind === "construct" || value.kind === "copy" || value.kind === "consume"
+    ? value
+    : Object.freeze({ kind: "copy", expression: value });
+}
+
 function isMojoPlaceExpression(value: MojoExpression): boolean {
   switch (value.kind) {
     case "path":

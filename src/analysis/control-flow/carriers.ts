@@ -11,6 +11,7 @@ import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import { mojoLocationTargetType } from "../operations/typed-locations.js";
 import { classifyMojoValueRefinement } from "../refinements/value.js";
 import { expectedExpressionType } from "../expected-types/expressions.js";
+import { analyzeMojoSourceValueEquality } from "../operations/source-value-equality.js";
 import { resolveExecutableRegionType as resolveType } from "./support.js";
 import type {
   MojoAnalyzedInterface,
@@ -387,7 +388,7 @@ export function analyzeTypeTest(
   input.expressionTypes.set(node, Object.freeze({ kind: "source-primitive", name: "bool" }));
 }
 
-export function analyzeNullishComparison(
+export function analyzeValueComparison(
   node: Node,
   input: MojoExecutableRegionAnalysisInput,
 ): void {
@@ -407,7 +408,10 @@ export function analyzeNullishComparison(
   if (leftType === undefined || rightType === undefined) return;
   const leftNullish = exactNullishTarget(leftType);
   const rightNullish = exactNullishTarget(rightType);
-  if (leftNullish === undefined && rightNullish === undefined) return;
+  if (leftNullish === undefined && rightNullish === undefined) {
+    analyzeMojoSourceValueEquality(node, input);
+    return;
+  }
   if (leftNullish !== undefined && rightNullish !== undefined) {
     const equal = !strict || leftNullish.kind === rightNullish.kind;
     input.typeTestSelections.set(node, Object.freeze({

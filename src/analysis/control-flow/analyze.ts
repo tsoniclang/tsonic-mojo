@@ -62,7 +62,7 @@ import {
 import {
   analyzeErasedValueRefinement,
   analyzeExpressionCarrier,
-  analyzeNullishComparison,
+  analyzeValueComparison,
   analyzeTypeTest,
   containsProjectInterface,
   resolveInferredBindingCarrier,
@@ -347,7 +347,7 @@ export function analyzeMojoExecutableRegion(
       } else if (ast.operatorKindName(node) === "KindInstanceOfKeyword") {
         analyzeTypeTest(node, input);
       } else {
-        analyzeNullishComparison(node, input);
+        analyzeValueComparison(node, input);
       }
     }
     if (ast.is.IsAsExpression(node) || ast.is.IsTypeAssertion(node) ||

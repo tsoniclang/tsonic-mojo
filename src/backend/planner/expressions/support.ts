@@ -18,7 +18,7 @@ import {
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import { registerMojoTypeImports } from "../types/imports.js";
-import { mojoValue, withMojoValue } from "./value-plan.js";
+import { mojoValue, retainMojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { convertMojoDataRest } from "./js-data-rest-conversion.js";
 import { convertMojoSourceValue } from "./source-values/conversion.js";
@@ -207,7 +207,7 @@ export function convertMojoValue(
     return withMojoValue(value.before, Object.freeze({
       kind: "construct",
       type: conversion.targetType,
-      arguments: Object.freeze([{ value: value.value }]),
+      arguments: Object.freeze([{ value: retainMojoValue(value.value, conversion.targetType.value, context.program.lifecycle) }]),
     }));
   }
   if (conversion.kind === "optional-map") {
@@ -237,7 +237,7 @@ export function convertMojoValue(
     return withMojoValue(value.before, Object.freeze({
       kind: "construct",
       type: conversion.targetType,
-      arguments: Object.freeze([{ value: value.value }]),
+      arguments: Object.freeze([{ value: retainMojoValue(value.value, conversion.memberType, context.program.lifecycle) }]),
     }));
   }
   if (conversion.kind === "union-map") {
@@ -556,7 +556,7 @@ export function applyMojoConversion(
       const value = applyMojoConversion(expression, conversion.valueConversion, context);
       if (value === undefined) return undefined;
       registerMojoTypeImports(conversion.targetType, context);
-      return { kind: "construct", type: conversion.targetType, arguments: Object.freeze([{ value }]) };
+      return { kind: "construct", type: conversion.targetType, arguments: Object.freeze([{ value: retainMojoValue(value, conversion.targetType.value, context.program.lifecycle) }]) };
     }
     case "optional-present": {
       const present = Object.freeze({
@@ -571,7 +571,7 @@ export function applyMojoConversion(
       const value = applyMojoConversion(expression, conversion.valueConversion, context);
       if (value === undefined) return undefined;
       registerMojoTypeImports(conversion.targetType, context);
-      return { kind: "construct", type: conversion.targetType, arguments: Object.freeze([{ value }]) };
+      return { kind: "construct", type: conversion.targetType, arguments: Object.freeze([{ value: retainMojoValue(value, conversion.memberType, context.program.lifecycle) }]) };
     }
   }
 }

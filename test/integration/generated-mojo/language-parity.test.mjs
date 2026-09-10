@@ -555,7 +555,7 @@ test("expression callables retain exact erased parameter result and direct-call 
   assert.match(source.text, /widen_callable\[Tuple\[Int32\], Int32, Error\]\(double\)/u);
   assert.match(source.text, /transform\.call\(\(value,\)\)/u);
   assert.match(source.text, /struct _callable_environment:/u);
-  assert.match(source.text, /var \(value,\) = _callable_environment_arguments/u);
+  assert.match(source.text, /var value = _callable_environment_arguments\[0\]/u);
   assert.match(source.text, /return value \+ value/u);
   assert.equal((source.text.match(/= allocate_callable_environment\(/gu) ?? []).length, 1);
 });

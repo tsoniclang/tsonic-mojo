@@ -55,7 +55,11 @@ export function stored(fail: boolean): () => string {
 export function field(fail: boolean): { run: () => string } {
   return { run: () => { if (fail) throw new Error("field"); return "field"; } };
 }
-export function main(): void { factory(false)(); stored(false)(); field(false).run(); stringify(1); }
+class Receiver {
+  label: string = "receiver";
+  reader(): () => () => string { return () => () => this.label; }
+}
+export function main(): void { factory(false)(); stored(false)(); field(false).run(); stringify(1); new Receiver().reader()(); }
 ` } });
   assert.deepEqual(result.diagnostics, []);
   const emitted = artifactTexts(result).map(({ text }) => text).join("\n");

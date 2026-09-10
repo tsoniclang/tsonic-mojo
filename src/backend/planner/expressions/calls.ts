@@ -24,7 +24,7 @@ import type {
 } from "./support.js";
 import { registerMojoTypeImports } from "../types/imports.js";
 import { planMojoIntrinsicCall } from "./intrinsic-calls.js";
-import { mojoValue, withMojoValue } from "./value-plan.js";
+import { mojoValue, retainMojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { applyArgumentDisposition, planCallableArgumentSlot } from "./call-arguments.js";
 import { mojoTargetTypeEquals } from "../../../target-model/types/equality.js";
@@ -333,7 +333,11 @@ export function planMojoCall(
       arguments: Object.freeze([Object.freeze({
         value: Object.freeze({
           kind: "tuple",
-          elements: Object.freeze(ordered.arguments.map((argument) => argument.value)),
+          elements: Object.freeze(ordered.arguments.map((argument, index) => retainMojoValue(
+            argument.value,
+            (arguments_[index] as PlannedMojoCallArgument).type,
+            context.program.lifecycle,
+          ))),
         }),
       })]),
     });

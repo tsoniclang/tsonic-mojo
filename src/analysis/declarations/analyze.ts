@@ -219,6 +219,9 @@ export function analyzeMojoProjectDeclarations(input: {
       lifecycle: input.lifecycle,
       sourceProfiles: input.sourceProfiles,
       jsEnabled: input.jsEnabled,
+      ...(input.sourceCallableErrorType === undefined
+        ? {}
+        : { sourceCallableErrorType: input.sourceCallableErrorType }),
       declaration: draft.declaration,
       sourceFile: draft.sourceFile,
       name: draft.name,

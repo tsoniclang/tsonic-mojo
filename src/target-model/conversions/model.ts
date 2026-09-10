@@ -101,7 +101,7 @@ export type MojoValueConversion =
   | { readonly kind: "optional-none"; readonly targetType: MojoTargetTypeRef }
   | {
       readonly kind: "optional-some";
-      readonly targetType: MojoTargetTypeRef;
+      readonly targetType: Extract<MojoTargetTypeRef, { readonly kind: "optional" }>;
       readonly valueConversion: MojoValueConversion;
     }
   | {

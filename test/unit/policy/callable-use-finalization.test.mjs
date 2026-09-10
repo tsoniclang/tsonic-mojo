@@ -26,6 +26,7 @@ test("final effects replace provisional identity at every recorded callable dest
   assert.deepEqual(conversions.finalizeCallableSource(expression, callable(authoredError)), []);
   assert.deepEqual(conversions.finalizeCallableSource(expression, callable(authoredError)), []);
   assert.equal(conversions.get(expression, expected).kind, "callable-adapt");
+  assert.equal(conversions.get(expression, callable(authoredError)).kind, "identity");
   assert.notEqual(conversions.get(expression, optional), undefined);
   assert.throws(() => conversions.finalizeCallableSource(expression, callable(authoredError)), /sealed/u);
 });
