@@ -42,6 +42,45 @@ test("resolved relative imports preserve classification and printing boundaries"
   assert.deepEqual(violations, []);
 });
 
+test("the planner has no executable static dependency on analysis", () => {
+  const violations = [];
+  for (const file of files(resolve(root, "backend/planner"))) {
+    for (const specifier of staticRuntimeImports(readFileSync(file, "utf8"))) {
+      if (!specifier.startsWith(".")) continue;
+      const destination = relative(root, resolve(dirname(file), specifier));
+      if (destination.startsWith("analysis/")) {
+        violations.push(`${relative(root, file)} -> ${destination}`);
+      }
+    }
+  }
+  assert.deepEqual(violations, []);
+});
+
+test("the static import boundary distinguishes type evidence from executable aliases", () => {
+  assert.deepEqual(staticRuntimeImports(`
+import type { Evidence } from "../analysis/types.js";
+import { type Evidence } from "../analysis/types.js";
+import { type Evidence, select as anotherName } from "../analysis/select.js";
+import * as classifier from "../analysis/index.js";
+import "../analysis/effects.js";
+`), ["../analysis/select.js", "../analysis/index.js", "../analysis/effects.js"]);
+});
+
+function staticRuntimeImports(source) {
+  const imports = [];
+  for (const match of source.matchAll(/^import\s+(type\s+)?(\{[\s\S]*?\}|[^;\n]+?)\s+from\s*["']([^"']+)["'];/gmu)) {
+    if (match[1] !== undefined) continue;
+    const bindings = match[2].trim();
+    if (bindings.startsWith("{") && bindings.slice(1, -1).split(",")
+      .map((binding) => binding.trim()).filter(Boolean).every((binding) => binding.startsWith("type "))) continue;
+    imports.push(match[3]);
+  }
+  for (const match of source.matchAll(/^import\s*["']([^"']+)["'];/gmu)) {
+    imports.push(match[1]);
+  }
+  return imports;
+}
+
 function files(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = resolve(directory, entry.name);

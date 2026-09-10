@@ -6,10 +6,8 @@ import type { MojoValueSelection } from "../program/model.js";
 import { providerOwnerMatches } from "../../policy/types/resolution.js";
 import { instantiateMojoProviderConstantOperation } from "../../policy/operations/provider-instantiation.js";
 import { selectedProviderDeclarationIdentity } from "../../policy/operations/provider-selection.js";
-import {
-  classifyMojoSourceResultConversion,
-  mojoConvertedValueType,
-} from "./call-results.js";
+import { classifyMojoSourceResultConversion } from "./call-results.js";
+import { mojoConvertedValueType } from "../../target-model/conversions/result.js";
 
 export type MojoValueAnalysis =
   | { readonly kind: "not-provider" }

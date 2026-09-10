@@ -17,8 +17,8 @@ import { consumeMojoValue, mojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import type { MojoPreparedMutation } from "./mutation-plan.js";
 import { planDictionaryKey } from "./conditional-values.js";
-import { mojoParameterConvention } from "../../../analysis/representations/index.js";
-import { mojoConvertedValueType } from "../../../analysis/operations/call-results.js";
+import { mojoParameterConvention } from "../../../target-model/operations/parameters.js";
+import { mojoConvertedValueType } from "../../../target-model/conversions/result.js";
 
 export function projectPropertyUsesMethodWrite(
   selection: import("../../../analysis/program/model.js").MojoPropertySelection | undefined,

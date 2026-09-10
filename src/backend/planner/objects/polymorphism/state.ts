@@ -4,7 +4,7 @@ import type {
   MojoAnalyzedClass,
   MojoProjectConcreteDispatch,
 } from "../../../../analysis/program/model.js";
-import { mojoParameterConvention } from "../../../../analysis/representations/index.js";
+import { mojoParameterConvention } from "../../../../target-model/operations/parameters.js";
 import { mojoTargetTypeEquals } from "../../../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../../../target-model/types/model.js";
 import { mojoProjectBaseStateField } from "../../../../target-model/types/project-storage.js";

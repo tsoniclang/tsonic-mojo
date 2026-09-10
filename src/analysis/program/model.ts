@@ -10,7 +10,7 @@ import type {
   MojoValueConversion,
 } from "../../target-model/conversions/model.js";
 export type { MojoValueRefinementSelection } from "../refinements/model.js";
-import type { MojoParameterDisposition } from "../representations/model.js";
+import type { MojoParameterDisposition } from "../../target-model/operations/parameters.js";
 export type {
   MojoArrayLiteralContribution,
   MojoArrayLiteralFixedSpreadSelection,

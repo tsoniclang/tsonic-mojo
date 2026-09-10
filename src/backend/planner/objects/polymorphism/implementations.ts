@@ -1,7 +1,7 @@
 import type { Node } from "@tsonic/tsts";
 import type { MojoSourceCallableSpecializationVariant } from "../../../../analysis/callables/specializations.js";
 import type { MojoAnalyzedFunction } from "../../../../analysis/program/model.js";
-import { mojoParameterConvention } from "../../../../analysis/representations/index.js";
+import { mojoParameterConvention } from "../../../../target-model/operations/parameters.js";
 import type {
   MojoFunctionDeclaration,
   MojoParameter,

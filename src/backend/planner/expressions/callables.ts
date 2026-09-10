@@ -33,7 +33,7 @@ import type { MojoValuePlan } from "./value-plan.js";
 import { planMojoParameterPrelude } from "../declarations/parameters.js";
 import { planMojoParameterDeclaration } from "../declarations/parameters.js";
 import { planMojoGenericParameters } from "../declarations/generic-parameters.js";
-import { mojoParameterConvention } from "../../../analysis/representations/index.js";
+import { mojoParameterConvention } from "../../../target-model/operations/parameters.js";
 import type { MojoCallableDisposition } from "../../../analysis/representations/model.js";
 import { planMojoFunctionBody, planMojoProjectFunction } from "../declarations/project.js";
 import { mojoModuleBindingRead } from "../bindings/module-bindings.js";

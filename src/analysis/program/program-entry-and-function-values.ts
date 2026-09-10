@@ -4,7 +4,7 @@ import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
-import { mojoParameterConvention } from "../representations/index.js";
+import { mojoParameterConvention } from "../../target-model/operations/parameters.js";
 import type { MojoSourceModuleCatalog } from "../source-modules/model.js";
 import type {
   MojoAnalyzedFunction,
@@ -254,4 +254,3 @@ function allocateFunctionValueName(occupied: Set<string>, requested: string): st
   occupied.add(candidate);
   return candidate;
 }
-

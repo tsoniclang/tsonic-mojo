@@ -6,7 +6,7 @@ import type {
   MojoTargetGenericArgument,
   MojoTargetTypeRef,
 } from "../../target-model/types/model.js";
-import type { MojoArgumentDisposition } from "../representations/model.js";
+import type { MojoArgumentDisposition } from "../../target-model/operations/parameters.js";
 
 export interface MojoAnalyzedCallArgument {
   readonly expression: Node;

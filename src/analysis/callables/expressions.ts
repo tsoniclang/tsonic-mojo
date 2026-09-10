@@ -27,7 +27,7 @@ import { recordMojoExecutableRegionConversionUses } from "../conversions/uses.js
 import { allocateMojoLocalBindings } from "../bindings/local.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 import { resolveMojoTargetType } from "../../policy/types/resolution.js";
-import { mojoParameterConvention } from "../representations/index.js";
+import { mojoParameterConvention } from "../../target-model/operations/parameters.js";
 import {
   callableExpressionDeclaration,
   captureEligibleDeclaration,

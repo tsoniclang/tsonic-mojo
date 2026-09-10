@@ -3,7 +3,7 @@ import type { MojoSelectedProviderOperation } from "../../target-model/operation
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
 import type { MojoValueRefinementSelection } from "../refinements/model.js";
-import type { MojoParameterDisposition } from "../representations/model.js";
+import type { MojoParameterDisposition } from "../../target-model/operations/parameters.js";
 import type { MojoBindingProjectionPlan } from "../bindings/model.js";
 import type { MojoAnalyzedModuleBinding } from "../module-initialization/model.js";
 

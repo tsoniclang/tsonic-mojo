@@ -8,7 +8,8 @@ import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoProviderCompoundWriteIssue } from "../../policy/operations/mutation-admission.js";
 import { classifyMojoRefinedValueConversion } from "../refinements/value.js";
-import { classifyMojoSourceResultConversion, mojoConvertedValueType } from "./call-results.js";
+import { classifyMojoSourceResultConversion } from "./call-results.js";
+import { mojoConvertedValueType } from "../../target-model/conversions/result.js";
 import type { MojoElementAnalysis, MojoElementAnalysisContext } from "./elements.js";
 
 export function analyzeProviderElement(

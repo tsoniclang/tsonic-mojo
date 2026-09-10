@@ -26,10 +26,8 @@ import { mojoIntlSourceProfileProperty } from "../../policy/operations/source-pr
 import type { MojoSourceProfilePropertyAccessPolicy } from "../../policy/operations/source-profile-property-model.js";
 import { mojoIteratorResultProperty } from "../../policy/types/js-iterator.js";
 import { analyzeMojoIteratorResultProperty } from "./iterator-result-properties.js";
-import {
-  classifyMojoSourceResultConversion,
-  mojoConvertedValueType,
-} from "./call-results.js";
+import { classifyMojoSourceResultConversion } from "./call-results.js";
+import { mojoConvertedValueType } from "../../target-model/conversions/result.js";
 
 export type MojoPropertyAnalysis =
   | { readonly kind: "resolved"; readonly selection: MojoPropertySelection; readonly expressionType: MojoTargetTypeRef }

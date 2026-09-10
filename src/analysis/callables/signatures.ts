@@ -19,10 +19,8 @@ import type {
   MojoAnalyzedParameter,
   MojoAnalyzedTypeParameter,
 } from "../program/model.js";
-import {
-  analyzeMojoParameterDisposition,
-  mojoParameterConvention,
-} from "../representations/index.js";
+import { analyzeMojoParameterDisposition } from "../representations/index.js";
+import { mojoParameterConvention } from "../../target-model/operations/parameters.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 import {
   classifyMojoSourceGenericParameter,

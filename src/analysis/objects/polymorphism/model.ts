@@ -1,7 +1,7 @@
 import type { Node } from "@tsonic/tsts";
 import type { MojoValueConversion } from "../../../target-model/conversions/model.js";
 import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
-import type { MojoParameterDisposition } from "../../representations/model.js";
+import type { MojoParameterDisposition } from "../../../target-model/operations/parameters.js";
 import type {
   MojoAnalyzedAccessorProperty,
   MojoAnalyzedClass,
@@ -333,4 +333,3 @@ export interface MojoProjectDispatchPlan {
     genericArguments?: readonly import("../../../target-model/types/model.js").MojoTargetGenericArgument[],
   ): string | undefined;
 }
-

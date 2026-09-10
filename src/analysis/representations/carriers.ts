@@ -64,7 +64,7 @@ export function createMojoRepresentationCatalog(
   const bindingCarriers = new WeakMap<Node, MojoPhysicalTypeId>();
   const expressionCarriers = new WeakMap<Node, MojoPhysicalTypeId>();
   const narrowings = new WeakMap<Node, MojoNarrowingView>();
-  const parameterDispositions = new WeakMap<Node, import("./model.js").MojoParameterDisposition>();
+  const parameterDispositions = new WeakMap<Node, import("../../target-model/operations/parameters.js").MojoParameterDisposition>();
   const callableDispositions = new WeakMap<Node, MojoCallableDisposition>();
   const bindingDispositions = new WeakMap<Node, MojoBindingDisposition>();
   const directCallableExpressions = new Map<Node, "direct" | "thin">();

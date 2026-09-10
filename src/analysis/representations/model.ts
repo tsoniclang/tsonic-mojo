@@ -1,4 +1,5 @@
 import type { Node } from "@tsonic/tsts";
+import type { MojoParameterDisposition } from "../../target-model/operations/parameters.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoTargetGenericArgument } from "../../target-model/types/model.js";
 import type { MojoValueRefinementSelection } from "../refinements/model.js";
@@ -109,15 +110,3 @@ export type MojoBindingDisposition =
     }
   | { readonly kind: "immutable-runtime" }
   | { readonly kind: "live-cell" };
-
-export type MojoParameterDisposition =
-  | { readonly kind: "immutable"; readonly localCopy: boolean }
-  | { readonly kind: "mutable-reference" }
-  | { readonly kind: "parametric-reference" }
-  | { readonly kind: "owned" }
-  | { readonly kind: "out" };
-
-export type MojoArgumentDisposition =
-  | { readonly kind: "plain" }
-  | { readonly kind: "copy" }
-  | { readonly kind: "transfer" };

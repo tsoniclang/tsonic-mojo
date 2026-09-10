@@ -1,9 +1,5 @@
 import type { ArgumentPassingMode } from "@tsonic/tsts";
-import type { MojoCallArgumentConvention } from "../../target-model/types/model.js";
-import type {
-  MojoArgumentDisposition,
-  MojoParameterDisposition,
-} from "./model.js";
+import type { MojoParameterDisposition } from "../../target-model/operations/parameters.js";
 
 export function analyzeMojoParameterDisposition(
   mode: ArgumentPassingMode | undefined,
@@ -24,24 +20,4 @@ export function analyzeMojoParameterDisposition(
     case undefined:
       return Object.freeze({ kind: "immutable", localCopy: bindingWritten });
   }
-}
-
-export function mojoParameterConvention(
-  disposition: MojoParameterDisposition,
-): Exclude<MojoCallArgumentConvention, "deinit"> {
-  switch (disposition.kind) {
-    case "immutable": return "imm";
-    case "mutable-reference": return "mut";
-    case "parametric-reference": return "ref";
-    case "owned": return "var";
-    case "out": return "out";
-  }
-}
-
-export function mojoParameterArgumentDisposition(
-  disposition: MojoParameterDisposition,
-): MojoArgumentDisposition {
-  return disposition.kind === "owned"
-    ? Object.freeze({ kind: "transfer" })
-    : Object.freeze({ kind: "plain" });
 }

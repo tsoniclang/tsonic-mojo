@@ -1,10 +1,7 @@
 import { jsRegExpSourceProfileIdentity } from "@tsonic/js-source-profile";
 import type { Node, ResolvedSourceCallInfo, Type } from "@tsonic/tsts";
 import { classifyMojoRefinedValueConversion } from "../refinements/value.js";
-import {
-  mojoParameterArgumentDisposition,
-  mojoParameterConvention,
-} from "../representations/index.js";
+import { mojoParameterArgumentDisposition, mojoParameterConvention } from "../../target-model/operations/parameters.js";
 import type {
   MojoAnalyzedCallArgument,
   MojoAnalyzedParameter,

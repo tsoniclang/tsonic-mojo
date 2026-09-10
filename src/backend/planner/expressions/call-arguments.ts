@@ -2,7 +2,7 @@ import type {
   MojoAnalyzedCallArgument,
   MojoCallableArgumentSlot,
 } from "../../../analysis/operations/call-model.js";
-import type { MojoArgumentDisposition } from "../../../analysis/representations/model.js";
+import type { MojoArgumentDisposition } from "../../../target-model/operations/parameters.js";
 import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 import {

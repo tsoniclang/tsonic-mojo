@@ -7,7 +7,7 @@ import type { MojoAnalyzedCallArgument } from "../program/model.js";
 import type { MojoValueRefinementSelection } from "../refinements/model.js";
 import { mojoValueConversionNarrowing } from "../refinements/value.js";
 import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
-import type { MojoArgumentDisposition } from "../representations/model.js";
+import type { MojoArgumentDisposition } from "../../target-model/operations/parameters.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 import type { MojoValueOwnership } from "../../target-model/lifecycle/model.js";
 import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";

@@ -11,10 +11,8 @@ import type {
   MojoPropertyAnalysis,
   MojoProviderPropertyAnalysisContext,
 } from "./properties.js";
-import {
-  classifyMojoSourceResultConversion,
-  mojoConvertedValueType,
-} from "./call-results.js";
+import { classifyMojoSourceResultConversion } from "./call-results.js";
+import { mojoConvertedValueType } from "../../target-model/conversions/result.js";
 
 export function analyzeStaticProviderProperty(
   source: ResolvedSourcePropertyAccessInfo,

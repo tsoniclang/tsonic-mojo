@@ -38,7 +38,7 @@ import {
   mojoReferenceIdentityEqualityMethod,
 } from "./reference-wrapper.js";
 import { mojoStateStorageType } from "./state-storage.js";
-import { mojoParameterConvention } from "../../../analysis/representations/index.js";
+import { mojoParameterConvention } from "../../../target-model/operations/parameters.js";
 import { mojoGenericParameterReference } from "../../../target-model/types/constructors.js";
 import type { MojoSourceCallableSpecializationVariant } from "../../../analysis/callables/specializations.js";
 import {

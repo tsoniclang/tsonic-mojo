@@ -13,10 +13,7 @@ import type {
 import { analyzeArguments } from "./call-arguments.js";
 import type { MojoCallArgumentTarget } from "./call-arguments.js";
 import type { MojoCallAnalysis, MojoCallAnalysisContext } from "./calls.js";
-import {
-  mojoParameterArgumentDisposition,
-  mojoParameterConvention,
-} from "../representations/index.js";
+import { mojoParameterArgumentDisposition, mojoParameterConvention } from "../../target-model/operations/parameters.js";
 import { resolveMojoValueGenericArgument } from "../../policy/types/generic-arguments.js";
 import { resolveMojoSourceOrigin } from "../../policy/types/origins.js";
 import { selectMojoProjectConstruction } from "../project-types/construction.js";
