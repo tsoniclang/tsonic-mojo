@@ -1,7 +1,7 @@
 import type { Node } from "@tsonic/tsts";
 import type { MojoProviderTargetGenericParameter, MojoTargetTypeRef } from "../types/model.js";
 import type { MojoValueConversion } from "./model.js";
-import type { MojoSourceValueFactory } from "./source-value-factory.js";
+import type { MojoSourceValueFunction } from "./source-value-function.js";
 
 export interface MojoJsValueGraph {
   readonly root: string;
@@ -48,7 +48,7 @@ export type MojoJsValueProjection = ProjectionIdentity & (
       readonly conversion: Extract<MojoValueConversion, { readonly kind: "identity" | "js-box" }>;
     }
   | { readonly kind: "optional"; readonly value: string }
-  | { readonly kind: "provider"; readonly factory: MojoSourceValueFactory }
+  | { readonly kind: "provider"; readonly factory: MojoSourceValueFunction }
   | { readonly kind: "union"; readonly members: readonly { readonly sourceType: MojoTargetTypeRef; readonly projection: string }[] }
   | {
       readonly kind: "polymorphic";

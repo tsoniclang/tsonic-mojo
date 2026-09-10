@@ -32,3 +32,27 @@ it does not invoke `toJSON` or preserve the Buffer prototype/brand.
 
 This does not enable arbitrary native objects, native value-copy aggregates or
 open generic factories. Those require their own complete representation contract.
+
+## Recovering A Retained Carrier
+
+The independent `sourceValueExtraction` relation declares the exact inverse
+operation when the provider supports it:
+
+```typescript
+sourceValueExtraction: {
+  modulePath: ["native_package", "values"],
+  name: "recover_record",
+}
+```
+
+This function borrows `JsValue`, returns the exact native type and raises native
+`Error` when the value does not have that carrier. It must validate retained
+identity/data rather than structurally casting a lookalike or deserializing JSON.
+The two operations need not both exist. A factory does not implicitly authorize
+extraction. Competing extraction identities on the same exact type are rejected.
+
+For example, `(saved as Buffer).toString()` calls `buffer_from_js_value`. It
+recovers the live Buffer's storage, subview bounds and object identity without a
+byte copy. An unbranded structured clone or `{type: "Buffer", data: [...]}` is not
+a Buffer and fails at this conversion. Analysis retains the native-error effect
+so a surrounding source `try` can catch rejection normally.

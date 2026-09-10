@@ -329,6 +329,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
       accessorByDeclaration: sourceValueAccessors,
       providerSourceValueFactory: providerSourceValues.factoryForType,
     }),
+    sourceValueExtraction: providerSourceValues.extractionForType,
   });
   for (const declaration of addressedStorageDeclarations) {
     const bindingName = bindingNames.get(declaration);

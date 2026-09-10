@@ -15,7 +15,7 @@ import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import { mojoProjectFieldStoragePath } from "../../target-model/types/project-storage.js";
 import type { MojoSourceModuleCatalog } from "../source-modules/model.js";
 import { selectMojoSourceValueAccessors } from "./js-value-accessors.js";
-import type { MojoSourceValueFactory } from "../../target-model/conversions/source-value-factory.js";
+import type { MojoSourceValueFunction } from "../../target-model/conversions/source-value-function.js";
 
 export interface MojoJsValueGraphContext {
   readonly source: TargetSourceProgram;
@@ -27,7 +27,7 @@ export interface MojoJsValueGraphContext {
   readonly genericParameters: ReadonlyMap<string, MojoJsValueGenericParameter>;
   readonly modules: MojoSourceModuleCatalog;
   readonly accessorByDeclaration: WeakMap<Node, MojoAnalyzedAccessorProperty>;
-  readonly providerSourceValueFactory: (type: MojoTargetTypeRef) => MojoSourceValueFactory | undefined;
+  readonly providerSourceValueFactory: (type: MojoTargetTypeRef) => MojoSourceValueFunction | undefined;
 }
 
 export type MojoJsValueGraphSelection =

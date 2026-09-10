@@ -23,6 +23,12 @@ export type MojoTruthinessConversion =
 
 export type MojoValueConversion =
   | {
+      readonly kind: "js-value-extract";
+      readonly sourceType: MojoTargetTypeRef;
+      readonly targetType: MojoTargetTypeRef;
+      readonly extraction: import("./source-value-function.js").MojoSourceValueFunction;
+    }
+  | {
       readonly kind: "js-value-graph";
       readonly sourceType: MojoTargetTypeRef;
       readonly targetType: MojoTargetTypeRef;

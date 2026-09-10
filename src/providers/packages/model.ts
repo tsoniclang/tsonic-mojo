@@ -15,7 +15,7 @@ import type {
   MojoProviderOperationForm,
 } from "../../target-model/operations/model.js";
 import type { MojoLifecycleTraitRole } from "../../target-model/lifecycle/model.js";
-import type { MojoSourceValueFactory } from "../../target-model/conversions/source-value-factory.js";
+import type { MojoSourceValueFunction } from "../../target-model/conversions/source-value-function.js";
 
 export interface MojoProviderModuleDefinition {
   readonly moduleSpecifier: string;
@@ -52,7 +52,8 @@ export interface MojoProviderTypeDefinition {
     readonly variadic: boolean;
   }[];
   readonly targetType: MojoTargetTypeRef;
-  readonly sourceValueFactory?: MojoSourceValueFactory;
+  readonly sourceValueFactory?: MojoSourceValueFunction;
+  readonly sourceValueExtraction?: MojoSourceValueFunction;
   readonly conformances?: readonly {
     readonly trait: MojoTargetTypeRef;
     readonly condition?: MojoTargetConformanceCondition;

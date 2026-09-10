@@ -2,7 +2,6 @@ import type { Node } from "@tsonic/tsts";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
-import type { MojoTruthinessConversion } from "../../target-model/conversions/model.js";
 import type { MojoValueConversionNarrowing } from "../../target-model/conversions/model.js";
 import { mojoTargetTypeKey } from "../../target-model/types/key.js";
 import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
@@ -10,12 +9,15 @@ import { collectionShape, isJsString, isJsValue, jsValueBoxConversion, sameConve
 import { mojoValueConversionRepresentationTypes } from "../../target-model/conversions/representation-types.js";
 import type { MojoJsValueGraph } from "../../target-model/conversions/js-value-graph.js";
 import { mojoJsValueGraphEquals } from "../../target-model/conversions/equality.js";
+import type { MojoSourceValueFunction } from "../../target-model/conversions/source-value-function.js";
+import { classifyTruthiness } from "./truthiness.js";
 
 export type MojoConversionClassification =
   | { readonly kind: "resolved"; readonly conversion: MojoValueConversion }
   | { readonly kind: "unsupported"; readonly reason: string };
 
 export type MojoSourceValueProjectionSelector = (type: MojoTargetTypeRef) => MojoConversionClassification;
+export type MojoSourceValueExtractionSelector = (type: MojoTargetTypeRef) => MojoSourceValueFunction | undefined;
 
 export interface MojoConversionIndex {
   classify(actual: MojoTargetTypeRef, expected: MojoTargetTypeRef, narrowing?: MojoValueConversionNarrowing): MojoConversionClassification;
@@ -43,6 +45,7 @@ export function createMojoConversionIndex(
     readonly narrowingForExpression: (expression: Node) => MojoValueConversionNarrowing | undefined;
     readonly projectRelationships: MojoProjectTypeRelationships;
     readonly sourceValueProjection: MojoSourceValueProjectionSelector;
+    readonly sourceValueExtraction?: MojoSourceValueExtractionSelector;
   },
 ): MojoConversionIndex {
   const { narrowingForExpression, projectRelationships } = input;
@@ -80,7 +83,7 @@ export function createMojoConversionIndex(
     sourceValueGraphs: () => Object.freeze([...sourceGraphs.values()]),
     classify(actual, expected, narrowing) {
       if (sealed) throw new Error("Mojo conversions cannot be classified after analysis is sealed.");
-      const result = classifyMojoValueConversion(actual, expected, narrowing, projectRelationships, sourceValueProjection);
+      const result = classifyMojoValueConversion(actual, expected, narrowing, projectRelationships, sourceValueProjection, input.sourceValueExtraction);
       if (result.kind === "resolved") retainConversion(actual, expected, result.conversion);
       return result;
     },
@@ -159,6 +162,7 @@ export function classifyMojoValueConversion(
   narrowing?: MojoValueConversionNarrowing,
   projectRelationships?: MojoProjectTypeRelationships,
   sourceValueProjection?: MojoSourceValueProjectionSelector,
+  sourceValueExtraction?: MojoSourceValueExtractionSelector,
 ): MojoConversionClassification {
   const classify = (
     source: MojoTargetTypeRef,
@@ -170,6 +174,7 @@ export function classifyMojoValueConversion(
     selectedNarrowing,
     projectRelationships,
     sourceValueProjection,
+    sourceValueExtraction,
   );
   if (narrowing !== undefined && mojoTargetTypeEquals(actual, narrowing.selectedType)) {
     const members = narrowing.selectedType.members.map((sourceType) => {
@@ -263,6 +268,18 @@ export function classifyMojoValueConversion(
         kind: "resolved",
         conversion,
       };
+    }
+  }
+  if (isJsValue(actual)) {
+    const extraction = sourceValueExtraction?.(expected);
+    if (extraction !== undefined) {
+      return {
+        kind: "resolved",
+        conversion: Object.freeze({ kind: "js-value-extract", sourceType: actual, targetType: expected, extraction }),
+      };
+    }
+    if (expected.kind === "union" || expected.kind === "optional") {
+      return { kind: "unsupported", reason: "An erased source value requires a complete discriminant before recovery into a union or optional carrier." };
     }
   }
   if (actual.kind === "source-primitive" && expected.kind === "source-primitive") {
@@ -364,7 +381,7 @@ export function classifyMojoValueConversion(
     }
     if (actual.kind === "union") {
       const members = actual.members.map((sourceType) => {
-        const selected = selectUnionMemberConversion(sourceType, expected.members, projectRelationships, sourceValueProjection);
+        const selected = selectUnionMemberConversion(sourceType, expected.members, projectRelationships, sourceValueProjection, sourceValueExtraction);
         return selected.kind === "resolved"
           ? Object.freeze({
               sourceType,
@@ -389,7 +406,7 @@ export function classifyMojoValueConversion(
         };
       }
     } else {
-      const selected = selectUnionMemberConversion(actual, expected.members, projectRelationships, sourceValueProjection);
+      const selected = selectUnionMemberConversion(actual, expected.members, projectRelationships, sourceValueProjection, sourceValueExtraction);
       if (selected.kind === "resolved") {
         return {
           kind: "resolved",
@@ -436,6 +453,7 @@ function selectUnionMemberConversion(
   members: readonly MojoTargetTypeRef[],
   projectRelationships?: MojoProjectTypeRelationships,
   sourceValueProjection?: MojoSourceValueProjectionSelector,
+  sourceValueExtraction?: MojoSourceValueExtractionSelector,
 ): UnionMemberConversion {
   const exact = members.filter((member) => mojoTargetTypeEquals(actual, member));
   if (exact.length === 1) {
@@ -447,7 +465,7 @@ function selectUnionMemberConversion(
   }
   if (exact.length > 1) return Object.freeze({ kind: "unsupported" });
   const converted = members.flatMap((member) => {
-    const conversion = classifyMojoValueConversion(actual, member, undefined, projectRelationships, sourceValueProjection);
+    const conversion = classifyMojoValueConversion(actual, member, undefined, projectRelationships, sourceValueProjection, sourceValueExtraction);
     return conversion.kind === "resolved"
       ? [Object.freeze({ targetType: member, conversion: conversion.conversion })]
       : [];
@@ -455,53 +473,6 @@ function selectUnionMemberConversion(
   return converted.length === 1
     ? Object.freeze({ kind: "resolved", ...converted[0]! })
     : Object.freeze({ kind: "unsupported" });
-}
-
-function classifyTruthiness(type: MojoTargetTypeRef): MojoTruthinessConversion | undefined {
-  if (type.kind === "null" || type.kind === "undefined" || type.kind === "unit") {
-    return Object.freeze({ kind: "always-false" });
-  }
-  if (type.kind === "native-string" || isJsString(type)) {
-    return Object.freeze({ kind: "string" });
-  }
-  if (type.kind === "dynamic" && type.domain === "js") {
-    return Object.freeze({ kind: "dynamic" });
-  }
-  if (type.kind === "source-primitive") {
-    if (type.name === "bool") return undefined;
-    if (type.name === "float32" || type.name === "float64") {
-      return Object.freeze({ kind: "float" });
-    }
-    if (type.name === "char") return Object.freeze({ kind: "always-true" });
-    return Object.freeze({ kind: "integer" });
-  }
-  if (type.kind === "bigint") return Object.freeze({ kind: "integer" });
-  if (type.kind === "optional") {
-    const value = classifyTruthiness(type.value);
-    return value === undefined
-      ? undefined
-      : Object.freeze({ kind: "optional", sourceType: type, value });
-  }
-  if (type.kind === "union") {
-    const members = type.members.map((member) => {
-      const conversion = classifyTruthiness(member);
-      return conversion === undefined ? undefined : Object.freeze({ type: member, conversion });
-    });
-    return members.some((member) => member === undefined)
-      ? undefined
-      : Object.freeze({
-          kind: "union",
-          sourceType: type,
-          members: Object.freeze(members as readonly {
-            readonly type: MojoTargetTypeRef;
-            readonly conversion: MojoTruthinessConversion;
-          }[]),
-        });
-  }
-  if (type.kind === "never") return Object.freeze({ kind: "always-false" });
-  if (type.kind === "type-parameter" || type.kind === "associated" ||
-    type.kind === "compiler-expression" || type.kind === "symbol") return undefined;
-  return Object.freeze({ kind: "always-true" });
 }
 
 function isIntegralPrimitive(

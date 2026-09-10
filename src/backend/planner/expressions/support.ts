@@ -496,6 +496,14 @@ export function applyMojoConversion(
         name: "unwrap",
         arguments: Object.freeze([]),
       };
+    case "js-value-extract":
+      registerMojoTypeImports(conversion.sourceType, context);
+      registerMojoTypeImports(conversion.targetType, context);
+      return {
+        kind: "call",
+        callee: mojoModuleMemberExpression(context, conversion.extraction.modulePath, conversion.extraction.name),
+        arguments: Object.freeze([{ value: expression }]),
+      };
     case "native-to-js-string":
       registerMojoTypeImports(conversion.targetType, context);
       return { kind: "construct", type: conversion.targetType, arguments: Object.freeze([{ value: expression }]) };

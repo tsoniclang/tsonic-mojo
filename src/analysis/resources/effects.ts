@@ -23,6 +23,7 @@ export function providerCallRequiresRaisingConversion(
 
 export function mojoConversionRaises(conversion: MojoValueConversion): boolean {
   switch (conversion.kind) {
+    case "js-value-extract": return true;
     case "js-to-native-string": return true;
     case "native-error-result-unwrap": return true;
     case "js-data-rest": return mojoConversionRaises(conversion.elementConversion);

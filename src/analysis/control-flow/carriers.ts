@@ -8,7 +8,6 @@ import {
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
-import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 import { mojoLocationTargetType } from "../operations/typed-locations.js";
 import { classifyMojoValueRefinement } from "../refinements/value.js";
 import { expectedExpressionType } from "../expected-types/expressions.js";
@@ -314,7 +313,7 @@ function resolveErasedExpressionCarrier(
     input.modules,
   ) !== undefined) return selectedCarrier;
   if (ast.is.IsNonNullExpression(node)) return sourceCarrier;
-  return classifyMojoValueConversion(sourceCarrier, selectedCarrier).kind === "resolved"
+  return input.conversions.classify(sourceCarrier, selectedCarrier).kind === "resolved"
     ? selectedCarrier
     : sourceCarrier;
 }
