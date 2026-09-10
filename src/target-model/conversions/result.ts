@@ -6,6 +6,7 @@ export function mojoConvertedValueType(
   conversion: MojoValueConversion,
 ): MojoTargetTypeRef {
   if (conversion.kind === "identity") return input;
+  if (conversion.kind === "undefined-to-unit") return Object.freeze({ kind: "unit" });
   if (conversion.kind === "js-to-native-string") {
     return Object.freeze({ kind: "native-string" });
   }

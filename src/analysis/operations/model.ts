@@ -143,15 +143,7 @@ export type MojoIntrinsicExpressionSelection =
   | {
       readonly kind: "typeof";
       readonly operand: Node;
-      readonly result:
-        | "undefined"
-        | "object"
-        | "boolean"
-        | "number"
-        | "bigint"
-        | "string"
-        | "symbol"
-        | "function";
+      readonly result: import("../../target-model/operations/typeof.js").MojoTypeofSelection;
       readonly resultType: Extract<MojoTargetTypeRef, { readonly kind: "native-string" }>;
     }
   | {
@@ -167,6 +159,13 @@ export type MojoTypeTestSelection =
       readonly right: Node;
       readonly outcome:
         | { readonly kind: "constant"; readonly value: boolean }
+        | {
+            readonly kind: "js-nullish";
+            readonly operand: "left" | "right";
+            readonly null: boolean;
+            readonly undefined: boolean;
+            readonly equal: boolean;
+          }
         | {
             readonly kind: "optional-absence";
             readonly operand: "left" | "right";

@@ -280,7 +280,13 @@ export function planMojoTypeTest(
     }
     const operand = ordered.values[selection.outcome.operand === "left" ? 0 : 1]!;
     let equal: MojoExpression;
-    if (selection.outcome.kind === "optional-absence") {
+    if (selection.outcome.kind === "js-nullish") {
+      const tests: MojoExpression[] = [];
+      if (selection.outcome.null) tests.push({ kind: "method-call", receiver: operand, name: "is_null", arguments: [] });
+      if (selection.outcome.undefined) tests.push({ kind: "method-call", receiver: operand, name: "is_undefined", arguments: [] });
+      if (tests.length === 0) throw new Error("A sealed nullish comparison must select a runtime tag.");
+      equal = tests.reduce((leftTest, rightTest) => ({ kind: "binary", operator: "or", left: leftTest, right: rightTest }));
+    } else if (selection.outcome.kind === "optional-absence") {
       equal = Object.freeze({
         kind: "unary",
         operator: "not",

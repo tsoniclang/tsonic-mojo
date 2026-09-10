@@ -185,6 +185,9 @@ export function convertMojoValue(
   conversion: MojoValueConversion,
   context: MojoPlanningContext,
 ): MojoValuePlan | undefined {
+  if (conversion.kind === "undefined-to-unit") {
+    return withMojoValue([...plan.before, { kind: "discard", expression: plan.value }], { kind: "none-literal" });
+  }
   if (conversion.kind === "js-value-graph") {
     return convertMojoSourceValue(plan, conversion, context, convertMojoValue);
   }
@@ -389,6 +392,7 @@ export function applyMojoConversion(
   if (conversion === undefined) return undefined;
   switch (conversion.kind) {
     case "identity": return expression;
+    case "undefined-to-unit": return undefined;
     case "project-view": {
       const selected = context.program.projectDispatch.conversionFor(
         conversion.sourceType,

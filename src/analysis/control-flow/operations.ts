@@ -65,7 +65,7 @@ export function analyzeCall(
       if (selection !== undefined && expression !== callableExpression) {
         input.expressionTypes.set(expression, selection.callableType);
       }
-      return selection?.callableType ?? targetType;
+      return selection?.callableType;
     },
   });
   if (analyzed.kind === "unsupported") {

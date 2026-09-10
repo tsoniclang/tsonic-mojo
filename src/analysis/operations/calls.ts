@@ -2,6 +2,7 @@ import type { Node, ResolvedSourceCallInfo, Type } from "@tsonic/tsts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
 import type { MojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
 import { resolveMojoTargetType } from "../../policy/types/resolution.js";
@@ -205,7 +206,17 @@ export function analyzeMojoCall(
   const instantiated = instantiateMojoProviderOperation(
     selectedProvider.operation,
     sourceCall,
-    resolve,
+    (type, authoredTypeNode) => {
+      const carriers = sourceCall.sourceArguments.flatMap((argument) => {
+        if (!semantics.types.isIdentical(type, argument.type)) return [];
+        const carrier = context.expressionTypes.get(argument.expression);
+        return carrier === undefined ? [] : [carrier];
+      });
+      if (carriers.length === 0) return resolve(type, authoredTypeNode);
+      const first = carriers[0]!;
+      return carriers.every((carrier) => mojoTargetTypeEquals(first, carrier))
+        ? first : undefined;
+    },
     (parameter, explicitTypeNode) => resolveMojoNonTypeGenericArguments(
       parameter,
       explicitTypeNode,

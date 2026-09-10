@@ -35,6 +35,7 @@ export type MojoValueConversion =
       readonly graph: import("./js-value-graph.js").MojoJsValueGraph;
     }
   | { readonly kind: "identity" }
+  | { readonly kind: "undefined-to-unit" }
   | {
       readonly kind: "project-view";
       readonly sourceType: MojoTargetTypeRef;

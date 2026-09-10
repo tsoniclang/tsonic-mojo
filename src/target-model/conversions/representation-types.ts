@@ -11,6 +11,7 @@ export function mojoValueConversionRepresentationTypes(
   switch (conversion.kind) {
     case "js-value-graph": return Object.freeze([conversion.targetType, ...mojoJsValueGraphTypes(conversion.graph)]);
     case "identity":
+    case "undefined-to-unit":
     case "js-to-native-string":
       return Object.freeze([]);
     case "project-view":

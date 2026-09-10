@@ -6,6 +6,8 @@ import { registerMojoTypeImports } from "../types/imports.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { withMojoValue } from "./value-plan.js";
 import { planMojoNumericExpression } from "./numeric.js";
+import { orderMojoValues } from "./support.js";
+import { planMojoTypeof } from "./typeof.js";
 
 export function planMojoIntrinsicExpression(
   node: Node,
@@ -39,9 +41,13 @@ export function planMojoIntrinsicExpression(
     ? Object.freeze({ kind: "expression", expression: operand.value })
     : Object.freeze({ kind: "discard", expression: operand.value });
   if (selection.kind === "typeof") {
+    if (selection.result.kind !== "constant") {
+      const ordered = orderMojoValues([{ plan: operand, type: operandType, role: "typeof_value", stabilize: true }], context);
+      return withMojoValue(ordered.before, planMojoTypeof(ordered.values[0]!, selection.result, context));
+    }
     return withMojoValue(
       Object.freeze([...operand.before, effect]),
-      Object.freeze({ kind: "string-literal", value: selection.result }),
+      Object.freeze({ kind: "string-literal", value: selection.result.value }),
     );
   }
   registerMojoTypeImports(selection.resultType, context);

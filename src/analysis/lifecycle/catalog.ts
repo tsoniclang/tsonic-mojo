@@ -12,6 +12,7 @@ import type {
 } from "../../target-model/types/model.js";
 import { mojoTargetGenericArgumentsEqual } from "../../target-model/types/equality.js";
 import { mojoTargetTypeKey } from "../../target-model/types/key.js";
+import { mojoNamedLifecycleEquals } from "../../target-model/lifecycle/equality.js";
 import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
 import type { MojoLifecycleAnalysis, MojoLifecycleCatalog } from "./model.js";
 
@@ -152,7 +153,7 @@ function registerNamedLifecycle(
   contract: MojoNamedLifecycleContract,
 ): void {
   const existing = contracts.get(typeId);
-  if (existing !== undefined && JSON.stringify(existing) !== JSON.stringify(contract)) {
+  if (existing !== undefined && !mojoNamedLifecycleEquals(existing, contract)) {
     throw new Error(`Mojo target type '${typeId}' has conflicting exact lifecycle contracts.`);
   }
   contracts.set(typeId, contract);

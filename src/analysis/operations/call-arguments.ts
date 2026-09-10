@@ -125,9 +125,10 @@ export function analyzeArguments(
           reason: `Source call argument ${sourceArgumentIndex} supplies an open sequence to a non-variadic Mojo parameter.`,
         };
       }
+      const callableTarget = parameterType.kind === "optional" ? parameterType.value : parameterType;
       const contextualCallableType = binding.sourceForm === "value" &&
-          parameterType.kind === "callable"
-        ? contextualizeCallable?.(sourceExpression, parameterType)
+          callableTarget.kind === "callable"
+        ? contextualizeCallable?.(sourceExpression, callableTarget)
         : undefined;
       const selectedSourceType = contextualCallableType ?? selectedMojoArgumentCarrier(
         ast, sourceCall, binding, expressionTypes, resolve,

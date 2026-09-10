@@ -21,6 +21,7 @@ export function mojoValueConversionEquals(left: MojoValueConversion, right: Mojo
   if (left.kind !== right.kind) return false;
   switch (left.kind) {
     case "identity":
+    case "undefined-to-unit":
     case "js-to-native-string": return true;
     case "primitive-cast":
     case "reference-copy":

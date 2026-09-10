@@ -278,11 +278,14 @@ function validateOperation(
     const memberProperty = operation.memberId !== undefined &&
       operation.target.kind === "property-read" &&
       operation.receiverType !== undefined;
+    const staticMember = operation.memberId === undefined
+      ? undefined : declarations.members.get(operation.memberId)?.declaration;
     const staticMemberProperty = operation.memberId !== undefined &&
-      operation.target.kind === "function-read" &&
+      (operation.target.kind === "function-read" ||
+        operation.target.kind === "constant" && staticMember?.kind === "property" && staticMember.readonly === true) &&
       operation.receiverType === undefined &&
       (operation.parameterTypes ?? []).length === 0 &&
-      declarations.members.get(operation.memberId)?.declaration.static === true;
+      staticMember?.static === true;
     const exported = declarations.exports.get(operation.exportId)!;
     const moduleConstant = operation.memberId === undefined &&
       operation.signatureId === undefined &&

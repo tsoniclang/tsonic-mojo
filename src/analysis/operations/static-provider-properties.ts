@@ -22,7 +22,7 @@ export function analyzeStaticProviderProperty(
   const readRows = context.providerSemantics.operations.filter((row) =>
     providerOwnerMatches(row, identity) && row.exportId === identity.exportId &&
     row.memberId === identity.memberId && row.signatureId === undefined &&
-    row.operationKind === "property" && row.target.kind === "function-read" &&
+    row.operationKind === "property" && (row.target.kind === "function-read" || row.target.kind === "constant") &&
     row.receiverType === undefined);
   const writeRows = context.providerSemantics.operations.filter((row) =>
     providerOwnerMatches(row, identity) && row.exportId === identity.exportId &&

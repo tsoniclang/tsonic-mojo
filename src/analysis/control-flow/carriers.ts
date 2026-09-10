@@ -184,9 +184,11 @@ function resolveContextualAggregateCarrier(
   semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
 ): MojoTargetTypeRef | undefined {
   const selected = semantics.types.contextualValueSelection(node);
-  return selected.kind === "selected"
-    ? resolveType(selected.type, undefined, input, semantics)
-    : undefined;
+  if (selected.kind !== "selected") return undefined;
+  const resolved = resolveType(selected.type, undefined, input, semantics);
+  return input.source.ast.is.IsArrayLiteralExpression(node)
+    ? selectAuthoredArrayCarrier(resolved)
+    : resolved;
 }
 
 export function containsProjectInterface(
@@ -419,6 +421,21 @@ export function analyzeNullishComparison(
   const nullish = leftNullish ?? rightNullish!;
   const valueType = leftNullish === undefined ? leftType : rightType;
   const operand: "left" | "right" = leftNullish === undefined ? "left" : "right";
+  if (valueType.kind === "dynamic" && valueType.domain === "js") {
+    input.typeTestSelections.set(node, Object.freeze({
+      kind: "nullish-comparison",
+      left,
+      right,
+      outcome: Object.freeze({
+        kind: "js-nullish",
+        operand,
+        null: !strict || nullish.kind === "null",
+        undefined: !strict || nullish.kind === "undefined",
+        equal: equality,
+      }),
+    }));
+    return;
+  }
   if (valueType.kind === "optional") {
     const matchesAbsent = !strict || nullish.kind === "undefined";
     input.typeTestSelections.set(node, Object.freeze({

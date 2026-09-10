@@ -215,6 +215,9 @@ export function classifyMojoValueConversion(
   if (mojoTargetTypeEquals(actual, expected)) {
     return { kind: "resolved", conversion: Object.freeze({ kind: "identity" }) };
   }
+  if (actual.kind === "undefined" && expected.kind === "unit") {
+    return { kind: "resolved", conversion: Object.freeze({ kind: "undefined-to-unit" }) };
+  }
   const expectedProject = projectRelationships?.definitionForType(expected);
   const projectRelationship = expectedProject === undefined
     ? undefined

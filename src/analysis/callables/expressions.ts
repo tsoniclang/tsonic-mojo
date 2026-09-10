@@ -451,7 +451,7 @@ export function analyzeAndSealMojoCallableExpression(
     ));
     return;
   }
-  const selectedType = callable.kind === "getter" || callable.kind === "setter"
+  const selectedType = callable.kind === "getter" || callable.kind === "setter" || input.contextualType !== undefined
     ? callableExpressionType(callable, raises, environment.sourceCallableErrorType)
     : selectedCarrier?.kind === "resolved"
       ? selectedCarrier.type
