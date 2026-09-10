@@ -37,7 +37,7 @@ export function mojoValueConversionRepresentationTypes(
     case "js-box":
       return Object.freeze([
         conversion.targetType,
-        ...(conversion.source === "number" ? [conversion.sourceType] : []),
+        ...(conversion.source === "number" || conversion.source === "bigint" ? [conversion.sourceType] : []),
       ]);
     case "js-data-rest":
       return Object.freeze([

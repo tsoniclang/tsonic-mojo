@@ -16,6 +16,8 @@ test("bigint-backed primitive boxing agrees with its canonical source runtime ca
     assert.deepEqual(jsValueBoxConversion(type, dynamicType), {
       kind: "js-box", source: "bigint", sourceType: type, targetType: dynamicType,
     });
+    const other = Object.freeze({ kind: "source-primitive", name: name === "uint64" ? "int64" : "uint64" });
+    assert.equal(mojoValueConversionEquals(jsValueBoxConversion(type, dynamicType), jsValueBoxConversion(other, dynamicType)), false);
   }
   for (const name of ["int8", "uint8", "int16", "uint16", "int32", "uint32", "native-int", "native-uint", "float16", "float32", "float64"]) {
     assert.equal(mojoPrimitiveRuntimeCategory(name), "number");

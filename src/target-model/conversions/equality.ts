@@ -34,7 +34,8 @@ export function mojoValueConversionEquals(left: MojoValueConversion, right: Mojo
     case "js-box": {
       const candidate = right as typeof left;
       return left.source === candidate.source && mojoTargetTypeEquals(left.targetType, candidate.targetType) &&
-        (left.source !== "number" || candidate.source === "number" && mojoTargetTypeEquals(left.sourceType, candidate.sourceType));
+        (left.source !== "number" && left.source !== "bigint" ||
+          (candidate.source === "number" || candidate.source === "bigint") && mojoTargetTypeEquals(left.sourceType, candidate.sourceType));
     }
     case "callable-adapt": {
       const candidate = right as typeof left;
