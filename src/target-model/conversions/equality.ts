@@ -2,6 +2,7 @@ import { mojoTargetTypeEquals, mojoTargetGenericArgumentsEqual } from "../types/
 import type { MojoTargetTypeRef } from "../types/model.js";
 import type { MojoTruthinessConversion, MojoValueConversion } from "./model.js";
 import type { MojoJsValueGraph, MojoJsValueProjection } from "./js-value-graph.js";
+import { mojoSourceValueFactoryEquals } from "./source-value-factory.js";
 
 function entriesEqual<Value>(left: readonly Value[], right: readonly Value[], equals: (left: Value, right: Value) => boolean): boolean {
   return left.length === right.length && left.every((value, index) => equals(value, right[index]!));
@@ -128,6 +129,7 @@ function projectionEquals(left: MojoJsValueProjection, right: MojoJsValueProject
         other.defaultArgument === undefined ? [] : [other.defaultArgument]))) return false;
   switch (left.kind) {
     case "scalar": return mojoValueConversionEquals(left.conversion, (right as typeof left).conversion);
+    case "provider": return mojoSourceValueFactoryEquals(left.factory, (right as typeof left).factory);
     case "optional": return left.value === (right as typeof left).value;
     case "union": return entriesEqual(left.members, (right as typeof left).members, (member, other) =>
       member.projection === other.projection && mojoTargetTypeEquals(member.sourceType, other.sourceType));

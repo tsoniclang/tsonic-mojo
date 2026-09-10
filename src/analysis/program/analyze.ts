@@ -7,6 +7,7 @@ import type {
 import { analyzeAndSealMojoCallableExpression } from "../callables/expressions.js";
 import { createMojoConversionIndex } from "../../policy/conversions/selection.js";
 import { selectMojoJsValueConversion } from "../conversions/js-value-graph.js";
+import { createMojoProviderSourceValueIndex } from "../../providers/packages/source-values.js";
 import { mojoValueConversionNarrowing } from "../refinements/value.js";
 import { createMojoProjectTypeCatalog } from "../project-types/catalog.js";
 import { createMojoProjectTypeRelationships } from "../project-types/relationships.js";
@@ -316,6 +317,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     ...classes.flatMap((class_) => class_.callableContracts),
   ].flatMap((declaration) => declaration.typeParameters.map((parameter) =>
     [parameter.identity, parameter] as const)));
+  const providerSourceValues = createMojoProviderSourceValueIndex(providerSemantics.types);
   const conversions = createMojoConversionIndex({
     narrowingForExpression: (expression) => mojoValueConversionNarrowing(valueRefinements.get(expression)),
     projectRelationships,
@@ -325,6 +327,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
       genericParameters: sourceValueGenericParameters,
       modules,
       accessorByDeclaration: sourceValueAccessors,
+      providerSourceValueFactory: providerSourceValues.factoryForType,
     }),
   });
   for (const declaration of addressedStorageDeclarations) {

@@ -138,6 +138,17 @@ export function validateMojoProviderPackageDefinition(
       sourceGenericNames.add(parameter.targetName);
     }
     validateMojoProviderType(type.targetType);
+    if (type.sourceValueFactory !== undefined) {
+      const factory = type.sourceValueFactory;
+      if (factory === null || typeof factory !== "object" || Array.isArray(factory) ||
+        type.targetType.kind !== "target-named" || type.sourceGenericParameters.length !== 0 ||
+        Object.keys(factory).length !== 2 || !Array.isArray(factory.modulePath) ||
+        factory.modulePath.length === 0 ||
+        factory.modulePath.some((segment) => typeof segment !== "string" || !identifierPattern.test(segment)) ||
+        typeof factory.name !== "string" || !identifierPattern.test(factory.name)) {
+        throw new Error(`Provider type '${type.exportId}' has an invalid closed source-value factory.`);
+      }
+    }
     for (const conformance of type.conformances ?? []) {
       validateMojoProviderType(conformance.trait);
       if (conformance.lifecycleRole !== undefined) {

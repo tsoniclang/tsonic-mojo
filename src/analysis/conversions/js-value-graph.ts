@@ -15,6 +15,7 @@ import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import { mojoProjectFieldStoragePath } from "../../target-model/types/project-storage.js";
 import type { MojoSourceModuleCatalog } from "../source-modules/model.js";
 import { selectMojoSourceValueAccessors } from "./js-value-accessors.js";
+import type { MojoSourceValueFactory } from "../../target-model/conversions/source-value-factory.js";
 
 export interface MojoJsValueGraphContext {
   readonly source: TargetSourceProgram;
@@ -26,6 +27,7 @@ export interface MojoJsValueGraphContext {
   readonly genericParameters: ReadonlyMap<string, MojoJsValueGenericParameter>;
   readonly modules: MojoSourceModuleCatalog;
   readonly accessorByDeclaration: WeakMap<Node, MojoAnalyzedAccessorProperty>;
+  readonly providerSourceValueFactory: (type: MojoTargetTypeRef) => MojoSourceValueFactory | undefined;
 }
 
 export type MojoJsValueGraphSelection =
@@ -77,6 +79,8 @@ export function selectMojoJsValueConversion(
     }
     const sourceCopy = context.lifecycle.capabilities(type).copy;
     if (sourceCopy === "unavailable") return reject(`Source carrier '${id}' cannot be retained without consuming its owner.`);
+    const factory = context.providerSourceValueFactory(type);
+    if (factory !== undefined) return finish({ id, sourceType: type, kind: "provider", factory });
     const sequence = collectionShape(type);
     if (sequence?.kind === "js-array") {
       const element = visit(sequence.element);

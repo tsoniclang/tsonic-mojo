@@ -4,6 +4,7 @@ import { mojoTargetTypeKey } from "../../../../target-model/types/key.js";
 import type { MojoExpression, MojoFunctionDeclaration, MojoStatement } from "../../../target-ast/index.js";
 import {
   allocateMojoSyntheticDeclarationName, allocateMojoSyntheticName, mojoTargetTypeInContext, withMojoDeferredExecution, withMojoLocalNameScope,
+  mojoModuleMemberExpression,
 } from "../../program/context.js";
 import type { MojoPlanningContext } from "../../program/context.js";
 import { registerMojoTypeImports } from "../../types/imports.js";
@@ -26,7 +27,7 @@ export function convertMojoSourceValue(
   const names = new Map<string, string>();
   const pending: MojoJsValueProjection[] = [];
   for (const definition of definitions.values()) {
-    if (definition.kind === "scalar") continue;
+    if (definition.kind === "scalar" || definition.kind === "provider") continue;
     const type = mojoTargetTypeInContext(definition.sourceType, context);
     const key = `${definition.kind}:${mojoTargetTypeKey(type)}`;
     let name = context.sourceValueFunctions.get(key);
@@ -41,6 +42,10 @@ export function convertMojoSourceValue(
     const definition = definitions.get(id);
     if (definition === undefined) throw new Error(`Unsealed Mojo source-value graph edge '${id}'.`);
     if (definition.kind === "scalar") return convert(mojoValue(expression), definition.conversion, planning);
+    if (definition.kind === "provider") return mojoValue(call(
+      mojoModuleMemberExpression(planning, definition.factory.modulePath, definition.factory.name),
+      [expression],
+    ));
     const name = names.get(id);
     if (name === undefined) throw new Error(`Unplanned Mojo source-value graph definition '${id}'.`);
     return mojoValue(Object.freeze({ kind: "call", callee: path(name),
@@ -73,7 +78,8 @@ function planProjection(
   read: SourceValueReader,
 ): readonly MojoStatement[] | undefined {
   switch (projection.kind) {
-    case "scalar": throw new Error("Scalar source projections must be inlined.");
+    case "scalar":
+    case "provider": throw new Error("Direct source projections must be inlined.");
     case "array":
     case "object": return planMojoSourceView(projection, context, read);
     case "polymorphic": {
