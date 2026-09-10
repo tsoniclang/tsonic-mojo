@@ -8,6 +8,19 @@ function generated(source) {
   return artifactTexts(result).filter(({ path }) => path.endsWith(".mojo")).map(({ text }) => text).join("\n");
 }
 
+test("structural storage does not claim an exactly selected inherited method call", () => {
+  const output = generated(`
+export function main(): void {
+  const record = { count: 1 };
+  const saved: unknown = record;
+  record.count = 2;
+  const present = record.hasOwnProperty("count");
+  const text = JSON.stringify(saved);
+}
+`);
+  assert.match(output, /object_has_own\(_call_receiver, JsString\("count"\)\)/u);
+});
+
 test("locale option getters use selected property readers rather than eager data snapshots", () => {
   const output = generated(`
 class Options {

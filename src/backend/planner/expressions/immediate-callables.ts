@@ -73,7 +73,7 @@ export function planMojoImmediateCallable(
   const source = planValue(argument.expression, context);
   if (source === undefined) return undefined;
   if (canPassDirectly(argument.conversion, disposition)) return source;
-  return wrapImmediateCallable(
+  return adaptMojoImmediateCallable(
     argument.expression,
     source,
     argument.sourceType,
@@ -108,7 +108,7 @@ function canPassDirectly(
       conversion.error === "preserve" && conversion.parameters.kind === "identity");
 }
 
-function wrapImmediateCallable(
+export function adaptMojoImmediateCallable(
   node: Node,
   source: MojoValuePlan,
   sourceType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,

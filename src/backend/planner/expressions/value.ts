@@ -24,6 +24,7 @@ import {
 import { mojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { planMojoCallableExpression } from "./callables.js";
+import { adaptMojoImmediateCallable } from "./immediate-callables.js";
 import {
   planAwait,
   planConditional,
@@ -148,11 +149,24 @@ export function planMojoValue(
     }
   }
   if (plan === undefined) return undefined;
+  const callableDisposition = conversion?.kind === "callable-adapt" && !inlineCallableAdaptation
+    ? context.program.representations.callable(node)
+    : undefined;
+  const immediateConversion = conversion?.kind === "callable-adapt" &&
+    conversion.targetType.kind === "callable" &&
+    callableDisposition !== undefined && callableDisposition.kind !== "erased";
+  if (immediateConversion) {
+    plan = adaptMojoImmediateCallable(
+      node, plan, conversion.sourceType, conversion.targetType, conversion,
+      callableDisposition, evaluationContext,
+    );
+    if (plan === undefined) return undefined;
+  }
   const directNumericConversion = ast.is.IsNumericLiteral(node) &&
     expectedType !== undefined && conversion?.kind === "primitive-cast" &&
     mojoNumericLiteralCanInitialize(ast.text(node), expectedType);
   const converted = expectedType === undefined || actualType === undefined ||
-      inlineCallableAdaptation || directNumericConversion
+      inlineCallableAdaptation || immediateConversion || directNumericConversion
     ? plan
     : conversion === undefined
       ? undefined

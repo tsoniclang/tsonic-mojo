@@ -251,10 +251,34 @@ export function finalizeMojoProgramEffects(
     Node,
     Extract<MojoTargetTypeRef, { readonly kind: "callable" }>
   >();
+  const callableValueType = (
+    expression: Node,
+    implementation: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
+  ): Extract<MojoTargetTypeRef, { readonly kind: "callable" }> => {
+    const reference = source.navigation.sourceReferenceFor(expression);
+    const binding = reference?.project === true
+      ? bindingTypes.get(reference.declaration)
+      : undefined;
+    if (binding?.kind !== "callable") return implementation;
+    const { errorType: _previousError, ...signature } = binding;
+    return Object.freeze({
+      ...signature,
+      raises: implementation.raises,
+      ...(implementation.errorType === undefined ? {} : { errorType: implementation.errorType }),
+    });
+  };
   const sealCallableDeclaration = (
     declaration: Node,
-    callableType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
+    implementation: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
   ): void => {
+    const binding = bindingTypes.get(declaration);
+    if (binding !== undefined && binding.kind !== "callable") return;
+    const { errorType: _previousError, ...signature } = binding ?? implementation;
+    const callableType = Object.freeze({
+      ...signature,
+      raises: implementation.raises,
+      ...(implementation.errorType === undefined ? {} : { errorType: implementation.errorType }),
+    });
     const existing = finalizedCallableTypesByDeclaration.get(declaration);
     if (existing !== undefined && !mojoTargetTypeEquals(existing, callableType)) {
       diagnostics.push(diagnostic(
@@ -268,8 +292,9 @@ export function finalizeMojoProgramEffects(
     bindingTypes.set(declaration, callableType);
     const initializer = Node_Initializer(ast, declaration);
     if (initializer === undefined) return;
-    expressionTypes.set(initializer, callableType);
-    const conversion = conversions.finalizeCallable(initializer, callableType, callableType);
+    const sourceType = callableValueType(initializer, implementation);
+    expressionTypes.set(initializer, sourceType);
+    const conversion = conversions.finalizeCallable(initializer, sourceType, callableType);
     if (conversion.kind === "unsupported") {
       diagnostics.push(diagnostic("MOJO_VALUE_CONVERSION_UNPROVEN", conversion.reason, initializer));
     }
@@ -326,13 +351,14 @@ export function finalizeMojoProgramEffects(
       ? undefined
       : callableExpressionSelections.get(dependency);
     if (callable === undefined) return argument;
+    const sourceType = callableValueType(argument.expression, callable.callableType);
     let conversion: MojoValueConversion | undefined;
     let incompatibilityReason: string | undefined;
     if (argument.conversion.kind === "js-callback-truthiness") {
       conversion = argument.conversion;
     } else {
       const classified = conversions.classify(
-        callable.callableType,
+        sourceType,
         argument.parameterType,
       );
       conversion = classified.kind === "resolved" ? classified.conversion : undefined;
@@ -349,7 +375,7 @@ export function finalizeMojoProgramEffects(
     }
     return Object.freeze({
       ...argument,
-      sourceType: callable.callableType,
+      sourceType,
       conversion,
     });
   };
@@ -466,11 +492,12 @@ export function finalizeMojoProgramEffects(
     if (dependency === undefined) continue;
     const callable = callableExpressionSelections.get(dependency);
     if (callable === undefined) continue;
+    const callableType = callableValueType(selection.callee, callable.callableType);
     callSelections.set(callNode, Object.freeze({
       ...selection,
-      callableType: callable.callableType,
+      callableType,
     }));
-    expressionTypes.set(selection.callee, callable.callableType);
+    expressionTypes.set(selection.callee, callableType);
     const reference = source.navigation.sourceReferenceFor(selection.callee);
     if (reference?.project === true) {
       sealCallableDeclaration(reference.declaration, callable.callableType);
