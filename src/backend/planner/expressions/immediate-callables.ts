@@ -18,6 +18,7 @@ import { planMojoCallableExpression } from "./callables.js";
 import type { MojoValuePlanner } from "./support.js";
 import { consumeMojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
+import { planMojoTruthiness } from "./conversion-support.js";
 
 export function planMojoImmediateCallable(
   argument: MojoAnalyzedCallArgument,
@@ -243,16 +244,7 @@ function convertImmediateCallbackResult(
       });
     case "string":
     case "native-string":
-      return Object.freeze({
-        kind: "binary",
-        operator: "!=",
-        left: Object.freeze({
-          kind: "call",
-          callee: Object.freeze({ kind: "path", path: "len" }),
-          arguments: Object.freeze([Object.freeze({ value: expression })]),
-        }),
-        right: Object.freeze({ kind: "number-literal", text: "0" }),
-      });
+      return planMojoTruthiness(expression, { kind: conversion.source }, context);
     case "dynamic":
       return Object.freeze({
         kind: "call",

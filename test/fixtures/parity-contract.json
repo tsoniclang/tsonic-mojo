@@ -2681,7 +2681,7 @@
       "sourceProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "boundaryProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "note": "JSON projection does not define console inspection formatting; structural and open values remain deliberately deferred until one deterministic identity- and cycle-aware inspection contract exists."
+      "note": "Closed structural and retained source objects now use the identity- and cycle-aware inspection graph, with positive proofs in js-limits and the native console oracle. This mixed benchmark lane remains deferred only for values without a closed source projection; no runtime reflection over arbitrary native objects is admitted."
     },
     {
       "id": "js-node.138",
@@ -2690,11 +2690,13 @@
       "benchmarkClassification": "target-limit",
       "benchmarkReason": "the deterministic Rust runtime has no selected timezone database or locale-data version and does not defer source semantics to machine-dependent host defaults",
       "proofId": "js-node.138",
-      "classification": "runtime-library-gap",
-      "sourceProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "analysisProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "boundaryProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "note": "Local-time and locale Date declarations are intentionally absent because no deterministic timezone contract is selected."
+      "classification": "implemented-generated",
+      "sourceProof": "test/integration/generated-mojo/date-contracts.test.mjs",
+      "analysisProof": "test/integration/generated-mojo/locale-date-contracts.test.mjs",
+      "emissionProof": "test/integration/generated-mojo/locale-date-contracts.test.mjs",
+      "runtimeProof": "../mojo-js/tests/date/locale_date_test.mojo",
+      "nativeProof": "../mojo-js/tests/date/date_test.mojo",
+      "note": "Selected local Date operations and locale methods use the pinned timezone and ICU runtime contracts, preserving omitted inputs, explicit undefined and selected date/time styles. Native and differential oracles remain separate executed gates."
     },
     {
       "id": "js-node.139",
@@ -2729,11 +2731,12 @@
       "benchmarkClassification": "target-limit",
       "benchmarkReason": "the deterministic Rust runtime has no selected ICU locale, collation options, or locale-data version",
       "proofId": "js-node.141",
-      "classification": "runtime-library-gap",
-      "sourceProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "analysisProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "boundaryProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "note": "Locale-sensitive collation and case conversion require an explicit locale service and remain absent from the deterministic profile."
+      "classification": "implemented-generated",
+      "sourceProof": "test/integration/generated-mojo/locale-string-contracts.test.mjs",
+      "analysisProof": "test/integration/generated-mojo/locale-string-contracts.test.mjs",
+      "emissionProof": "test/integration/generated-mojo/locale-string-contracts.test.mjs",
+      "runtimeProof": "../mojo-js/tests/strings/locale_strings_test.mojo",
+      "note": "Locale comparison and casing use selected ICU-backed operations and exact live option fields, independently from JSON serialization. Unknown option shapes still require an exact source projection."
     },
     {
       "id": "js-node.142",
@@ -2822,11 +2825,13 @@
       "benchmarkClassification": "target-limit",
       "benchmarkReason": "Node stream and watch semantics require an asynchronous event, cancellation, backpressure, and resource-lifetime scheduler that is not part of the closed Rust Node capability",
       "proofId": "js-node.148",
-      "classification": "runtime-library-gap",
-      "sourceProof": "../mojo-nodejs/nodejs/test/provider.test.mjs",
-      "analysisProof": "../mojo-nodejs/nodejs/test/provider.test.mjs",
-      "boundaryProof": "../mojo-nodejs/nodejs/test/provider.test.mjs",
-      "note": "Readable and Writable carriers are implemented; fs.watch still lacks a closed asynchronous event, cancellation, and resource-lifetime contract."
+      "classification": "implemented-generated",
+      "sourceProof": "../mojo-nodejs/nodejs/test/filesystem-streams-url.test.mjs",
+      "analysisProof": "../mojo-nodejs/nodejs/test/readable-events.test.mjs",
+      "emissionProof": "../mojo-nodejs/nodejs/test/target-integration.test.mjs",
+      "runtimeProof": "../mojo-nodejs/tests/filesystem/filesystem_watch_test.mojo",
+      "nativeProof": "../mojo-nodejs/tests/filesystem/readable_events_test.mojo",
+      "note": "Declared file streams and fs.watch use retained typed callbacks, explicit polling, cancellation and resource ownership. Pipes and readline share readable consumption; writable completion and error order have separate native proofs. Arbitrary user-defined stream subclasses are not implied."
     },
     {
       "id": "js-node.149",
@@ -2867,7 +2872,7 @@
       "sourceProof": "../mojo-nodejs/nodejs/test/provider.test.mjs",
       "analysisProof": "../mojo-nodejs/nodejs/test/provider.test.mjs",
       "boundaryProof": "../mojo-nodejs/nodejs/test/provider.test.mjs",
-      "note": "Direct stdin reads and stdout/stderr writes are implemented; open stream-event subscription remains outside the closed scheduler contract."
+      "note": "stdin now has the declared Readable event, pause/resume and consumption contract. Direct stdout/stderr writes remain implemented. This mixed lane is not fully closed because the separate ProcessWriteStream provider does not expose the complete Writable lifecycle API."
     },
     {
       "id": "js-node.152",
@@ -2894,7 +2899,7 @@
       "analysisProof": "../mojo-nodejs/nodejs/test/provider.test.mjs",
       "boundaryProof": "../mojo-nodejs/nodejs/test/provider.test.mjs",
       "mutationProof": "../mojo-nodejs/nodejs/test/provider.test.mjs",
-      "note": "The Mojo Node provider deliberately omits this open stream or dynamic carrier contract and proves the omission at the provider boundary."
+      "note": "util.inspect is implemented for closed live values, structural objects and branded Buffer values. Unmodeled inspection options and arbitrary native objects without a selected projection remain outside that contract; this beyond-closed-carriers lane does not mean inspect itself is absent."
     }
   ]
 }

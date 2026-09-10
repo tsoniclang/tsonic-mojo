@@ -461,10 +461,16 @@ export function planMojoTruthiness(
         callee: mojoModuleMemberExpression(context, ["tsonic_js"], "js_truthy_number"),
         arguments: Object.freeze([{ value: expression }]),
       });
-    case "string": return Object.freeze({
+    case "string":
+    case "native-string": return Object.freeze({
       kind: "binary",
       operator: "!=",
-      left: Object.freeze({
+      left: conversion.kind === "native-string" ? Object.freeze({
+        kind: "method-call",
+        receiver: expression,
+        name: "byte_length",
+        arguments: Object.freeze([]),
+      }) : Object.freeze({
         kind: "call",
         callee: Object.freeze({ kind: "path", path: "len" }),
         arguments: Object.freeze([{ value: expression }]),

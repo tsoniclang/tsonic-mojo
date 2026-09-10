@@ -5,6 +5,7 @@ export type MojoTruthinessConversion =
   | { readonly kind: "integer" }
   | { readonly kind: "float" }
   | { readonly kind: "string" }
+  | { readonly kind: "native-string" }
   | { readonly kind: "dynamic" }
   | { readonly kind: "always-true" }
   | { readonly kind: "always-false" }

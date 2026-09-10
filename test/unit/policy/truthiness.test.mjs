@@ -21,7 +21,7 @@ test("boolean truthiness preserves payloads through optional and union carriers"
     kind: "union", sourceType: union,
     members: [
       { type: bool, conversion: { kind: "boolean" } },
-      { type: { kind: "native-string" }, conversion: { kind: "string" } },
+      { type: { kind: "native-string" }, conversion: { kind: "native-string" } },
     ],
   });
 });

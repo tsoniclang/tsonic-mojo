@@ -35,7 +35,8 @@ export function retainMojoValue(
   lifecycle: MojoLifecycleResolver,
 ): MojoExpression {
   return lifecycle.capabilities(type).copy !== "explicit" ||
-    value.kind === "construct" || value.kind === "copy" || value.kind === "consume"
+    value.kind === "construct" || value.kind === "copy" || value.kind === "consume" ||
+    value.kind === "list" || value.kind === "tuple" || value.kind === "dictionary"
     ? value
     : Object.freeze({ kind: "copy", expression: value });
 }
