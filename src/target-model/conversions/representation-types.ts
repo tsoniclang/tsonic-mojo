@@ -19,6 +19,7 @@ export function mojoValueConversionRepresentationTypes(
       return Object.freeze([conversion.sourceType, conversion.targetType]);
     case "callable-adapt":
       return Object.freeze([
+        conversion.sourceType,
         conversion.targetType,
         ...(conversion.sourceErrorType === undefined ? [] : [conversion.sourceErrorType]),
         ...(conversion.errorConversion === undefined

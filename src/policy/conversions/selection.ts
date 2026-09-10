@@ -11,6 +11,7 @@ import type { MojoJsValueGraph } from "../../target-model/conversions/js-value-g
 import { mojoJsValueGraphEquals } from "../../target-model/conversions/equality.js";
 import type { MojoSourceValueFunction } from "../../target-model/conversions/source-value-function.js";
 import { classifyTruthiness } from "./truthiness.js";
+import type { MojoCopyCapability } from "../../target-model/lifecycle/model.js";
 
 export type MojoConversionClassification =
   | { readonly kind: "resolved"; readonly conversion: MojoValueConversion }
@@ -18,6 +19,7 @@ export type MojoConversionClassification =
 
 export type MojoSourceValueProjectionSelector = (type: MojoTargetTypeRef) => MojoConversionClassification;
 export type MojoSourceValueExtractionSelector = (type: MojoTargetTypeRef) => MojoSourceValueFunction | undefined;
+export type MojoParameterCopySelector = (type: MojoTargetTypeRef) => MojoCopyCapability;
 
 export interface MojoConversionIndex {
   classify(actual: MojoTargetTypeRef, expected: MojoTargetTypeRef, narrowing?: MojoValueConversionNarrowing): MojoConversionClassification;
@@ -46,6 +48,7 @@ export function createMojoConversionIndex(
     readonly projectRelationships: MojoProjectTypeRelationships;
     readonly sourceValueProjection: MojoSourceValueProjectionSelector;
     readonly sourceValueExtraction?: MojoSourceValueExtractionSelector;
+    readonly parameterCopy?: MojoParameterCopySelector;
   },
 ): MojoConversionIndex {
   const { narrowingForExpression, projectRelationships } = input;
@@ -83,7 +86,7 @@ export function createMojoConversionIndex(
     sourceValueGraphs: () => Object.freeze([...sourceGraphs.values()]),
     classify(actual, expected, narrowing) {
       if (sealed) throw new Error("Mojo conversions cannot be classified after analysis is sealed.");
-      const result = classifyMojoValueConversion(actual, expected, narrowing, projectRelationships, sourceValueProjection, input.sourceValueExtraction);
+      const result = classifyMojoValueConversion(actual, expected, narrowing, projectRelationships, sourceValueProjection, input.sourceValueExtraction, input.parameterCopy);
       if (result.kind === "resolved") retainConversion(actual, expected, result.conversion);
       return result;
     },
@@ -163,6 +166,7 @@ export function classifyMojoValueConversion(
   projectRelationships?: MojoProjectTypeRelationships,
   sourceValueProjection?: MojoSourceValueProjectionSelector,
   sourceValueExtraction?: MojoSourceValueExtractionSelector,
+  parameterCopy?: MojoParameterCopySelector,
 ): MojoConversionClassification {
   const classify = (
     source: MojoTargetTypeRef,
@@ -175,6 +179,7 @@ export function classifyMojoValueConversion(
     projectRelationships,
     sourceValueProjection,
     sourceValueExtraction,
+    parameterCopy,
   );
   if (narrowing !== undefined && mojoTargetTypeEquals(actual, narrowing.selectedType)) {
     const members = narrowing.selectedType.members.map((sourceType) => {
@@ -213,7 +218,7 @@ export function classifyMojoValueConversion(
       conversion: Object.freeze({ kind: "project-view", sourceType: actual, targetType: expected }),
     };
   }
-  const callable = classifyCallableAdaptation(actual, expected, projectRelationships);
+  const callable = classifyCallableAdaptation(actual, expected, projectRelationships, parameterCopy);
   if (callable !== undefined) {
     return {
       kind: "resolved",
@@ -381,7 +386,7 @@ export function classifyMojoValueConversion(
     }
     if (actual.kind === "union") {
       const members = actual.members.map((sourceType) => {
-        const selected = selectUnionMemberConversion(sourceType, expected.members, projectRelationships, sourceValueProjection, sourceValueExtraction);
+        const selected = selectUnionMemberConversion(sourceType, expected.members, projectRelationships, sourceValueProjection, sourceValueExtraction, parameterCopy);
         return selected.kind === "resolved"
           ? Object.freeze({
               sourceType,
@@ -406,7 +411,7 @@ export function classifyMojoValueConversion(
         };
       }
     } else {
-      const selected = selectUnionMemberConversion(actual, expected.members, projectRelationships, sourceValueProjection, sourceValueExtraction);
+      const selected = selectUnionMemberConversion(actual, expected.members, projectRelationships, sourceValueProjection, sourceValueExtraction, parameterCopy);
       if (selected.kind === "resolved") {
         return {
           kind: "resolved",
@@ -454,6 +459,7 @@ function selectUnionMemberConversion(
   projectRelationships?: MojoProjectTypeRelationships,
   sourceValueProjection?: MojoSourceValueProjectionSelector,
   sourceValueExtraction?: MojoSourceValueExtractionSelector,
+  parameterCopy?: MojoParameterCopySelector,
 ): UnionMemberConversion {
   const exact = members.filter((member) => mojoTargetTypeEquals(actual, member));
   if (exact.length === 1) {
@@ -465,7 +471,7 @@ function selectUnionMemberConversion(
   }
   if (exact.length > 1) return Object.freeze({ kind: "unsupported" });
   const converted = members.flatMap((member) => {
-    const conversion = classifyMojoValueConversion(actual, member, undefined, projectRelationships, sourceValueProjection, sourceValueExtraction);
+    const conversion = classifyMojoValueConversion(actual, member, undefined, projectRelationships, sourceValueProjection, sourceValueExtraction, parameterCopy);
     return conversion.kind === "resolved"
       ? [Object.freeze({ targetType: member, conversion: conversion.conversion })]
       : [];
@@ -487,8 +493,22 @@ function classifyCallableAdaptation(
   actual: MojoTargetTypeRef,
   expected: MojoTargetTypeRef,
   projectRelationships?: MojoProjectTypeRelationships,
+  parameterCopy?: MojoParameterCopySelector,
 ): Extract<MojoValueConversion, { readonly kind: "callable-adapt" }> | undefined {
   if (actual.kind !== "callable" || expected.kind !== "callable") return undefined;
+  if (actual.parameters.length > expected.parameters.length) return undefined;
+  const prefix = actual.parameters.length < expected.parameters.length;
+  const argumentCopies: ("implicit" | "explicit")[] = [];
+  if (prefix) {
+    if ([...actual.parameters, ...expected.parameters].some((parameter) =>
+      parameter.convention !== "imm" || parameter.passing !== "plain" ||
+      parameter.omissionKind === "rest")) return undefined;
+    for (const parameter of actual.parameters) {
+      const copy = parameterCopy?.(parameter.type);
+      if (copy !== "implicit" && copy !== "explicit") return undefined;
+      argumentCopies.push(copy);
+    }
+  }
   const result = mojoTargetTypeEquals(actual.result, expected.result)
     ? "preserve" as const
     : actual.result.kind === "never"
@@ -519,6 +539,9 @@ function classifyCallableAdaptation(
       expectedErrorType,
       undefined,
       projectRelationships,
+      undefined,
+      undefined,
+      parameterCopy,
     );
     if (classifiedError.kind === "unsupported") return undefined;
     error = "widen";
@@ -533,10 +556,15 @@ function classifyCallableAdaptation(
     raises: expected.raises,
     ...(expected.errorType === undefined ? {} : { errorType: expected.errorType }),
   });
-  if (!mojoTargetTypeEquals(normalized, expected)) return undefined;
+  if (!mojoTargetTypeEquals(
+    Object.freeze({ ...normalized, parameters: actual.parameters }),
+    Object.freeze({ ...expected, parameters: expected.parameters.slice(0, actual.parameters.length) }),
+  )) return undefined;
   return Object.freeze({
     kind: "callable-adapt",
+    sourceType: actual,
     targetType: expected,
+    parameters: prefix ? Object.freeze({ kind: "prefix", copies: Object.freeze(argumentCopies) }) : Object.freeze({ kind: "identity" }),
     result,
     error,
     ...(actualErrorType === undefined ? {} : { sourceErrorType: actualErrorType }),

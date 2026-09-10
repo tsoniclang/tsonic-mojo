@@ -61,7 +61,7 @@ export function planMojoImmediateCallable(
   const inline = ast.is.IsArrowFunction(argument.expression) ||
     ast.is.IsFunctionExpression(argument.expression);
   if (inline && disposition.kind !== "erased" &&
-    argument.conversion.kind === "callable-adapt") {
+    argument.conversion.kind === "callable-adapt" && argument.conversion.parameters.kind === "identity") {
     return planMojoCallableExpression(
       argument.expression,
       context,
@@ -105,7 +105,7 @@ function canPassDirectly(
   if (disposition.kind === "erased") return false;
   return conversion.kind === "identity" ||
     (conversion.kind === "callable-adapt" && conversion.result === "preserve" &&
-      conversion.error === "preserve");
+      conversion.error === "preserve" && conversion.parameters.kind === "identity");
 }
 
 function wrapImmediateCallable(
@@ -117,11 +117,13 @@ function wrapImmediateCallable(
   disposition: MojoCallableDisposition,
   context: MojoPlanningContext,
 ): MojoValuePlan | undefined {
-  if (sourceType.parameters.length !== targetType.parameters.length) {
+  if (sourceType.parameters.length !== targetType.parameters.length &&
+    !(conversion.kind === "callable-adapt" && conversion.parameters.kind === "prefix" &&
+      sourceType.parameters.length < targetType.parameters.length)) {
     appendMojoPlanningDiagnostic(
       context,
       "MOJO_IMMEDIATE_CALLBACK_ARITY_CONFLICT",
-      "An immediate callback adapter requires identical sealed source and target arities.",
+      "An immediate callback adapter requires an exact sealed parameter projection.",
       node,
     );
     return undefined;

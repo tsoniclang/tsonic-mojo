@@ -117,11 +117,14 @@ export function analyzeMojoCallableSignature(
     return undefined;
   }
   if (input.contextualType !== undefined &&
-    input.contextualType.parameters.length !== callableParameters.length) {
+    (input.contextualType.parameters.length < callableParameters.length ||
+      input.contextualType.parameters.length !== callableParameters.length &&
+      sourceParameters.some((parameter) => parameter !== undefined &&
+        ast.as.AsParameterDeclaration(parameter)?.DotDotDotToken !== undefined))) {
     append(
       input,
       "MOJO_CONTEXTUAL_CALLABLE_ARITY_MISMATCH",
-      "The exact selected target callback carrier and authored TypeScript callback have different arities.",
+      "The authored callback requires arguments not provided by the selected target contract or an unclosed rest projection.",
       declaration,
     );
     return undefined;

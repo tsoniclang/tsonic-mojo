@@ -78,6 +78,7 @@ export function planMojoValue(
     return undefined;
   }
   const inlineCallableAdaptation = conversion?.kind === "callable-adapt" &&
+    conversion.parameters.kind === "identity" &&
     conversion.error !== "erase" &&
     (ast.is.IsArrowFunction(node) || ast.is.IsFunctionExpression(node));
   let plan: MojoValuePlan | undefined;

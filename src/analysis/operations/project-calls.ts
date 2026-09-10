@@ -120,7 +120,6 @@ export function analyzeProjectCall(
     context.valueOwnership,
     undefined,
     (expression) => context.source.ast.is.IsObjectLiteralExpression(expression),
-    context.projectRelationships,
     context.contextualizeCallableArgument,
   );
   if (arguments_.kind === "unsupported") return arguments_;

@@ -23,6 +23,7 @@ import type { MojoValuePlan } from "./value-plan.js";
 import { convertMojoDataRest } from "./js-data-rest-conversion.js";
 import { convertMojoSourceValue } from "./source-values/conversion.js";
 import { adaptMojoRaisingCallableError } from "./callable-error-adapter.js";
+import { adaptMojoCallableArguments } from "./callable-arguments.js";
 import {
   convertMojoCollection,
   convertMojoNarrowedUnion,
@@ -404,9 +405,11 @@ export function applyMojoConversion(
     case "callable-adapt": {
       registerMojoTypeImports(conversion.targetType, context);
       if (conversion.targetType.kind !== "callable") return undefined;
+      const complete = (value: MojoExpression | undefined): MojoExpression | undefined =>
+        value === undefined ? undefined : adaptMojoCallableArguments(value, conversion, context);
       const argumentTuple = Object.freeze({
         kind: "tuple" as const,
-        elements: Object.freeze(conversion.targetType.parameters.map((parameter) => parameter.type)),
+        elements: Object.freeze(conversion.sourceType.parameters.map((parameter) => parameter.type)),
       });
       const resultType = conversion.targetType.result.kind === "unit"
         ? Object.freeze({
@@ -450,19 +453,20 @@ export function applyMojoConversion(
           if (conversion.errorConversion === undefined) return undefined;
           const sourceType = Object.freeze({
             ...conversion.targetType,
+            parameters: conversion.sourceType.parameters,
             raises: true,
             errorType: conversion.sourceErrorType,
           });
-          return adaptMojoRaisingCallableError(
+          return complete(adaptMojoRaisingCallableError(
             adapted,
             sourceType,
-            conversion.targetType,
+            Object.freeze({ ...conversion.targetType, parameters: conversion.sourceType.parameters }),
             conversion.errorConversion,
             context,
             convertMojoValue,
-          );
+          ));
         }
-        return Object.freeze({
+        return complete(Object.freeze({
           kind: "call",
           callee: mojoModuleMemberExpression(context, ["tsonic_runtime"], "widen_callable"),
           genericArguments: Object.freeze([
@@ -471,16 +475,16 @@ export function applyMojoConversion(
             Object.freeze({ kind: "type" as const, type: targetError }),
           ]),
           arguments: Object.freeze([{ value: adapted }]),
-        });
+        }));
       }
       if (conversion.error === "erase") {
-        return Object.freeze({
+        return complete(Object.freeze({
           kind: "call",
           callee: mojoModuleMemberExpression(context, ["tsonic_runtime"], "erase_callable_error"),
           arguments: Object.freeze([{ value: adapted }]),
-        });
+        }));
       }
-      return adapted;
+      return complete(adapted);
     }
     case "js-truthiness":
       return planMojoTruthiness(expression, conversion.conversion, context);

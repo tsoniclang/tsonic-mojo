@@ -116,7 +116,7 @@ function planProjection(
         if (value === undefined) return undefined;
         const body = Object.freeze([...value.before, returned(value.value)]);
         statements = index === projection.members.length - 1 ? body : Object.freeze([Object.freeze({
-          kind: "if", condition: Object.freeze({
+          kind: "if", condition: Object.freeze<MojoExpression>({
             kind: "method-call", receiver: path("source"), name: "isa",
             genericArguments: Object.freeze([{ kind: "type", type: member.sourceType }]), arguments: Object.freeze([]),
           }), thenStatements: body, elseStatements: statements,

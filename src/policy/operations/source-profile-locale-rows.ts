@@ -1,24 +1,24 @@
 import type { MojoSourceProfileCallRow } from "./source-profile-selection.js";
 
 export const mojoLocaleSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Object.freeze([
-  ...[
+  ...([
     ["toLocaleLowerCase", "string_to_locale_lower_case"],
     ["toLocaleUpperCase", "string_to_locale_upper_case"],
-  ].map(([member, name]): MojoSourceProfileCallRow => Object.freeze({
+  ] as const).map(([member, name]): MojoSourceProfileCallRow => Object.freeze<MojoSourceProfileCallRow>({
     profile: "js",
     kind: "call",
     owner: "String",
-    member: member!,
+    member,
     raises: true,
     parameterContract: Object.freeze(["js-data"]),
     target: Object.freeze({
       kind: "function",
       modulePath: Object.freeze(["tsonic_js"]),
-      name: name!,
+      name,
       receiver: "imm",
     }),
   })),
-  Object.freeze({
+  Object.freeze<MojoSourceProfileCallRow>({
     profile: "js",
     kind: "call",
     owner: "String",

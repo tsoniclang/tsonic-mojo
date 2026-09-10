@@ -213,7 +213,9 @@ export function uniqueFixedArrayFact(
   if (selected.length === 0) return { kind: "selected", value: undefined };
   const first = selected[0]!;
   return selected.every((value) =>
-    value.elementType === first.elementType && value.length === first.length)
+    value.sourceType === first.sourceType && value.elementSourceType === first.elementSourceType &&
+    value.elementType === first.elementType && value.length === first.length &&
+    value.lengthRuntimeBase === first.lengthRuntimeBase)
     ? { kind: "selected", value: first }
     : { kind: "conflict" };
 }

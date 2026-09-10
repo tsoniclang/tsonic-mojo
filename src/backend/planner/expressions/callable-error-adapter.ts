@@ -145,21 +145,7 @@ export function adaptMojoRaisingCallableError(
       }),
     })]),
   });
-  const declaration: MojoStructDeclaration = Object.freeze({
-    kind: "struct",
-    name,
-    genericParameters: Object.freeze([]),
-    conformances: Object.freeze([]),
-    fields: Object.freeze([Object.freeze({
-      name: "callable",
-      type: sourceType,
-      compileTime: false,
-    })]),
-    methods: Object.freeze([invoke, destroy]),
-    decorators: mojoFieldwiseInitDecorators,
-  });
-  context.syntheticDeclarations.push(declaration);
-
+  const value: MojoExpression = Object.freeze({ kind: "path", path: "value" });
   const environment: MojoExpression = Object.freeze({
     kind: "call",
     callee: mojoModuleMemberExpression(
@@ -172,7 +158,7 @@ export function adaptMojoRaisingCallableError(
         value: Object.freeze({
           kind: "construct",
           type: adapterType,
-          arguments: Object.freeze([Object.freeze({ value: expression })]),
+          arguments: Object.freeze([Object.freeze({ value })]),
         }),
       }),
       Object.freeze({ value: Object.freeze({
@@ -182,7 +168,7 @@ export function adaptMojoRaisingCallableError(
       }) }),
     ]),
   });
-  return Object.freeze({
+  const adapted: MojoExpression = Object.freeze({
     kind: "construct",
     type: targetType,
     arguments: Object.freeze([
@@ -192,7 +178,28 @@ export function adaptMojoRaisingCallableError(
         receiver: Object.freeze({ kind: "path", path: name }),
         name: "invoke",
       }) }),
+      Object.freeze({ value: Object.freeze({
+        kind: "method-call", receiver: value, name: "identity", arguments: Object.freeze([]),
+      }) }),
     ]),
+  });
+  const create: MojoFunctionDeclaration = Object.freeze({
+    kind: "function", name: "create", genericParameters: Object.freeze([]),
+    parameters: Object.freeze([Object.freeze({ name: "value", type: sourceType })]),
+    resultType: targetType, asynchronous: false, raises: false,
+    decorators: mojoStaticMethodDecorators,
+    statements: Object.freeze([Object.freeze({ kind: "return", expression: adapted })]),
+  });
+  const declaration: MojoStructDeclaration = Object.freeze({
+    kind: "struct", name, genericParameters: Object.freeze([]), conformances: Object.freeze([]),
+    fields: Object.freeze([Object.freeze({ name: "callable", type: sourceType, compileTime: false })]),
+    methods: Object.freeze([invoke, destroy, create]), decorators: mojoFieldwiseInitDecorators,
+  });
+  context.syntheticDeclarations.push(declaration);
+  return Object.freeze({
+    kind: "call", callee: Object.freeze({
+      kind: "member", receiver: Object.freeze({ kind: "path", path: name }), name: "create",
+    }), arguments: Object.freeze([Object.freeze({ value: expression })]),
   });
 }
 

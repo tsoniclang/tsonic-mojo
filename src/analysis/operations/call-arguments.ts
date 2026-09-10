@@ -50,7 +50,6 @@ export function analyzeArguments(
   valueOwnership: (expression: Node) => MojoValueOwnership,
   conversionOverrides?: MojoArgumentConversionMap,
   contextualAggregate?: (expression: Node, targetType: MojoTargetTypeRef) => boolean,
-  projectRelationships?: MojoProjectTypeRelationships,
   contextualizeCallable?: (
     expression: Node,
     targetType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,

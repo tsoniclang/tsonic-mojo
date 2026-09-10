@@ -38,7 +38,11 @@ export function mojoValueConversionEquals(left: MojoValueConversion, right: Mojo
     }
     case "callable-adapt": {
       const candidate = right as typeof left;
-      return mojoTargetTypeEquals(left.targetType, candidate.targetType) && left.result === candidate.result && left.error === candidate.error &&
+      return mojoTargetTypeEquals(left.sourceType, candidate.sourceType) &&
+        left.parameters.kind === candidate.parameters.kind &&
+        (left.parameters.kind !== "prefix" || candidate.parameters.kind === "prefix" &&
+          entriesEqual(left.parameters.copies, candidate.parameters.copies, (copy, other) => copy === other)) &&
+        mojoTargetTypeEquals(left.targetType, candidate.targetType) && left.result === candidate.result && left.error === candidate.error &&
         optionalTypeEquals(left.sourceErrorType, candidate.sourceErrorType) && optionalConversionEquals(left.errorConversion, candidate.errorConversion);
     }
     case "js-callback-truthiness": {

@@ -208,7 +208,6 @@ export function analyzeSourceProfileCall(
     context.valueOwnership,
     parameterConversions,
     undefined,
-    context.projectRelationships,
     context.contextualizeCallableArgument,
   );
   if (arguments_.kind === "unsupported") return arguments_;

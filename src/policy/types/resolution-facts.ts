@@ -129,8 +129,7 @@ export function resolveMojoRetainedType(
     return { kind: "unsupported", reason: "selected fixed-array facts conflict" };
   }
   if (fixedArray.value === undefined) return undefined;
-  const elementType = context.semantics.types.authoredType(fixedArray.value.elementType);
-  const element = resolveNested(elementType, fixedArray.value.elementType);
+  const element = resolveNested(fixedArray.value.elementSourceType, fixedArray.value.elementType);
   return element.kind === "unsupported"
     ? element
     : {

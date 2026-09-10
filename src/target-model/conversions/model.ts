@@ -42,7 +42,11 @@ export type MojoValueConversion =
     }
   | {
       readonly kind: "callable-adapt";
+      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
       readonly targetType: MojoTargetTypeRef;
+      readonly parameters:
+        | { readonly kind: "identity" }
+        | { readonly kind: "prefix"; readonly copies: readonly ("implicit" | "explicit")[] };
       readonly result: "preserve" | "never";
       readonly error: "preserve" | "widen" | "erase";
       readonly sourceErrorType?: MojoTargetTypeRef;

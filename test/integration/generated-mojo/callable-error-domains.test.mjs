@@ -48,6 +48,8 @@ test("higher-order calls retain one closed typed-error ABI", () => {
   assert.match(generated.text, /\.isa\[FirstFailure\]/u);
   assert.match(generated.text, /\.isa\[SecondFailure\]/u);
   assert.doesNotMatch(generated.text, /erase_callable_error/u);
+  assert.match(generated.text, /def create\(/u);
+  assert.match(generated.text, /value\.identity\(\)/u);
   assert.match(generated.text, /\^\.unsafe_unwrap\[TsError\]\(\)/u);
   assert.doesNotMatch(generated.text, /unsafe_get\[\w+\]\(\)\^/u);
 });

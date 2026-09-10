@@ -255,7 +255,6 @@ export function analyzeMojoCall(
     context.valueOwnership,
     undefined,
     (expression) => context.source.ast.is.IsObjectLiteralExpression(expression),
-    context.projectRelationships,
     context.contextualizeCallableArgument,
   );
   if (arguments_.kind === "unsupported") return arguments_;
@@ -404,7 +403,6 @@ function analyzeCallableValueCall(
     context.valueOwnership,
     undefined,
     (expression) => context.source.ast.is.IsObjectLiteralExpression(expression),
-    context.projectRelationships,
     context.contextualizeCallableArgument,
   );
   if (arguments_.kind === "unsupported") return arguments_;
