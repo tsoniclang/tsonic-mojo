@@ -17,6 +17,7 @@ import type {
   MojoTargetTypeRef,
 } from "../../target-model/types/model.js";
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
+import { mojoProjectFieldStoragePath } from "../../target-model/types/project-storage.js";
 
 import { instantiateMemberParameter } from "./dispatch-callables.js";
 import {
@@ -274,10 +275,7 @@ export function createFieldAdapter(
       field,
       ...(field.read === undefined ? {} : { readAdapterName: allocateName(names, `_read_${field.property.sourceName}`) }),
       ...(field.write === undefined ? {} : { writeAdapterName: allocateName(names, `_write_${field.property.sourceName}`) }),
-      statePath: Object.freeze([
-        ...Array.from({ length: lineage!.length - ownerIndex - 1 }, () => "_base"),
-        storedProperty.name,
-      ]),
+      statePath: mojoProjectFieldStoragePath(lineage!.length - ownerIndex - 1, storedProperty.name),
       storageType,
       ...(readType === undefined ? {} : { readType }),
       ...(writeType === undefined ? {} : { writeType }),

@@ -9,7 +9,7 @@ import type {
   MojoAnalyzedTypeAlias,
   MojoCallableExpressionSelection,
 } from "../program/model.js";
-import type { MojoCallSelection } from "../program/call-model.js";
+import type { MojoCallSelection } from "../operations/call-model.js";
 import {
   resolveMojoAuthoredCallableExpressionSyntax,
   resolveMojoCallableExpressionDependency,

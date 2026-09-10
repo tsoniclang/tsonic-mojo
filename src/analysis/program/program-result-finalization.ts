@@ -15,13 +15,15 @@ import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { analyzeMojoRuntimePackages } from "../runtime/references.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import { analyzeMojoTemplateExpression } from "../operations/template-expressions.js";
-import { closeMojoErrorType } from "./effects.js";
-import { validateMojoExecutableRegionSyntax } from "./syntax-validation.js";
+import { closeMojoErrorType } from "../resources/effects.js";
+import { validateMojoExecutableRegionSyntax } from "../control-flow/syntax-validation.js";
 import { createMojoProgramQueries } from "./queries.js";
-import { finalizeMojoModuleBindingTypes } from "./module-bindings.js";
-import { finalizeMojoModuleEffects } from "./module-effects.js";
-import { analyzeMojoModuleInitialization } from "./module-initialization.js";
-import { finalizeMojoPublicModuleBindingAbis } from "./public-abi.js";
+import { collectMojoSourceModuleConstructions } from "../source-modules/construction.js";
+import { closeMojoSourceModuleEntryPackages } from "../source-modules/entry-packages.js";
+import { finalizeMojoModuleBindingTypes } from "../module-initialization/bindings.js";
+import { finalizeMojoModuleEffects } from "../module-initialization/effects.js";
+import { analyzeMojoModuleInitialization } from "../module-initialization/analyze.js";
+import { finalizeMojoPublicModuleBindingAbis } from "../module-initialization/public-abi.js";
 import {
   createMojoRepresentationCatalog,
   mojoCallableImplementationAdapterTypes,
@@ -30,10 +32,11 @@ import {
   mojoRepresentationRootTypes,
 } from "../representations/index.js";
 import { createMojoProjectDispatchPlan } from "../project-types/dispatch.js";
+import { sourceValueProjectionIssues } from "../conversions/js-value-finalization.js";
 import { createMojoSourceCallableSpecializationPlan } from "../callables/specializations.js";
 import { analyzeMojoCallableImplementationAdapters } from "../callables/implementation-adapters.js";
-import type { MojoAnalyzedModuleRegionFacts } from "./module-effects.js";
-import type { MojoExecutableRegionAnalysisEnvironment } from "./executable-regions.js";
+import type { MojoAnalyzedModuleRegionFacts } from "../module-initialization/effects.js";
+import type { MojoExecutableRegionAnalysisEnvironment } from "../control-flow/analyze.js";
 import type {
   MojoAnalyzedClass,
   MojoAnalyzedDeclaration,
@@ -321,6 +324,7 @@ export function finalizeMojoProgramResult(
   const source = targetSourceSyntaxProgram(checkedSource);
   const sourceNavigation = snapshotTargetPlanningSourceNavigation(checkedSource);
   const queries = createMojoProgramQueries({
+    callableImplementations: finalizedByDeclaration,
     sourceNavigation,
     bindingNames,
     bindingSourceFiles,
@@ -387,6 +391,9 @@ export function finalizeMojoProgramResult(
   for (const issue of projectDispatch.issues) {
     diagnostics.push(diagnostic(issue.code, issue.message, issue.node));
   }
+  for (const issue of sourceValueProjectionIssues(conversions.sourceValueGraphs(), projectDispatch, environment.projectRelationships, finalizedByDeclaration)) {
+    diagnostics.push(diagnostic(issue.code, issue.message, issue.node));
+  }
   if (diagnostics.length > 0) return rejectedTargetStage(diagnostics);
   const representations = createMojoRepresentationCatalog({
     ast,
@@ -426,6 +433,21 @@ export function finalizeMojoProgramResult(
   const lifecycle = environment.lifecycle.seal(
     representations.carriers().map((carrier) => carrier.type),
   );
+  const sourceModuleConstructions = collectMojoSourceModuleConstructions({
+    calls: environment.callNodes,
+    selections: callSelections,
+    modules,
+    binaryOutput: configuration.outputType === "bin",
+  });
+  for (const issue of sourceModuleConstructions.issues) {
+    diagnostics.push(diagnostic(issue.code, issue.message, issue.node));
+  }
+  if (diagnostics.length > 0) return rejectedTargetStage(diagnostics);
+  const entryPackages = closeMojoSourceModuleEntryPackages(modules, sourceModuleConstructions.entries);
+  for (const issue of entryPackages.issues) {
+    diagnostics.push(diagnostic(issue.code, issue.message, issue.node));
+  }
+  if (diagnostics.length > 0) return rejectedTargetStage(diagnostics);
   return resolvedTargetStage(Object.freeze({
     host: Object.freeze({
       paths: Object.freeze({ ...hostInput.paths }),
@@ -440,7 +462,8 @@ export function finalizeMojoProgramResult(
     projectRelationships: environment.projectRelationships,
     sourceCallableSpecializations,
     projectDispatch,
-    modules,
+    modules: entryPackages.modules,
+    sourceModuleConstructions: sourceModuleConstructions.entries,
     analyzedModules: finalizedModules,
     moduleInitialization: moduleInitialization.catalog,
     ...(binaryEntry === undefined ? {} : { binaryEntry }),

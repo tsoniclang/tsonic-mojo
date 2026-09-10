@@ -1,6 +1,7 @@
 import type {
   ProviderDeclarationKind,
   ProviderExportDeclaration,
+  ProviderMemberDeclaration,
 } from "@tsonic/tsts";
 import type {
   TargetCapabilityContribution,
@@ -14,6 +15,7 @@ import type {
   MojoProviderOperationForm,
 } from "../../target-model/operations/model.js";
 import type { MojoLifecycleTraitRole } from "../../target-model/lifecycle/model.js";
+import type { MojoSourceValueFunction } from "../../target-model/conversions/source-value-function.js";
 
 export interface MojoProviderModuleDefinition {
   readonly moduleSpecifier: string;
@@ -50,6 +52,8 @@ export interface MojoProviderTypeDefinition {
     readonly variadic: boolean;
   }[];
   readonly targetType: MojoTargetTypeRef;
+  readonly sourceValueFactory?: MojoSourceValueFunction;
+  readonly sourceValueExtraction?: MojoSourceValueFunction;
   readonly conformances?: readonly {
     readonly trait: MojoTargetTypeRef;
     readonly condition?: MojoTargetConformanceCondition;
@@ -99,8 +103,19 @@ export interface MojoProviderPackageDefinition {
   readonly modules: readonly MojoProviderModuleDefinition[];
   readonly types?: readonly MojoProviderTypeDefinition[];
   readonly operations: readonly MojoProviderOperationDefinition[];
+  readonly surfaceMembers?: readonly MojoProviderSurfaceMembers[];
   readonly binaryEpilogues?: readonly MojoProviderBinaryEpilogue[];
   readonly runtimePackages: readonly MojoProviderRuntimePackage[];
+}
+
+export interface MojoProviderSurfaceMembers {
+  readonly id: string;
+  readonly requiredSurfaces: readonly string[];
+  readonly declarations: readonly {
+    readonly exportId: string;
+    readonly members: readonly ProviderMemberDeclaration[];
+  }[];
+  readonly operations: readonly MojoProviderOperationDefinition[];
 }
 
 export interface MojoProviderExportRow {

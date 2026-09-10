@@ -105,7 +105,7 @@ test("closed structural objects support identity-preserving assign and JSON repl
   }));
   assert.match(source, /StructuralObject/u);
   assert.match(source, /json_stringify_with_replacer_and_space_number/u);
-  assert.match(source, /js_value_from_object_entries/u);
+  assert.match(source, /js_value_from_source_object/u);
 });
 
 test("JSON.stringify retains an exact project toJSON projection until serialization", () => {
@@ -127,16 +127,15 @@ test("JSON.stringify retains an exact project toJSON projection until serializat
       ].join("\n"),
     },
   }));
-  assert.match(source, /struct _json_projection/u);
-  assert.match(source, /\.to_json\(/u);
-  assert.match(source, /\bjs_value_from_json_projection\b/u);
+  assert.match(source, /struct .*SourceValueView/u);
+  assert.match(source, /def to_json\(/u);
+  assert.match(source, /\bjs_value_from_source_object\b/u);
   assert.match(source, /\bjson_stringify_with_replacer\b/u);
 });
 
-test("open Object.assign and property-list JSON replacers reject at the exact call boundary", () => {
+test("open Object.assign rejects at the exact call boundary", () => {
   for (const [body, code] of [
     ["Object.assign({ value: 1 }, { other: 2 });", "MOJO_OBJECT_ASSIGN_FIELD_RELATION_UNPROVEN"],
-    ["JSON.stringify({ value: 1 }, ['value']);", "MOJO_JSON_STRINGIFY_REPLACER_UNSUPPORTED"],
   ]) {
     const result = compileMojo({
       surfaces: ["js"],

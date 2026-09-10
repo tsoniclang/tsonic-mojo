@@ -18,6 +18,7 @@ import {
 import type { MojoValuePlanner } from "./support.js";
 import { mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
+import { planMojoProviderUnionProperty } from "./union-properties.js";
 import { planDictionaryKey } from "./conditional-values.js";
 import { selectedMojoDispatchField } from "./property-writes.js";
 import {
@@ -35,6 +36,12 @@ export function planMojoProperty(
   const selection = context.program.queries.propertySelection(node);
   if (selection === undefined) {
     appendMojoPlanningDiagnostic(context, "MOJO_PROPERTY_PLAN_MISSING", "Property access has no sealed target selection.", node);
+    return undefined;
+  }
+  if (selection.kind === "provider-union-property") {
+    if (mode === "read") return planMojoProviderUnionProperty(selection, context, planValue);
+    appendMojoPlanningDiagnostic(context, "MOJO_PROVIDER_UNION_PROPERTY_WRITE_UNSUPPORTED",
+      "A union property write requires a narrowed target receiver.", node);
     return undefined;
   }
   if (selection.kind === "provider-constant") {

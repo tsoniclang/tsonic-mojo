@@ -54,9 +54,9 @@ export function planMojoJsonStringify(
     ordered.arguments[index]?.value,
   ] as const));
   const value = bySourceIndex.get(0);
-  const replacer = selection.replacer === "callable" ? bySourceIndex.get(1) : undefined;
+  const replacer = selection.replacer === "none" ? undefined : bySourceIndex.get(1);
   const space = selection.space === "none" ? undefined : bySourceIndex.get(2);
-  if (value === undefined || selection.replacer === "callable" && replacer === undefined ||
+  if (value === undefined || selection.replacer !== "none" && replacer === undefined ||
     selection.space !== "none" && space === undefined) return undefined;
   const name = selection.replacer === "callable"
     ? selection.space === "number"
@@ -64,6 +64,12 @@ export function planMojoJsonStringify(
       : selection.space === "string"
         ? "json_stringify_with_replacer_and_space_string"
         : "json_stringify_with_replacer"
+    : selection.replacer === "property-list"
+      ? selection.space === "number"
+        ? "json_stringify_with_property_list_and_space_number"
+        : selection.space === "string"
+          ? "json_stringify_with_property_list_and_space_string"
+          : "json_stringify_with_property_list"
     : selection.space === "number"
       ? "json_stringify_with_space_number"
       : selection.space === "string"

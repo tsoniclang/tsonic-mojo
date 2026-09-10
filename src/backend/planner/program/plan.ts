@@ -28,7 +28,7 @@ import {
   planMojoProjectTypeAlias,
 } from "../declarations/project.js";
 import { planMojoPhysicalTypeAliases } from "../types/aliases.js";
-import { normalizeMojoDeclarations } from "../../normalization/index.js";
+import { normalizeMojoDeclarations } from "../../target-ast/normalization/index.js";
 import { createMojoOutputComponents } from "../../artifact-model/project/components.js";
 import { createMojoNativeBuildPlan } from "../../artifact-model/project/native.js";
 import { planMojoTopLevelImplementationAdapter } from "../callables/implementation-adapters.js";

@@ -33,6 +33,8 @@ import { resolveMojoNonTypeGenericArguments } from "./generic-arguments.js";
 import { implicitHeapLifecycle, nativeSetLifecycle } from "./lifecycle-contracts.js";
 import { resolveMojoJsRegExpSourceProfileType } from "./js-regexp.js";
 import { resolveMojoGenericParameterType } from "./generic-parameter-resolution.js";
+import { mojoIteratorResultMember, mojoIteratorResultType } from "./js-iterator.js";
+import { mojoIntlSourceProfileType } from "./js-intl.js";
 
 export { providerOwnerMatches } from "./resolution-helpers.js";
 
@@ -241,7 +243,22 @@ function resolveMojoTargetTypeWithState(
             ),
           };
     }
-    if (sourceProfile?.name === "IterableIterator") {
+    if (sourceProfile?.profile === "js" && [
+      "IteratorResult", "IteratorYieldResult", "IteratorReturnResult",
+    ].includes(sourceProfile.name)) {
+      const arguments_ = resolveSourceProfileTypeArguments(
+        selectedType, authoredTypeNode, sourceProfile.name === "IteratorResult" ? 2 : 1,
+        context, (type, node) => resolveMojoTargetTypeWithState(type, node, context, resolving),
+      );
+      if (arguments_.kind === "unsupported") return arguments_;
+      return {
+        kind: "resolved",
+        type: sourceProfile.name === "IteratorResult"
+          ? mojoIteratorResultType(arguments_.types[0]!, arguments_.types[1]!)
+          : mojoIteratorResultMember(sourceProfile.name, arguments_.types[0]!)!,
+      };
+    }
+    if (sourceProfile?.name === "IterableIterator" || sourceProfile?.name === "Iterator") {
       const arguments_ = resolveSourceProfileTypeArguments(
         selectedType,
         authoredTypeNode,
@@ -250,13 +267,20 @@ function resolveMojoTargetTypeWithState(
         (type, node) => resolveMojoTargetTypeWithState(type, node, context, resolving),
       );
       if (arguments_.kind === "unsupported") return arguments_;
+      if (context.jsEnabled && arguments_.types.slice(1).some((type) =>
+        type.kind !== "dynamic" || type.domain !== "js")) {
+        return {
+          kind: "unsupported",
+          reason: "A JavaScript collection iterator cannot implement an independently typed return or input protocol.",
+        };
+      }
       return context.jsEnabled
         ? {
             kind: "resolved",
             type: namedType(
-              "tsonic.mojo.js.JsArray",
+              "tsonic.mojo.js.JsIterator",
               ["tsonic_js"],
-              "JsArray",
+              "JsIterator",
               [arguments_.types[0]!],
               implicitHeapLifecycle,
             ),
@@ -267,6 +291,10 @@ function resolveMojoTargetTypeWithState(
       return context.jsEnabled
         ? { kind: "resolved", type: { kind: "symbol" } }
         : { kind: "unsupported", reason: "TypeScript symbol values require the explicit JavaScript surface" };
+    }
+    if (sourceProfile?.profile === "js") {
+      const intl = mojoIntlSourceProfileType(sourceProfile.name);
+      if (intl !== undefined) return { kind: "resolved", type: intl };
     }
     if (sourceProfile?.name === "Date") {
       return sourceProfile.profile === "js"

@@ -1,4 +1,6 @@
 export { createMojoProviderPackage } from "../providers/packages/package.js";
+export { mojoSourceErrorType } from "../target-model/types/error-domains.js";
+export type { MojoSourceValueFunction } from "../target-model/conversions/source-value-function.js";
 export type {
   MojoProviderModuleAlias,
   MojoProviderModuleDefinition,
@@ -6,6 +8,7 @@ export type {
   MojoProviderPackageDefinition,
   MojoProviderPackageImplementation,
   MojoProviderRuntimePackage,
+  MojoProviderSurfaceMembers,
   MojoProviderTypeDefinition,
 } from "../providers/packages/model.js";
 export type {
@@ -25,6 +28,7 @@ export {
 export {
   mojoCallableTargetType,
   mojoDynamicTargetType,
+  mojoDictionaryTargetType,
   mojoFutureTargetType,
   mojoListTargetType,
   mojoNamedTargetType,

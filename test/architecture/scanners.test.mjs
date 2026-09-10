@@ -78,6 +78,11 @@ test("planner and target AST use the shared domain structure", () => {
     "src/backend/target-ast/statements.ts",
     "src/print/project",
     "src/print/source",
+    "src/backend/target-ast/normalization",
+    "src/analysis/control-flow",
+    "src/analysis/expected-types",
+    "src/analysis/module-initialization",
+    "src/analysis/storage",
   ]) {
     assert.equal(existsSync(join(repoRoot, path)), true, `missing canonical layer '${path}'`);
   }
@@ -87,9 +92,29 @@ test("planner and target AST use the shared domain structure", () => {
     "src/backend/planner/statements.ts",
     "src/backend/target-ast/nodes.ts",
     "src/backend/emission/printer.ts",
+    "src/backend/normalization/declarations.ts",
+    "src/backend/normalization/expressions.ts",
+    "src/analysis/program/executable-regions.ts",
+    "src/analysis/program/expected-types.ts",
+    "src/analysis/program/reference-storage.ts",
+    "src/analysis/program/module-initialization.ts",
   ]) {
     assert.equal(existsSync(join(repoRoot, path)), false, `obsolete flat module '${path}'`);
   }
+});
+
+test("program composition does not accumulate unrelated analysis domains", async () => {
+  const files = await sourceFiles(join(repoRoot, "src/analysis/program"));
+  assert.deepEqual(files.map((file) => relative(join(repoRoot, "src/analysis/program"), file)), [
+    "analyze.ts",
+    "index.ts",
+    "model.ts",
+    "program-effects-finalization.ts",
+    "program-entry-and-function-values.ts",
+    "program-model.ts",
+    "program-result-finalization.ts",
+    "queries.ts",
+  ]);
 });
 
 test("physical provider filenames do not classify project source", () => {

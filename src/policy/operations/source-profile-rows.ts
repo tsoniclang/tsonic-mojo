@@ -7,7 +7,7 @@ import {
   jsConstructorRows,
   jsInstanceParameterRow,
   jsInstanceRows,
-  jsReceiverArrayRow,
+  jsReceiverIteratorRow,
   jsReceiverFunctionRow,
   jsReceiverFunctionRows,
   jsStaticRows,
@@ -17,11 +17,17 @@ import {
   sourceErrorRows,
 } from "./source-profile-row-builders.js";
 import { mojoRegExpSourceProfileCallRows } from "./source-profile-regexp-rows.js";
+import { mojoDateSourceProfileCallRows } from "./source-profile-date-rows.js";
+import { mojoLocaleSourceProfileCallRows } from "./source-profile-locale-rows.js";
+import { mojoIntlSourceProfileCallRows } from "./source-profile-intl-rows.js";
 
 export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Object.freeze([
+  ...jsInstanceRows("Iterator", "imm", ["next"]),
   ...sourceErrorRows,
   ...jsConstructorRows,
   ...mojoRegExpSourceProfileCallRows,
+  ...mojoLocaleSourceProfileCallRows,
+  ...mojoIntlSourceProfileCallRows,
   Object.freeze({
     profile: "js",
     kind: "call",
@@ -158,9 +164,9 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     jsInstanceParameterRow(owner, "has", "imm", [receiverArgument(0)]),
   ]),
   ...["Map", "ReadonlyMap"].flatMap((owner) => [
-    jsReceiverArrayRow(owner, "keys", Object.freeze({ kind: "receiver-argument", index: 0 })),
-    jsReceiverArrayRow(owner, "values", Object.freeze({ kind: "receiver-argument", index: 1 })),
-    jsReceiverArrayRow(owner, "entries", Object.freeze({
+    jsReceiverIteratorRow(owner, "keys", Object.freeze({ kind: "receiver-argument", index: 0 })),
+    jsReceiverIteratorRow(owner, "values", Object.freeze({ kind: "receiver-argument", index: 1 })),
+    jsReceiverIteratorRow(owner, "entries", Object.freeze({
       kind: "tuple",
       indexes: Object.freeze([0, 1]),
     })),
@@ -179,9 +185,9 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     ].map((member) => jsInstanceParameterRow(owner, member, "imm", [receiverType])),
   ]),
   ...["Set", "ReadonlySet"].flatMap((owner) => [
-    jsReceiverArrayRow(owner, "keys", Object.freeze({ kind: "receiver-argument", index: 0 })),
-    jsReceiverArrayRow(owner, "values", Object.freeze({ kind: "receiver-argument", index: 0 })),
-    jsReceiverArrayRow(owner, "entries", Object.freeze({
+    jsReceiverIteratorRow(owner, "keys", Object.freeze({ kind: "receiver-argument", index: 0 })),
+    jsReceiverIteratorRow(owner, "values", Object.freeze({ kind: "receiver-argument", index: 0 })),
+    jsReceiverIteratorRow(owner, "entries", Object.freeze({
       kind: "tuple",
       indexes: Object.freeze([0, 0]),
     })),
@@ -189,37 +195,7 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
   ...["Set", "ReadonlySet"].map((owner) => jsCallbackRow(owner, "forEach", "imm", "preserve", [
     "set_for_each_zero", "set_for_each_value", "set_for_each_value_key", "set_for_each_with_set",
   ])),
-  ...jsInstanceRows("Date", "imm", [
-    "getTime", ["getUTCDate", "get_utc_date"], ["getUTCDay", "get_utc_day"],
-    ["getUTCFullYear", "get_utc_full_year"], ["getUTCHours", "get_utc_hours"],
-    ["getUTCMilliseconds", "get_utc_milliseconds"], ["getUTCMinutes", "get_utc_minutes"],
-    ["getUTCMonth", "get_utc_month"], ["getUTCSeconds", "get_utc_seconds"],
-    "valueOf",
-  ]),
-  ...jsReceiverFunctionRows("Date", "date", [
-    ["toJSON", "to_json_native"],
-    ["toString", "to_string_native"],
-    ["toUTCString", "to_utc_string_native"],
-  ]),
-  ...jsInstanceRows("Date", "mut", [
-    "setTime", ["setUTCDate", "set_utc_date"], ["setUTCFullYear", "set_utc_full_year"],
-    ["setUTCHours", "set_utc_hours"], ["setUTCMilliseconds", "set_utc_milliseconds"],
-    ["setUTCMinutes", "set_utc_minutes"], ["setUTCMonth", "set_utc_month"],
-    ["setUTCSeconds", "set_utc_seconds"],
-  ]),
-  Object.freeze({
-    profile: "js",
-    kind: "call",
-    owner: "Date",
-    member: "toISOString",
-    target: Object.freeze({
-      kind: "function",
-      modulePath: Object.freeze(["tsonic_js"]),
-      name: "date_to_iso_string_native",
-      receiver: "imm",
-    }),
-    raises: true,
-  }),
+  ...mojoDateSourceProfileCallRows,
   Object.freeze({
     profile: "js",
     kind: "call",
@@ -246,6 +222,11 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
   }),
   jsReceiverFunctionRow("Number", "toString", "number_to_string", 0, []),
   Object.freeze({
+    profile: "js", kind: "call", owner: "Number", member: "toLocaleString", raises: true,
+    parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["js-data", "js-data"]),
+    target: Object.freeze({ kind: "function", modulePath: Object.freeze(["tsonic_js"]), name: "number_to_locale_string", receiver: "imm" }),
+  }),
+  Object.freeze({
     ...jsReceiverFunctionRow(
       "Number", "toString", "number_to_string_radix", 1, ["float64"], true,
     ),
@@ -270,7 +251,7 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     ["fromCharCode", "native_string_from_char_code", true],
     ["fromCodePoint", "native_string_from_code_point", true],
   ], "codes"),
-  ...jsStaticRows("DateConstructor", ["now", ["parse", "date_parse_native"], ["UTC", "date_utc"]]),
+
   Object.freeze({
     profile: "js",
     kind: "call",
@@ -321,6 +302,7 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     kind: "call",
     owner: "Object",
     member: "hasOwnProperty",
+    receiverContract: "js-value",
     argumentCount: 1,
     parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["js-string"]),
     target: Object.freeze({
@@ -448,5 +430,5 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     ["info", "console_info"],
     ["log", "console_log"],
     ["warn", "console_warn"],
-  ], "data"),
+  ], "data", ["js-data"]),
 ]);

@@ -35,9 +35,9 @@ import type {
   MojoPropertySelection,
   MojoValueRefinementSelection,
 } from "../program/model.js";
-import { callArgumentExpectedType } from "../program/expected-types.js";
+import { callArgumentExpectedType } from "../expected-types/expressions.js";
 import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
-import { isMojoAssignmentOperator } from "../program/syntax-validation.js";
+import { isMojoAssignmentOperator } from "../control-flow/syntax-validation.js";
 
 export function recordMojoExecutableRegionConversionUses(
   root: Node,

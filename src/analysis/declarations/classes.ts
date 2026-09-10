@@ -91,6 +91,7 @@ export function analyzeMojoClass(
   const accessorDrafts = new Map<string, {
     readonly declarations: Node[];
     readonly sourceName: string;
+    readonly runtimeProperty: boolean;
     read?: MojoAnalyzedCallableSignature;
     write?: MojoAnalyzedCallableSignature;
   }>();
@@ -134,6 +135,7 @@ export function analyzeMojoClass(
         ownerTypeParameters: definition.typeParameters,
         ...(initializer === undefined ? {} : { initializer }),
         visibility: privateMember ? "private" : "public",
+        ownProperty: !ast.is.IsPrivateIdentifier(nameNode),
       }));
       continue;
     }
@@ -213,6 +215,7 @@ export function analyzeMojoClass(
       const draft = accessorDrafts.get(propertyKey) ?? {
         declarations: [],
         sourceName,
+        runtimeProperty: !ast.is.IsPrivateIdentifier(nameNode),
       };
       draft.declarations.push(member);
       if (getter) draft.read = accessor;
@@ -284,6 +287,7 @@ export function analyzeMojoClass(
       kind: "accessor-property",
       declarations: Object.freeze([...draft.declarations]),
       sourceName: draft.sourceName,
+      runtimeProperty: draft.runtimeProperty,
       ...(draft.read === undefined ? {} : { read: draft.read }),
       ...(draft.write === undefined ? {} : { write: draft.write }),
       ownerType: targetType,

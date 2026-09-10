@@ -5,12 +5,15 @@ import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoAnalyzedCallArgument } from "../program/model.js";
 import type { MojoValueRefinementSelection } from "../refinements/model.js";
-import { classifyMojoRefinedValueConversion } from "../refinements/value.js";
+import { mojoValueConversionNarrowing } from "../refinements/value.js";
+import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
 import type { MojoArgumentDisposition } from "../representations/model.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 import type { MojoValueOwnership } from "../../target-model/lifecycle/model.js";
 import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
 import { classifyMojoSourceResultConversion } from "./call-results.js";
+import type { MojoArgumentConversionMap } from "./call-argument-conversions.js";
+import { selectedMojoArgumentCarrier } from "./call-argument-carriers.js";
 
 export interface MojoCallArgumentTarget {
   readonly convention: "imm" | "mut" | "var" | "ref" | "out" | "deinit";
@@ -43,8 +46,9 @@ export function analyzeArguments(
   expressionTypes: WeakMap<Node, MojoTargetTypeRef>,
   valueRefinements: WeakMap<Node, MojoValueRefinementSelection>,
   lifecycle: MojoLifecycleResolver,
+  conversions: Pick<MojoConversionIndex, "classify">,
   valueOwnership: (expression: Node) => MojoValueOwnership,
-  conversionOverrides?: ReadonlyMap<number, MojoValueConversion>,
+  conversionOverrides?: MojoArgumentConversionMap,
   contextualAggregate?: (expression: Node, targetType: MojoTargetTypeRef) => boolean,
   projectRelationships?: MojoProjectTypeRelationships,
   contextualizeCallable?: (
@@ -122,16 +126,13 @@ export function analyzeArguments(
           reason: `Source call argument ${sourceArgumentIndex} supplies an open sequence to a non-variadic Mojo parameter.`,
         };
       }
-      const selectedBindingType = resolve(binding.selectedArgumentType);
       const contextualCallableType = binding.sourceForm === "value" &&
           parameterType.kind === "callable"
         ? contextualizeCallable?.(sourceExpression, parameterType)
         : undefined;
-      const selectedSourceType = binding.sourceForm === "spread-element"
-        ? spreadElementType(sourceContainerType!, binding.spreadElementIndex) ?? selectedBindingType
-        : binding.sourceForm === "spread-sequence"
-          ? sourceContainerType
-          : contextualCallableType ?? expressionTypes.get(sourceExpression) ?? selectedBindingType;
+      const selectedSourceType = contextualCallableType ?? selectedMojoArgumentCarrier(
+        ast, sourceCall, binding, expressionTypes, resolve,
+      )?.type;
       const sourceType = selectedSourceType ??
         (binding.sourceForm === "value" &&
             contextualAggregate?.(sourceExpression, parameterType) === true
@@ -148,16 +149,15 @@ export function analyzeArguments(
         expressionTypes.set(sourceExpression, sourceType);
       }
       const overriddenConversion = contextualCallableType === undefined
-        ? conversionOverrides?.get(parameterIndex)
+        ? conversionOverrides?.get(binding)
         : undefined;
       const conversion = overriddenConversion === undefined
-        ? classifyMojoRefinedValueConversion(
+        ? conversions.classify(
             sourceType,
             parameterType,
-            binding.sourceForm === "value"
+            mojoValueConversionNarrowing(binding.sourceForm === "value"
               ? valueRefinements.get(sourceExpression)
-              : undefined,
-            projectRelationships,
+              : undefined),
           )
         : { kind: "resolved" as const, conversion: overriddenConversion };
       if (conversion.kind === "unsupported") {
@@ -218,16 +218,6 @@ function requiresErasedCallable(type: MojoTargetTypeRef): boolean {
     case "union": return type.members.some(requiresErasedCallable);
     default: return false;
   }
-}
-
-function spreadElementType(
-  source: MojoTargetTypeRef,
-  index: number | undefined,
-): MojoTargetTypeRef | undefined {
-  if (index === undefined) return undefined;
-  if (source.kind === "tuple") return source.elements[index];
-  if (source.kind === "fixed-array" || source.kind === "list") return source.element;
-  return undefined;
 }
 
 export function analyzeMojoArgumentDisposition(

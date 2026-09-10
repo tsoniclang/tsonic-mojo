@@ -33,7 +33,7 @@ import {
 import { resolveMojoSourceOrigin } from "../../policy/types/origins.js";
 import { mojoLifecycleTraitTargetType } from "../../target-model/lifecycle/index.js";
 import { mojoSourceGenericLifecycleRequirements } from "../../policy/types/generic-lifecycle.js";
-import { allocateMojoBindingPatternNames } from "../program/local-bindings.js";
+import { allocateMojoBindingPatternNames } from "../bindings/local.js";
 
 export interface MojoTypeParameterAnalysisInput {
   readonly source: TargetSourceProgram;

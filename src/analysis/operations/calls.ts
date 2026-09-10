@@ -11,6 +11,7 @@ import { resolveMojoNonTypeGenericArguments } from "../../policy/types/generic-a
 import { selectMojoProviderCall } from "../../policy/operations/provider-selection.js";
 import { instantiateMojoProviderOperation } from "../../policy/operations/provider-instantiation.js";
 import { analyzeMojoTypedLocation } from "./typed-locations.js";
+import { analyzeMojoSourceModuleConstruction } from "../source-modules/construction.js";
 import { analyzeMojoRawPointer } from "./raw-pointers.js";
 import { analyzeMojoExplicitSafety } from "./explicit-safety.js";
 import { analyzeMojoNativePointer } from "./native-pointers.js";
@@ -250,6 +251,7 @@ export function analyzeMojoCall(
     context.expressionTypes,
     context.valueRefinements,
     context.lifecycle,
+    context.conversions,
     context.valueOwnership,
     undefined,
     (expression) => context.source.ast.is.IsObjectLiteralExpression(expression),
@@ -263,6 +265,15 @@ export function analyzeMojoCall(
     context,
   );
   if (closedArguments.kind === "unsupported") return closedArguments;
+  const sourceModule = target.kind === "function-call" && target.sourceModule !== undefined
+    ? analyzeMojoSourceModuleConstruction({
+        contract: target.sourceModule,
+        arguments: closedArguments.arguments,
+        source: context.source,
+        modulePathForSourceFile: context.modulePathForSourceFile,
+      })
+    : undefined;
+  if (sourceModule?.kind === "unsupported") return sourceModule;
   const result = closeResultConversion(
     instantiated.operation.resultType,
     sourceCall.sourceResultType,
@@ -321,6 +332,7 @@ export function analyzeMojoCall(
       kind: "provider",
       operation: instantiated.operation,
       arguments: closedArguments.arguments,
+      ...(sourceModule === undefined ? {} : { sourceModule: sourceModule.construction }),
       ...(sourceReceiverType === undefined
         ? {}
         : { receiver: sourceCall.sourceReceiver!.expression }),
@@ -388,6 +400,7 @@ function analyzeCallableValueCall(
     context.expressionTypes,
     context.valueRefinements,
     context.lifecycle,
+    context.conversions,
     context.valueOwnership,
     undefined,
     (expression) => context.source.ast.is.IsObjectLiteralExpression(expression),

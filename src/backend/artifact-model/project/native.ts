@@ -14,6 +14,7 @@ export interface MojoNativeBuildPackage {
   readonly packageName: string;
   readonly digest: string;
   readonly includeDirectories: readonly string[];
+  readonly sourceIncludeDirectories: readonly string[];
   readonly translationUnits: readonly MojoNativeBuildTranslationUnit[];
 }
 
@@ -21,7 +22,7 @@ export interface MojoNativeBuildTranslationUnit {
   readonly language: "c" | "c++";
   readonly sourcePath: string;
   readonly objectPath: string;
-  readonly standard: "c11" | "c++17";
+  readonly standard: "c11" | "c++17" | "c++20";
 }
 
 export function createMojoNativeBuildPlan(
@@ -49,6 +50,8 @@ export function createMojoNativeBuildPlan(
       packageName: runtime.packageName,
       digest: native.digest,
       includeDirectories: native.includeDirectories,
+      sourceIncludeDirectories: Object.freeze(native.sourceIncludeDirectories.map((directory) =>
+        `packages/.native/${runtime.packageName}/${directory}`)),
       translationUnits: Object.freeze(native.translationUnits.map((unit) => Object.freeze({
         language: unit.language,
         sourcePath: `packages/.native/${runtime.packageName}/${unit.path}`,

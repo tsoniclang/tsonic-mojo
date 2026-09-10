@@ -77,11 +77,14 @@ new collection; array `for...of` reads the live collection in source order.
 Sparse reads cannot silently disappear or manufacture a value incompatible with
 the selected element carrier.
 
-Native runtime package manifests declare C11 or C++17 translation units explicitly.
-The schema-3 native build manifest retains each unit's language and standard and
+Native runtime package manifests declare C11, C++17 or C++20 translation units explicitly.
+The schema-4 native build manifest retains each unit's language and standard and
 selects compiler paths inside the pinned Pixi environment. The common runtime
 uses a bounded C ABI to the C++ standard library's shortest-round-trip numeric
 conversion; source decimal/exponent formatting remains common runtime policy.
+Headers and other required native text assets are captured and published
+explicitly. [Native package contracts](docs/providers/native-runtime-packages.md)
+separate package-source include paths from environment include paths.
 
 The target follows the same twelve top-level layers as C# and Rust. This is not
 a claim of complete behavioral parity: generators, native asynchronous iterator

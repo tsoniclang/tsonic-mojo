@@ -7,6 +7,7 @@ import type {
 import { mojoParameterConvention } from "../../../../analysis/representations/index.js";
 import { mojoTargetTypeEquals } from "../../../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../../../target-model/types/model.js";
+import { mojoProjectBaseStateField } from "../../../../target-model/types/project-storage.js";
 import type {
   MojoFunctionDeclaration,
   MojoStatement,
@@ -163,7 +164,7 @@ export function planMojoPolymorphicClassState(
     fields: Object.freeze([
       ...(baseStateType === undefined
         ? []
-        : [Object.freeze({ name: "_base", type: baseStateType, compileTime: false })]),
+        : [Object.freeze({ name: mojoProjectBaseStateField, type: baseStateType, compileTime: false })]),
       ...class_.fields.map((field) => Object.freeze({
         name: field.name,
         type: field.type,
@@ -409,7 +410,7 @@ function planBaseInitialization(
         left: Object.freeze({
           kind: "member",
           receiver: Object.freeze({ kind: "path", path: "self" }),
-          name: "_base",
+          name: mojoProjectBaseStateField,
         }),
         right: Object.freeze({
           kind: "construct",

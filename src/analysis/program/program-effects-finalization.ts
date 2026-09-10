@@ -9,23 +9,23 @@ import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import type {
   MojoAnalyzedCallArgument,
   MojoCallableArgumentSlot,
-} from "./call-model.js";
+} from "../operations/call-model.js";
 import {
   closeMojoErrorType,
   mergeMojoErrorTypes,
   mojoNativeErrorType,
-} from "./effects.js";
+} from "../resources/effects.js";
 import {
   closeMojoProgramErrorEffects,
   collectMojoEvaluationErrorTypes,
   collectMojoEscapingErrorTypes,
-} from "./error-regions.js";
+} from "../resources/error-regions.js";
 import {
   sealMojoCatchBindingCarrier,
-} from "./executable-regions.js";
-import type { MojoExecutableRegionAnalysisEnvironment } from "./executable-regions.js";
+} from "../control-flow/analyze.js";
+import type { MojoExecutableRegionAnalysisEnvironment } from "../control-flow/analyze.js";
 import type { MojoAnalyzedClass, MojoAnalyzedFunction, MojoAnalyzedModule } from "./model.js";
-import type { MojoAnalyzedModuleRegionFacts } from "./module-effects.js";
+import type { MojoAnalyzedModuleRegionFacts } from "../module-initialization/effects.js";
 import { walkSourceTree } from "../../source/syntax/traversal.js";
 
 export interface MojoProgramEffectsFinalizationInput {
@@ -367,9 +367,9 @@ export function finalizeMojoProgramEffects(
         })
       : slot;
   const finalizePropagatedCallback = (
-    selection: Extract<import("./call-model.js").MojoCallSelection, { readonly kind: "provider" }>,
+    selection: Extract<import("../operations/call-model.js").MojoCallSelection, { readonly kind: "provider" }>,
     arguments_: readonly MojoAnalyzedCallArgument[],
-  ): Extract<import("./call-model.js").MojoCallSelection, { readonly kind: "provider" }> => {
+  ): Extract<import("../operations/call-model.js").MojoCallSelection, { readonly kind: "provider" }> => {
     const parameterIndex = selection.propagatedCallbackParameterIndex;
     if (parameterIndex === undefined) return Object.freeze({ ...selection, arguments: arguments_ });
     const matches = arguments_.filter((argument) => argument.parameterIndex === parameterIndex);

@@ -1,6 +1,7 @@
 import type { CompilerExtension } from "@tsonic/tsts";
 import type {
   TargetRuntimeContributionContext,
+  TargetCapabilityContext,
 } from "@tsonic/target-api/provider";
 import type {
   TargetRuntimeContributions,
@@ -22,6 +23,7 @@ import {
   mojoProviderBindingProviderId,
 } from "./source-provider.js";
 import { validateMojoProviderPackageDefinition } from "./validation.js";
+import { selectMojoProviderSurfaceMembers } from "./surface-members.js";
 
 export function createMojoProviderPackage(
   definition: MojoProviderPackageDefinition,
@@ -48,10 +50,10 @@ export function createMojoProviderPackage(
       ...closedDefinition.modules.map((module) => module.moduleSpecifier),
       ...(closedDefinition.moduleAliases ?? []).map((alias) => alias.moduleSpecifier),
     ].map((specifierPrefix) => Object.freeze({ specifierPrefix, providerId }))),
-    sourceCompilerContributions(): { readonly extensions: readonly CompilerExtension[] } {
+    sourceCompilerContributions(context?: TargetCapabilityContext): { readonly extensions: readonly CompilerExtension[] } {
       return Object.freeze({
         extensions: Object.freeze([
-          createMojoProviderPackageSourceExtension(closedDefinition),
+          createMojoProviderPackageSourceExtension(selectMojoProviderSurfaceMembers(closedDefinition, context?.selectedSurfaceIds ?? [])),
         ]),
       });
     },
@@ -68,11 +70,11 @@ export function createMojoProviderPackage(
         )),
       });
     },
-    createTargetContributions(): readonly MojoProviderPolicyContribution[] {
+    createTargetContributions(context?: TargetCapabilityContext): readonly MojoProviderPolicyContribution[] {
       return Object.freeze([Object.freeze({
         kind: mojoProviderPolicyContributionKind,
         contractVersion: 1 as const,
-        definition: closedDefinition,
+        definition: selectMojoProviderSurfaceMembers(closedDefinition, context?.selectedSurfaceIds ?? []),
       })]);
     },
   });

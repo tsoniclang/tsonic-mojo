@@ -185,6 +185,7 @@ declare var Boolean: BooleanConstructor;
 
 interface Number {
   toString(radix?: number): string;
+  toLocaleString(locales?: string | readonly string[], options?: IntlNumberFormatOptions): string;
   valueOf(): number;
   toFixed(fractionDigits?: number): string;
   toExponential(fractionDigits?: number): string;
@@ -209,6 +210,20 @@ interface NumberConstructor {
   parseInt(value: string, radix?: number): number;
 }
 declare var Number: NumberConstructor;
+
+interface IntlNumberFormatOptions {
+  numberingSystem?: string;
+  currencySign?: "standard" | "accounting";
+  notation?: "standard" | "scientific" | "engineering" | "compact";
+  compactDisplay?: "short" | "long";
+  signDisplay?: "auto" | "never" | "always" | "exceptZero" | "negative";
+  minimumSignificantDigits?: number;
+  maximumSignificantDigits?: number;
+  roundingPriority?: "auto" | "morePrecision" | "lessPrecision";
+  roundingIncrement?: number;
+  roundingMode?: "ceil" | "floor" | "expand" | "trunc" | "halfCeil" | "halfFloor" | "halfExpand" | "halfTrunc" | "halfEven";
+  trailingZeroDisplay?: "auto" | "stripIfInteger";
+}
 
 declare function parseInt(value: string, radix?: number): number;
 declare function parseFloat(value: string): number;
@@ -246,10 +261,16 @@ interface String {
   normalize(form?: UnicodeNormalizationForm): string;
   toLowerCase(): string;
   toUpperCase(): string;
+  toLocaleLowerCase(locales?: string | readonly string[]): string;
+  toLocaleUpperCase(locales?: string | readonly string[]): string;
+  localeCompare(that: string, locales?: string | readonly string[], options?: IntlCollatorOptions): number;
   isWellFormed(): boolean;
   toWellFormed(): string;
 }
 type UnicodeNormalizationForm = "NFC" | "NFD" | "NFKC" | "NFKD";
+interface IntlCollatorOptions {
+  collation?: string;
+}
 interface StringConstructor {
   new (value?: unknown): String;
   (value?: unknown): string;
@@ -332,6 +353,15 @@ interface ReadonlySet<T> {
 interface Date {
   getTime(): number;
   valueOf(): number;
+  getFullYear(): number;
+  getMonth(): number;
+  getDate(): number;
+  getDay(): number;
+  getHours(): number;
+  getMinutes(): number;
+  getSeconds(): number;
+  getMilliseconds(): number;
+  getTimezoneOffset(): number;
   getUTCFullYear(): number;
   getUTCMonth(): number;
   getUTCDate(): number;
@@ -341,6 +371,13 @@ interface Date {
   getUTCSeconds(): number;
   getUTCMilliseconds(): number;
   setTime(time: number): number;
+  setMilliseconds(ms: number): number;
+  setSeconds(sec: number, ms?: number): number;
+  setMinutes(min: number, sec?: number, ms?: number): number;
+  setHours(hours: number, min?: number, sec?: number, ms?: number): number;
+  setDate(date: number): number;
+  setMonth(month: number, date?: number): number;
+  setFullYear(year: number, month?: number, date?: number): number;
   setUTCMilliseconds(ms: number): number;
   setUTCSeconds(sec: number, ms?: number): number;
   setUTCMinutes(min: number, sec?: number, ms?: number): number;
@@ -350,16 +387,33 @@ interface Date {
   setUTCFullYear(year: number, month?: number, date?: number): number;
   toISOString(): string;
   toUTCString(): string;
-  toJSON(): string;
+  toJSON(): string | null;
   toString(): string;
+  toDateString(): string;
+  toTimeString(): string;
+  toLocaleString(locales?: string | readonly string[], options?: IntlDateTimeFormatOptions): string;
+  toLocaleDateString(locales?: string | readonly string[], options?: IntlDateTimeFormatOptions): string;
+  toLocaleTimeString(locales?: string | readonly string[], options?: IntlDateTimeFormatOptions): string;
+}
+interface IntlDateTimeFormatOptions {
+  formatMatcher?: "basic" | "best fit";
+  calendar?: string;
+  numberingSystem?: string;
+  hourCycle?: "h11" | "h12" | "h23" | "h24";
+  dayPeriod?: "long" | "short" | "narrow";
+  fractionalSecondDigits?: 1 | 2 | 3;
+  dateStyle?: "full" | "long" | "medium" | "short";
+  timeStyle?: "full" | "long" | "medium" | "short";
 }
 interface DateConstructor {
   new (): Date;
   new (value: number): Date;
   new (value: string): Date;
+  new (value: Date): Date;
+  new (year: number, monthIndex: number, date?: number, hours?: number, minutes?: number, seconds?: number, ms?: number): Date;
   now(): number;
   parse(value: string): number;
-  UTC(year: number, monthIndex: number, date?: number, hours?: number, minutes?: number, seconds?: number, ms?: number): number;
+  UTC(year: number, monthIndex?: number, date?: number, hours?: number, minutes?: number, seconds?: number, ms?: number): number;
 }
 declare var Date: DateConstructor;
 

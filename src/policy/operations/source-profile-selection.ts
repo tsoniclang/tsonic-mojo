@@ -20,6 +20,7 @@ export interface MojoSourceProfileCallRowBase {
   readonly parameterContractMode?: "exact" | "overrides";
   readonly restParameterName?: string;
   readonly receiverCapability?: "integer";
+  readonly receiverContract?: MojoSourceProfileParameterContract;
   readonly raises?: boolean;
   readonly callback?: MojoSourceProfileCallbackContract;
   readonly resultContract?: MojoSourceProfileResultContract;
@@ -68,7 +69,7 @@ export type MojoSourceProfileResultContract =
       readonly indexes?: readonly number[];
     }
   | {
-      readonly kind: "receiver-array";
+      readonly kind: "receiver-iterator";
       readonly element:
         | { readonly kind: "receiver-argument"; readonly index: number }
         | { readonly kind: "tuple"; readonly indexes: readonly number[] };
@@ -95,8 +96,10 @@ export type MojoSourceProfileParameterContract =
   | "float64"
   | "js-string"
   | "js-value"
+  | "js-data"
   | "native-string"
   | "selected-argument"
+  | { readonly kind: "optional"; readonly value: MojoSourceProfileParameterContract }
   | { readonly kind: "receiver" }
   | { readonly kind: "receiver-argument"; readonly index: number };
 

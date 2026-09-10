@@ -1,5 +1,6 @@
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
+import { mojoValueConversionEquals } from "../../target-model/conversions/equality.js";
 
 export function isJsString(type: MojoTargetTypeRef): boolean {
   return type.kind === "target-named" && type.id === "tsonic.mojo.js.JsString";
@@ -59,6 +60,5 @@ export function jsValueBoxConversion(
 }
 
 export function sameConversion(left: MojoValueConversion, right: MojoValueConversion): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
+  return mojoValueConversionEquals(left, right);
 }
-

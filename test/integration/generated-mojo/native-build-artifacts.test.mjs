@@ -38,6 +38,7 @@ function outputPlan(outputType) {
         packageName: "native_runtime",
         digest: "1".repeat(64),
         includeDirectories: ["include/example"],
+        sourceIncludeDirectories: ["packages/.native/native_runtime/include"],
         translationUnits: [{
           language: "c",
           sourcePath: "packages/.native/native_runtime/native.c",
@@ -60,7 +61,7 @@ test("library precompilation publishes native link inputs without passing linker
   assert.match(project.text, /mojo precompile/u);
   assert.doesNotMatch(project.text, /mojo precompile[^\n]*-Xlinker/u);
   assert.deepEqual(JSON.parse(native.text), {
-    schemaVersion: 3,
+    schemaVersion: 4,
     toolchain: {
       kind: "pixi-mojo",
       compilerVersion: "1.1.0.dev2026083005",
@@ -81,6 +82,7 @@ test("library precompilation publishes native link inputs without passing linker
       packageName: "native_runtime",
       digest: "1".repeat(64),
       includeDirectories: ["include/example"],
+      sourceIncludeDirectories: ["packages/.native/native_runtime/include"],
       translationUnits: [{
         language: "c",
         sourcePath: "packages/.native/native_runtime/native.c",
@@ -127,9 +129,30 @@ test("native runtime units select the pinned compiler for their exact language",
   const project = output.artifacts.find(({ path }) => path === "pixi.toml").text;
   assert.ok(project.includes('\\"$CONDA_PREFIX/bin/gcc\\" -O3 -fPIC -std=c11'));
   assert.ok(project.includes('\\"$CONDA_PREFIX/bin/g++\\" -O3 -fPIC -std=c++17'));
+  assert.ok(project.includes('\\"$CONDA_PREFIX/include/example\\"'));
+  assert.ok(project.includes("-I'packages/.native/native_runtime/include'"));
+  assert.ok(!project.includes("$CONDA_PREFIX/packages/.native"));
   assert.ok(project.includes("-Xlinker 'build/native/native_runtime/numeric.o'"));
   const manifest = JSON.parse(output.artifacts.find(({ path }) => path === "mojo-native-build.json").text);
   assert.deepEqual(manifest.packages[0].translationUnits.map(({ language, standard }) => [language, standard]), [
     ["c", "c11"], ["c++", "c++17"],
   ]);
+});
+
+test("native text assets publish byte-for-byte beside their translation units", () => {
+  const plan = outputPlan("lib");
+  const header = "\ufeff#define NATIVE_VALUE 42\r\n";
+  plan.runtimePackages.push({
+    packageName: "native_runtime", sources: [],
+    native: {
+      translationUnits: [{ path: "native.c", text: '#include "include/value.h"\n' }],
+      assets: [{ path: "include/value.h", text: header }],
+    },
+  });
+  const assets = materializeMojoOutputPlan(plan).artifacts.filter(({ kind }) => kind === "asset");
+  assert.deepEqual(assets.map(({ path }) => path), [
+    "packages/.native/native_runtime/native.c",
+    "packages/.native/native_runtime/include/value.h",
+  ]);
+  assert.deepEqual(Buffer.from(assets[1].text, "utf8"), Buffer.from(header, "utf8"));
 });

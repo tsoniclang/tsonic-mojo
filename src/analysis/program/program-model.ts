@@ -22,8 +22,8 @@ import type {
   MojoCallableExpressionSelection,
   MojoObjectLiteralSelection,
   MojoTemplateExpressionSelection,
-} from "./binding-and-object-model.js";
-import type { MojoCallSelection } from "./call-model.js";
+} from "../bindings/model.js";
+import type { MojoCallSelection } from "../operations/call-model.js";
 import type {
   MojoAnalyzedDeclaration,
   MojoAnalyzedModule,
@@ -32,7 +32,7 @@ import type {
   MojoModuleInitializationCatalog,
   MojoProjectDispatchPlan,
 } from "./model.js";
-import type { MojoAnalyzedModuleBinding } from "./module-model.js";
+import type { MojoAnalyzedModuleBinding } from "../module-initialization/model.js";
 import type {
   MojoElementSelection,
   MojoIntrinsicExpressionSelection,
@@ -42,9 +42,10 @@ import type {
   MojoResourceManagementSelection,
   MojoTypeTestSelection,
   MojoValueSelection,
-} from "./operation-model.js";
+} from "../operations/model.js";
 
 export interface MojoProgramQueries {
+  callableImplementation(declaration: Node): import("./model.js").MojoAnalyzedFunction | undefined;
   bindingName(referenceOrDeclaration: Node): string | undefined;
   bindingSourceFile(referenceOrDeclaration: Node): SourceFile | undefined;
   bindingType(declaration: Node): MojoTargetTypeRef | undefined;
@@ -115,6 +116,7 @@ export interface MojoTargetProgram {
   readonly sourceCallableSpecializations: import("../callables/specializations.js").MojoSourceCallableSpecializationPlan;
   readonly projectDispatch: MojoProjectDispatchPlan;
   readonly modules: MojoSourceModuleCatalog;
+  readonly sourceModuleConstructions: readonly import("../source-modules/construction.js").MojoSourceModuleConstruction[];
   readonly analyzedModules: readonly MojoAnalyzedModule[];
   readonly moduleInitialization: MojoModuleInitializationCatalog;
   readonly binaryEntry?: MojoAnalyzedTopLevelFunction;

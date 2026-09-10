@@ -18,7 +18,7 @@ import {
   classifyMojoSourceGenericParameter,
   mojoSourceGenericParameterOwner,
 } from "../../source/semantics/generic-parameters.js";
-import type { MojoCallSelection } from "../program/call-model.js";
+import type { MojoCallSelection } from "./call-model.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 
 export type MojoSourceIntrinsicAnalysis =

@@ -20,7 +20,8 @@ import type { MojoPlanningContext } from "../program/context.js";
 import { registerMojoTypeImports } from "../types/imports.js";
 import { mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
-import { convertMojoJsonValue } from "./js-value-conversions.js";
+import { convertMojoDataRest } from "./js-data-rest-conversion.js";
+import { convertMojoSourceValue } from "./source-values/conversion.js";
 import { adaptMojoRaisingCallableError } from "./callable-error-adapter.js";
 import {
   convertMojoCollection,
@@ -183,11 +184,11 @@ export function convertMojoValue(
   conversion: MojoValueConversion,
   context: MojoPlanningContext,
 ): MojoValuePlan | undefined {
-  if (conversion.kind === "js-structural-object-box" ||
-    conversion.kind === "js-sequence-box" || conversion.kind === "js-tuple-box" ||
-    conversion.kind === "js-optional-box" || conversion.kind === "js-union-box" ||
-    conversion.kind === "js-selected-to-json") {
-    return convertMojoJsonValue(plan, conversion, context, convertMojoValue);
+  if (conversion.kind === "js-value-graph") {
+    return convertMojoSourceValue(plan, conversion, context, convertMojoValue);
+  }
+  if (conversion.kind === "js-data-rest") {
+    return convertMojoDataRest(plan, conversion, context, convertMojoValue);
   }
   if (conversion.kind === "js-truthiness") {
     return convertMojoTruthiness(plan, conversion.conversion, context);
@@ -495,6 +496,14 @@ export function applyMojoConversion(
         name: "unwrap",
         arguments: Object.freeze([]),
       };
+    case "js-value-extract":
+      registerMojoTypeImports(conversion.sourceType, context);
+      registerMojoTypeImports(conversion.targetType, context);
+      return {
+        kind: "call",
+        callee: mojoModuleMemberExpression(context, conversion.extraction.modulePath, conversion.extraction.name),
+        arguments: Object.freeze([{ value: expression }]),
+      };
     case "native-to-js-string":
       registerMojoTypeImports(conversion.targetType, context);
       return { kind: "construct", type: conversion.targetType, arguments: Object.freeze([{ value: expression }]) };
@@ -525,12 +534,8 @@ export function applyMojoConversion(
           ? Object.freeze([])
           : Object.freeze([{ value: boxedValue }]),
       };
-    case "js-structural-object-box":
-    case "js-sequence-box":
-    case "js-tuple-box":
-    case "js-optional-box":
-    case "js-union-box":
-    case "js-selected-to-json":
+    case "js-data-rest":
+    case "js-value-graph":
       return undefined;
     case "primitive-cast":
     case "reference-copy":

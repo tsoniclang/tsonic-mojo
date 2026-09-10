@@ -1,7 +1,11 @@
 import type { Node, ResolvedSourceCallInfo, Type } from "@tsonic/tsts";
 import type { MojoTargetGenericArgument, MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
-import { classifyMojoRefinedValueConversion } from "../refinements/value.js";
+import { mojoValueConversionNarrowing } from "../refinements/value.js";
+import {
+  selectedSourceProfileArgumentType,
+  sourceProfileDataArgumentConversions,
+} from "./source-profile-data-arguments.js";
 import { selectMojoSourceProfileCallRow } from "../../policy/operations/source-profile-selection.js";
 import type {
   MojoSourceProfileCallRow,
@@ -21,6 +25,7 @@ import {
 } from "./call-arguments.js";
 import { selectMojoSourceProfileCallback } from "./source-profile-callbacks.js";
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
+import { parameterBindingConversions } from "./call-argument-conversions.js";
 import {
   mojoNativeErrorType,
 } from "../../target-model/types/error-domains.js";
@@ -72,6 +77,7 @@ export function analyzeSourceProfileCall(
     readonly variadic: boolean;
     readonly nativeName?: string;
     readonly restPacking?: "list";
+    readonly variadicCollectionType?: MojoTargetTypeRef;
     readonly passing: "plain";
     readonly callableConsumption?: "immediate";
   }[] = [];
@@ -117,6 +123,7 @@ export function analyzeSourceProfileCall(
       ? callback.type
       : explicitContract === "selected-argument"
         ? selectedSourceProfileArgumentType(
+            context.source.ast,
             parameterIndex,
             sourceCall,
             resolve,
@@ -127,7 +134,9 @@ export function analyzeSourceProfileCall(
         : sourceProfileParameterType(explicitContract, sourceReceiverType);
     const presentType = resolved === undefined
       ? undefined
-      : sourceProfilePresentArgumentType(parameter.acceptsOmission, resolved);
+      : explicitContract === undefined
+        ? sourceProfilePresentArgumentType(parameter.acceptsOmission, resolved)
+        : resolved;
     const target = parameter.rest === true && presentType !== undefined && explicitContract === undefined
       ? restCallableElementType(presentType)
       : presentType;
@@ -140,7 +149,9 @@ export function analyzeSourceProfileCall(
     }
     parameterTypes.push(target);
     const variadicCollectionType = parameter.rest
-      ? explicitContract === undefined
+      ? selected.row.restParameterName !== undefined
+        ? Object.freeze({ kind: "list" as const, element: target })
+        : explicitContract === undefined
         ? presentType
         : mojoNamedTargetType(
             "tsonic.mojo.js.JsArray",
@@ -164,6 +175,26 @@ export function analyzeSourceProfileCall(
         : {}),
     }));
   }
+  const dataConversions = sourceProfileDataArgumentConversions(
+    parameterContract ?? [], sourceCall, resolve, targetArguments, context,
+  );
+  if (dataConversions.kind === "unsupported") return dataConversions;
+  const parameterConversions = new Map(dataConversions.conversions);
+  if (callback?.conversion !== undefined) {
+    const selectedCallback = parameterBindingConversions(sourceCall, new Map([
+      [callback.parameterIndex, callback.conversion],
+    ]));
+    for (const [binding, conversion] of selectedCallback) {
+      if (parameterConversions.has(binding)) {
+        return {
+          kind: "unsupported",
+          code: "MOJO_SOURCE_PROFILE_ARGUMENT_CONVERSION_CONFLICT",
+          reason: "One exact source argument binding selected both data and callback conversions.",
+        };
+      }
+      parameterConversions.set(binding, conversion);
+    }
+  }
   const arguments_ = analyzeArguments(
     context.source.ast,
     sourceCall,
@@ -173,10 +204,9 @@ export function analyzeSourceProfileCall(
     context.expressionTypes,
     context.valueRefinements,
     context.lifecycle,
+    context.conversions,
     context.valueOwnership,
-    callback?.conversion === undefined
-      ? undefined
-      : new Map([[callback.parameterIndex, callback.conversion]]),
+    parameterConversions,
     undefined,
     context.projectRelationships,
     context.contextualizeCallableArgument,
@@ -213,6 +243,7 @@ export function analyzeSourceProfileCall(
         arguments: Object.freeze(targetArguments),
       });
   let receiver: Node | undefined;
+  let runtimeReceiverType = sourceReceiverType;
   let receiverConversion;
   if (selected.row.target.kind === "instance" || selected.row.target.receiver !== undefined) {
     if (sourceReceiver === undefined || sourceReceiverType === undefined) {
@@ -231,13 +262,18 @@ export function analyzeSourceProfileCall(
       };
     }
     receiver = sourceReceiver.expression;
-    const conversion = classifyMojoRefinedValueConversion(
+    runtimeReceiverType = selected.row.receiverContract === undefined ? sourceReceiverType :
+      sourceProfileParameterType(selected.row.receiverContract, sourceReceiverType);
+    if (runtimeReceiverType === undefined) return {
+      kind: "unsupported", code: "MOJO_SOURCE_PROFILE_RECEIVER_CONTRACT_INVALID",
+      reason: "The selected source-profile receiver contract has no exact native carrier.",
+    };
+    const conversion = context.conversions.classify(
       sourceReceiverType,
-      sourceReceiverType,
-      sourceCall.sourceReceiver === undefined
+      runtimeReceiverType,
+      mojoValueConversionNarrowing(sourceCall.sourceReceiver === undefined
         ? undefined
-        : context.valueRefinements.get(sourceCall.sourceReceiver.expression),
-      context.projectRelationships,
+        : context.valueRefinements.get(sourceCall.sourceReceiver.expression)),
     );
     if (conversion.kind === "unsupported") return {
       kind: "unsupported",
@@ -262,7 +298,7 @@ export function analyzeSourceProfileCall(
       kind: "provider",
       operation: Object.freeze({
         target,
-        ...(sourceReceiverType === undefined ? {} : { receiverType: sourceReceiverType }),
+        ...(runtimeReceiverType === undefined ? {} : { receiverType: runtimeReceiverType }),
         parameterTypes: Object.freeze(parameterTypes),
         resultType: result.type,
         genericArguments: Object.freeze(genericArguments),
@@ -333,7 +369,7 @@ function closeSourceProfileResult(
       conversion: Object.freeze({ kind: "identity" }),
     });
   }
-  if (row.resultContract?.kind === "receiver-array") {
+  if (row.resultContract?.kind === "receiver-iterator") {
     if (sourceReceiverType?.kind !== "target-named") {
       return {
         kind: "unsupported",
@@ -369,9 +405,9 @@ function closeSourceProfileResult(
     return Object.freeze({
       kind: "resolved",
       type: mojoNamedTargetType(
-        "tsonic.mojo.js.JsArray",
+        "tsonic.mojo.js.JsIterator",
         ["tsonic_js"],
-        "JsArray",
+        "JsIterator",
         [elementType],
       ),
       conversion: Object.freeze({ kind: "identity" }),
@@ -520,6 +556,10 @@ function sourceProfileParameterType(
   receiver: MojoTargetTypeRef | undefined,
 ): MojoTargetTypeRef | undefined {
   if (typeof contract !== "string") {
+    if (contract.kind === "optional") {
+      const value = sourceProfileParameterType(contract.value, receiver);
+      return value === undefined ? undefined : Object.freeze({ kind: "optional", value });
+    }
     if (contract.kind === "receiver") return receiver;
     const value = receiver?.kind === "optional" ? receiver.value : receiver;
     if (value?.kind !== "target-named") return undefined;
@@ -536,26 +576,11 @@ function sourceProfileParameterType(
         "JsString",
       );
     case "js-value":
+    case "js-data":
       return mojoDynamicTargetType("js");
     case "native-string":
       return mojoStringTargetType();
     case "selected-argument":
       return undefined;
   }
-}
-
-function selectedSourceProfileArgumentType(
-  parameterIndex: number,
-  sourceCall: ResolvedSourceCallInfo,
-  resolve: (type: Type, authoredTypeNode?: Node) => MojoTargetTypeRef | undefined,
-  expressionTypes: WeakMap<Node, MojoTargetTypeRef>,
-): MojoTargetTypeRef | undefined {
-  const bindings = sourceCall.sourceArgumentBindings.filter((binding) =>
-    binding.sourceParameterIndex === parameterIndex);
-  const argumentIndexes = [...new Set(bindings.map((binding) => binding.sourceArgumentIndex))];
-  if (bindings.length === 0 || argumentIndexes.length !== 1) return undefined;
-  const argument = sourceCall.sourceArguments[argumentIndexes[0]!];
-  const selectedTypes = bindings.map((binding) => binding.selectedArgumentType);
-  if (argument === undefined || selectedTypes.some((type) => type !== selectedTypes[0])) return undefined;
-  return expressionTypes.get(argument.expression) ?? resolve(selectedTypes[0]!);
 }

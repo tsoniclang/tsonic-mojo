@@ -1,5 +1,5 @@
 import type { Node } from "@tsonic/tsts";
-import type { MojoCallSelection } from "../../../analysis/program/call-model.js";
+import type { MojoCallSelection } from "../../../analysis/operations/call-model.js";
 import { closeMojoErrorType, mojoOperationErrorTypes } from "../../../target-model/types/error-domains.js";
 import { mojoTargetTypeEquals } from "../../../target-model/types/equality.js";
 import { mojoTargetTypeInContext } from "../program/context.js";
