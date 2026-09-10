@@ -151,7 +151,7 @@ function projectionEquals(left: MojoJsValueProjection, right: MojoJsValueProject
     case "array": return left.element === (right as typeof left).element && left.sourceCopy === (right as typeof left).sourceCopy;
     case "object": {
       const candidate = right as typeof left;
-      if (left.sourceCopy !== candidate.sourceCopy || left.identity !== candidate.identity ||
+      if (left.sourceCopy !== candidate.sourceCopy || left.identity !== candidate.identity || left.prototypeIdentity !== candidate.prototypeIdentity ||
         !entriesEqual(left.accessors, candidate.accessors, (accessor, other) =>
           accessor.sourceName === other.sourceName && accessor.declaration === other.declaration && accessor.name === other.name &&
           accessor.resultProjection === other.resultProjection && mojoTargetTypeEquals(accessor.resultType, other.resultType)) ||

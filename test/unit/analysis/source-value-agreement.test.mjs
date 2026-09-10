@@ -12,7 +12,7 @@ function graph(declaration) {
     root: "object",
     definitions: [{
       id: "object", kind: "object", sourceType: objectType, genericParameters: [],
-      identity: "project-direct", sourceCopy: "implicit",
+      identity: "project-direct", prototypeIdentity: "proof.Counter", sourceCopy: "implicit",
       accessors: [],
       fields: [{ sourceName: "count", projection: "number", access: { kind: "project", declaration, path: ["count"] } }],
       toJson: { declaration, name: "toJSON", passesPropertyKey: false, resultType: numberType, resultProjection: "number" },
@@ -40,6 +40,7 @@ test("source-value agreement detects each changed field, storage, identity and m
   for (const mutate of [
     (value) => { value.root = "number"; },
     (value) => { value.definitions[0].identity = "project-erased"; },
+    (value) => { value.definitions[0].prototypeIdentity = "proof.OtherCounter"; },
     (value) => { value.definitions[0].sourceCopy = "explicit"; },
     (value) => { value.definitions[0].fields[0].sourceName = "other"; },
     (value) => { value.definitions[0].fields[0].access.path = ["_base", "count"]; },

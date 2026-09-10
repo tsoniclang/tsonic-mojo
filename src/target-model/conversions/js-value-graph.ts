@@ -62,6 +62,7 @@ export type MojoJsValueProjection = ProjectionIdentity & (
     }
   | {
       readonly kind: "object";
+      readonly prototypeIdentity: string;
       readonly fields: readonly MojoJsValueField[];
       readonly accessors: readonly MojoJsValueAccessor[];
       readonly identity: "structural" | "project-direct" | "project-erased" | "project-polymorphic";

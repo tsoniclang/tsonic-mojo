@@ -95,7 +95,7 @@ export function selectMojoJsValueConversion(
         fields.push(Object.freeze({ sourceName: field.sourceName, projection,
           access: Object.freeze({ kind: "structural", index }) }));
       }
-      return finish({ id, sourceType: type, kind: "object", identity: "structural", sourceCopy, fields: Object.freeze(fields), accessors: Object.freeze([]) });
+      return finish({ id, sourceType: type, kind: "object", prototypeIdentity: "", identity: "structural", sourceCopy, fields: Object.freeze(fields), accessors: Object.freeze([]) });
     }
     const owner = context.projectRelationships.definitionForType(type);
     const project = owner === undefined ? undefined : context.classByTypeId.get(owner.id);
@@ -155,7 +155,7 @@ export function selectMojoJsValueConversion(
         if (resultProjection === undefined) return undefined;
         accessors.push(Object.freeze({ ...accessor, resultProjection }));
       }
-      return finish({ id, sourceType: type, kind: "object", sourceCopy, fields: Object.freeze([...fields.values()]),
+      return finish({ id, sourceType: type, kind: "object", prototypeIdentity: project.definition.id, sourceCopy, fields: Object.freeze([...fields.values()]),
         accessors: Object.freeze(accessors),
         identity: project.polymorphic ? "project-polymorphic" : project.stateStorage === "direct" ? "project-direct" : "project-erased",
         ...(selected.kind !== "resolved" ? {} : { toJson: Object.freeze({

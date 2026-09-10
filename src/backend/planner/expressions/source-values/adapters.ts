@@ -157,7 +157,11 @@ export function planMojoSourceView(
     Object.freeze({ kind: "variable", name: "environment", initializer: environment }),
     returned(Object.freeze({ kind: "call", callee: mojoModuleMemberExpression(context, ["tsonic_js"], projection.kind === "array"
       ? "js_value_from_source_array" : "js_value_from_source_object"), arguments: Object.freeze([
-      Object.freeze({ name: "identity", value: identity }), ...callbacks.map((callback) => Object.freeze({ name: callback.name,
+      Object.freeze({ name: "identity", value: identity }),
+      ...(projection.kind === "array" ? [] : [Object.freeze({ name: "prototype_identity", value: Object.freeze<MojoExpression>({
+        kind: "string-literal", value: projection.prototypeIdentity,
+      }) })]),
+      ...callbacks.map((callback) => Object.freeze({ name: callback.name,
         value: construct(callback.type, [path("environment"), member(adapterExpression, callback.name)]),
       })),
     ]) })),
