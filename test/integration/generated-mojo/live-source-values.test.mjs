@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
+import { projectArtifactTexts as artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
 
 function generated(source) {
   const result = compileMojo({ surfaces: ["js"], files: { "index.ts": source } });
@@ -94,7 +94,7 @@ export function main(): void {
 }
 `);
   assert.match(output, /js_value_from_source_object\(/u);
-  assert.match(output, /SourceValueView/u);
+  assert.match(output, /struct _source_value_view\b/u);
   assert.doesNotMatch(output, /runtime_reflect|type_of_name/u);
 });
 

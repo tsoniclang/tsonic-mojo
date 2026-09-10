@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
+import { projectArtifactTexts as artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
 
 test("locale Date methods select ICU-backed operations and closed option data", () => {
   const result = compileMojo({ surfaces: ["js"], files: { "index.ts": `

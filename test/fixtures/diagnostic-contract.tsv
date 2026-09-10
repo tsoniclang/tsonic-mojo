@@ -1,6 +1,28 @@
 # contractVersion=1
 # baselineProductionCount=618
 code	ownerLayer	classification	auditDisposition	reachableSourceProof	nativeProof	mutationProof	replacementCode
+MOJO_SOURCE_VALUE_METHOD_UNCLOSED	analysis	internal-invariant	reviewed-other	-	-	-	-
+MOJO_SOURCE_VALUE_ERROR_DOMAIN_UNSUPPORTED	analysis	target-gap	close-capability	-	-	-	-
+MOJO_SOURCE_VALUE_DISPATCH_UNCLOSED	analysis	target-gap	close-capability	-	-	-	-
+MOJO_ITERATOR_RESULT_PROPERTY_IDENTITY_UNPROVEN	analysis	exact-rejection	retain-exact-guard	-	-	-	-
+MOJO_ITERATOR_RESULT_UNION_LOCATION_UNSUPPORTED	analysis	target-gap	close-capability	-	-	-	-
+MOJO_ITERATOR_RESULT_PROPERTY_TYPE_UNPROVEN	analysis	target-gap	close-capability	-	-	-	-
+MOJO_ITERATOR_RESULT_PROPERTY_CONVERSION_UNPROVEN	analysis	target-gap	close-capability	-	-	-	-
+MOJO_SOURCE_PROFILE_ARGUMENT_CONVERSION_CONFLICT	analysis	internal-invariant	reviewed-other	-	-	-	-
+MOJO_SOURCE_PROFILE_RECEIVER_CONTRACT_INVALID	analysis	internal-invariant	reviewed-other	-	-	-	-
+MOJO_SOURCE_PROFILE_DATA_ARGUMENT_NOT_CLOSED	analysis	target-gap	close-capability	-	-	-	-
+MOJO_SOURCE_PROFILE_DATA_SPREAD_NOT_CLOSED	analysis	target-gap	close-capability	-	-	-	-
+MOJO_JSON_STRINGIFY_PROPERTY_LIST_UNCLOSED	analysis	target-gap	close-capability	-	-	-	-
+MOJO_SOURCE_MODULE_ARGUMENT_NOT_STATIC	analysis	exact-rejection	retain-exact-guard	-	-	-	-
+MOJO_SOURCE_MODULE_ARGUMENT_NOT_PROJECT_SOURCE	analysis	exact-rejection	retain-exact-guard	-	-	-	-
+MOJO_SOURCE_MODULE_OUTPUT_IDENTITY_MISSING	analysis	internal-invariant	reviewed-other	-	-	-	-
+MOJO_SOURCE_MODULE_CONSTRUCTION_REQUIRES_BINARY	analysis	exact-rejection	retain-exact-guard	-	-	-	-
+MOJO_SOURCE_MODULE_OUTPUT_IDENTITY_CONFLICT	analysis	internal-invariant	reviewed-other	-	-	-	-
+MOJO_SOURCE_MODULE_BOOTSTRAP_CONFLICT	analysis	exact-rejection	retain-exact-guard	-	-	-	-
+MOJO_SOURCE_MODULE_ENTRY_ROOT_MISSING	analysis	internal-invariant	reviewed-other	-	-	-	-
+MOJO_SOURCE_MODULE_ENTRY_COMPONENT_MISSING	analysis	internal-invariant	reviewed-other	-	-	-	-
+MOJO_PROVIDER_UNION_PROPERTY_WRITE_UNSUPPORTED	planning	target-gap	eliminate-late-planning	-	-	-	-
+MOJO_SOURCE_MODULE_INITIALIZER_MISSING	planning	internal-invariant	reviewed-other	-	-	-	-
 MOJO_BITWISE_OPERANDS_NOT_CLOSED	analysis	exact-rejection	retain-exact-guard	test/integration/generated-mojo/numeric-operators.test.mjs	../mojo-pudding/packages/language/runner.mojo	-	-
 MOJO_ANALYZED_MODULE_MISSING	planning	internal-invariant	reviewed-other	-	-	-	-
 MOJO_ARRAY_LITERAL_ELEMENT_CONVERSION_UNPROVEN	analysis	internal-invariant	reviewed-other	-	-	-	-
@@ -200,7 +222,6 @@ MOJO_JSON_STRINGIFY_SPACE_CONVERSION_UNPROVEN	analysis	internal-invariant	review
 MOJO_JSON_STRINGIFY_SPACE_UNSUPPORTED	analysis	target-gap	close-capability	-	-	-	-
 MOJO_JSON_STRINGIFY_VALUE_NOT_CLOSED	analysis	internal-invariant	reviewed-other	-	-	-	-
 MOJO_JSON_STRINGIFY_VALUE_UNSUPPORTED	analysis	target-gap	close-capability	-	-	-	-
-MOJO_JSON_TO_JSON_DISPATCH_NOT_SEALED	planning	internal-invariant	reviewed-other	-	-	-	-
 MOJO_JS_ARRAY_DELETE_INDEX_CONVERSION_UNPROVEN	analysis	internal-invariant	reviewed-other	-	-	-	-
 MOJO_JS_PROMISE_AWAIT_RUNTIME_MISSING	analysis	runtime-gap	reviewed-other	test/integration/generated-mojo/await-boundary.test.mjs	-	-	-
 MOJO_JS_READONLY_ARRAY_ELEMENT_WRITE_UNSUPPORTED	analysis	exact-rejection	retain-exact-guard	-	-	-	-

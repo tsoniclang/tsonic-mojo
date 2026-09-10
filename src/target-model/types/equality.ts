@@ -5,18 +5,7 @@ import type {
   MojoTargetTypeRef,
 } from "./model.js";
 import { mojoOriginEquals } from "../origins/identity.js";
-import {
-  fixedMojoLifecycleContract,
-  mojoImplicitHeapLifecycleCapabilities,
-} from "../lifecycle/contracts.js";
-
-const nativeErrorType: MojoTargetTypeRef = Object.freeze({
-  kind: "target-named",
-  id: "mojo.builtin.Error",
-  modulePath: Object.freeze([]),
-  name: "Error",
-  lifecycle: fixedMojoLifecycleContract(mojoImplicitHeapLifecycleCapabilities),
-});
+import { mojoNativeErrorType } from "./error-carriers.js";
 
 export function mojoTargetTypeEquals(
   left: MojoTargetTypeRef,
@@ -106,7 +95,7 @@ function callableErrorTypesEqual(
   right: MojoTargetTypeRef | undefined,
 ): boolean {
   if (!raises) return left === undefined && right === undefined;
-  return mojoTargetTypeEquals(left ?? nativeErrorType, right ?? nativeErrorType);
+  return mojoTargetTypeEquals(left ?? mojoNativeErrorType(), right ?? mojoNativeErrorType());
 }
 
 function genericParametersEqual(

@@ -419,6 +419,7 @@ export function analyzeMojoTypeParameters(
 ): readonly MojoAnalyzedTypeParameter[] | undefined {
   const { ast } = input.source;
   const parameters: MojoAnalyzedTypeParameter[] = [];
+  if (ast.is.IsTypeLiteralNode(input.declaration)) return Object.freeze(parameters);
   for (const parameter of ast.typeParameters(input.declaration)) {
     const nameNode = parameter === undefined ? undefined : ast.name(parameter);
     if (parameter === undefined || !ast.is.IsTypeParameterDeclaration(parameter) ||

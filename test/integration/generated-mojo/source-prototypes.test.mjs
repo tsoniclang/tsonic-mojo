@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
+import { projectArtifactTexts as artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
 
 test("closed source views retain source prototypes rather than specialized native type names", () => {
   const result = compileMojo({ surfaces: ["js"], files: { "index.ts": `
@@ -16,7 +16,7 @@ export function main(): void {
 ` } });
   assert.deepEqual(result.diagnostics, []);
   const output = artifactTexts(result).map(({ text }) => text).join("\n");
-  const identities = [...output.matchAll(/prototype_identity="([^"]*)"/gu)].map((match) => match[1]);
+  const identities = [...output.matchAll(/prototype_identity=\(?\s*"([^"]*)"/gu)].map((match) => match[1]);
   assert.equal(identities.filter((identity) => identity === "").length, 1);
   const declared = identities.filter(Boolean);
   assert.equal(declared.length, 3);

@@ -262,6 +262,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     }
   }
   const drafts = collectMojoDeclarationDrafts({
+    projectTypes,
     sourceFiles,
     ast,
     globalNameByDeclaration,

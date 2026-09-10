@@ -52,7 +52,11 @@ export function addMojoFirstClassFunctionBindings(
   conversions: import("../../policy/conversions/selection.js").MojoConversionIndex,
   relationships: import("../../target-model/types/project.js").MojoProjectTypeRelationships,
   diagnostics: TargetDiagnostic[],
-): readonly MojoAnalyzedModule[] {
+): {
+  readonly modules: readonly MojoAnalyzedModule[];
+  readonly referenceTypes: ReadonlyMap<Node, Extract<MojoTargetTypeRef, { readonly kind: "callable" }>>;
+} {
+  const referenceTypes = new Map<Node, Extract<MojoTargetTypeRef, { readonly kind: "callable" }>>();
   const contractGroups = new Map<Node, {
     readonly implementation: MojoAnalyzedFunction;
     readonly contracts: import("./model.js").MojoAnalyzedCallableSignature[];
@@ -139,6 +143,7 @@ export function addMojoFirstClassFunctionBindings(
       continue;
     }
     expressionTypes.set(use.reference, candidate.type);
+    referenceTypes.set(use.reference, candidate.type);
     bindingTypes.set(use.reference, candidate.type);
     const ownerBindings = bindingsBySourceFile.get(group.implementation.sourceFile) ?? new Map();
     const existing = ownerBindings.get(candidate.target.declaration);
@@ -153,7 +158,7 @@ export function addMojoFirstClassFunctionBindings(
     }
     bindingsBySourceFile.set(group.implementation.sourceFile, ownerBindings);
   }
-  return Object.freeze(modules.map((module) => {
+  const finalizedModules = Object.freeze(modules.map((module) => {
     const selectedFunctions = [...(bindingsBySourceFile.get(module.sourceFile)?.values() ?? [])];
     if (selectedFunctions.length === 0) return module;
     const occupiedNames = new Set(module.bindings.map((binding) => binding.name));
@@ -192,6 +197,7 @@ export function addMojoFirstClassFunctionBindings(
       runtimeInitializationRequired: true,
     });
   }));
+  return Object.freeze({ modules: finalizedModules, referenceTypes });
 }
 
 function functionValueTarget(

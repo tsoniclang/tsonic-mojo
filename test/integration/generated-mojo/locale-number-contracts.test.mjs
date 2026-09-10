@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
+import { projectArtifactTexts as artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
 
 test("Number locale presentation retains exact selected receiver and closed options", () => {
   const result = compileMojo({ surfaces: ["js"], files: { "index.ts": `

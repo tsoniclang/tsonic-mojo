@@ -168,6 +168,13 @@ export function recordMojoExecutableRegionConversionUses(
     if (ast.is.IsCallExpression(expression) || ast.is.IsNewExpression(expression)) {
       visitExpression(Node_Expression(ast, expression));
       const selection = callSelections.get(expression);
+      if (selection?.kind === "project" || selection?.kind === "provider" || selection?.kind === "callable") {
+        for (const argument of selection.arguments) {
+          if (argument.sourceForm === "spread-element" && argument.sourceContainerType !== undefined) {
+            record(argument.expression, argument.sourceContainerType);
+          }
+        }
+      }
       for (const argument of ast.arguments(expression)) {
         if (argument === undefined) continue;
         if (selection?.kind !== "project" && selection?.kind !== "provider" &&
@@ -203,6 +210,8 @@ export function recordMojoExecutableRegionConversionUses(
         const element = left === undefined ? undefined : elementSelections.get(left);
         const leftType = property?.kind === "provider" || property?.kind === "provider-static"
           ? property.targetWriteType
+          : property?.kind === "project-accessor"
+            ? property.writeType
           : element?.kind === "provider"
             ? element.targetWriteType
             : element?.writeType ??

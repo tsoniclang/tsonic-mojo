@@ -1,6 +1,5 @@
 import type { Node, SourceFile } from "@tsonic/tsts";
 import { Node_Initializer } from "@tsonic/target-api/source";
-import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
@@ -332,7 +331,7 @@ export function finalizeMojoProgramEffects(
     if (argument.conversion.kind === "js-callback-truthiness") {
       conversion = argument.conversion;
     } else {
-      const classified = classifyMojoValueConversion(
+      const classified = conversions.classify(
         callable.callableType,
         argument.parameterType,
       );
@@ -392,7 +391,7 @@ export function finalizeMojoProgramEffects(
     });
     const classified = argument.conversion.kind === "js-callback-truthiness"
       ? undefined
-      : classifyMojoValueConversion(argument.sourceType, targetType);
+      : conversions.classify(argument.sourceType, targetType);
     const conversion = argument.conversion.kind === "js-callback-truthiness"
       ? Object.freeze({
           ...argument.conversion,

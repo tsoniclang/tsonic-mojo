@@ -13,6 +13,7 @@ import type {
   MojoProjectTypeKind,
 } from "../../target-model/types/project.js";
 import { classifyMojoSourceGenericParameter } from "../../source/semantics/generic-parameters.js";
+import { walkSourceTree } from "../../source/syntax/traversal.js";
 
 export function createMojoProjectTypeCatalog(
   source: TargetSourceProgram,
@@ -27,13 +28,26 @@ export function createMojoProjectTypeCatalog(
   const { ast } = source;
 
   for (const sourceFile of sourceFiles) {
-    for (const statement of ast.statements(sourceFile)) {
+    const declarations = ast.statements(sourceFile).filter((node): node is Node => node !== undefined);
+    walkSourceTree(sourceFile, ast, (node) => {
+      if (!ast.is.IsTypeLiteralNode(node)) return;
+      for (let owner = ast.parent(node); owner !== undefined; owner = ast.parent(owner)) {
+        if ((ast.is.IsFunctionDeclaration(owner) || ast.is.IsMethodDeclaration(owner) ||
+          ast.is.IsFunctionExpression(owner) || ast.is.IsArrowFunction(owner) ||
+          ast.is.IsClassDeclaration(owner) || ast.is.IsInterfaceDeclaration(owner) ||
+          ast.is.IsTypeAliasDeclaration(owner) || ast.is.IsMethodSignatureDeclaration(owner)) &&
+          ast.typeParameters(owner).length !== 0) return;
+      }
+      declarations.push(node);
+    });
+    for (const statement of declarations) {
       if (statement === undefined) continue;
       const kind = projectTypeKind(statement, ast);
       if (kind === undefined) continue;
       const nameNode = ast.name(statement);
       const identity = sourceNodeIdentity(ast, statement);
-      if (nameNode === undefined || !ast.is.IsIdentifier(nameNode) || identity === undefined ||
+      const anonymous = ast.is.IsTypeLiteralNode(statement);
+      if ((!anonymous && (nameNode === undefined || !ast.is.IsIdentifier(nameNode))) || identity === undefined ||
         !source.navigation.isProjectDeclaration(statement)) {
         issues.push(Object.freeze({
           node: statement,
@@ -42,7 +56,7 @@ export function createMojoProjectTypeCatalog(
         }));
         continue;
       }
-      const rawParameters = kind === "enum" ? [] : ast.typeParameters(statement);
+      const rawParameters = kind === "enum" || anonymous ? [] : ast.typeParameters(statement);
       if (rawParameters.some((parameter) => parameter === undefined)) {
         issues.push(Object.freeze({
           node: statement,
@@ -82,7 +96,7 @@ export function createMojoProjectTypeCatalog(
         typeParameters.push(Object.freeze({ ...classified.parameter, identity }));
       }
       if (parameterFailure) continue;
-      const sourceName = ast.text(nameNode);
+      const sourceName = anonymous ? "AnonymousRecord" : ast.text(nameNode!);
       const definition = Object.freeze({
         id: `tsonic.mojo.project:${identity}`,
         declaration: statement,
@@ -173,6 +187,7 @@ function projectTypeKind(
 ): MojoProjectTypeKind | undefined {
   if (ast.is.IsClassDeclaration(declaration)) return "class";
   if (ast.is.IsInterfaceDeclaration(declaration)) return "interface";
+  if (ast.is.IsTypeLiteralNode(declaration)) return "interface";
   if (ast.is.IsEnumDeclaration(declaration)) return "enum";
   return undefined;
 }

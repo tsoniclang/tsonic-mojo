@@ -17,7 +17,9 @@ export function prefix(): number {
 export function contextual(): number {
   const selected: (value: number, label: string) => number = (value): number => value + 1;
   return selected(8, "ignored");
-}` } });
+}
+export function main(): void {}
+` } });
   assert.deepEqual(result.diagnostics, []);
   const emitted = artifactTexts(result).map((entry) => entry.text).join("\n");
   assert.match(emitted, /adapt_(?:raising_)?callable_arguments/);

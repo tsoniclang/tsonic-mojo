@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
+import { projectArtifactTexts as artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
 
 test("Intl numbers retain exact input widths and selected part identities", () => {
   const result = compileMojo({ surfaces: ["js"], files: { "index.ts": `
@@ -18,6 +18,7 @@ export function render(signed: int64, unsigned: uint64): string {
   first.value = "changed";
   return output;
 }
+export function main(): void {}
 ` } });
   assert.deepEqual(result.diagnostics, []);
   const output = artifactTexts(result).filter(({ path }) => path.endsWith(".mojo")).map(({ text }) => text).join("\n");
@@ -30,6 +31,7 @@ test("a local NumberFormat declaration is independent of Intl", () => {
   const result = compileMojo({ surfaces: ["js"], files: { "index.ts": `
 class NumberFormat { format(value: number): string { return value.toString(); } }
 export function render(): string { return new NumberFormat().format(9); }
+export function main(): void {}
 ` } });
   assert.deepEqual(result.diagnostics, []);
   assert.doesNotMatch(artifactTexts(result).map(({ text }) => text).join("\n"), /intl_number_format_new/u);

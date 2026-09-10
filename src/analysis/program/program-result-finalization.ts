@@ -17,6 +17,7 @@ import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import { analyzeMojoTemplateExpression } from "../operations/template-expressions.js";
 import { analyzeMojoAwaitExpressions } from "../expressions/await.js";
 import { closeMojoErrorType } from "../resources/effects.js";
+import { finalizeMojoFirstClassCallArguments } from "./first-class-call-arguments.js";
 import { validateMojoExecutableRegionSyntax } from "../control-flow/syntax-validation.js";
 import { createMojoProgramQueries } from "./queries.js";
 import { collectMojoSourceModuleConstructions } from "../source-modules/construction.js";
@@ -202,11 +203,13 @@ export function finalizeMojoProgramResult(
     diagnostics,
   );
   const effectFinalizedModules = finalizeMojoModuleEffects(
-    firstClassFinalizedModules,
+    firstClassFinalizedModules.modules,
     modules,
     moduleRegionFacts,
     errorTypesByDeclaration,
   );
+  finalizeMojoFirstClassCallArguments(firstClassFinalizedModules.referenceTypes,
+    environment.callNodes, callSelections, conversions, diagnostics);
   const finalizedModules = finalizeMojoPublicModuleBindingAbis(
     effectFinalizedModules,
     modules,
