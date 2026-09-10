@@ -171,6 +171,13 @@ export function analyzeMojoProjectProperty(
         reason: `Selected project accessor '${field.sourceName}' does not close its exact ${source.accessMode} contract.`,
       };
     }
+    if (source.accessMode === "read-write" && !mojoTargetTypeEquals(readType!, writeType!)) {
+      return {
+        kind: "unsupported",
+        code: "MOJO_PROJECT_ACCESSOR_COMPOUND_WRITE_UNSUPPORTED",
+        reason: "A compound project accessor write requires one identical exact read and write carrier.",
+      };
+    }
     return {
       kind: "resolved",
       expressionType: optionalAccessResult(readType ?? writeType!, source.optionalChain),

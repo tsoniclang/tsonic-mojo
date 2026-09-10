@@ -138,13 +138,7 @@ export function planMojoProjectPropertyWrite(
     }
     if (readName === undefined || readType === undefined ||
       !mojoTargetTypeEquals(readType, writeType)) {
-      appendMojoPlanningDiagnostic(
-        context,
-        "MOJO_PROJECT_ACCESSOR_COMPOUND_WRITE_UNSUPPORTED",
-        "A compound project accessor write requires one identical exact read and write carrier.",
-        node,
-      );
-      return undefined;
+      throw new Error("A sealed compound project property lost its identical read and write carriers.");
     }
     const current: MojoExpression = Object.freeze({
       kind: "method-call",

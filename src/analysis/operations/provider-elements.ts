@@ -6,6 +6,7 @@ import { providerOwnerMatches } from "../../policy/types/resolution.js";
 import type { MojoSelectedProviderOperation } from "../../target-model/operations/selection.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import { mojoProviderCompoundWriteIssue } from "../../policy/operations/mutation-admission.js";
 import { classifyMojoRefinedValueConversion } from "../refinements/value.js";
 import { classifyMojoSourceResultConversion, mojoConvertedValueType } from "./call-results.js";
 import type { MojoElementAnalysis, MojoElementAnalysisContext } from "./elements.js";
@@ -100,6 +101,8 @@ export function analyzeProviderElement(
   if (writeValueConversion?.kind === "unsupported") {
     return unsupported("MOJO_PROVIDER_ELEMENT_WRITE_CONVERSION_UNPROVEN", writeValueConversion.reason);
   }
+  const compoundIssue = mojoProviderCompoundWriteIssue(accessMode, sourceWrite, writeType);
+  if (compoundIssue !== undefined) return compoundIssue;
   let expressionType: MojoTargetTypeRef;
   let readResultConversion;
   if (readOperation !== undefined) {

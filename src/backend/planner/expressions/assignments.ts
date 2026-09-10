@@ -94,13 +94,7 @@ export function planMojoAssignment(
   }
   if (operator !== "=" && sourceWriteType !== undefined && targetWriteType !== undefined &&
     !mojoTargetTypeEquals(sourceWriteType, targetWriteType)) {
-    appendMojoPlanningDiagnostic(
-      context,
-      "MOJO_PROVIDER_COMPOUND_WRITE_CONVERSION_UNSUPPORTED",
-      "Provider compound assignment requires an identity source-to-target write conversion.",
-      leftNode,
-    );
-    return undefined;
+    throw new Error("A sealed provider compound write lost its identity source-to-target conversion.");
   }
   const numeric = context.program.queries.intrinsicExpressionSelection(node);
   const rightType = numeric?.kind === "numeric"
@@ -182,13 +176,7 @@ export function planMojoAssignment(
     if (operator !== "=") {
       if (leftType === undefined || targetType === undefined ||
         !mojoTargetTypeEquals(leftType, targetType)) {
-        appendMojoPlanningDiagnostic(
-          context,
-          "MOJO_PROVIDER_STATIC_COMPOUND_ASSIGNMENT_UNSUPPORTED",
-          "Static provider compound assignment requires identical closed read and write carriers.",
-          leftNode,
-        );
-        return undefined;
+        throw new Error("A sealed static provider compound write lost its identical read and write carriers.");
       }
       const current = planMojoProperty(leftNode, context, planValue, "read");
       if (current === undefined) return undefined;
