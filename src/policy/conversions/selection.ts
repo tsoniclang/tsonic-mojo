@@ -11,6 +11,7 @@ import type { MojoJsValueGraph, MojoSourceValueProtocol } from "../../target-mod
 import { mojoJsValueGraphEquals } from "../../target-model/conversions/equality.js";
 import type { MojoSourceValueFunction } from "../../target-model/conversions/source-value-function.js";
 import { classifyTruthiness } from "./truthiness.js";
+import { classifyCallableAdaptation } from "./callable-adaptation.js";
 import type { MojoCopyCapability } from "../../target-model/lifecycle/model.js";
 
 export type MojoConversionClassification =
@@ -225,7 +226,10 @@ export function classifyMojoValueConversion(
       conversion: Object.freeze({ kind: "project-view", sourceType: actual, targetType: expected }),
     };
   }
-  const callable = classifyCallableAdaptation(actual, expected, projectRelationships, parameterCopy);
+  const callable = classifyCallableAdaptation(actual, expected, (source, target) => {
+    const result = classifyMojoValueConversion(source, target, undefined, projectRelationships, undefined, undefined, parameterCopy);
+    return result.kind === "resolved" ? result.conversion : undefined;
+  }, parameterCopy);
   if (callable !== undefined) {
     return {
       kind: "resolved",
@@ -494,103 +498,6 @@ function isIntegralPrimitive(
   return type.kind === "source-primitive" && type.name !== "bool" &&
     type.name !== "char" && type.name !== "float16" &&
     type.name !== "float32" && type.name !== "float64";
-}
-
-function classifyCallableAdaptation(
-  actual: MojoTargetTypeRef,
-  expected: MojoTargetTypeRef,
-  projectRelationships?: MojoProjectTypeRelationships,
-  parameterCopy?: MojoParameterCopySelector,
-): Extract<MojoValueConversion, { readonly kind: "callable-adapt" }> | undefined {
-  if (actual.kind !== "callable" || expected.kind !== "callable") return undefined;
-  if (actual.parameters.length > expected.parameters.length) return undefined;
-  const prefix = actual.parameters.length < expected.parameters.length;
-  const argumentCopies: ("implicit" | "explicit")[] = [];
-  if (prefix) {
-    if ([...actual.parameters, ...expected.parameters].some((parameter) =>
-      parameter.convention !== "imm" || parameter.passing !== "plain" ||
-      parameter.omissionKind === "rest")) return undefined;
-    for (const parameter of actual.parameters) {
-      const copy = parameterCopy?.(parameter.type);
-      if (copy !== "implicit" && copy !== "explicit") return undefined;
-      argumentCopies.push(copy);
-    }
-  }
-  const result = mojoTargetTypeEquals(actual.result, expected.result)
-    ? "preserve" as const
-    : actual.result.kind === "never"
-      ? "never" as const
-      : undefined;
-  if (result === undefined) return undefined;
-  let error: "preserve" | "widen" | "erase";
-  let errorConversion: MojoValueConversion | undefined;
-  const actualErrorType = actual.raises
-    ? actual.errorType ?? mojoNativeErrorType
-    : undefined;
-  const expectedErrorType = expected.raises
-    ? expected.errorType ?? mojoNativeErrorType
-    : undefined;
-  if (actual.raises === expected.raises && (!actual.raises || mojoTargetTypeEquals(
-    actualErrorType!,
-    expectedErrorType!,
-  ))) {
-    error = "preserve";
-  } else if (!actual.raises && expected.raises) {
-    error = "widen";
-  } else if (actual.raises && expected.raises &&
-    !isNativeErrorType(actual.errorType) && isNativeErrorType(expected.errorType)) {
-    error = "erase";
-  } else if (actualErrorType !== undefined && expectedErrorType !== undefined) {
-    const classifiedError = classifyMojoValueConversion(
-      actualErrorType,
-      expectedErrorType,
-      undefined,
-      projectRelationships,
-      undefined,
-      undefined,
-      parameterCopy,
-    );
-    if (classifiedError.kind === "unsupported") return undefined;
-    error = "widen";
-    errorConversion = classifiedError.conversion;
-  } else {
-    return undefined;
-  }
-  const { errorType: _actualErrorType, ...actualBase } = actual;
-  const normalized = Object.freeze({
-    ...actualBase,
-    result: expected.result,
-    raises: expected.raises,
-    ...(expected.errorType === undefined ? {} : { errorType: expected.errorType }),
-  });
-  if (!mojoTargetTypeEquals(
-    Object.freeze({ ...normalized, parameters: actual.parameters }),
-    Object.freeze({ ...expected, parameters: expected.parameters.slice(0, actual.parameters.length) }),
-  )) return undefined;
-  return Object.freeze({
-    kind: "callable-adapt",
-    sourceType: actual,
-    targetType: expected,
-    parameters: prefix ? Object.freeze({ kind: "prefix", copies: Object.freeze(argumentCopies) }) : Object.freeze({ kind: "identity" }),
-    result,
-    error,
-    ...(actualErrorType === undefined ? {} : { sourceErrorType: actualErrorType }),
-    ...(errorConversion === undefined
-      ? {}
-      : { errorConversion }),
-  });
-}
-
-const mojoNativeErrorType: MojoTargetTypeRef = Object.freeze({
-  kind: "target-named",
-  id: "mojo.builtin.Error",
-  modulePath: Object.freeze([]),
-  name: "Error",
-});
-
-function isNativeErrorType(type: MojoTargetTypeRef | undefined): boolean {
-  return type === undefined || (type.kind === "target-named" &&
-    type.id === "mojo.builtin.Error");
 }
 
 function isTriviallyCopyableMojoType(type: MojoTargetTypeRef): boolean {

@@ -154,6 +154,7 @@ function interfaceTypes(interface_: MojoAnalyzedInterface): readonly MojoTargetT
       signature.keyType,
       signature.valueType,
       signature.ownerType,
+      Object.freeze({ kind: "dictionary" as const, key: signature.keyType, value: signature.valueType }),
     ]),
     ...interface_.methods.flatMap(callableTypes),
     ...interface_.accessors.flatMap(callableTypes),
