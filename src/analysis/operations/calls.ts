@@ -246,7 +246,7 @@ export function analyzeMojoCall(
       reason: target.reason,
     };
   }
-  if (target.kind !== "function-call" && target.kind !== "instance-call") {
+  if (target.kind !== "function-call" && target.kind !== "instance-call" && target.kind !== "value-predicate") {
     return {
       kind: "unsupported",
       code: "MOJO_PROVIDER_CALL_FORM_INVALID",

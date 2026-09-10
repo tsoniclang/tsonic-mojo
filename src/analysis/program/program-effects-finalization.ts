@@ -518,6 +518,18 @@ export function finalizeMojoProgramEffects(
   const evaluationErrorTypeCache = new WeakMap<Node, readonly MojoTargetTypeRef[]>();
   for (const sourceFile of sourceFiles) {
     walkSourceTree(sourceFile, ast, (node): void => {
+      const dependency = expressionTypes.get(node)?.kind !== "callable" ? undefined
+        : resolveMojoCallableExpressionDependency(
+          node, source, callableExpressionSelections, callableExpressionByDeclaration,
+        );
+      const callable = dependency === undefined ? undefined : callableExpressionSelections.get(dependency);
+      if (callable !== undefined && expressionTypes.get(node)?.kind === "callable") {
+        const actual = callableValueType(node, callable.callableType);
+        expressionTypes.set(node, actual);
+        for (const reason of conversions.finalizeCallableSource(node, actual)) {
+          diagnostics.push(diagnostic("MOJO_VALUE_CONVERSION_UNPROVEN", reason, node));
+        }
+      }
       const errorType = closeMojoErrorType(collectMojoEvaluationErrorTypes(
         node,
         errorRegionIndexes,

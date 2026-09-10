@@ -13,6 +13,7 @@ import {
   convertMojoValue,
   finishOptionalMojoOperation,
   prepareMojoReceiver,
+  orderMojoValues,
   unsupportedOptionalCall,
 } from "./support.js";
 import { planSelectedArguments } from "./call-support.js";
@@ -27,6 +28,7 @@ import { mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { applyArgumentDisposition, planCallableArgumentSlot } from "./call-arguments.js";
 import { mojoTargetTypeEquals } from "../../../target-model/types/equality.js";
+import { planMojoValuePredicate } from "./value-predicate.js";
 import {
   planMojoJsonStringify,
   planMojoObjectAssign,
@@ -343,6 +345,19 @@ export function planMojoCall(
       : finishOptionalMojoOperation(node, callee, converted, context);
   }
   const target = selection.operation.target;
+  if (target.kind === "value-predicate") {
+    const argument = selection.arguments[0];
+    if (selection.optionalChain || selection.arguments.length !== 1 || argument === undefined) {
+      throw new Error("A sealed native value predicate has an invalid call shape.");
+    }
+    const type = mojoTargetTypeInContext(argument.sourceType, context);
+    const predicate = context.program.sourceCallableSpecializations.valuePredicate(node, type);
+    if (predicate === undefined) throw new Error("A native value predicate has no sealed carrier selection.");
+    const value = planSelectedArguments(selection.arguments, context, planValue)?.[0]?.plan;
+    if (value === undefined) return undefined;
+    const ordered = orderMojoValues([{ plan: value, type, role: "predicate_value", stabilize: true }], context);
+    return invocation.convertResult(withMojoValue(ordered.before, planMojoValuePredicate(ordered.values[0]!, predicate, context)));
+  }
   const genericArguments = mojoTargetGenericArgumentsInContext(selection.operation.genericArguments, context);
   for (const argument of genericArguments) {
     if (argument.kind === "type") registerMojoTypeImports(argument.type, context);

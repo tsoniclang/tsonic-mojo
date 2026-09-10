@@ -225,14 +225,26 @@ export function planMojoProviderRecordLiteral(
     })),
     context,
   );
-  return withMojoValue(ordered.before, Object.freeze({
-    kind: "construct",
-    type: selection.targetType,
-    arguments: Object.freeze(selection.fields.map((field, index) => Object.freeze({
-      name: field.targetName,
-      value: ordered.values[index]!,
-    }))),
-  }));
+  const name = allocateMojoSyntheticName(context, "provider_record");
+  const record: MojoExpression = Object.freeze({ kind: "path", path: name });
+  return withMojoValue(Object.freeze([
+    ...ordered.before,
+    Object.freeze({
+      kind: "variable" as const,
+      name,
+      initializer: Object.freeze({
+        kind: "construct" as const,
+        type: selection.targetType,
+        arguments: Object.freeze([]),
+      }),
+    }),
+    ...selection.fields.map((field, index): MojoStatement => Object.freeze({
+      kind: "assignment",
+      operator: "=",
+      left: Object.freeze({ kind: "member", receiver: record, name: field.targetName }),
+      right: ordered.values[index]!,
+    })),
+  ]), record);
 }
 
 export function planMojoStructuralObjectLiteral(

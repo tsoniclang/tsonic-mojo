@@ -430,6 +430,12 @@ function closeSourceProfileResult(
       ? { kind: "unsupported", code: "MOJO_SOURCE_PROFILE_RUNTIME_RESULT_CONVERSION_UNPROVEN", reason: "A cloned source value requires a closed scalar or JsValue result; cloning cannot restore source prototypes or provider branding." }
       : { kind: "resolved", type: runtimeType, conversion };
   }
+  if (row.runtimeResultContract?.kind === "exact") {
+    const type = row.runtimeResultContract.type;
+    const result = closeResultConversion(type, sourceCall.sourceResultType, resolve, context.projectRelationships);
+    return result.kind === "unsupported" ? result :
+      Object.freeze({ kind: "resolved", type, conversion: result.conversion });
+  }
   if (row.runtimeResultContract?.kind === "native-error-result") {
     const runtimeType = mojoRegExpNativeResultType(selectedResult);
     return Object.freeze({

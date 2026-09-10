@@ -41,7 +41,7 @@ export function instantiateMojoProviderOperation(
     }
   }
 
-  const targetGenericParameters = row.target.kind === "function-call" || row.target.kind === "instance-call"
+  const targetGenericParameters = row.target.kind === "function-call" || row.target.kind === "instance-call" || row.target.kind === "value-predicate"
     ? row.target.genericParameters ?? []
     : [];
   const selectedArguments = source.sourceSelectedMethodTypeArguments ?? [];
@@ -214,6 +214,12 @@ function substituteOperationForm(
   target: MojoProviderOperationForm,
   substitutions: Parameters<typeof substituteMojoTargetType>[1],
 ): MojoProviderOperationForm {
+  if (target.kind === "value-predicate") {
+    return Object.freeze({
+      ...target,
+      predicate: Object.freeze({ ...target.predicate, acceptedType: substituteMojoTargetType(target.predicate.acceptedType, substitutions) }),
+    });
+  }
   if (target.kind !== "function-call" && target.kind !== "instance-call") return target;
   return Object.freeze({
     ...target,

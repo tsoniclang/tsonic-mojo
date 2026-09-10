@@ -13,10 +13,13 @@ export function classifyMojoCallableDisposition(
   const use = declaration === undefined
     ? undefined
     : navigation.declarationUseSummary(declaration);
-  const identityObserved = use?.identityCompared === true;
+  const flow = navigation.expressionValueFlow(expression);
+  const identityObserved = use?.identityCompared === true || flow.identityCompared;
   const escapes = use?.aliasedOrStored === true ||
     use?.captured === true ||
     use?.hasUnclassifiedValueUse === true ||
+    flow.returned || flow.yielded || flow.captured || flow.storedOutsideBinding ||
+    flow.hasUnclassifiedUse ||
     (use?.escapeKinds.some((kind) => kind !== "export" && kind !== "argument") ?? false);
   if (identityObserved || escapes || selection.recursiveBinding !== undefined) {
     return Object.freeze({

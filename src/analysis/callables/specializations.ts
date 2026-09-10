@@ -19,6 +19,10 @@ import {
   type MojoTargetTypeSubstitutions,
 } from "../../target-model/types/substitution.js";
 
+import { selectMojoValuePredicate } from "../../policy/operations/value-predicate.js";
+import { sealMojoValuePredicates } from "./value-predicates.js";
+import type { MojoValuePredicateSelection } from "../../target-model/operations/value-predicate.js";
+
 const maximumSpecializationEntries = 1_048_576;
 
 export interface MojoSourceCallableSpecializationVariant {
@@ -46,6 +50,7 @@ export interface MojoSourceCallableSpecializationPlan {
   readonly projectMethodRequests: readonly MojoProjectMethodSpecializationRequest[];
   readonly representationTypes: readonly MojoTargetTypeRef[];
   readonly allocatedNames: readonly string[];
+  valuePredicate(node: Node, type: MojoTargetTypeRef): MojoValuePredicateSelection | undefined;
   requiresSpecialization(declaration: Node): boolean;
   variantsForCallable(declaration: Node): readonly MojoSourceCallableSpecializationVariant[];
   variantForCall(
@@ -151,7 +156,16 @@ export function createMojoSourceCallableSpecializationPlan(input: {
     }));
   }
 
-  const required = requiredCallableSpecializations(sourceCalls, projectMethodCalls);
+  const predicateOwners = new Set<Node>();
+  for (const node of input.callNodes) {
+    const selection = input.callSelections.get(node);
+    if (selection?.kind !== "provider" || selection.operation.target.kind !== "value-predicate") continue;
+    const argument = selection.arguments[0];
+    if (argument !== undefined && selectMojoValuePredicate(argument.sourceType, selection.operation.target.predicate) !== undefined) continue;
+    const owner = enclosingCallable(node, input.ast, descriptors);
+    if (owner !== undefined) predicateOwners.add(owner.declaration);
+  }
+  const required = requiredCallableSpecializations(sourceCalls, projectMethodCalls, predicateOwners);
   const issues: MojoSourceCallableSpecializationIssue[] = [];
   const issueKeys = new Set<string>();
   const variants = new Map<Node, MutableVariant[]>();
@@ -330,7 +344,17 @@ export function createMojoSourceCallableSpecializationPlan(input: {
         argument.kind === "type")
       .map((argument) => [JSON.stringify(argument.type), argument.type] as const)).values(),
   ]);
+  const predicatePlan = sealMojoValuePredicates({
+    calls: input.callNodes,
+    selections: input.callSelections,
+    enclosingDeclaration: (node) => enclosingCallable(node, input.ast, descriptors)?.declaration,
+    variants: (declaration) => (variants.get(declaration) ?? []).filter(
+      (variant): variant is MojoSourceCallableSpecializationVariant => variant.targetName !== undefined,
+    ),
+  });
+  issues.push(...predicatePlan.issues);
   const plan: MojoSourceCallableSpecializationPlan = {
+    valuePredicate: predicatePlan.selection,
     issues: Object.freeze(issues),
     projectMethodRequests: Object.freeze(methodRequests),
     representationTypes,
@@ -410,8 +434,9 @@ function isCallableBoundary(node: Node, ast: AstReader): boolean {
 function requiredCallableSpecializations(
   sourceCalls: readonly SourceCallEdge[],
   projectMethodCalls: readonly ProjectMethodEdge[],
+  seeds: ReadonlySet<Node>,
 ): ReadonlySet<Node> {
-  const required = new Set<Node>();
+  const required = new Set<Node>(seeds);
   for (const edge of projectMethodCalls) {
     if (edge.caller !== undefined &&
       argumentsUseParameters(edge.targetArguments, edge.caller.typeParameters)) {

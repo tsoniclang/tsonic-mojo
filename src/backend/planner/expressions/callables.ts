@@ -21,6 +21,7 @@ import {
   withMojoBindingOverrides,
   withMojoDeferredExecution,
   withMojoErrorType,
+  withMojoSelfType,
 } from "../program/context.js";
 import type {
   MojoBindingPlanOverride,
@@ -28,7 +29,7 @@ import type {
 } from "../program/context.js";
 import type { MojoValuePlanner } from "./support.js";
 import { registerMojoTypeImports } from "../types/imports.js";
-import { consumeMojoValue, withMojoValue } from "./value-plan.js";
+import { withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { planMojoParameterPrelude } from "../declarations/parameters.js";
 import { planMojoParameterDeclaration } from "../declarations/parameters.js";
@@ -37,6 +38,7 @@ import { mojoParameterConvention } from "../../../target-model/operations/parame
 import type { MojoCallableDisposition } from "../../../analysis/representations/model.js";
 import { planMojoFunctionBody, planMojoProjectFunction } from "../declarations/project.js";
 import { mojoModuleBindingRead } from "../bindings/module-bindings.js";
+import { mojoCallableCaptureValue, planMojoNativeCaptures } from "./callable-captures.js";
 
 const runtimeModule = Object.freeze(["tsonic_runtime"]);
 const unitType: MojoTargetTypeRef = Object.freeze({ kind: "unit" });
@@ -107,8 +109,13 @@ export function planMojoCallableExpression(
   }
 
   const environmentType = localNamedType(context, environmentName);
-  const captureValues: MojoExpression[] = selection.captures.map((capture) =>
-    Object.freeze({ kind: "path" as const, path: capture.name }));
+  const captureValues: MojoExpression[] = selection.captures.map((capture) => {
+    const value = mojoCallableCaptureValue(capture, selection, context);
+    const type = capture.storage === "location" ? locationType(capture.type) : capture.type;
+    return context.program.lifecycle.capabilities(type).copy === "explicit"
+      ? Object.freeze({ kind: "copy", expression: value })
+      : value;
+  });
   const before: MojoStatement[] = [];
   const recursiveStorageName = selection.recursiveBinding === undefined
     ? undefined
@@ -261,7 +268,8 @@ function planNativeClosure(
   widenedCallableType?: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
 ): MojoValuePlan | undefined {
   const errorType = widenedCallableType?.errorType ?? selection.errorType;
-  const deferredContext = withMojoErrorType(withMojoDeferredExecution(context), errorType);
+  const capturePlan = planMojoNativeCaptures(selection, context);
+  const deferredContext = withMojoErrorType(withMojoDeferredExecution(capturePlan.context), errorType);
   const parameterPrelude = planMojoParameterPrelude(
     selection.parameters,
     deferredContext,
@@ -275,15 +283,12 @@ function planNativeClosure(
     widenedCallableType?.result ?? selection.resultType,
   );
   if (body === undefined) return undefined;
-  const captures = Object.freeze(selection.captures.map((capture) => Object.freeze({
-    name: capture.name,
-    convention: capture.storage === "location" ? "mut" as const : "imm" as const,
-  })));
+  const captures = capturePlan.captures;
   const resultType = widenedCallableType?.result ?? selection.resultType;
   const raises = widenedCallableType?.raises ?? selection.raises;
   if (parameterPrelude.length !== 0 || body.before.length !== 0) {
     const name = allocateMojoSyntheticName(context, "closure");
-    return withMojoValue(Object.freeze([Object.freeze({
+    return withMojoValue(Object.freeze([...capturePlan.before, Object.freeze({
       kind: "local-function" as const,
       declaration: Object.freeze({
         kind: "function" as const,
@@ -306,7 +311,7 @@ function planNativeClosure(
       }),
     })]), Object.freeze({ kind: "path", path: name }));
   }
-  return withMojoValue(Object.freeze([]), Object.freeze({
+  return withMojoValue(capturePlan.before, Object.freeze({
     kind: "lambda",
     parameters: Object.freeze(selection.parameters.map((parameter) =>
       planMojoParameterDeclaration(parameter, deferredContext))),
@@ -396,24 +401,27 @@ function planCallableEnvironment(
       storage: "value",
     }));
   }
-  const callableContext = withMojoErrorType(
+  let callableContext = withMojoErrorType(
     withMojoBindingOverrides(withMojoDeferredExecution(context), overrides),
     callableType.raises
       ? callableType.errorType ?? mojoNativeErrorType()
       : undefined,
   );
-  const tuplePrelude: MojoStatement[] = selection.parameters.length === 0
-    ? []
-    : [Object.freeze({
-        kind: "tuple-variable" as const,
-        names: Object.freeze(selection.parameters.map((parameter) =>
-          parameter.omissionKind === "initializer" ? parameter.incomingName : parameter.name)),
-        initializer: consumeMojoValue(
-          Object.freeze({ kind: "path" as const, path: argumentsName }),
-          argumentType,
-          context.program.lifecycle,
-        ),
-      })];
+  const receiver = selection.captures.find((capture) => capture.declaration === selection.expression);
+  if (receiver !== undefined) {
+    callableContext = withMojoSelfType(callableContext, receiver.type, overrides.get(receiver.declaration)!.expression);
+  }
+  const tuplePrelude: MojoStatement[] = selection.parameters.map((parameter, index) =>
+    Object.freeze({
+      kind: "variable",
+      name: parameter.omissionKind === "rest" ? parameter.name : parameter.incomingName,
+      reference: context.program.lifecycle.capabilities(parameter.callType).copy !== "implicit",
+      initializer: Object.freeze({
+        kind: "element",
+        receiver: Object.freeze({ kind: "path", path: argumentsName }),
+        index: Object.freeze({ kind: "number-literal", text: String(index) }),
+      }),
+    }));
   const parameterPrelude = planMojoParameterPrelude(
     selection.parameters,
     callableContext,
@@ -421,7 +429,7 @@ function planCallableEnvironment(
     false,
   );
   if (parameterPrelude === undefined) return undefined;
-  const body = planCallableBody(selection, callableContext);
+  const body = planCallableBody(selection, callableContext, callableType);
   if (body === undefined) return undefined;
   const invoke: MojoFunctionDeclaration = Object.freeze({
     kind: "function",
@@ -498,6 +506,7 @@ function planCallableEnvironment(
 function planCallableBody(
   selection: MojoCallableExpressionSelection,
   context: MojoPlanningContext,
+  callableType?: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
 ): readonly MojoStatement[] | undefined {
   return planMojoFunctionBody(Object.freeze({
     kind: selection.kind,
@@ -506,11 +515,11 @@ function planCallableBody(
     name: "invoke",
     typeParameters: selection.typeParameters,
     parameters: selection.parameters,
-    resultType: selection.resultType,
+    resultType: callableType?.result ?? selection.resultType,
     body: selection.body,
     asynchronous: selection.asynchronous,
-    raises: selection.raises,
-    ...(selection.errorType === undefined ? {} : { errorType: selection.errorType }),
+    raises: callableType?.raises ?? selection.raises,
+    ...((callableType?.errorType ?? selection.errorType) === undefined ? {} : { errorType: callableType?.errorType ?? selection.errorType }),
   }), context);
 }
 

@@ -105,35 +105,37 @@ function errorDomainContains(
     mojoTargetTypeEquals(sourceMember, targetMember)));
 }
 
-function rethrowInErrorDomain(
+export function rethrowInErrorDomain(
   error: MojoExpression,
   source: MojoTargetTypeRef,
   target: MojoTargetTypeRef,
   context: MojoPlanningContext,
+  transfer = true,
 ): readonly MojoStatement[] {
-  if (target.kind !== "union") {
+  const owned = transfer ? consumeMojoValue(error, source, context.program.lifecycle) : error;
+  if (target.kind !== "union" || mojoTargetTypeEquals(source, target)) {
     return Object.freeze([Object.freeze({
       kind: "raise",
-      expression: consumeMojoValue(error, source, context.program.lifecycle),
+      expression: owned,
     })]);
   }
   if (source.kind !== "union") {
     return Object.freeze([Object.freeze({
       kind: "raise",
-      expression: constructErrorDomain(target, consumeMojoValue(error, source, context.program.lifecycle)),
+      expression: constructErrorDomain(target, owned),
     })]);
   }
   const branch = (index: number): readonly MojoStatement[] => {
     const member = source.members[index]!;
     const raised = Object.freeze({
       kind: "raise" as const,
-      expression: constructErrorDomain(target, Object.freeze({
+      expression: constructErrorDomain(target, transfer ? Object.freeze({
         kind: "method-call" as const,
-        receiver: consumeMojoValue(error, source, context.program.lifecycle),
+        receiver: owned,
         name: "unsafe_unwrap",
         genericArguments: Object.freeze([Object.freeze({ kind: "type" as const, type: member })]),
         arguments: Object.freeze([]),
-      })),
+      }) : Object.freeze({ kind: "proven-union-member", receiver: error, type: member })),
     });
     if (index === source.members.length - 1) return Object.freeze([raised]);
     return Object.freeze([Object.freeze({

@@ -15,6 +15,7 @@ import {
 } from "./type-validation.js";
 import { selectMojoProviderSurfaceMembers, validateMojoProviderSurfaceMembers } from "./surface-members.js";
 import { validateMojoSourceModuleArgument } from "./source-module-validation.js";
+import { validateMojoValuePredicate } from "./value-predicate-validation.js";
 
 const identifierPattern = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 
@@ -230,6 +231,7 @@ function validateOperation(
   operation: MojoProviderOperationDefinition,
   declarations: ProviderDeclarationIndex,
 ): void {
+  validateMojoValuePredicate(operation);
   if (!declarations.exports.has(operation.exportId)) {
     throw new Error(`Provider operation '${operation.exportId}' has no exported declaration.`);
   }
@@ -261,11 +263,15 @@ function validateOperation(
     if (signature === undefined) {
       throw new Error(`Provider ${operation.operationKind} '${operation.exportId}' requires an exact signature identity.`);
     }
-    if (operation.target.kind !== "function-call" && operation.target.kind !== "instance-call" &&
+    if (operation.target.kind !== "function-call" && operation.target.kind !== "instance-call" && operation.target.kind !== "value-predicate" &&
       operation.target.kind !== "unsupported") {
       throw new Error(`Provider ${operation.operationKind} '${operation.exportId}' requires a Mojo call target.`);
     }
     const parameters = operation.parameterTypes ?? [];
+    if (operation.target.kind === "value-predicate" &&
+      signature.declaration.parameters.some((parameter) => parameter.optional === true || parameter.rest === true)) {
+      throw new Error(`Provider value predicate '${operation.exportId}' requires one mandatory non-rest source parameter.`);
+    }
     if (parameters.length !== signature.declaration.parameters.length ||
       operation.target.kind !== "unsupported" && parameters.length !== operation.target.arguments.length) {
       throw new Error(`Provider ${operation.operationKind} '${operation.signatureId}' has inconsistent source, target, and ABI arity.`);
@@ -371,7 +377,7 @@ function validateOperation(
   if (targetName !== undefined && !identifierPattern.test(targetName)) {
     throw new Error(`Provider operation '${operation.exportId}' has invalid Mojo name '${targetName}'.`);
   }
-  if (operation.target.kind === "function-call" || operation.target.kind === "instance-call") {
+  if (operation.target.kind === "function-call" || operation.target.kind === "instance-call" || operation.target.kind === "value-predicate") {
     const genericNames = new Set<string>();
     for (const parameter of operation.target.genericParameters ?? []) {
       if (!identifierPattern.test(parameter.name) || genericNames.has(parameter.name)) {

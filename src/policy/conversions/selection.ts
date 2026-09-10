@@ -35,6 +35,10 @@ export interface MojoConversionIndex {
     actual: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
     expected: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
   ): MojoConversionClassification;
+  finalizeCallableSource(
+    expression: Node,
+    actual: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
+  ): readonly string[];
   get(
     expression: Node,
     expected: MojoTargetTypeRef,
@@ -67,6 +71,7 @@ export function createMojoConversionIndex(
     return result;
   };
   const byExpression = new WeakMap<Node, Map<string, MojoValueConversion>>();
+  const expectedByExpression = new WeakMap<Node, Map<string, MojoTargetTypeRef>>();
   const finalizedCallableKeys = new WeakMap<Node, Set<string>>();
   const representationTypesByKey = new Map<string, MojoTargetTypeRef>();
   let sealed = false;
@@ -121,7 +126,32 @@ export function createMojoConversionIndex(
       }
       entries.set(key, classified.conversion);
       byExpression.set(expression, entries);
+      const expectedTypes = expectedByExpression.get(expression) ?? new Map<string, MojoTargetTypeRef>();
+      expectedTypes.set(key, expected);
+      expectedByExpression.set(expression, expectedTypes);
       return classified;
+    },
+    finalizeCallableSource(expression, actual) {
+      if (sealed) throw new Error("Mojo callable uses cannot be finalized after analysis is sealed.");
+      const reasons: string[] = [];
+      for (const [key, expected] of expectedByExpression.get(expression) ?? []) {
+        const classified = index.classify(actual, expected);
+        if (classified.kind === "unsupported") {
+          reasons.push(classified.reason);
+          continue;
+        }
+        const entries = byExpression.get(expression)!;
+        const finalized = finalizedCallableKeys.get(expression) ?? new Set<string>();
+        const previous = entries.get(key);
+        if (finalized.has(key) && previous !== undefined && !sameConversion(previous, classified.conversion)) {
+          reasons.push("the same source callable acquired contradictory finalized Mojo conversions");
+          continue;
+        }
+        entries.set(key, classified.conversion);
+        finalized.add(key);
+        finalizedCallableKeys.set(expression, finalized);
+      }
+      return Object.freeze(reasons);
     },
     finalizeCallable(
       expression: Node,

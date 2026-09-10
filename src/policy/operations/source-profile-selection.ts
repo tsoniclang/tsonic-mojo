@@ -31,6 +31,7 @@ export interface MojoSourceProfileCallRowBase {
         readonly absence: "null" | "undefined";
       }
     | { readonly kind: "native-error-result" }
+    | { readonly kind: "exact"; readonly type: MojoTargetTypeRef }
     | { readonly kind: "source-value" };
 }
 
