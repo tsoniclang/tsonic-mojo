@@ -101,6 +101,6 @@ test("contextual callback ABI contradictions fail at analysis", () => {
   assert.deepEqual(result.artifacts, []);
   assert.deepEqual(result.diagnostics.map(({ code }) => code), [
     "MOJO_CONTEXTUAL_CALLABLE_PARAMETER_ABI_MISMATCH",
-    "MOJO_CALLABLE_EXPRESSION_SELECTION_UNRESOLVED",
+    "MOJO_CALL_ARGUMENT_CONVERSION_UNPROVEN",
   ]);
 });
