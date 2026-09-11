@@ -68,6 +68,10 @@ export function mojoValueConversionEquals(left: MojoValueConversion, right: Mojo
       return mojoTargetTypeEquals(left.sourceType, candidate.sourceType) && mojoTargetTypeEquals(left.targetType, candidate.targetType) &&
         mojoJsValueGraphEquals(left.graph, candidate.graph);
     }
+    case "provider-native-view": {
+      const candidate = right as typeof left;
+      return mojoTargetTypeEquals(left.sourceType, candidate.sourceType) && mojoTargetTypeEquals(left.targetType, candidate.targetType) && mojoSourceValueFunctionEquals(left.factory, candidate.factory);
+    }
     case "js-value-extract": {
       const candidate = right as typeof left;
       return mojoTargetTypeEquals(left.sourceType, candidate.sourceType) &&

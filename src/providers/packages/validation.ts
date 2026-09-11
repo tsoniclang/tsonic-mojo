@@ -14,6 +14,8 @@ import {
   validateMojoProviderType,
 } from "./type-validation.js";
 import { selectMojoProviderSurfaceMembers, validateMojoProviderSurfaceMembers } from "./surface-members.js";
+import { mojoTargetTypeKey } from "../../target-model/types/key.js";
+import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import { validateMojoSourceModuleArgument } from "./source-module-validation.js";
 import { validateMojoValuePredicate } from "./value-predicate-validation.js";
 
@@ -139,6 +141,28 @@ export function validateMojoProviderPackageDefinition(
       sourceGenericNames.add(parameter.targetName);
     }
     validateMojoProviderType(type.targetType);
+    const viewTargets = new Set<string>();
+    if (type.nativeViews !== undefined && !Array.isArray(type.nativeViews)) {
+      throw new Error(`Provider type '${type.exportId}' has an invalid native view inventory.`);
+    }
+    for (const view of type.nativeViews ?? []) {
+      if (view === null || typeof view !== "object" || Array.isArray(view) || Object.keys(view).length !== 2 || view.targetType?.kind !== "target-named" || type.targetType.kind !== "target-named" ||
+        type.sourceGenericParameters.length !== 0 || (type.targetType.genericArguments?.length ?? 0) !== 0 || (view.targetType.genericArguments?.length ?? 0) !== 0) {
+        throw new Error(`Provider type '${type.exportId}' has an invalid closed native view.`);
+      }
+      validateMojoProviderType(view.targetType);
+      const identity = mojoTargetTypeKey(view.targetType);
+      if (viewTargets.has(identity) || mojoTargetTypeEquals(type.targetType, view.targetType) || !(definition.types ?? []).some((candidate) => mojoTargetTypeEquals(candidate.targetType, view.targetType))) {
+        throw new Error(`Provider type '${type.exportId}' has a duplicate or undeclared native view destination.`);
+      }
+      viewTargets.add(identity);
+      const factory = view.factory;
+      if (factory === null || typeof factory !== "object" || Object.keys(factory).length !== 2 || !Array.isArray(factory.modulePath) ||
+        factory.modulePath.length === 0 || factory.modulePath.some((segment: unknown) => typeof segment !== "string" || !identifierPattern.test(segment)) ||
+        typeof factory.name !== "string" || !identifierPattern.test(factory.name)) {
+        throw new Error(`Provider type '${type.exportId}' has an invalid native view factory.`);
+      }
+    }
     for (const [role, factory] of [
       ["factory", type.sourceValueFactory],
       ["extraction", type.sourceValueExtraction],

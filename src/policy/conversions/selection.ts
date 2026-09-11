@@ -22,6 +22,7 @@ export type MojoConversionClassification =
 export type MojoSourceValueProjectionSelector = (type: MojoTargetTypeRef, protocol?: MojoSourceValueProtocol) => MojoConversionClassification;
 export type MojoSourceValueExtractionSelector = (type: MojoTargetTypeRef) => MojoSourceValueFunction | undefined;
 export type MojoParameterCopySelector = (type: MojoTargetTypeRef) => MojoCopyCapability;
+export type MojoNativeViewSelector = (source: MojoTargetTypeRef, target: MojoTargetTypeRef) => MojoSourceValueFunction | undefined;
 
 export interface MojoConversionIndex {
   projectData(actual: MojoTargetTypeRef): MojoConversionClassification;
@@ -56,6 +57,7 @@ export function createMojoConversionIndex(
     readonly sourceValueProjection: MojoSourceValueProjectionSelector;
     readonly sourceValueExtraction?: MojoSourceValueExtractionSelector;
     readonly parameterCopy?: MojoParameterCopySelector;
+    readonly nativeView?: MojoNativeViewSelector;
   },
 ): MojoConversionIndex {
   const { narrowingForExpression, projectRelationships } = input;
@@ -100,7 +102,7 @@ export function createMojoConversionIndex(
     },
     classify(actual, expected, narrowing) {
       if (sealed) throw new Error("Mojo conversions cannot be classified after analysis is sealed.");
-      const result = classifyMojoValueConversion(actual, expected, narrowing, projectRelationships, sourceValueProjection, input.sourceValueExtraction, input.parameterCopy);
+      const result = classifyMojoValueConversion(actual, expected, narrowing, projectRelationships, sourceValueProjection, input.sourceValueExtraction, input.parameterCopy, input.nativeView);
       if (result.kind === "resolved") retainConversion(actual, expected, result.conversion);
       return result;
     },
@@ -208,6 +210,7 @@ export function classifyMojoValueConversion(
   sourceValueProjection?: MojoSourceValueProjectionSelector,
   sourceValueExtraction?: MojoSourceValueExtractionSelector,
   parameterCopy?: MojoParameterCopySelector,
+  nativeView?: MojoNativeViewSelector,
 ): MojoConversionClassification {
   const classify = (
     source: MojoTargetTypeRef,
@@ -221,6 +224,7 @@ export function classifyMojoValueConversion(
     sourceValueProjection,
     sourceValueExtraction,
     parameterCopy,
+    nativeView,
   );
   if (narrowing !== undefined && mojoTargetTypeEquals(actual, narrowing.selectedType)) {
     const members = narrowing.selectedType.members.map((sourceType) => {
@@ -248,6 +252,8 @@ export function classifyMojoValueConversion(
   if (mojoTargetTypeEquals(actual, expected)) {
     return { kind: "resolved", conversion: Object.freeze({ kind: "identity" }) };
   }
+  const view = nativeView?.(actual, expected);
+  if (view !== undefined) return { kind: "resolved", conversion: Object.freeze({ kind: "provider-native-view", sourceType: actual, targetType: expected, factory: view }) };
   if (actual.kind === "undefined" && expected.kind === "unit") {
     return { kind: "resolved", conversion: Object.freeze({ kind: "undefined-to-unit" }) };
   }
@@ -435,7 +441,7 @@ export function classifyMojoValueConversion(
     }
     if (actual.kind === "union") {
       const members = actual.members.map((sourceType) => {
-        const selected = selectUnionMemberConversion(sourceType, expected.members, projectRelationships, sourceValueProjection, sourceValueExtraction, parameterCopy);
+        const selected = selectUnionMemberConversion(sourceType, expected.members, projectRelationships, sourceValueProjection, sourceValueExtraction, parameterCopy, nativeView);
         return selected.kind === "resolved"
           ? Object.freeze({
               sourceType,
@@ -460,7 +466,7 @@ export function classifyMojoValueConversion(
         };
       }
     } else {
-      const selected = selectUnionMemberConversion(actual, expected.members, projectRelationships, sourceValueProjection, sourceValueExtraction, parameterCopy);
+      const selected = selectUnionMemberConversion(actual, expected.members, projectRelationships, sourceValueProjection, sourceValueExtraction, parameterCopy, nativeView);
       if (selected.kind === "resolved") {
         return {
           kind: "resolved",
@@ -509,6 +515,7 @@ function selectUnionMemberConversion(
   sourceValueProjection?: MojoSourceValueProjectionSelector,
   sourceValueExtraction?: MojoSourceValueExtractionSelector,
   parameterCopy?: MojoParameterCopySelector,
+  nativeView?: MojoNativeViewSelector,
 ): UnionMemberConversion {
   const exact = members.filter((member) => mojoTargetTypeEquals(actual, member));
   if (exact.length === 1) {
@@ -520,7 +527,7 @@ function selectUnionMemberConversion(
   }
   if (exact.length > 1) return Object.freeze({ kind: "unsupported" });
   const converted = members.flatMap((member) => {
-    const conversion = classifyMojoValueConversion(actual, member, undefined, projectRelationships, sourceValueProjection, sourceValueExtraction, parameterCopy);
+    const conversion = classifyMojoValueConversion(actual, member, undefined, projectRelationships, sourceValueProjection, sourceValueExtraction, parameterCopy, nativeView);
     return conversion.kind === "resolved"
       ? [Object.freeze({ targetType: member, conversion: conversion.conversion })]
       : [];

@@ -20,6 +20,7 @@ export function mojoValueConversionRepresentationTypes(
     case "js-to-native-string":
       return Object.freeze([]);
     case "project-view":
+    case "provider-native-view":
     case "js-value-extract":
     case "native-error-result-unwrap":
       return Object.freeze([conversion.sourceType, conversion.targetType]);

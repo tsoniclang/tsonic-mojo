@@ -397,6 +397,14 @@ export function applyMojoConversion(
   switch (conversion.kind) {
     case "identity": return expression;
     case "undefined-to-unit": return undefined;
+    case "provider-native-view": {
+      registerMojoTypeImports(conversion.targetType, context);
+      return Object.freeze({
+        kind: "call",
+        callee: mojoModuleMemberExpression(context, conversion.factory.modulePath, conversion.factory.name),
+        arguments: Object.freeze([{ value: expression }]),
+      });
+    }
     case "project-view": {
       const selected = context.program.projectDispatch.conversionFor(
         conversion.sourceType,

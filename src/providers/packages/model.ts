@@ -54,6 +54,10 @@ export interface MojoProviderTypeDefinition {
   readonly targetType: MojoTargetTypeRef;
   readonly sourceValueFactory?: MojoSourceValueFunction;
   readonly sourceValueExtraction?: MojoSourceValueFunction;
+  readonly nativeViews?: readonly {
+    readonly targetType: MojoTargetTypeRef;
+    readonly factory: MojoSourceValueFunction;
+  }[];
   readonly conformances?: readonly {
     readonly trait: MojoTargetTypeRef;
     readonly condition?: MojoTargetConformanceCondition;

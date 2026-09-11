@@ -8,6 +8,7 @@ import { analyzeAndSealMojoCallableExpression } from "../callables/expressions.j
 import { createMojoConversionIndex } from "../../policy/conversions/selection.js";
 import { selectMojoJsValueConversion } from "../conversions/js-value-graph.js";
 import { createMojoProviderSourceValueIndex } from "../../providers/packages/source-values.js";
+import { createMojoProviderNativeViewIndex } from "../../providers/packages/native-views.js";
 import { mojoValueConversionNarrowing } from "../refinements/value.js";
 import { createMojoProjectTypeCatalog } from "../project-types/catalog.js";
 import { createMojoProjectTypeRelationships } from "../project-types/relationships.js";
@@ -332,6 +333,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
       providerSourceValueFactory: providerSourceValues.factoryForType,
     }, protocol),
     sourceValueExtraction: providerSourceValues.extractionForType,
+    nativeView: createMojoProviderNativeViewIndex(providerSemantics.types),
     parameterCopy: (type) => lifecycle.capabilities(type).copy,
   });
   for (const declaration of addressedStorageDeclarations) {

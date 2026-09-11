@@ -1,4 +1,5 @@
 import type { Node } from "@tsonic/tsts";
+import type { MojoSourceValueFunction } from "./source-value-function.js";
 import type { MojoTargetTypeRef } from "../types/model.js";
 
 export type MojoRecordMemberRead =
@@ -57,6 +58,12 @@ export type MojoValueConversion =
     }
   | { readonly kind: "identity" }
   | { readonly kind: "undefined-to-unit" }
+  | {
+      readonly kind: "provider-native-view";
+      readonly sourceType: MojoTargetTypeRef;
+      readonly targetType: MojoTargetTypeRef;
+      readonly factory: MojoSourceValueFunction;
+    }
   | {
       readonly kind: "project-view";
       readonly sourceType: MojoTargetTypeRef;
