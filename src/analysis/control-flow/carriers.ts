@@ -274,7 +274,9 @@ export function resolveInferredBindingCarrier(
     const reference = navigation.sourceReferenceFor(initializer);
     if (reference?.project === true) {
       const binding = input.bindingTypes.get(reference.declaration);
-      if (binding !== undefined || ast.is.IsVariableDeclaration(reference.declaration)) return binding;
+      if (binding !== undefined || ast.is.IsVariableDeclaration(reference.declaration)) {
+        return input.valueRefinements.get(initializer)?.resultType ?? binding;
+      }
     }
   }
   if ((ast.is.IsCallExpression(initializer) || ast.is.IsNewExpression(initializer)) &&

@@ -90,6 +90,27 @@ test("ordinary declarations use native names, immutable parameters, and no modul
   assert.doesNotMatch(source.text, /GlobalCell|ModuleState|module_state/u);
 });
 
+test("an alias initialized from a narrowed provider result retains that occurrence's carrier", () => {
+  const result = compileMojo({ surfaces: ["js"], files: { "index.ts": `
+export function read(key: string): string {
+  const groups = new Map<string, string[]>();
+  groups.set("first", ["value"]);
+  const selected = groups.get(key);
+  if (selected !== undefined) {
+    const values = selected;
+    return values[0]!;
+  }
+  return "absent";
+}
+export function main(): void {}
+` } });
+  assert.deepEqual(result.diagnostics, []);
+  const generated = artifactTexts(result).find(({ text }) => text.includes("def read"));
+  assert.ok(generated);
+  assert.match(generated.text, /var values: JsArray\[String\] = selected\.value\(\)/u);
+  assert.doesNotMatch(generated.text, /var values: Optional/u);
+});
+
 test("a unique authored complex alias remains the module ABI name", () => {
   const result = compileMojo({
     files: {
