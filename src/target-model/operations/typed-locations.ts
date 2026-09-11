@@ -5,6 +5,7 @@ export type MojoLocationOwnerIdentity = "project" | "project-polymorphic" | "str
 
 export type MojoAddressedStorage =
   | { readonly kind: "local"; readonly declaration: Node }
+  | { readonly kind: "native-element"; readonly receiver: Node; readonly receiverType: MojoTargetTypeRef; readonly index: Node; readonly indexType: MojoTargetTypeRef }
   | { readonly kind: "field"; readonly expression: Node; readonly receiver: Node;
       readonly receiverType: MojoTargetTypeRef; readonly identity: MojoLocationOwnerIdentity; readonly key: string }
   | { readonly kind: "element"; readonly expression: Node; readonly receiver: Node;

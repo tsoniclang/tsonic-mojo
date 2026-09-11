@@ -58,10 +58,21 @@ profiles. Explicit integral carriers use native operations. Compound writes
 evaluate the location, read its value, evaluate the right operand, then write.
 
 Raw-pointer equality and hashing consume supplied addresses. Native-pointer
-load, store and element offsets require an explicit `unsafeContext`. The retired
-object-binding marker is not supported. Layout-backed raw-memory conversions
-(`toRawPointer` and `reinterpretRawPointer`) are not implemented: a source layout
-fact alone does not prove native storage layout or ownership.
+load, store and element offsets require an explicit `unsafeContext`.
+Typed locations retain their physical allocation or exact accessor owner;
+binding and projection preserve identity without manufacturing a native address.
+Layout-backed views validate ABI, alignment and bounds and retain a supplied
+allocation owner. Scalar and fixed-array layouts must match native storage;
+provider records additionally require complete exact field relations and native
+compile-time field/type/offset checks. An opaque managed object is not a native
+record. Integer-derived raw addresses remain an explicit unsafe caller obligation.
+
+`const alias = values; addressOf(alias[index])` uses retained native array storage
+only when shared source analysis closes the entire local allocation/alias/use
+graph without unproved resizing or escape. Reassigning `values` does not retarget
+an existing element pointer. JS arrays retain their separate growable-array
+contract. `npm run test:native-memory` exercises generated scalar and native-record
+views under Linux systemd memory, swap, process and time limits.
 
 The pinned Mojo compiler has a reproduced runtime defect when forwarding a
 borrowed `String` to a non-inlined variadic function. It reproduces in a small

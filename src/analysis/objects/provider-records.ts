@@ -133,11 +133,14 @@ export function targetFieldInventory(
     if (read.kind !== "resolved" || write.kind !== "resolved" ||
       read.operation.target.kind !== "property-read" ||
       write.operation.target.kind !== "property-write" ||
+      read.operation.target.access.kind !== "member" ||
       write.operation.target.access.kind !== "member" ||
+      read.operation.target.access.name !== write.operation.target.access.name ||
       read.operation.receiverType === undefined || write.operation.receiverType === undefined ||
       !mojoTargetTypeEquals(read.operation.receiverType, receiverType) ||
       !mojoTargetTypeEquals(write.operation.receiverType, receiverType) ||
       write.operation.parameterTypes.length !== 1 ||
+      !mojoTargetTypeEquals(read.operation.resultType, write.operation.parameterTypes[0]!) ||
       write.operation.resultType.kind !== "unit") return undefined;
     fields.set(readRow.memberId, Object.freeze({
       targetName: write.operation.target.access.name,

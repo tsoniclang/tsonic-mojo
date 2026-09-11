@@ -16,6 +16,7 @@ import { analyzeMojoSourceModuleConstruction } from "../source-modules/construct
 import { analyzeMojoRawPointer } from "./raw-pointers.js";
 import { analyzeMojoExplicitSafety } from "./explicit-safety.js";
 import { analyzeMojoNativePointer } from "./native-pointers.js";
+import { analyzeMojoMemoryOperation } from "./native-memory.js";
 import type {
   MojoAnalyzedClass,
   MojoAnalyzedProjectCallable,
@@ -46,6 +47,7 @@ export type MojoCallAnalysis =
   | { readonly kind: "unsupported"; readonly code: string; readonly reason: string };
 
 export interface MojoCallAnalysisContext {
+  readonly memoryAnalysis: import("../storage/memory-metadata.js").MojoMemoryAnalysis;
   readonly source: TargetSourceProgram;
   readonly providerSemantics: MojoProviderSemantics;
   readonly projectTypes: MojoProjectTypeCatalog;
@@ -97,6 +99,9 @@ export function analyzeMojoCall(
   };
   const selectedDeclaration = sourceCall.sourceCallee.selectedDeclaration ??
     sourceCall.sourceCalleeAccess?.selectedDeclaration;
+  const memory = analyzeMojoMemoryOperation({ call: callNode, selected: sourceCall,
+    source: context.source, memory: context.memoryAnalysis, providers: context.providerSemantics, expressionTypes: context.expressionTypes, resolveType: resolve });
+  if (memory.kind !== "not-memory") return memory;
   const selectedSignatureDeclaration = semantics.declarations.signatureDeclaration(
     sourceCall.selectedSignature,
   );

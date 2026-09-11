@@ -10,6 +10,7 @@ import type { MojoValuePlanner } from "./support.js";
 import { consumeMojoValue, mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { planMojoTypedLocation } from "./typed-locations.js";
+import { planMojoNativeMemory } from "./native-memory.js";
 
 type MojoIntrinsicCallSelection = Extract<
   MojoCallSelection,
@@ -18,6 +19,7 @@ type MojoIntrinsicCallSelection = Extract<
       | "source-intrinsic"
       | "explicit-safety"
       | "native-pointer"
+      | "native-memory"
       | "raw-pointer"
       | "typed-location";
   }
@@ -29,6 +31,7 @@ export function planMojoIntrinsicCall(
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
 ): MojoValuePlan | undefined {
+if (selection.kind === "native-memory") return planMojoNativeMemory(selection, context, planValue);
 if (selection.kind === "source-intrinsic") {
   if (selection.operation === "comptime-type") {
     return selection.value === undefined

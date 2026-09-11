@@ -645,7 +645,7 @@
       "analysisProof": "test/integration/generated-mojo/language-parity.test.mjs",
       "emissionProof": "test/integration/generated-mojo/language-parity.test.mjs",
       "nativeProof": "../mojo-pudding/scripts/verify.sh",
-      "note": "Exact facts close supplied raw-address equality/hash and explicit unsafe native-pointer load/store/element-offset. Layout-backed raw-memory conversions are not implemented; the retired object-binding marker is absent."
+      "note": "Exact facts close raw-address equality/hash, unsafe native-pointer operations, retained typed locations and layout-backed scalar/array/provider-record views. Native layout and owner proofs are required; logical accessors and unproved source allocations do not manufacture physical addresses."
     },
     {
       "id": "providers.cargo-dependencies",
@@ -710,13 +710,13 @@
       "benchmarkClassification": "target-limit",
       "benchmarkAction": "reject escaping borrowed views because TypeScript has no lifetime-bearing view type; retain exact Copy and owned-string projections",
       "proofId": "providers.escaping-borrowed-results",
-      "classification": "shared-intentional-rejection",
+      "classification": "provider-metadata-gap",
       "sourceProof": "test/providers/compiler/provider.test.mjs",
       "analysisProof": "test/providers/compiler/provider.test.mjs",
       "boundaryProof": "test/providers/compiler/provider.test.mjs",
       "mutationProof": "test/providers/compiler/provider.test.mjs",
       "nativeProof": "test/providers/compiler/provider.test.mjs",
-      "note": "Mojo borrowed results carry explicit origins. TypeScript has no origin-bearing view type, so an escaping borrowed result rejects unless a provider exposes an owned or Copy projection."
+      "note": "Explicit Origin/Ref/MutRef source types exist. The compiler provider currently erases the reference from the source type projection, so escaping imported borrowed results need a lossless source/provider relation; owned and Copy projections are distinct supported cases."
     },
     {
       "id": "providers.owned-custom-receivers",
@@ -739,13 +739,13 @@
       "benchmarkClassification": "target-limit",
       "benchmarkAction": "reject nested borrowed custom receivers before source projection; retain owned custom receivers such as Box<Self>",
       "proofId": "providers.borrowed-custom-receivers",
-      "classification": "shared-intentional-rejection",
+      "classification": "provider-metadata-gap",
       "sourceProof": "test/providers/compiler/provider.test.mjs",
       "analysisProof": "test/providers/compiler/provider.test.mjs",
       "boundaryProof": "test/providers/compiler/provider.test.mjs",
       "mutationProof": "test/providers/compiler/provider.test.mjs",
       "nativeProof": "test/providers/compiler/provider.test.mjs",
-      "note": "Simple borrowed Mojo receivers are supported. A receiver whose own carrier embeds an open origin cannot cross TypeScript because the source type system cannot name that origin."
+      "note": "Simple borrowed Mojo receivers are supported. Explicit source origin types exist, but compiler-provider projection rejects non-inferred origin parameters and does not preserve an origin-bearing receiver's full source shape. This is an importer gap, not a TypeScript expressibility limit."
     },
     {
       "id": "providers.c-variadics",
@@ -754,12 +754,12 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain C variadic tails as an explicit unsafe provider ABI without treating them as ordinary Rust rest parameters",
       "proofId": "providers.c-variadics",
-      "classification": "implemented-generated",
+      "classification": "provider-metadata-gap",
       "sourceProof": "test/providers/compiler/provider.test.mjs",
       "analysisProof": "test/providers/compiler/provider.test.mjs",
-      "emissionProof": "test/providers/compiler/provider.test.mjs",
-      "nativeProof": "../mojo-pudding/scripts/verify.sh",
-      "note": "Compiler-declared variadic positional and keyword tails retain their exact Mojo argument position, convention, and variadic ABI rather than becoming ordinary TypeScript rest inference."
+      "boundaryProof": "test/providers/compiler/provider.test.mjs",
+      "runtimeProof": "../mojo-runtime/tests/memory/c_variadic_abi_test.mojo",
+      "note": "Mojo positional/keyword variadics are supported, but are not evidence of a C-variadic ABI. Native adapters can call external_call with an explicit fixed prefix and C argument promotions; direct C variadic declaration import lacks an exact provider contract. The native-only C ABI proof does not certify that missing importer contract."
     },
     {
       "id": "providers.mutable-statics",
@@ -796,13 +796,13 @@
       "benchmarkClassification": "target-limit",
       "benchmarkAction": "reject open associated and generic-associated projections because TypeScript has no higher-kinded projection type; retain compiler-resolved concrete substitutions",
       "proofId": "providers.open-associated-types",
-      "classification": "shared-intentional-rejection",
+      "classification": "provider-metadata-gap",
       "sourceProof": "test/providers/compiler/provider.test.mjs",
       "analysisProof": "test/providers/compiler/provider.test.mjs",
       "boundaryProof": "test/providers/compiler/provider.test.mjs",
       "mutationProof": "test/providers/compiler/provider.test.mjs",
       "nativeProof": "test/providers/compiler/provider.test.mjs",
-      "note": "Mojo can name open associated projections using type and origin parameters, but TypeScript cannot express the higher-kinded projection identity; only compiler-resolved concrete substitutions cross the source boundary."
+      "note": "The target model retains associated projections, but the compiler provider projects their source shape to object. Closed resolved substitutions remain supported; open associated API results lack a lossless source-side provider projection. This is an importer gap, not a blanket claim about TypeScript expressibility."
     },
     {
       "id": "providers.rust-unions",
@@ -2868,11 +2868,12 @@
       "benchmarkClassification": "target-limit",
       "benchmarkReason": "stdin and stream event semantics require the asynchronous stream scheduler omitted by the closed Rust Node capability; direct stdout and stderr output remains exact",
       "proofId": "js-node.151",
-      "classification": "runtime-library-gap",
+      "classification": "implemented-generated",
       "sourceProof": "../mojo-nodejs/nodejs/test/provider.test.mjs",
       "analysisProof": "../mojo-nodejs/nodejs/test/provider.test.mjs",
-      "boundaryProof": "../mojo-nodejs/nodejs/test/provider.test.mjs",
-      "note": "stdin now has the declared Readable event, pause/resume and consumption contract. Direct stdout/stderr writes remain implemented. This mixed lane is not fully closed because the separate ProcessWriteStream provider does not expose the complete Writable lifecycle API."
+      "emissionProof": "../mojo-nodejs/nodejs/test/process-writable.test.mjs",
+      "runtimeProof": "../mojo-nodejs/tests/filesystem/stream_destruction_test.mojo",
+      "note": "stdin retains Readable consumption and events; process outputs use the shared Writable lifecycle inventory, retained callback completion and cancellation. Borrowed standard descriptors remain open when the stream wrapper is destroyed."
     },
     {
       "id": "js-node.152",

@@ -1,5 +1,32 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+
+test("closed native array element locations preserve all aliases and escape without JS storage", () => {
+  const result = compileMojo({ files: { "index.ts": `
+import { addressOf, loadPointer, storePointer, equalPointer } from "@tsonic/core/lang.js";
+import type { Pointer, int32 } from "@tsonic/core/types.js";
+function escaped(): Pointer<int32> {
+  let values: int32[] = [1, 2];
+  const alias = values;
+  const pointer = addressOf(alias[1]);
+  storePointer(pointer, 7);
+  if (values[1] !== 7 || !equalPointer(pointer, addressOf(values[1]))) throw new Error("alias");
+  values = [8, 9];
+  if (loadPointer(pointer) !== 7 || values[1] !== 9) throw new Error("replacement");
+  return pointer;
+}
+export function main(): void {
+  const pointer = escaped();
+  storePointer(pointer, 11);
+  if (loadPointer(pointer) !== 11) throw new Error("escape");
+}
+` } });
+  assert.deepEqual(result.diagnostics, []);
+  const emitted = artifactTexts(result).map(({ text }) => text).join("\n");
+  assert.match(emitted, /NativeArray\[Int32\]/u);
+  assert.match(emitted, /\.location\(/u);
+  assert.doesNotMatch(emitted, /tsonic_js/u);
+});
 import { artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
 
 test("typed locations preserve optional identity, generic pointees and reversible projections", () => {

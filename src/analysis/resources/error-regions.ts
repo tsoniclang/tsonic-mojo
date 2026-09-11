@@ -305,7 +305,9 @@ export function directMojoNodeErrorTypes(
       );
     } else if (selection?.kind === "typed-location") {
       addNativeConversionError(selection.operation === "load" || selection.operation === "store" ||
-        selection.operation === "address-of" && selection.storage.kind === "element");
+        selection.operation === "address-of" && (selection.storage.kind === "element" || selection.storage.kind === "native-element"));
+    } else if (selection?.kind === "native-memory") {
+      addNativeConversionError(selection.operation !== "observation" && selection.operation !== "keep-alive" && selection.operation !== "raw-to-address-integer");
     } else if (selection?.kind === "object-assign") {
       addNativeConversionError(selection.fields.some((field) =>
         mojoConversionRaises(field.conversion)));
@@ -361,7 +363,7 @@ export function directMojoNodeErrorTypes(
     const selection = indexes.elementSelections.get(node);
     if (selection !== undefined) {
       addNativeConversionError(
-        mojoConversionRaises(selection.indexConversion) ||
+        (selection.kind === "native" && selection.raises) || mojoConversionRaises(selection.indexConversion) ||
         (selection.readResultConversion !== undefined &&
           mojoConversionRaises(selection.readResultConversion)),
       );

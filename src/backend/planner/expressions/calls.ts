@@ -49,7 +49,7 @@ export function planMojoCall(
   if (selection.kind === "source-intrinsic" ||
     selection.kind === "explicit-safety" ||
     selection.kind === "native-pointer" ||
-    selection.kind === "raw-pointer" ||
+    selection.kind === "raw-pointer" || selection.kind === "native-memory" ||
     selection.kind === "typed-location") {
     return planMojoIntrinsicCall(selection, node, context, planValue);
   }

@@ -45,6 +45,7 @@ import type {
 } from "../operations/model.js";
 
 export interface MojoProgramQueries {
+  isErasedSourceNode(node: Node): boolean;
   callableImplementation(declaration: Node): import("./model.js").MojoAnalyzedFunction | undefined;
   bindingName(referenceOrDeclaration: Node): string | undefined;
   bindingSourceFile(referenceOrDeclaration: Node): SourceFile | undefined;

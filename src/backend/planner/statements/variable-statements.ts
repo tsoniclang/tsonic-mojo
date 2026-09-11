@@ -74,6 +74,7 @@ function planVariableDeclaration(
   declaration: Node,
   context: MojoPlanningContext,
 ): readonly MojoStatement[] | undefined {
+  if (context.program.queries.isErasedSourceNode(declaration)) return Object.freeze([]);
   const { ast } = context.program.source;
   const pattern = context.program.queries.bindingPatternSelection(declaration);
   if (pattern !== undefined) {

@@ -30,6 +30,7 @@ export function analyzeCall(
     return;
   }
   const analyzed = analyzeMojoCall(node, selectedCall, {
+    memoryAnalysis: input.memoryAnalysis,
     source: input.source,
     providerSemantics: input.providerSemantics,
     projectTypes: input.projectTypes,

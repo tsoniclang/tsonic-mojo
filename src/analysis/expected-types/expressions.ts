@@ -125,6 +125,11 @@ export function callArgumentExpectedType(
         return selection.offsetExpression === expression ? selection.offsetType : undefined;
     }
   }
+  if (selection.kind === "native-memory") {
+    if (selection.operation === "observation") return undefined;
+    if (selection.expression === expression) return selection.inputType;
+    return selection.operation === "byte-offset" && selection.offset === expression ? selection.offsetType : undefined;
+  }
   if (selection.kind !== "typed-location") return undefined;
   switch (selection.operation) {
     case "address-of":

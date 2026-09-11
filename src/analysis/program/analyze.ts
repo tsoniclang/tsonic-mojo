@@ -42,6 +42,7 @@ import type { MojoExecutableRegionAnalysisEnvironment } from "../control-flow/an
 import type { MojoAnalyzedModuleRegionFacts } from "../module-initialization/effects.js";
 import { collectMojoDeclarationDrafts } from "../declarations/drafts.js";
 import { collectMojoAddressedStorageDeclarations } from "../storage/addressed.js";
+import { createMojoMemoryAnalysis } from "../storage/memory-metadata.js";
 import { analyzeMojoProjectDeclarations } from "../declarations/analyze.js";
 import { createMojoStructuralObjectCatalog } from "../bindings/structural-objects.js";
 import { finalizeMojoProgramEffects } from "./program-effects-finalization.js";
@@ -135,6 +136,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
   const functionEffectRoots = new Map<Node, Node[]>();
   const moduleEffectRoots = new WeakMap<import("./model.js").MojoAnalyzedModule, Node[]>();
   const sourceValueOccurrenceKinds = new WeakMap<Node, "runtime" | "non-runtime">();
+  const memoryAnalysis = createMojoMemoryAnalysis(sourceFiles, input.source, diagnostics);
   const indexedSourceUseDeclarations = new WeakSet<Node>();
   const addressedStorageDeclarations = collectMojoAddressedStorageDeclarations(
     sourceFiles,
@@ -222,6 +224,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
   });
   const analyzedModules = analyzeMojoModuleBindings({
     source: input.source,
+    erasedSourceNodes: memoryAnalysis.erasedSourceNodes,
     sourceFiles,
     modules,
     providerSemantics,
@@ -400,6 +403,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     ...(sourceCallableErrorType === undefined ? {} : { sourceCallableErrorType }),
     diagnostics,
     executableRegionRoots,
+    memoryAnalysis,
     bindingNames,
     bindingSourceFiles,
     bindingTypes,

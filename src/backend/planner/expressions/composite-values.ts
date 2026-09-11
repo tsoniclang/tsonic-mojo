@@ -8,6 +8,7 @@ import {
   ObjectLiteralProperty_Value,
 } from "@tsonic/target-api/source";
 import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
+import { mojoNativeArrayElement } from "../../../target-model/types/native-arrays.js";
 import type {
   MojoArrayLiteralFixedSpreadSelection,
   MojoArrayLiteralSelection,
@@ -135,7 +136,7 @@ function planFixedArrayLiteral(
       arguments: Object.freeze(elements.map((value) => ({ value }))),
     });
   }
-  if (isJsArray(type)) {
+  if (isJsArray(type) || mojoNativeArrayElement(type) !== undefined) {
     registerMojoTypeImports(type, context);
     return withMojoValue(before, { kind: "construct", type, arguments: Object.freeze([{ value: literal }]) });
   }

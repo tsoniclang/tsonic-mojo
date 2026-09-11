@@ -4,6 +4,7 @@ import type { MojoTypedLocationAnalysisInput } from "../operations/typed-locatio
 import type { MojoAddressedStorage, MojoLocationOwnerIdentity } from "../../target-model/operations/typed-locations.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
+import { mojoNativeArrayElement } from "../../target-model/types/native-arrays.js";
 
 export function mojoLocationOwnerIdentity(type: MojoTargetTypeRef, input: MojoTypedLocationAnalysisInput): MojoLocationOwnerIdentity | undefined {
   if (type.kind === "callable") return "callable";
@@ -57,6 +58,13 @@ export function analyzeMojoAddressedStorage(
     });
   }
   const element = input.elementSelections.get(expression);
+  if (element?.kind === "native" && !element.optionalChain) {
+    const valueType = mojoNativeArrayElement(element.receiverType);
+    if (valueType !== undefined && mojoTargetTypeEquals(valueType, pointee)) {
+      return Object.freeze({ kind: "native-element", receiver: element.receiver, receiverType: element.receiverType,
+        index: element.index, indexType: element.indexType });
+    }
+  }
   if (element?.kind !== "provider" || element.optionalChain ||
     element.sourceReceiverType.kind !== "target-named" || element.sourceReceiverType.id !== "tsonic.mojo.js.JsArray" ||
     element.readType === undefined || !mojoTargetTypeEquals(element.readType, pointee) ||

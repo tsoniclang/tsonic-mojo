@@ -239,6 +239,7 @@ export type MojoNullishCoalescingSelection =
 
 export type MojoElementSelection = {
   readonly kind: "native";
+  readonly raises: boolean;
   readonly receiver: Node;
   readonly index: Node;
   readonly accessMode: "read" | "write" | "read-write";

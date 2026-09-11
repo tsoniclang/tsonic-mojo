@@ -87,6 +87,7 @@ export {
 } from "./bindings.js";
 
 export interface MojoExecutableRegionAnalysisInput {
+  readonly memoryAnalysis: import("../storage/memory-metadata.js").MojoMemoryAnalysis;
   readonly root: Node;
   readonly sourceFile: SourceFile;
   readonly owner?: MojoAnalyzedClassOwner;
@@ -183,6 +184,7 @@ export function analyzeMojoExecutableRegion(
   const pendingInferredBindings = new Set<Node>();
   const exitExpressions: { readonly expression: Node; readonly throwing: boolean }[] = [];
   walkSourceTree(root, ast, (node): void => {
+    if (input.memoryAnalysis.erasedSourceNodes.has(node)) return;
     if (ast.is.IsVariableDeclaration(node)) {
       const declarationKind = ast.variableDeclarationKind(node);
       if (declarationKind === "using" || declarationKind === "await using") {
@@ -205,7 +207,7 @@ export function analyzeMojoExecutableRegion(
             semantics,
           );
       if (resolved === undefined && !bindingPattern) pendingInferredBindings.add(node);
-      else if (resolved !== undefined) input.bindingTypes.set(node, resolved);
+      else if (resolved !== undefined) input.bindingTypes.set(node, input.memoryAnalysis.nativeArrayType(node, resolved));
       if (bindingPattern && !isMojoIterationBindingDeclaration(node, ast)) {
         bindingPatternDeclarations.push(node);
       }
@@ -232,6 +234,7 @@ export function analyzeMojoExecutableRegion(
   }
 
   walkSourceTreePostOrder(root, ast, (node): void => {
+    if (input.memoryAnalysis.erasedSourceNodes.has(node)) return;
     if (isMojoExpressionNode(node, ast)) {
       const inferred = inferMojoExpressionType(node, ast, input.expressionTypes);
       if (inferred !== undefined) input.expressionTypes.set(node, inferred);
@@ -336,6 +339,7 @@ export function analyzeMojoExecutableRegion(
   }
 
   walkSourceTreePostOrder(root, ast, (node): void => {
+    if (input.memoryAnalysis.erasedSourceNodes.has(node)) return;
     if (ast.is.IsPropertyAccessExpression(node)) analyzeProperty(node, input, semantics);
     if (ast.is.IsElementAccessExpression(node)) analyzeElement(node, input, semantics);
     if (ast.is.IsCallExpression(node) || ast.is.IsNewExpression(node)) {

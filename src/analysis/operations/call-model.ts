@@ -40,6 +40,7 @@ export type MojoCallableArgumentSlot =
     };
 
 export type MojoCallSelection =
+  | import("../../target-model/operations/native-memory.js").MojoMemoryOperationSelection
   | {
       readonly kind: "source-intrinsic";
       readonly operation:

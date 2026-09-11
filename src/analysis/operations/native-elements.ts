@@ -1,6 +1,7 @@
 import type { ResolvedSourceElementAccessInfo } from "@tsonic/tsts";
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import { mojoNativeArrayElement } from "../../target-model/types/native-arrays.js";
 import type { MojoElementAnalysis, MojoElementAnalysisContext } from "./elements.js";
 
 export function analyzeNativeElement(
@@ -38,6 +39,7 @@ export function analyzeNativeElement(
     expressionType,
     selection: Object.freeze({
       kind: "native",
+      raises: mojoNativeArrayElement(receiver) !== undefined,
       receiver: source.receiver.expression,
       index: source.argument.expression,
       accessMode,
@@ -75,6 +77,8 @@ function nativeElementContract(
   selectedElementIndex: number | undefined,
 ): { readonly indexType: MojoTargetTypeRef; readonly valueType: MojoTargetTypeRef } | undefined {
   const nativeIndex: MojoTargetTypeRef = Object.freeze({ kind: "source-primitive", name: "native-int" });
+  const retainedElement = mojoNativeArrayElement(receiver);
+  if (retainedElement !== undefined) return { indexType: nativeIndex, valueType: retainedElement };
   switch (receiver.kind) {
     case "list": return { indexType: nativeIndex, valueType: receiver.element };
     case "fixed-array": return { indexType: nativeIndex, valueType: receiver.element };

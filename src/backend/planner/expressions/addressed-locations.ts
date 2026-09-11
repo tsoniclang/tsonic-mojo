@@ -30,16 +30,20 @@ export function planMojoAddressedLocation(
   }
   const receiver = planValue(storage.receiver, context, storage.receiverType);
   if (receiver === undefined) return undefined;
-  if (storage.kind === "element") {
+  if (storage.kind === "element" || storage.kind === "native-element") {
     const index = planValue(storage.index, context, storage.indexType);
     if (index === undefined) return undefined;
     const ordered = orderMojoLocationValues([
       { plan: receiver, type: storage.receiverType, role: "location_owner" },
       { plan: index, type: storage.indexType, role: "location_index" },
     ], context);
+    if (storage.kind === "native-element") {
+      return withMojoValue(ordered.before, Object.freeze({ kind: "method-call", receiver: ordered.values[0]!,
+        name: "location", arguments: Object.freeze([{ value: ordered.values[1]! }]) }));
+    }
     return withMojoValue(ordered.before, Object.freeze({ kind: "call",
       callee: mojoModuleMemberExpression(context, ["tsonic_js"], "array_location"),
-      genericArguments: Object.freeze([{ kind: "type", type: selection.pointeeType }]),
+      genericArguments: Object.freeze([Object.freeze({ kind: "type", type: selection.pointeeType })]),
       arguments: Object.freeze(ordered.values.map((value) => Object.freeze({ value }))),
     }));
   }

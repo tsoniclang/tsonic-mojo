@@ -331,6 +331,7 @@ export function finalizeMojoProgramResult(
   const source = targetSourceSyntaxProgram(checkedSource);
   const sourceNavigation = snapshotTargetPlanningSourceNavigation(checkedSource);
   const queries = createMojoProgramQueries({
+    erasedSourceNodes: environment.memoryAnalysis.erasedSourceNodes,
     callableImplementations: finalizedByDeclaration,
     sourceNavigation,
     bindingNames,

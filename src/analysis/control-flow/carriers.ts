@@ -154,7 +154,7 @@ export function analyzeExpressionCarrier(
   );
   const resolved = selectedOccurrenceType ?? referencedType ?? erasedCarrier ??
     authoredAggregate ?? contextualAggregate ?? semanticType ?? contextualExpected;
-  if (resolved !== undefined) input.expressionTypes.set(node, resolved);
+  if (resolved !== undefined) input.expressionTypes.set(node, input.memoryAnalysis.nativeArrayType(node, resolved));
   if (ast.kindName(node) === "KindThisKeyword" && input.owner !== undefined) {
     input.bindingNames.set(node, "self");
     input.expressionTypes.set(node, input.owner.type);
