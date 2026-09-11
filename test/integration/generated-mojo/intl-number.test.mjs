@@ -36,3 +36,30 @@ export function main(): void {}
   assert.deepEqual(result.diagnostics, []);
   assert.doesNotMatch(artifactTexts(result).map(({ text }) => text).join("\n"), /intl_number_format_new/u);
 });
+
+test("NumberFormat resolved options preserve optional fields and grouping strategies", () => {
+  const result = compileMojo({ surfaces: ["js"], files: { "index.ts": `
+export function render(): string {
+  const formatter = new Intl.NumberFormat("en-US", {
+    maximumSignificantDigits: 3, useGrouping: "min2", roundingMode: "halfEven",
+  });
+  const resolved = formatter.resolvedOptions();
+  let result = resolved.locale + resolved.numberingSystem + resolved.style;
+  result += resolved.notation + resolved.signDisplay + resolved.roundingPriority;
+  result += resolved.roundingMode + resolved.trailingZeroDisplay;
+  if (resolved.useGrouping !== false) result += resolved.useGrouping;
+  if (resolved.maximumSignificantDigits !== undefined) result += resolved.maximumSignificantDigits.toString();
+  if (resolved.minimumFractionDigits !== undefined) result += resolved.minimumFractionDigits.toString();
+  resolved.useGrouping = false;
+  resolved.unit = "meter";
+  resolved.unitDisplay = "long";
+  resolved.maximumFractionDigits = undefined;
+  return result + formatter.format(1234);
+}
+export function main(): void {}
+` } });
+  assert.deepEqual(result.diagnostics, []);
+  const output = artifactTexts(result).map(({ text }) => text).join("\n");
+  for (const operation of [".resolved_options(", ".get_use_grouping(", ".get_maximum_significant_digits(", ".set_unit(", ".set_unit_display(", ".set_maximum_fraction_digits("])
+    assert.ok(output.includes(operation), operation);
+});

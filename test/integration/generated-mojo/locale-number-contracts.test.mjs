@@ -28,7 +28,6 @@ export function main(): void {
 test("Number locale declarations reject incompatible option contracts", () => {
   for (const expression of [
     "amount.toLocaleString(42)", 'amount.toLocaleString("en-US", { useGrouping: "false" })',
-    'amount.toLocaleString("en-US", { style: "unit" })',
     'amount.toLocaleString("en-US", { minimumFractionDigits: "2" })',
     'amount.toLocaleString("en-US", { roundingMode: "nearest" })',
     'amount.toLocaleString("en-US", { notation: "exponential" })',

@@ -63,6 +63,10 @@ export interface MojoSourceProfileArgumentCarrierContract {
     | "regexp"
     | "callable"
     | "undefined"
+    | "number"
+    | "js-array"
+    | "js-iterator"
+    | "js-date"
   )[];
 }
 
@@ -189,6 +193,11 @@ function sourceProfileArgumentCarriersMatch(
           return type.kind === "target-named" && type.id === "tsonic.mojo.js.JsRegExp";
         case "callable": return type.kind === "callable";
         case "undefined": return type.kind === "undefined";
+        case "number": return type.kind === "source-primitive" &&
+          ["int8", "uint8", "int16", "uint16", "int32", "uint32", "float32", "float64"].includes(type.name);
+        case "js-array": return type.kind === "target-named" && type.id === "tsonic.mojo.js.JsArray";
+        case "js-iterator": return type.kind === "target-named" && type.id === "tsonic.mojo.js.JsIterator";
+        case "js-date": return type.kind === "target-named" && type.id === "tsonic.mojo.js.JsDate";
       }
     });
   });

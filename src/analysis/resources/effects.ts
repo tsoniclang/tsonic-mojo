@@ -23,12 +23,13 @@ export function providerCallRequiresRaisingConversion(
 
 export function mojoConversionRaises(conversion: MojoValueConversion): boolean {
   switch (conversion.kind) {
+    case "provider-record": return conversion.fields.some((field) => mojoConversionRaises(field.conversion));
     case "js-value-extract": return true;
     case "js-to-native-string": return true;
     case "native-error-result-unwrap": return true;
     case "js-data-rest": return mojoConversionRaises(conversion.elementConversion);
     case "collection-map":
-      return conversion.source === "js-array" ||
+      return conversion.source === "js-array" && conversion.elementConversion !== undefined ||
         (conversion.elementConversion !== undefined &&
           mojoConversionRaises(conversion.elementConversion));
     case "optional-some":
@@ -43,6 +44,24 @@ export function mojoConversionRaises(conversion: MojoValueConversion): boolean {
     case "narrowed-union-map":
       return conversion.members.some((member) => mojoConversionRaises(member.conversion));
     default: return false;
+  }
+}
+
+export function mojoConversionDependencies(conversion: MojoValueConversion): readonly Node[] {
+  switch (conversion.kind) {
+    case "provider-record": return Object.freeze(conversion.fields.flatMap((field) => [
+      ...(field.read.kind === "accessor" ? [field.read.declaration] : []),
+      ...mojoConversionDependencies(field.conversion),
+    ]));
+    case "optional-some":
+    case "optional-map":
+    case "optional-present":
+    case "optional-to-union":
+    case "union-inject": return mojoConversionDependencies(conversion.valueConversion);
+    case "union-to-optional": return conversion.presentMembers.flatMap((member) => mojoConversionDependencies(member.conversion));
+    case "union-map":
+    case "narrowed-union-map": return conversion.members.flatMap((member) => mojoConversionDependencies(member.conversion));
+    default: return Object.freeze([]);
   }
 }
 

@@ -68,11 +68,20 @@ export const mojoDateSourceProfileCallRows: readonly MojoSourceProfileCallRow[] 
     parameterContract: numberParameters(1, 7),
     target: Object.freeze({ kind: "function", modulePath: Object.freeze(["tsonic_js"]), name: "date_utc" }),
   }),
-  ...Array.from({ length: 8 }, (_, argumentCount): MojoSourceProfileCallRow => Object.freeze({
+  ...Array.from({ length: 8 }, (_, argumentCount) => argumentCount).filter((count) => count !== 1).map((argumentCount): MojoSourceProfileCallRow => Object.freeze({
     profile: "js", kind: "construct", owner: "DateConstructor", member: "constructor",
     argumentCount,
     ...(argumentCount === 0 ? {} : { raises: true }),
     ...(argumentCount < 2 ? {} : { parameterContract: numberParameters(2, 7) }),
+    target: Object.freeze({ kind: "function", modulePath: Object.freeze(["tsonic_js"]), name: "date_new" }),
+  })),
+  ...([
+    { raises: true, oneOf: ["native-string", "js-string"] },
+    { raises: false, oneOf: ["number", "js-date"] },
+  ] as const).map(({ raises, oneOf }): MojoSourceProfileCallRow => Object.freeze({
+    profile: "js", kind: "construct", owner: "DateConstructor", member: "constructor",
+    argumentCount: 1, raises,
+    argumentCarriers: Object.freeze([Object.freeze({ index: 0, oneOf })]),
     target: Object.freeze({ kind: "function", modulePath: Object.freeze(["tsonic_js"]), name: "date_new" }),
   })),
 ]);

@@ -9,6 +9,11 @@ export function mojoValueConversionRepresentationTypes(
   conversion: MojoValueConversion,
 ): readonly MojoTargetTypeRef[] {
   switch (conversion.kind) {
+    case "provider-record": return Object.freeze([
+      conversion.sourceType, conversion.targetType,
+      ...conversion.fields.flatMap((field) => [field.sourceType, field.targetType,
+        ...mojoValueConversionRepresentationTypes(field.conversion)]),
+    ]);
     case "js-value-graph": return Object.freeze([conversion.targetType, ...mojoJsValueGraphTypes(conversion.graph)]);
     case "identity":
     case "undefined-to-unit":

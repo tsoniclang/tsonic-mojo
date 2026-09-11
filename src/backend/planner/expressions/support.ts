@@ -1,4 +1,5 @@
 import type { Node } from "@tsonic/tsts";
+import { convertMojoProviderRecord } from "./provider-record-conversion.js";
 import type {
   MojoSelectedProviderOperation,
 } from "../../../target-model/operations/selection.js";
@@ -199,6 +200,9 @@ export function convertMojoValue(
   }
   if (conversion.kind === "collection-map") {
     return convertMojoCollection(plan, conversion, context, convertMojoValue);
+  }
+  if (conversion.kind === "provider-record") {
+    return convertMojoProviderRecord(plan, conversion, context, convertMojoValue);
   }
   if (conversion.kind === "optional-some") {
     const value = convertMojoValue(plan, conversion.valueConversion, context);
@@ -516,6 +520,7 @@ export function applyMojoConversion(
       registerMojoTypeImports(conversion.targetType, context);
       return { kind: "construct", type: conversion.targetType, arguments: Object.freeze([{ value: expression }]) };
     case "collection-map":
+    case "provider-record":
     case "optional-map":
     case "optional-to-union":
     case "union-to-optional":

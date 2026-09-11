@@ -49,6 +49,7 @@ export function analyzeCall(
     classByTypeId: input.classByTypeId,
     locationStorageNames: input.locationStorageNames,
     structuralObjects: input.structuralObjects,
+    fieldByDeclaration: input.fieldByDeclaration,
     modulePathForSourceFile(owner) {
       return input.modules.forSourceFile(owner)?.modulePath ?? Object.freeze([]);
     },

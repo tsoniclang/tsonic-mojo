@@ -1,4 +1,10 @@
+import type { Node } from "@tsonic/tsts";
 import type { MojoTargetTypeRef } from "../types/model.js";
+
+export type MojoRecordMemberRead =
+  | { readonly kind: "structural"; readonly index: number }
+  | { readonly kind: "field"; readonly declaration: Node; readonly name: string }
+  | { readonly kind: "accessor"; readonly declaration: Node; readonly name: string };
 
 export type MojoTruthinessConversion =
   | { readonly kind: "boolean" }
@@ -24,6 +30,19 @@ export type MojoTruthinessConversion =
     };
 
 export type MojoValueConversion =
+  | {
+      readonly kind: "provider-record";
+      readonly sourceType: MojoTargetTypeRef;
+      readonly targetType: MojoTargetTypeRef;
+      readonly fields: readonly {
+        readonly memberId: string;
+        readonly targetName: string;
+        readonly read: MojoRecordMemberRead;
+        readonly sourceType: MojoTargetTypeRef;
+        readonly targetType: MojoTargetTypeRef;
+        readonly conversion: MojoValueConversion;
+      }[];
+    }
   | {
       readonly kind: "js-value-extract";
       readonly sourceType: MojoTargetTypeRef;

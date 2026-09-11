@@ -113,7 +113,7 @@ export function analyzeMojoProviderRecordLiteral(
   });
 }
 
-function targetFieldInventory(
+export function targetFieldInventory(
   typeRow: MojoProviderTypeRow,
   receiverType: MojoTargetTypeRef,
   semantics: MojoProviderSemantics,

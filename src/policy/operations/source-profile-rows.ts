@@ -42,13 +42,17 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
   ...mojoRegExpSourceProfileCallRows,
   ...mojoLocaleSourceProfileCallRows,
   ...mojoIntlSourceProfileCallRows,
-  Object.freeze({
+  ...([
+    { raises: true, oneOf: ["js-array"] },
+    { raises: false, oneOf: ["native-string", "js-string", "js-iterator"] },
+  ] as const).map(({ raises, oneOf }): MojoSourceProfileCallRow => Object.freeze({
     profile: "js",
     kind: "call",
     owner: "ArrayConstructor",
     member: "from",
     argumentCount: 1,
-    raises: true,
+    raises,
+    argumentCarriers: Object.freeze([Object.freeze({ index: 0, oneOf })]),
     parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["selected-argument"]),
     target: Object.freeze({
       kind: "function",
@@ -59,7 +63,7 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
       kind: "constructed-explicit-arguments",
       indexes: Object.freeze([0]),
     }),
-  }),
+  })),
   Object.freeze({
     profile: "js",
     kind: "call",

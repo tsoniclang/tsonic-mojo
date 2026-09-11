@@ -20,6 +20,17 @@ export function mojoValueConversionEquals(left: MojoValueConversion, right: Mojo
   if (left === right) return true;
   if (left.kind !== right.kind) return false;
   switch (left.kind) {
+    case "provider-record": {
+      const candidate = right as typeof left;
+      return mojoTargetTypeEquals(left.sourceType, candidate.sourceType) &&
+        mojoTargetTypeEquals(left.targetType, candidate.targetType) &&
+        entriesEqual(left.fields, candidate.fields, (field, other) =>
+          field.memberId === other.memberId && field.targetName === other.targetName &&
+          mojoTargetTypeEquals(field.sourceType, other.sourceType) && mojoTargetTypeEquals(field.targetType, other.targetType) &&
+          mojoValueConversionEquals(field.conversion, other.conversion) && field.read.kind === other.read.kind &&
+          (field.read.kind === "structural" ? other.read.kind === "structural" && field.read.index === other.read.index :
+            other.read.kind !== "structural" && field.read.declaration === other.read.declaration && field.read.name === other.read.name));
+    }
     case "identity":
     case "undefined-to-unit":
     case "js-to-native-string": return true;

@@ -39,6 +39,7 @@ import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 import type { MojoValueOwnership } from "../../target-model/lifecycle/model.js";
 import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
 import type { MojoStructuralObjectCatalog } from "../bindings/structural-objects.js";
+import { providerRecordArgumentConversions } from "../objects/provider-record-conversions.js";
 
 export type MojoCallAnalysis =
   | { readonly kind: "resolved"; readonly selection: MojoCallSelection; readonly dependency?: Node }
@@ -62,6 +63,7 @@ export interface MojoCallAnalysisContext {
   readonly classByTypeId: ReadonlyMap<string, MojoAnalyzedClass>;
   readonly locationStorageNames: WeakMap<Node, string>;
   readonly structuralObjects: MojoStructuralObjectCatalog;
+  readonly fieldByDeclaration: WeakMap<Node, import("../program/model.js").MojoAnalyzedProjectProperty>;
   readonly modulePathForSourceFile: (sourceFile: import("@tsonic/tsts").SourceFile) => readonly string[];
   readonly contextualizeCallableArgument: (
     expression: Node,
@@ -253,6 +255,8 @@ export function analyzeMojoCall(
       reason: `Selected provider call maps to non-call target form '${target.kind}'.`,
     };
   }
+  const records = providerRecordArgumentConversions(sourceCall, instantiated.operation.parameterTypes, target.arguments, resolve, context);
+  if (records.kind === "unsupported") return records;
   const arguments_ = analyzeArguments(
     context.source.ast,
     sourceCall,
@@ -264,7 +268,7 @@ export function analyzeMojoCall(
     context.lifecycle,
     context.conversions,
     context.valueOwnership,
-    undefined,
+    records.conversions,
     (expression) => context.source.ast.is.IsObjectLiteralExpression(expression),
     context.contextualizeCallableArgument,
   );

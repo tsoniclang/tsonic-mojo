@@ -22,6 +22,7 @@ import type {
 import {
   mergeMojoErrorTypes,
   mojoConversionRaises,
+  mojoConversionDependencies,
   mojoNativeErrorType,
   mojoOperationErrorTypes,
   providerCallRequiresRaisingConversion,
@@ -231,6 +232,9 @@ export function directMojoNodeErrorTypes(
     if (raises) errors.push(mojoNativeErrorType());
   };
   addNativeConversionError(indexes.conversions.recordedFor(node).some(mojoConversionRaises));
+  for (const conversion of indexes.conversions.recordedFor(node)) {
+    for (const dependency of mojoConversionDependencies(conversion)) errors.push(...(errorTypesByDeclaration.get(dependency) ?? []));
+  }
   if (indexes.iterationSelections.get(node)?.target === "js-array-live-values") {
     errors.push(mojoNativeErrorType());
   }
@@ -273,6 +277,9 @@ export function directMojoNodeErrorTypes(
         }
       }
       addNativeConversionError(providerCallRequiresRaisingConversion(selection));
+      for (const argument of selection.arguments) {
+        for (const dependency of mojoConversionDependencies(argument.conversion)) errors.push(...(errorTypesByDeclaration.get(dependency) ?? []));
+      }
     } else if (selection?.kind === "project") {
       const dependency = indexes.callDependencies.get(node);
       if (dependency !== undefined) {
