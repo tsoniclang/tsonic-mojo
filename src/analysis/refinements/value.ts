@@ -22,8 +22,10 @@ export function classifyMojoValueRefinement(
     mojoTargetTypeEquals(sourceType.value, resultType)) {
     return Object.freeze({ kind: "optional-present", sourceType, resultType });
   }
-  if (sourceType.kind === "union" &&
-    sourceType.members.some((member) => mojoTargetTypeEquals(member, resultType))) {
+  const presentType = sourceType.kind === "optional" ? sourceType.value : sourceType;
+  if ((sourceType.kind === "union" || sourceType.kind === "optional") &&
+    presentType.kind === "union" &&
+    presentType.members.some((member) => mojoTargetTypeEquals(member, resultType))) {
     return Object.freeze({ kind: "union-member", sourceType, resultType });
   }
   if (sourceType.kind === "union" && resultType.kind === "union" &&

@@ -8,7 +8,7 @@ export type MojoValueRefinementSelection =
     }
   | {
       readonly kind: "union-member";
-      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
+      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "union" | "optional" }>;
       readonly resultType: MojoTargetTypeRef;
     }
   | {

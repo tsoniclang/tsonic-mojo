@@ -77,7 +77,7 @@ export function validateMojoProviderType(type: MojoTargetTypeRef): void {
       return;
     case "future":
       if (type.captureOrigins !== undefined && (type.captureOrigins !== "empty" || type.domain !== "native")) {
-        throw new Error("Only a native future may declare owned captures.");
+        throw new Error("Only a native future may declare an empty capture-origin set.");
       }
       validateMojoProviderType(type.output);
       return;

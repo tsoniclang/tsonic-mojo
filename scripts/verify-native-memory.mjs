@@ -41,9 +41,8 @@ export function run(): boolean {
 }
 `,
   runner: `from std.testing import assert_true
-from native_memory_proof import _initialize_tsonic_package, run
+from native_memory_proof import run
 def main() raises:
-    _initialize_tsonic_package()
     assert_true(run())
 `,
 }, {
@@ -57,9 +56,8 @@ struct Header(Copyable):
 from std.testing import assert_equal
 from tsonic_runtime import RawPointer
 from native_record_fixture import Header
-from native_memory_proof import _initialize_tsonic_package, update
+from native_memory_proof import update
 def main() raises:
-    _initialize_tsonic_package()
     var owner = ArcPointer(Header(3, 7))
     var raw = RawPointer.retained(owner, UInt(Int(owner.ptr())), 8)
     assert_equal(update(raw), 19)

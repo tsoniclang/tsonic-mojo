@@ -347,7 +347,8 @@ export function analyzeTypeTest(
   } else if (testedType !== undefined && sourceType.kind === "optional" &&
     mojoTargetTypeEquals(sourceType.value, testedType)) {
     selection = Object.freeze({ kind: "optional-presence", operand: left, sourceType });
-  } else if (testedType !== undefined && sourceType.kind === "union") {
+  } else if (testedType !== undefined && (sourceType.kind === "union" ||
+    sourceType.kind === "optional" && sourceType.value.kind === "union")) {
     selection = Object.freeze({ kind: "union-member", operand: left, sourceType, testedType });
   } else {
     const dispatchType = sourceType.kind === "optional" ? sourceType.value : sourceType;
@@ -493,11 +494,8 @@ function selectedProjectTypeTestMember(
   sourceType: MojoTargetTypeRef,
   projectTypeId: string,
 ): MojoTargetTypeRef | undefined {
-  const candidates = sourceType.kind === "optional"
-    ? [sourceType.value]
-    : sourceType.kind === "union"
-      ? sourceType.members
-      : [sourceType];
+  const presentType = sourceType.kind === "optional" ? sourceType.value : sourceType;
+  const candidates = presentType.kind === "union" ? presentType.members : [presentType];
   const matching = candidates.filter((candidate) =>
     candidate.kind === "target-named" && candidate.id === projectTypeId);
   return matching.length === 1 ? matching[0] : undefined;

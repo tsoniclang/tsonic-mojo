@@ -425,13 +425,34 @@ export function planMojoTypeTest(
     }));
   }
   registerMojoTypeImports(selection.testedType, context);
-  return withMojoValue(operand.before, Object.freeze({
+  const ordered = orderMojoValues(Object.freeze([Object.freeze({
+    plan: operand,
+    type: selection.sourceType,
+    role: "type_test_operand",
+    stabilize: selection.sourceType.kind === "optional",
+  })]), context, true);
+  const receiver: MojoExpression = selection.sourceType.kind === "optional"
+    ? Object.freeze({ kind: "method-call", receiver: ordered.values[0]!, name: "value", arguments: Object.freeze([]) })
+    : ordered.values[0]!;
+  const membership: MojoExpression = Object.freeze({
     kind: "method-call",
-    receiver: operand.value,
+    receiver,
     name: "isa",
     genericArguments: Object.freeze([Object.freeze({ kind: "type", type: selection.testedType })]),
     arguments: Object.freeze([]),
-  }));
+  });
+  return withMojoValue(ordered.before, selection.sourceType.kind === "optional"
+    ? Object.freeze({
+        kind: "binary",
+        operator: "and",
+        left: Object.freeze({
+          kind: "construct",
+          type: Object.freeze({ kind: "source-primitive", name: "bool" }),
+          arguments: Object.freeze([{ value: ordered.values[0]! }]),
+        }),
+        right: membership,
+      })
+    : membership);
 }
 
 export function planDictionaryKey(

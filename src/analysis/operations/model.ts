@@ -200,7 +200,7 @@ export type MojoTypeTestSelection =
   | {
       readonly kind: "union-member";
       readonly operand: Node;
-      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
+      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "union" | "optional" }>;
       readonly testedType: MojoTargetTypeRef;
     }
   | {
