@@ -3,6 +3,7 @@ import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import { allocateMojoSyntheticName } from "../program/context.js";
 import { registerMojoTypeImports } from "../types/imports.js";
+import { retainMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 
 export function orderMojoLocationValues(
@@ -14,7 +15,8 @@ export function orderMojoLocationValues(
   for (const value of values) {
     const name = allocateMojoSyntheticName(context, value.role);
     registerMojoTypeImports(value.type, context);
-    before.push(...value.plan.before, Object.freeze({ kind: "variable", name, type: value.type, initializer: value.plan.value }));
+    before.push(...value.plan.before, Object.freeze({ kind: "variable", name, type: value.type,
+      initializer: retainMojoValue(value.plan.value, value.type, context.program.lifecycle) }));
     expressions.push(Object.freeze({ kind: "path", path: name }));
   }
   return Object.freeze({ before: Object.freeze(before), values: Object.freeze(expressions) });

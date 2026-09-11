@@ -74,11 +74,11 @@ an existing element pointer. JS arrays retain their separate growable-array
 contract. `npm run test:native-memory` exercises generated scalar and native-record
 views under Linux systemd memory, swap, process and time limits.
 
-The native-record integration proof currently stops in shared source checking:
-using `sizeOf` or `fieldOffsetOf` directly as a raw byte offset lacks the exact
-integer evidence required by the merged source-core contract (`TSEXT9901180`).
-The record implementation is not end-to-end certified by the passing scalar
-proof. Retained asynchronous callbacks also remain blocked by native coroutine
+The native-record integration proof executes generated field-offset composition
+against exact provider-selected native fields and verifies writes through the
+original allocation. Shared layout queries supply their finalized integer
+evidence; stabilized pointer operands retain their selected native copy contract.
+Retained asynchronous callbacks remain blocked by native coroutine
 capture ownership; no erased origin or generated state machine replaces that
 missing native contract. Their intended positive tests remain enabled.
 

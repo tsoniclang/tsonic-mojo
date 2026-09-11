@@ -12,6 +12,8 @@ test("native record layout uses exact provider fields rather than source spellin
   assert.match(emitted, /require_native_field\[Header, UInt8, "kind", 0\]/u);
   assert.match(emitted, /require_native_field\[Header, UInt32, "amount", 4\]/u);
   assert.doesNotMatch(emitted, /require_native_field\[[^\n]*"count"/u);
+  assert.match(emitted, /var _raw_pointer: Optional\[RawPointer\] = raw\.copy\(\)/u);
+  assert.doesNotMatch(emitted, /var _raw_pointer: Optional\[RawPointer\] = raw\^/u);
 });
 
 test("native field evidence rejects divergent accessors and incomplete physical inventories", () => {
