@@ -645,7 +645,7 @@
       "analysisProof": "test/integration/generated-mojo/language-parity.test.mjs",
       "emissionProof": "test/integration/generated-mojo/language-parity.test.mjs",
       "nativeProof": "../mojo-pudding/scripts/verify.sh",
-      "note": "Exact facts close raw-address equality/hash, unsafe native-pointer operations, retained typed locations and layout-backed scalar/array/provider-record views. Native layout and owner proofs are required; logical accessors and unproved source allocations do not manufacture physical addresses."
+      "note": "Exact facts close raw-address equality/hash, unsafe native-pointer operations, retained typed locations and layout-backed scalar/array views. Provider-record lowering is written but its generated integration proof is blocked by shared layout-query integer evidence (TSEXT9901180); the passing scalar/Pudding proofs do not certify that record case. Native layout and owner proofs remain required; logical accessors and unproved source allocations do not manufacture physical addresses."
     },
     {
       "id": "providers.cargo-dependencies",

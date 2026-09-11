@@ -74,6 +74,14 @@ an existing element pointer. JS arrays retain their separate growable-array
 contract. `npm run test:native-memory` exercises generated scalar and native-record
 views under Linux systemd memory, swap, process and time limits.
 
+The native-record integration proof currently stops in shared source checking:
+using `sizeOf` or `fieldOffsetOf` directly as a raw byte offset lacks the exact
+integer evidence required by the merged source-core contract (`TSEXT9901180`).
+The record implementation is not end-to-end certified by the passing scalar
+proof. Retained asynchronous callbacks also remain blocked by native coroutine
+capture ownership; no erased origin or generated state machine replaces that
+missing native contract. Their intended positive tests remain enabled.
+
 The pinned Mojo compiler has a reproduced runtime defect when forwarding a
 borrowed `String` to a non-inlined variadic function. It reproduces in a small
 standard-library-only program. Owned collection APIs use the explicit list ABI
