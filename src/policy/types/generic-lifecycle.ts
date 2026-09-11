@@ -1,4 +1,4 @@
-import { argumentPassingFactKey } from "@tsonic/tsts";
+import { argumentPassingFactKey, pointerOperationFactKey } from "@tsonic/tsts";
 import type { Node, Type } from "@tsonic/tsts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoLifecycleTraitRole } from "../../target-model/lifecycle/model.js";
@@ -21,6 +21,12 @@ export function mojoSourceGenericLifecycleRequirements(
   let implicitCopyRequired = false;
   let collectionCopyRequired = false;
   walkSourceTree(owner, ast, (parameter): void => {
+    if (!collectionCopyRequired && ast.is.IsCallExpression(parameter)) {
+      const pointer = context.source.sourceFacts.getFact(parameter, pointerOperationFactKey);
+      const readType = pointer?.operation === "load" ? pointer.pointeeType
+        : pointer?.operation === "project-pointer" ? pointer.sourcePointeeType : undefined;
+      if (readType !== undefined && context.semantics.types.isIdentical(readType, parameterType)) collectionCopyRequired = true;
+    }
     if (!collectionCopyRequired && (ast.is.IsCallExpression(parameter) || ast.is.IsNewExpression(parameter))) {
       const call = context.semantics.operations.call(parameter);
       if (call?.sourceSelectedSignatureKind === "resolved") {

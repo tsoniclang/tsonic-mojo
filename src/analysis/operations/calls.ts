@@ -62,6 +62,8 @@ export interface MojoCallAnalysisContext {
   readonly classByDeclaration: WeakMap<Node, MojoAnalyzedClass>;
   readonly classByTypeId: ReadonlyMap<string, MojoAnalyzedClass>;
   readonly locationStorageNames: WeakMap<Node, string>;
+  readonly propertySelections: WeakMap<Node, import("../program/model.js").MojoPropertySelection>;
+  readonly elementSelections: WeakMap<Node, import("../program/model.js").MojoElementSelection>;
   readonly structuralObjects: MojoStructuralObjectCatalog;
   readonly fieldByDeclaration: WeakMap<Node, import("../program/model.js").MojoAnalyzedProjectProperty>;
   readonly modulePathForSourceFile: (sourceFile: import("@tsonic/tsts").SourceFile) => readonly string[];
@@ -147,6 +149,12 @@ export function analyzeMojoCall(
     source: context.source,
     expressionTypes: context.expressionTypes,
     locationStorageNames: context.locationStorageNames,
+    propertySelections: context.propertySelections,
+    elementSelections: context.elementSelections,
+    fieldByDeclaration: context.fieldByDeclaration,
+    projectRelationships: context.projectRelationships,
+    structuralObjects: context.structuralObjects,
+    contextualizeCallableArgument: context.contextualizeCallableArgument,
     resolveType: resolve,
   });
   if (typedLocation.kind === "unsupported") return typedLocation;

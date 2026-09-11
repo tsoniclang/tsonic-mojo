@@ -8,7 +8,7 @@ import {
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
-import { mojoLocationTargetType } from "../operations/typed-locations.js";
+import { mojoTypedLocationType } from "../../target-model/types/typed-locations.js";
 import { classifyMojoValueRefinement } from "../refinements/value.js";
 import { expectedExpressionType } from "../expected-types/expressions.js";
 import { analyzeMojoSourceValueEquality } from "../operations/source-value-equality.js";
@@ -279,7 +279,7 @@ export function resolveInferredBindingCarrier(
         input,
         semantics,
       );
-    if (pointee !== undefined) return mojoLocationTargetType(pointee);
+    if (pointee !== undefined) return mojoTypedLocationType(pointee);
   }
   const exactExpressionType = input.expressionTypes.get(initializer);
   if (exactExpressionType !== undefined) return exactExpressionType;

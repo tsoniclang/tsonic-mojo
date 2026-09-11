@@ -48,6 +48,8 @@ export function analyzeCall(
     classByDeclaration: input.classByDeclaration,
     classByTypeId: input.classByTypeId,
     locationStorageNames: input.locationStorageNames,
+    propertySelections: input.propertySelections,
+    elementSelections: input.elementSelections,
     structuralObjects: input.structuralObjects,
     fieldByDeclaration: input.fieldByDeclaration,
     modulePathForSourceFile(owner) {

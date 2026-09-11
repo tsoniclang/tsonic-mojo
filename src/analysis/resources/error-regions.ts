@@ -303,6 +303,9 @@ export function directMojoNodeErrorTypes(
         selection.arguments.some((argument) => mojoConversionRaises(argument.conversion)) ||
         mojoConversionRaises(selection.resultConversion),
       );
+    } else if (selection?.kind === "typed-location") {
+      addNativeConversionError(selection.operation === "load" || selection.operation === "store" ||
+        selection.operation === "address-of" && selection.storage.kind === "element");
     } else if (selection?.kind === "object-assign") {
       addNativeConversionError(selection.fields.some((field) =>
         mojoConversionRaises(field.conversion)));

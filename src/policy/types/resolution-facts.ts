@@ -19,6 +19,7 @@ import {
 } from "./origins.js";
 import { explicitLifecycle, implicitHeapLifecycle } from "./lifecycle-contracts.js";
 import type { MojoTypeResolution, MojoTypeResolutionContext } from "./resolution.js";
+import { mojoTypedLocationType } from "../../target-model/types/typed-locations.js";
 
 export function resolveMojoRetainedType(
   selectedType: Type,
@@ -105,14 +106,7 @@ export function resolveMojoRetainedType(
       ? pointee
       : {
           kind: "resolved",
-          type: Object.freeze({
-            kind: "target-named",
-            id: "tsonic.mojo.runtime.Location",
-            modulePath: Object.freeze(["tsonic_runtime"]),
-            name: "Location",
-            genericArguments: Object.freeze([Object.freeze({ kind: "type", type: pointee.type })]),
-            lifecycle: implicitHeapLifecycle,
-          }),
+          type: mojoTypedLocationType(pointee.type),
         };
   }
   const primitive = uniqueFact(

@@ -137,6 +137,9 @@ export function executableRegionErrorTypes(
           mojoConversionRaises(argument.conversion)) ||
           mojoConversionRaises(selection.resultConversion) ||
           (selection.kind === "callable" && selection.callableType.raises));
+      } else if (selection?.kind === "typed-location") {
+        addNativeConversionError(selection.operation === "load" || selection.operation === "store" ||
+          selection.operation === "address-of" && selection.storage.kind === "element");
       } else if (selection?.kind === "object-assign") {
         addNativeConversionError(selection.fields.some((field) =>
           mojoConversionRaises(field.conversion)));

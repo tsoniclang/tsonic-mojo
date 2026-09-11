@@ -8,12 +8,10 @@ import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoCallSelection } from "../program/model.js";
-import {
-  fixedMojoLifecycleContract,
-  mojoImplicitHeapLifecycleCapabilities,
-} from "../../target-model/lifecycle/index.js";
-
-const locationLifecycle = fixedMojoLifecycleContract(mojoImplicitHeapLifecycleCapabilities);
+import { mojoTypedLocationType, mojoTypedLocationPointee } from "../../target-model/types/typed-locations.js";
+import { mojoNativeErrorType } from "../../target-model/types/error-domains.js";
+import type { MojoCallAnalysisContext } from "./calls.js";
+import { analyzeMojoAddressedStorage, mojoLocationOwnerIdentity, mojoLocationOwnerIsInitializing } from "../storage/locations.js";
 
 export type MojoTypedLocationAnalysis =
   | { readonly kind: "not-typed-location" }
@@ -26,21 +24,16 @@ export interface MojoTypedLocationAnalysisInput {
   readonly source: TargetSourceProgram;
   readonly expressionTypes: WeakMap<Node, MojoTargetTypeRef>;
   readonly locationStorageNames: WeakMap<Node, string>;
+  readonly propertySelections: MojoCallAnalysisContext["propertySelections"];
+  readonly elementSelections: MojoCallAnalysisContext["elementSelections"];
+  readonly fieldByDeclaration: MojoCallAnalysisContext["fieldByDeclaration"];
+  readonly projectRelationships: MojoCallAnalysisContext["projectRelationships"];
+  readonly structuralObjects: MojoCallAnalysisContext["structuralObjects"];
+  readonly contextualizeCallableArgument: MojoCallAnalysisContext["contextualizeCallableArgument"];
   readonly resolveType: (
     type: import("@tsonic/tsts").Type,
     authoredTypeNode?: Node,
   ) => MojoTargetTypeRef | undefined;
-}
-
-export function mojoLocationTargetType(pointee: MojoTargetTypeRef): MojoTargetTypeRef {
-  return Object.freeze({
-    kind: "target-named",
-    id: "tsonic.mojo.runtime.Location",
-    modulePath: Object.freeze(["tsonic_runtime"]),
-    name: "Location",
-    genericArguments: Object.freeze([Object.freeze({ kind: "type", type: pointee })]),
-    lifecycle: locationLifecycle,
-  });
 }
 
 export function analyzeMojoTypedLocation(
@@ -77,14 +70,14 @@ export function analyzeMojoTypedLocation(
       `The selected '${fact.operation}' pointer and authored pointee require different Mojo carriers.`,
     );
   }
-  const locationType = exactLocation ?? mojoLocationTargetType(pointeeType);
+  const locationType = mojoTypedLocationType(pointeeType);
   switch (fact.operation) {
     case "address-of": {
-      const declaration = directStorageDeclaration(fact, input.source);
-      if (declaration === undefined || input.locationStorageNames.get(declaration) === undefined) {
+      const storage = analyzeMojoAddressedStorage(fact, pointeeType, input);
+      if (storage === undefined) {
         return unsupported(
           "MOJO_POINTER_STORAGE_NOT_REPRESENTABLE",
-          "Address-of requires one exact function-local identifier storage root promoted to a Mojo Location.",
+          "Address-of requires exact mutable storage with a retained owner and stable location identity; copied native values and accessor results are not storage owners.",
         );
       }
       return resolved({
@@ -93,7 +86,7 @@ export function analyzeMojoTypedLocation(
         pointeeType,
         locationType,
         resultType: locationType,
-        storageDeclaration: declaration,
+        storage,
       });
     }
     case "allocate":
@@ -129,22 +122,64 @@ export function analyzeMojoTypedLocation(
         kind: "typed-location",
         operation: "equal-pointer",
         pointeeType,
-        locationType: mojoLocationTargetType(pointeeType),
+        locationType,
         operandType: Object.freeze({
           kind: "optional",
-          value: mojoLocationTargetType(pointeeType),
+          value: locationType,
         }),
         resultType: Object.freeze({ kind: "source-primitive", name: "bool" }),
         leftExpression: fact.leftExpression,
         rightExpression: fact.rightExpression,
       });
     case "hash-pointer":
-    case "bind-pointer":
-    case "project-pointer":
-      return unsupported(
-        "MOJO_TYPED_LOCATION_NATIVE_LIMIT",
-        `The pinned Mojo runtime has no exact '${fact.operation}' identity contract.`,
+      return resolved({
+        kind: "typed-location", operation: "hash-pointer", pointeeType, locationType,
+        resultType: Object.freeze({ kind: "source-primitive", name: "float64" }),
+        operandType: Object.freeze({ kind: "optional", value: locationType }),
+        pointerExpression: fact.pointerExpression,
+      });
+    case "bind-pointer": {
+      if (mojoLocationOwnerIsInitializing(fact.identityExpression, input)) return unsupported(
+        "MOJO_POINTER_OWNER_NOT_RETAINABLE", "A constructor state under initialization is not yet a retained project reference owner.",
       );
+      const identityType = input.expressionTypes.get(fact.identityExpression) ?? input.resolveType(fact.identityType);
+      const identity = identityType === undefined ? undefined : mojoLocationOwnerIdentity(identityType, input);
+      if (identityType === undefined || identity === undefined) return unsupported(
+        "MOJO_POINTER_IDENTITY_NOT_PROVEN", "Pointer binding requires one exact retained reference-owner identity.",
+      );
+      const readType = locationCallback([], pointeeType);
+      const writeType = locationCallback([pointeeType], Object.freeze({ kind: "unit" }));
+      input.contextualizeCallableArgument(fact.readExpression, readType);
+      input.contextualizeCallableArgument(fact.writeExpression, writeType);
+      return resolved({
+        kind: "typed-location", operation: "bind-pointer", pointeeType, locationType, resultType: locationType,
+        identityExpression: fact.identityExpression, identityType, identity,
+        readExpression: fact.readExpression, readType,
+        writeExpression: fact.writeExpression, writeType,
+      });
+    }
+    case "project-pointer": {
+      const sourcePointee = mojoTypedLocationPointee(exactLocation) ?? input.resolveType(fact.sourcePointeeType, fact.explicitSourcePointeeTypeNode);
+      const declaredSource = input.resolveType(fact.sourcePointeeType, fact.explicitSourcePointeeTypeNode);
+      if (sourcePointee === undefined || declaredSource === undefined || !mojoTargetTypeEquals(sourcePointee, declaredSource)) return unsupported(
+        "MOJO_POINTER_POINTEE_CARRIER_CONFLICT", "Pointer projection has no exact agreeing source-pointee carrier.",
+      );
+      const selectedResult = input.resolveType(fact.resultType);
+      if (selectedResult === undefined) return unsupported("MOJO_POINTER_PROJECTION_RESULT_NOT_PROVEN", "Pointer projection has no exact selected result carrier.");
+      const optional = selectedResult?.kind === "optional";
+      const fromSourceType = locationCallback([sourcePointee], pointeeType);
+      const toSourceType = locationCallback([pointeeType], sourcePointee);
+      input.contextualizeCallableArgument(fact.fromSourceExpression, fromSourceType);
+      input.contextualizeCallableArgument(fact.toSourceExpression, toSourceType);
+      return resolved({
+        kind: "typed-location", operation: "project-pointer", pointeeType, locationType,
+        resultType: optional ? Object.freeze({ kind: "optional", value: locationType }) : locationType,
+        sourceLocationType: optional ? Object.freeze({ kind: "optional", value: mojoTypedLocationType(sourcePointee) }) : mojoTypedLocationType(sourcePointee),
+        optional, pointerExpression: fact.pointerExpression,
+        fromSourceExpression: fact.fromSourceExpression, fromSourceType,
+        toSourceExpression: fact.toSourceExpression, toSourceType,
+      });
+    }
   }
 }
 
@@ -155,7 +190,8 @@ function exactOperationPointee(
 ): MojoTargetTypeRef | undefined {
   if (fact.operation === "address-of") return expressionTypes.get(fact.storageExpression);
   if (fact.operation === "allocate") return expressionTypes.get(fact.initialExpression);
-  return locationPointee(exactLocation);
+  if (fact.operation === "project-pointer") return undefined;
+  return mojoTypedLocationPointee(exactLocation);
 }
 
 function exactLocationType(
@@ -183,22 +219,8 @@ function exactLocationType(
   }
 }
 
-function locationPointee(type: MojoTargetTypeRef | undefined): MojoTargetTypeRef | undefined {
-  if (type?.kind !== "target-named" || type.id !== "tsonic.mojo.runtime.Location") return undefined;
-  const argument = type.genericArguments?.[0];
-  return argument?.kind === "type" ? argument.type : undefined;
-}
-
-function directStorageDeclaration(
-  fact: Extract<PointerOperationFact, { readonly operation: "address-of" }>,
-  source: TargetSourceProgram,
-): Node | undefined {
-  if (fact.storageDeclaration === undefined ||
-    !source.ast.is.IsIdentifier(fact.storageExpression)) return undefined;
-  const reference = source.navigation.sourceReferenceFor(fact.storageExpression);
-  return reference?.project === true && reference.declaration === fact.storageDeclaration
-    ? fact.storageDeclaration
-    : undefined;
+function locationCallback(parameters: readonly MojoTargetTypeRef[], result: MojoTargetTypeRef): Extract<MojoTargetTypeRef, { readonly kind: "callable" }> {
+  return Object.freeze({ kind: "callable", parameters: Object.freeze(parameters.map((type) => Object.freeze({ convention: "imm", passing: "plain", type }))), result, raises: true, errorType: mojoNativeErrorType() });
 }
 
 function argumentsMatch(
