@@ -322,12 +322,6 @@ export function analyzeMojoExecutableRegion(
     analyzeBindingPatternDeclaration(declaration, sourceType);
   }
 
-  for (const { expression, throwing } of exitExpressions) {
-    if (selectExitValueTransfer(expression, throwing, input)) {
-      input.exitValueTransfers.add(expression);
-    }
-  }
-
   walkSourceTreePostOrder(root, ast, (node): void => {
     if (input.memoryAnalysis.erasedSourceNodes.has(node)) return;
     if ((ast.is.IsArrowFunction(node) || ast.is.IsFunctionExpression(node)) &&
@@ -545,6 +539,11 @@ export function analyzeMojoExecutableRegion(
     semantics,
     input,
   });
+  for (const { expression, throwing } of exitExpressions) {
+    if (selectExitValueTransfer(expression, throwing, input)) {
+      input.exitValueTransfers.add(expression);
+    }
+  }
   const errorTypes = mergeMojoErrorTypes(
     resourceErrorTypes,
     executableRegionErrorTypes(root, input),

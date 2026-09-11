@@ -2,6 +2,24 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
 
+test("a narrowed union return retains the selected payload instead of moving a borrowed accessor", () => {
+  const result = compileMojo({ files: { "index.ts": `
+class First { name = "first"; }
+class Second { other = "second"; }
+function select(first: boolean): First | Second { return first ? new First() : new Second(); }
+function retained(): First {
+  const value = select(true);
+  if (!(value instanceof First)) throw new Error("wrong member");
+  return value;
+}
+export function main(): void { if (retained().name !== "first") throw new Error("lost owner"); }
+` } });
+  assert.deepEqual(result.diagnostics, []);
+  const text = artifactTexts(result).map(({ text }) => text).join("\n");
+  assert.match(text, /return value\.unsafe_get\[First\]\(\)/u);
+  assert.doesNotMatch(text, /unsafe_get\[First\]\(\)\^/u);
+});
+
 test("owning optional union and callback tuple carriers retain borrowed payloads", () => {
   const result = compileMojo({ files: { "index.ts": `
 function invoke(callback: (value: Error | undefined) => string, value: Error | undefined): string { return callback(value); }

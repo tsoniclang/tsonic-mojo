@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { projectArtifactTexts as artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
 
 test("closed native array element locations preserve all aliases and escape without JS storage", () => {
   const result = compileMojo({ files: { "index.ts": `
@@ -27,7 +28,39 @@ export function main(): void {
   assert.match(emitted, /\.location\(/u);
   assert.doesNotMatch(emitted, /tsonic_js/u);
 });
-import { projectArtifactTexts as artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
+
+test("inferred pointer projection preserves its exact input and annotated callback result", () => {
+  const result = compileMojo({ files: { "index.ts": `
+import { allocatePointer, projectPointer, loadPointer, storePointer } from "@tsonic/core/lang.js";
+import type { int32, float32 } from "@tsonic/core/types.js";
+export function main(): void {
+  const pointer = allocatePointer<int32>(4);
+  const same = projectPointer(pointer, (value: int32): int32 => value + 1, (value: int32): int32 => value - 1);
+  storePointer(same, 9);
+  if (loadPointer(pointer) !== 8 || loadPointer(same) !== 9) throw new Error("projection");
+  const converted = projectPointer(pointer, (value: int32): float32 => value, (value: float32): int32 => value as int32);
+  if (loadPointer(converted) !== 8) throw new Error("result carrier");
+}
+` } });
+  assert.deepEqual(result.diagnostics, []);
+  const emitted = artifactTexts(result).map(({ text }) => text).join("\n");
+  assert.match(emitted, /TypedLocation\[Int32\]/u);
+  assert.match(emitted, /TypedLocation\[Float32\]/u);
+  assert.doesNotMatch(emitted, /TypedLocation\[Float64\]/u);
+});
+
+test("explicit pointer projection cannot relabel a different source storage carrier", () => {
+  const result = compileMojo({ files: { "index.ts": `
+import { allocatePointer, projectPointer } from "@tsonic/core/lang.js";
+import type { int32, uint32 } from "@tsonic/core/types.js";
+export function main(): void {
+  const pointer = allocatePointer<int32>(4);
+  projectPointer<uint32, uint32>(pointer, value => value, value => value);
+}
+` } });
+  assert.equal(result.artifacts.length, 0);
+  assert.ok(result.diagnostics.some(({ code }) => code === "MOJO_POINTER_POINTEE_CARRIER_CONFLICT"));
+});
 
 test("typed locations preserve optional identity, generic pointees and reversible projections", () => {
   const result = compileMojo({ files: { "index.ts": `

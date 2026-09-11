@@ -54,7 +54,13 @@ export function analyzeMojoTypedLocation(
     );
   }
   const exactLocation = exactLocationType(fact, input.expressionTypes);
-  const exactPointee = exactOperationPointee(fact, exactLocation, input.expressionTypes);
+  const projectionCallback = fact.operation === "project-pointer"
+    ? input.expressionTypes.get(fact.fromSourceExpression) ?? input.resolveType(fact.fromSourceType)
+    : undefined;
+  const exactPointee = fact.operation === "project-pointer" &&
+    fact.explicitPointeeTypeNode === undefined && projectionCallback?.kind === "callable"
+    ? projectionCallback.result
+    : exactOperationPointee(fact, exactLocation, input.expressionTypes);
   const resolvedPointee = input.resolveType(fact.pointeeType, fact.explicitPointeeTypeNode);
   const pointeeType = exactPointee ?? resolvedPointee;
   if (pointeeType === undefined) {
@@ -161,7 +167,8 @@ export function analyzeMojoTypedLocation(
     case "project-pointer": {
       const sourcePointee = mojoTypedLocationPointee(exactLocation) ?? input.resolveType(fact.sourcePointeeType, fact.explicitSourcePointeeTypeNode);
       const declaredSource = input.resolveType(fact.sourcePointeeType, fact.explicitSourcePointeeTypeNode);
-      if (sourcePointee === undefined || declaredSource === undefined || !mojoTargetTypeEquals(sourcePointee, declaredSource)) return unsupported(
+      if (sourcePointee === undefined || fact.explicitSourcePointeeTypeNode !== undefined &&
+        (declaredSource === undefined || !mojoTargetTypeEquals(sourcePointee, declaredSource))) return unsupported(
         "MOJO_POINTER_POINTEE_CARRIER_CONFLICT", "Pointer projection has no exact agreeing source-pointee carrier.",
       );
       const types = input.source.semantics.forNode(input.call).types;

@@ -209,7 +209,17 @@ export function analyzeReferencedValueRefinement(
 ): MojoTargetTypeRef | undefined {
   const selected = input.source.semantics.selectValueTypeRefinement(node);
   if (selected.kind !== "resolved" || selected.refinement.kind !== "members") return undefined;
-  const selectedTargetType = resolveType(
+  const declaredMembers = semantics.types.isUnion(selected.declaredType)
+    ? semantics.types.unionOrIntersectionTypes(selected.declaredType)
+    : [selected.declaredType];
+  const presentMembers = declaredMembers.filter((type) => !semantics.types.isNullish(type));
+  const selectedMembers = selected.refinement.types;
+  const exactPresentCarrier = declaredTargetType.kind === "optional" &&
+    presentMembers.length > 0 && selectedMembers.length === presentMembers.length &&
+    selectedMembers.every((type) => presentMembers.includes(type))
+    ? declaredTargetType.value
+    : undefined;
+  const selectedTargetType = exactPresentCarrier ?? resolveType(
     semantics.types.expressionType(node),
     undefined,
     input,

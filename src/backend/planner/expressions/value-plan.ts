@@ -46,7 +46,6 @@ function isMojoPlaceExpression(value: MojoExpression): boolean {
     case "path":
     case "member":
     case "element":
-    case "proven-union-member":
     case "postfix-deref":
       return true;
     case "parenthesized":
@@ -65,6 +64,7 @@ function isMojoPlaceExpression(value: MojoExpression): boolean {
     case "conditional":
     case "call":
     case "method-call":
+    case "proven-union-member":
     case "slice":
     case "construct":
     case "forced-comptime":

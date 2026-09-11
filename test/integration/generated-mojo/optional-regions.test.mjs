@@ -32,6 +32,25 @@ export function present(values: string[]): string[] { return values.filter(value
   assert.doesNotMatch(generated, /len\(/u);
 });
 
+test("short-circuit source narrowing preserves the exact optional numeric payload", () => {
+  const generated = compile(`
+import type { int32 } from "@tsonic/core/types.js";
+function parse(value: int32 | undefined): int32 | undefined { return value; }
+export function valid(value: int32 | undefined): boolean {
+  const selected = parse(value);
+  return selected !== undefined && selected >= 0 && selected < 10;
+}
+export function invalid(value: int32 | undefined): boolean {
+  const selected = parse(value);
+  return selected === undefined || selected <= 0;
+}
+`);
+  assert.match(generated, /selected\.value\(\) >= Int32\(0\)/u);
+  assert.match(generated, /selected\.value\(\) < Int32\(10\)/u);
+  assert.match(generated, /selected\.value\(\) <= Int32\(0\)/u);
+  assert.doesNotMatch(generated, /(?:<=|>=|<) Optional\[/u);
+});
+
 const cases = [
   ["project field", `
 interface Box { value: number; }
