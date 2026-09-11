@@ -45,6 +45,7 @@ export function mojoTargetTypeEquals(
         mojoTargetTypeEquals(left.value, right.value);
     case "future":
       return right.kind === "future" && left.domain === right.domain &&
+        left.captureOrigins === right.captureOrigins &&
         left.raises === right.raises &&
         mojoTargetTypeEquals(left.output, right.output);
     case "optional":

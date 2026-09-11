@@ -29,7 +29,7 @@ function typeIdentity(type: MojoTargetTypeRef): readonly unknown[] {
     case "list": return [type.kind, typeIdentity(type.element)];
     case "fixed-array": return [type.kind, typeIdentity(type.element), constIdentity(type.length)];
     case "dictionary": return [type.kind, typeIdentity(type.key), typeIdentity(type.value)];
-    case "future": return [type.kind, type.domain, type.raises, typeIdentity(type.output)];
+    case "future": return [type.kind, type.domain, type.raises, type.captureOrigins, typeIdentity(type.output)];
     case "optional": return [type.kind, typeIdentity(type.value)];
     case "union": return [type.kind, type.members.map(typeIdentity)];
     case "tuple": return [type.kind, type.elements.map(typeIdentity)];

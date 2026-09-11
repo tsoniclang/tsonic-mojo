@@ -1,4 +1,3 @@
-import { pointerOperationFactKey } from "@tsonic/tsts";
 import type { AstReader, Node } from "@tsonic/tsts";
 import {
   BinaryExpression_Left,
@@ -8,7 +7,6 @@ import {
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
-import { mojoTypedLocationType } from "../../target-model/types/typed-locations.js";
 import { classifyMojoValueRefinement } from "../refinements/value.js";
 import { expectedExpressionType } from "../expected-types/expressions.js";
 import { analyzeMojoSourceValueEquality } from "../operations/source-value-equality.js";
@@ -166,7 +164,8 @@ function selectAuthoredArrayCarrier(
 ): MojoTargetTypeRef | undefined {
   if (type === undefined) return undefined;
   if (type.kind === "list" || type.kind === "fixed-array" || type.kind === "tuple" ||
-    (type.kind === "target-named" && type.id === "tsonic.mojo.js.JsArray")) return type;
+    (type.kind === "target-named" && (type.id === "tsonic.mojo.js.JsArray" ||
+      type.id === "tsonic.mojo.runtime.NativeArray"))) return type;
   if (type.kind === "optional") return selectAuthoredArrayCarrier(type.value);
   if (type.kind !== "union") return undefined;
   const candidates: MojoTargetTypeRef[] = [];
@@ -238,7 +237,8 @@ export function analyzeErasedValueRefinement(
   const sourceType = semantics.types.expressionType(inner);
   const selectedType = semantics.types.expressionType(node);
   const sourceTargetType = input.expressionTypes.get(inner);
-  const selectedTargetType = resolveType(
+  const selectedTargetType = input.source.ast.is.IsNonNullExpression(node) && sourceTargetType?.kind === "optional"
+    ? sourceTargetType.value : resolveType(
     selectedType,
     input.source.ast.typeNode(node),
     input,
@@ -258,7 +258,10 @@ export function analyzeErasedValueRefinement(
     input.projectRelationships,
     input.modules,
   );
-  if (refinement !== undefined) input.valueRefinements.set(node, refinement);
+  if (refinement !== undefined) {
+    input.valueRefinements.set(node, refinement);
+    input.expressionTypes.set(node, refinement.resultType);
+  }
 }
 
 export function resolveInferredBindingCarrier(
@@ -266,24 +269,21 @@ export function resolveInferredBindingCarrier(
   input: MojoExecutableRegionAnalysisInput,
   semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
 ): MojoTargetTypeRef | undefined {
-  const pointer = input.source.sourceFacts.getFact(initializer, pointerOperationFactKey);
-  if (pointer?.operation === "address-of" || pointer?.operation === "allocate") {
-    const exactOperand = pointer.operation === "address-of"
-      ? (pointer.storageDeclaration === undefined
-          ? input.expressionTypes.get(pointer.storageExpression)
-          : input.bindingTypes.get(pointer.storageDeclaration))
-      : input.expressionTypes.get(pointer.initialExpression);
-    const pointee = exactOperand ?? resolveType(
-        pointer.pointeeType,
-        pointer.explicitPointeeTypeNode,
-        input,
-        semantics,
-      );
-    if (pointee !== undefined) return mojoTypedLocationType(pointee);
+  const { ast, navigation } = input.source;
+  if (ast.is.IsIdentifier(initializer)) {
+    const reference = navigation.sourceReferenceFor(initializer);
+    if (reference?.project === true) {
+      const binding = input.bindingTypes.get(reference.declaration);
+      if (binding !== undefined || ast.is.IsVariableDeclaration(reference.declaration)) return binding;
+    }
   }
+  if ((ast.is.IsCallExpression(initializer) || ast.is.IsNewExpression(initializer)) &&
+    !input.callSelections.has(initializer)) return undefined;
+  if (ast.is.IsPropertyAccessExpression(initializer) && !input.propertySelections.has(initializer)) return undefined;
+  if (ast.is.IsElementAccessExpression(initializer) && !input.elementSelections.has(initializer)) return undefined;
   const exactExpressionType = input.expressionTypes.get(initializer);
   if (exactExpressionType !== undefined) return exactExpressionType;
-  return isErasedValueWrapper(initializer, input.source.ast)
+  return isErasedValueWrapper(initializer, ast)
     ? resolveErasedExpressionCarrier(initializer, input, semantics)
     : resolveType(semantics.types.expressionType(initializer), undefined, input, semantics);
 }
@@ -302,6 +302,7 @@ function resolveErasedExpressionCarrier(
       : resolveType(semantics.types.expressionType(inner), undefined, input, semantics));
   if (sourceCarrier === undefined || ast.is.IsParenthesizedExpression(node) ||
     ast.is.IsSatisfiesExpression(node)) return sourceCarrier;
+  if (ast.is.IsNonNullExpression(node) && sourceCarrier.kind === "optional") return sourceCarrier.value;
   const selectedCarrier = resolveType(
     semantics.types.expressionType(node),
     ast.typeNode(node),

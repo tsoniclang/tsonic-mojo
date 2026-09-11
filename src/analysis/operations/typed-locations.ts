@@ -11,7 +11,7 @@ import type { MojoCallSelection } from "../program/model.js";
 import { mojoTypedLocationType, mojoTypedLocationPointee } from "../../target-model/types/typed-locations.js";
 import { mojoNativeErrorType } from "../../target-model/types/error-domains.js";
 import type { MojoCallAnalysisContext } from "./calls.js";
-import { analyzeMojoAddressedStorage, mojoLocationOwnerIdentity, mojoLocationOwnerIsInitializing } from "../storage/locations.js";
+import { analyzeMojoAddressedStorage, mojoLocationOwnerIdentity, mojoLocationOwnerIsInitializing, unwrapMojoStorageExpression } from "../storage/locations.js";
 
 export type MojoTypedLocationAnalysis =
   | { readonly kind: "not-typed-location" }
@@ -47,7 +47,7 @@ export function analyzeMojoTypedLocation(
       "The finalized pointer-operation fact is not owned by this exact call occurrence.",
     );
   }
-  if (!argumentsMatch(input.sourceCall, fact)) {
+  if (!argumentsMatch(input.sourceCall, fact, input.source)) {
     return unsupported(
       "MOJO_POINTER_OPERATION_EVIDENCE_CONFLICT",
       `The selected '${fact.operation}' arguments do not match the finalized pointer-operation evidence.`,
@@ -164,9 +164,9 @@ export function analyzeMojoTypedLocation(
       if (sourcePointee === undefined || declaredSource === undefined || !mojoTargetTypeEquals(sourcePointee, declaredSource)) return unsupported(
         "MOJO_POINTER_POINTEE_CARRIER_CONFLICT", "Pointer projection has no exact agreeing source-pointee carrier.",
       );
-      const selectedResult = input.resolveType(fact.resultType);
-      if (selectedResult === undefined) return unsupported("MOJO_POINTER_PROJECTION_RESULT_NOT_PROVEN", "Pointer projection has no exact selected result carrier.");
-      const optional = selectedResult?.kind === "optional";
+      const types = input.source.semantics.forNode(input.call).types;
+      const resultMembers = types.isUnion(fact.resultType) ? types.unionOrIntersectionTypes(fact.resultType) : [fact.resultType];
+      const optional = resultMembers.some((type) => types.isNullish(type));
       const fromSourceType = locationCallback([sourcePointee], pointeeType);
       const toSourceType = locationCallback([pointeeType], sourcePointee);
       input.contextualizeCallableArgument(fact.fromSourceExpression, fromSourceType);
@@ -189,7 +189,8 @@ function exactOperationPointee(
   expressionTypes: WeakMap<Node, MojoTargetTypeRef>,
 ): MojoTargetTypeRef | undefined {
   if (fact.operation === "address-of") return expressionTypes.get(fact.storageExpression);
-  if (fact.operation === "allocate") return expressionTypes.get(fact.initialExpression);
+  if (fact.operation === "allocate") return fact.explicitPointeeTypeNode === undefined
+    ? expressionTypes.get(fact.initialExpression) : undefined;
   if (fact.operation === "project-pointer") return undefined;
   return mojoTypedLocationPointee(exactLocation);
 }
@@ -209,9 +210,10 @@ function exactLocationType(
     case "equal-pointer": {
       const left = expressionTypes.get(fact.leftExpression);
       const right = expressionTypes.get(fact.rightExpression);
-      return left !== undefined && right !== undefined && mojoTargetTypeEquals(left, right)
-        ? left
-        : undefined;
+      const leftPointee = mojoTypedLocationPointee(left);
+      const rightPointee = mojoTypedLocationPointee(right);
+      return leftPointee !== undefined && rightPointee !== undefined && mojoTargetTypeEquals(leftPointee, rightPointee)
+        ? mojoTypedLocationType(leftPointee) : undefined;
     }
     case "address-of":
     case "allocate":
@@ -226,11 +228,14 @@ function locationCallback(parameters: readonly MojoTargetTypeRef[], result: Mojo
 function argumentsMatch(
   call: ResolvedSourceCallInfo,
   fact: PointerOperationFact,
+  source: TargetSourceProgram,
 ): boolean {
   const actual = call.sourceArguments.map((argument) => argument.expression);
   const expected = expectedArguments(fact);
   return actual.length === expected.length &&
-    actual.every((argument, index) => argument === expected[index]);
+    actual.every((argument, index) => fact.operation === "address-of"
+      ? unwrapMojoStorageExpression(argument, { source }) === expected[index]
+      : argument === expected[index]);
 }
 
 function expectedArguments(fact: PointerOperationFact): readonly Node[] {

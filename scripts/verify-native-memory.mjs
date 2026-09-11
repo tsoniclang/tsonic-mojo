@@ -97,6 +97,8 @@ if (failures.length !== 0) throw new Error(failures.join("\n\n"));
 
 function guarded(command, arguments_) {
   const result = spawnSync("systemd-run", ["--user", "--quiet", "--wait", "--pipe", "--collect", `--setenv=PATH=${process.env.PATH}`,
+    `--setenv=MODULAR_HOME=${process.env.MODULAR_HOME ?? join(runtime, ".pixi/envs/default/share/max")}`,
+    "--setenv=MODULAR_CRASH_REPORTING_ENABLED=0",
     "-p", "MemoryMax=6G", "-p", "MemorySwapMax=0", "-p", "TasksMax=256", "-p", "LimitCORE=0", "-p", "RuntimeMaxSec=240",
     command, ...arguments_], { cwd: root, stdio: "inherit", timeout: 270_000, killSignal: "SIGKILL" });
   if (result.error !== undefined) throw result.error;

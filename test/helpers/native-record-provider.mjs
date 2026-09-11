@@ -6,11 +6,11 @@ export function nativeRecordProvider({ writableName = "amount", fieldKind = "mem
   const type = mojoNamedTargetType(exportId, ["native_record_fixture"], "Header");
   const fields = [{ name: "tag", nativeName: "kind", primitive: "uint8" }, { name: "count", nativeName: "amount", primitive: "uint32" }];
   return createMojoProviderPackage({ id: "@test/mojo-native-record", displayName: "Native record proof", version: "1",
+    runtimePackages: [],
     modules: [{ moduleSpecifier, providerModuleId: moduleSpecifier,
-      imports: [{ moduleSpecifier: "@tsonic/core/types.js", namedImports: [{ exportedName: "uint8" }, { exportedName: "uint32" }] }],
       exports: [{ id: exportId, name: "Header", kind: "interface", members: fields.map((field) => ({
         id: `${exportId}.${field.name}`, name: field.name, kind: "property", readonly: false,
-        type: { kind: "provider-ref", moduleSpecifier: "@tsonic/core/types.js", exportName: field.primitive },
+        type: { kind: "source-primitive", name: field.primitive },
       })) }] }],
     types: [{ exportId, sourceGenericParameters: [], targetType: type,
       conformances: ["copyable", "movable", "deinitializable"].map((lifecycleRole) => ({ trait: mojoLifecycleTraitTargetType(lifecycleRole), lifecycleRole })) }],

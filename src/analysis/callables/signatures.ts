@@ -152,7 +152,8 @@ export function analyzeMojoCallableSignature(
     }
     const passingFact = source.sourceFacts.getFact(parameter, argumentPassingFactKey);
     const useSummary = source.navigation.parameterUseSummary(parameter);
-    const disposition = analyzeMojoParameterDisposition(
+    const disposition = parameterType.kind === "reference" && passingFact === undefined
+      ? Object.freeze({ kind: "parametric-reference" as const }) : analyzeMojoParameterDisposition(
       passingFact?.mode,
       useSummary?.bindingWritten === true,
     );
@@ -226,7 +227,8 @@ export function analyzeMojoCallableSignature(
         : { initializer: Node_Initializer(ast, parameter)! }),
     }));
   }
-  const selectedResultType = input.resultType ?? input.contextualType?.result ??
+  const contextualResult = input.contextualType?.result;
+  const selectedResultType = input.resultType ?? (contextualResult?.kind === "union" ? undefined : contextualResult) ??
     (input.kind === "setter"
       ? Object.freeze({ kind: "unit" as const })
       : callable === undefined

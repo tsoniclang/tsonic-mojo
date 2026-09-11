@@ -23,6 +23,7 @@ import {
   printGenericArguments,
   printMojoGenericArgumentValueDocument,
   printMojoTypeDocument,
+  printMojoOriginDocument,
   requiredMojoTypeDocument,
 } from "./types.js";
 
@@ -273,6 +274,10 @@ export function printParameterDocument(
   parameter: MojoParameter,
   context: MojoPrintContext,
 ): MojoDocument {
+  if (parameter.convention === "ref" && parameter.type.kind === "reference") {
+    return concat(text("ref["), printMojoOriginDocument(parameter.type.origin),
+      text(`] ${parameter.name}: `), requiredMojoTypeDocument(parameter.type.value, context));
+  }
   const convention = parameter.convention === undefined || parameter.convention === "imm"
     ? ""
     : `${parameter.convention} `;

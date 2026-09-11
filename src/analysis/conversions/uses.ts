@@ -169,6 +169,11 @@ export function recordMojoExecutableRegionConversionUses(
     if (ast.is.IsCallExpression(expression) || ast.is.IsNewExpression(expression)) {
       visitExpression(Node_Expression(ast, expression));
       const selection = callSelections.get(expression);
+      if (selection?.kind === "typed-location" && selection.operation === "address-of" &&
+        selection.storage.kind !== "local") {
+        record(selection.storage.receiver, selection.storage.receiverType);
+        if (selection.storage.kind !== "field") record(selection.storage.index, selection.storage.indexType);
+      }
       if (selection?.kind === "project" || selection?.kind === "provider" || selection?.kind === "callable") {
         for (const argument of selection.arguments) {
           if (argument.sourceForm === "spread-element" && argument.sourceContainerType !== undefined) {

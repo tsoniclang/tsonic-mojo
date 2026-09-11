@@ -186,7 +186,7 @@ function matchType(
       matchType(template.key, actual.key, bindings) &&
       matchType(template.value, actual.value, bindings);
     case "future": return actual.kind === "future" && template.domain === actual.domain &&
-      template.raises === actual.raises && matchType(template.output, actual.output, bindings);
+      template.raises === actual.raises && template.captureOrigins === actual.captureOrigins && matchType(template.output, actual.output, bindings);
     case "optional": return actual.kind === "optional" &&
       matchType(template.value, actual.value, bindings);
     case "union": return actual.kind === "union" &&

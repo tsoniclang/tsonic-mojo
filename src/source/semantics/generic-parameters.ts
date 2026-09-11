@@ -11,6 +11,7 @@ import { walkSourceTree } from "../syntax/traversal.js";
 
 export interface MojoSourceGenericParameterContext {
   readonly ast: AstReader;
+  readonly navigation: import("@tsonic/target-api/source").TargetSourceProgram["navigation"];
   readonly semantics: SourceFileSemantics;
   readonly sourceFacts: ReadonlySourceFactResolver;
 }

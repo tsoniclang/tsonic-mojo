@@ -112,6 +112,7 @@ export function validateMojoExecutableRegionSyntax(
   bindings: WeakMap<Node, string>,
   expressionTypes: WeakMap<Node, MojoTargetTypeRef>,
   templateExpressions: WeakMap<Node, MojoTemplateExpressionSelection>,
+  erasedSourceNodes: WeakSet<Node>,
   diagnostics: TargetDiagnostic[],
 ): void {
   const validateResourceDeclaration = (declaration: Node): void => {
@@ -131,7 +132,7 @@ export function validateMojoExecutableRegionSyntax(
     }
   };
   const validateExpression = (expression: Node | undefined): void => {
-    if (expression === undefined) return;
+    if (expression === undefined || erasedSourceNodes.has(expression)) return;
     const expressionType = expressionTypes.get(expression);
     if (expressionType?.kind === "null" || expressionType?.kind === "undefined") return;
     if (ast.is.IsIdentifier(expression) || ast.kindName(expression) === "KindThisKeyword") {

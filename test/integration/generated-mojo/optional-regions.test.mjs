@@ -106,8 +106,10 @@ export function read(values: Map<string, ${payload}>, key: () => string): ${payl
   return selected;
 }
 `, ["js"]);
-    assert.match(generated, /var _optional_source:[\s\S]*?= values\.get\(/u);
-    assert.match(generated, /if _optional_source:\n\s+var _union_source:/u);
+    assert.match(generated, /var selected: Optional\[[\s\S]*?= values\.get\(/u);
+    const guard = generated.indexOf("if not Bool(selected):");
+    assert.ok(guard >= 0);
+    assert.ok(generated.indexOf("return ", guard) < generated.indexOf("selected.value()", guard));
     assert.doesNotMatch(generated, /values\.get\([^\n]*\)\.value\(\)/u);
     assert.equal((generated.match(/key\.call\(/gu) ?? []).length, 1);
   });

@@ -295,6 +295,7 @@ export function finalizeMojoProgramResult(
       bindingNames,
       expressionTypes,
       templateExpressionSelections,
+      environment.memoryAnalysis.erasedSourceNodes,
       diagnostics,
     );
   }

@@ -27,7 +27,7 @@ export function main(): void {
   assert.match(emitted, /\.location\(/u);
   assert.doesNotMatch(emitted, /tsonic_js/u);
 });
-import { artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
+import { projectArtifactTexts as artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
 
 test("typed locations preserve optional identity, generic pointees and reversible projections", () => {
   const result = compileMojo({ files: { "index.ts": `
@@ -51,6 +51,23 @@ export function main(): void {
   assert.match(emitted, /TypedLocation\[Int32\]/u);
   assert.match(emitted, /project_optional_location/u);
   assert.match(emitted, /hash_typed_location/u);
+});
+
+test("generic storage arguments cannot unify different exact pointee carriers", () => {
+  const result = compileMojo({ files: { "index.ts": `
+import { allocatePointer, loadPointer, storePointer } from "@tsonic/core/lang.js";
+import type { int32, uint32, Pointer } from "@tsonic/core/types.js";
+function assign<T>(destination: Pointer<T>, source: Pointer<T>): void {
+  storePointer(destination, loadPointer(source));
+}
+export function main(): void {
+  const signed = allocatePointer<int32>(1);
+  const unsigned = allocatePointer<uint32>(2);
+  assign(signed, unsigned);
+}
+` } });
+  assert.equal(result.artifacts.length, 0);
+  assert.ok(result.diagnostics.some(({ code }) => code === "MOJO_PROJECT_CALL_TYPE_ARGUMENT_NOT_CLOSED"));
 });
 
 test("bound locations retain a selected reference owner and escaped callbacks", () => {
@@ -88,13 +105,11 @@ test("a readonly location and incompatible projection remain rejected", () => {
     `const object: { readonly value: int32 } = { value: 1 }; addressOf(object.value);`,
     `const pointer = allocatePointer<int32>(1); projectPointer<int32, string>(pointer, value => value, value => value);`,
   ]) {
-    const result = compileMojo({ files: { "index.ts": `
+    assert.throws(() => compileMojo({ files: { "index.ts": `
 import { addressOf, allocatePointer, projectPointer } from "@tsonic/core/lang.js";
 import type { int32 } from "@tsonic/core/types.js";
 export function main(): void { ${body} }
-` } });
-    assert.ok(result.diagnostics.length > 0);
-    assert.equal(result.artifacts.length, 0);
+` } }), /TypeScript diagnostics:/u);
   }
 });
 
@@ -134,7 +149,7 @@ export function main(): void {
   const old = values;
   let calls: int32 = 0;
   let index: int32 = 0;
-  function select(): int32[] { calls++; return values; }
+  const select = (): int32[] => { calls++; return values; };
   const first = addressOf(select()[index++]);
   const same = addressOf(values[0]);
   values = [7, 8];

@@ -81,6 +81,9 @@ export function printMojoTypeDocument(
       if (type.domain === "js") {
         return genericType(importedTypeName(context, ["tsonic_js"], "JsPromise"), [output]);
       }
+      if (type.captureOrigins === "empty") {
+        return genericType(importedTypeName(context, ["tsonic_runtime"], type.raises ? "ClosedRaisingCoroutine" : "ClosedCoroutine"), [output]);
+      }
       return genericType(type.raises ? "RaisingCoroutine" : "Coroutine", [output, text("...")]);
     }
     case "optional": return genericType(

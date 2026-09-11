@@ -39,7 +39,6 @@ export interface MojoCallableExpressionSignatureInput {
   readonly contextualType?: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
   readonly kind?: import("../program/model.js").MojoAnalyzedCallableKind;
   readonly name?: string;
-  readonly allowAsynchronous?: boolean;
   readonly source: TargetSourceProgram;
   readonly providerSemantics: MojoProviderSemantics;
   readonly projectTypes: MojoProjectTypeCatalog;
@@ -96,10 +95,10 @@ export function analyzeMojoCallableExpressionSignature(
     ...(input.owner === undefined ? {} : { owner: input.owner }),
   });
   if (callable === undefined) return undefined;
-  if (callable.asynchronous && input.allowAsynchronous !== true) {
+  if (callable.asynchronous) {
     input.diagnostics.push(mojoAnalysisDiagnostic(
       "MOJO_ASYNC_CALLABLE_EXPRESSION_NATIVE_LIMIT",
-      "The pinned Mojo lambda syntax has no native asynchronous lambda form.",
+      "The pinned Mojo compiler cannot close retained asynchronous callback arguments and captures without borrowing expired storage.",
       input.expression,
     ));
     return undefined;
@@ -126,7 +125,6 @@ export interface MojoCallableExpressionAnalysisInput {
   readonly contextualType?: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
   readonly kind?: import("../program/model.js").MojoAnalyzedCallableKind;
   readonly name?: string;
-  readonly allowAsynchronous?: boolean;
   readonly captureSelf?: boolean;
   readonly allocateLocalName: (sourceName: string) => string;
   readonly moduleBindingByDeclaration: WeakMap<Node, unknown>;
@@ -152,7 +150,6 @@ export function analyzeAndSealMojoCallableExpression(
     ...(input.contextualType === undefined ? {} : { contextualType: input.contextualType }),
     ...(input.kind === undefined ? {} : { kind: input.kind }),
     ...(input.name === undefined ? {} : { name: input.name }),
-    ...(input.allowAsynchronous === true ? { allowAsynchronous: true } : {}),
     source: environment.source,
     providerSemantics: environment.providerSemantics,
     projectTypes: environment.projectTypes,

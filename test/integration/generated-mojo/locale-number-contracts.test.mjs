@@ -47,8 +47,8 @@ export function main(): void { signed(-1n); unsigned(2n); }
 ` } });
   assert.deepEqual(result.diagnostics, []);
   const output = artifactTexts(result).map(({ text }) => text).join("\n");
-  assert.match(output, /number_to_locale_string\(value,/u);
-  assert.doesNotMatch(output, /number_to_locale_string\(Float64\(/u);
+  assert.match(output, /number_to_locale_string\(\s*value,/u);
+  assert.doesNotMatch(output, /number_to_locale_string\(\s*Float64\(/u);
 });
 
 test("authored same-spelled locale member does not select the numeric intrinsic", () => {

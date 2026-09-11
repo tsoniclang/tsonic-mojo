@@ -266,6 +266,9 @@ export function prepareMojoReceiver(
   if (receiver === undefined) return undefined;
   if (!optionalChain) return Object.freeze({ kind: "required", plan: receiver });
   const actualType = context.program.queries.expressionType(expression);
+  if (actualType !== undefined && mojoTargetTypeEquals(actualType, selectedType)) {
+    return Object.freeze({ kind: "required", plan: receiver });
+  }
   if (actualType?.kind !== "optional" || !mojoTargetTypeEquals(actualType.value, selectedType)) {
     appendMojoPlanningDiagnostic(
       context,

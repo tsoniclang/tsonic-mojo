@@ -43,7 +43,12 @@ export function mojoSourceOriginTypeContract(
       : mojoSourceOriginTypeContract(innerType, inner, context);
   }
   if (!context.ast.is.IsTypeReferenceNode(authoredTypeNode)) return undefined;
-  const identity = uniqueProviderIdentity(typeSubjects(selectedType, authoredTypeNode, context).map((subject) =>
+  const typeName = context.ast.as.AsTypeReferenceNode(authoredTypeNode)?.TypeName;
+  const reference = context.navigation.sourceReferenceFor(typeName);
+  const subjects = reference === undefined
+    ? typeSubjects(selectedType, authoredTypeNode, context)
+    : context.semantics.facts.selectedSubjects(reference.symbol, reference.declaration);
+  const identity = uniqueProviderIdentity(subjects.map((subject) =>
     context.sourceFacts.getFact(subject, providerVirtualDeclarationFactKey)));
   if (identity.kind === "conflict" || identity.value?.providerId !== mojoSourceVirtualModulesProviderId ||
     identity.value.providerVersion !== mojoSourceProviderVersion ||

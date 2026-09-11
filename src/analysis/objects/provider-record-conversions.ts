@@ -55,6 +55,7 @@ function selectRecordConversion(
   const semantics = context.source.semantics.forNode(expression);
   const targetType = expected.kind === "optional" ? expected.value : expected;
   const sourceType = actual.kind === "optional" ? actual.value : actual;
+  if (targetType.kind !== "target-named") return { kind: "not-applicable" };
   const destinationType = expected.kind === "optional"
     ? semantics.types.withoutMissingOrUndefined(destination) : destination;
   const selectedSource = actual.kind === "optional"
@@ -77,7 +78,7 @@ function selectRecordConversion(
   if (correspondence.kind !== "available") return unsupported(`Provider record correspondence is unavailable: ${correspondence.reason}.`);
   if (correspondence.destination.calls.length !== 0 || correspondence.destination.constructs.length !== 0 ||
     correspondence.destination.indexes.length !== 0) return unsupported("A field snapshot does not discharge callable, construct or index obligations.");
-  const inventory = targetFieldInventory(rows[0]!, targetType, context.providerSemantics);
+  const inventory = targetFieldInventory(rows[0]!, targetType, context.providerSemantics, "construction");
   if (inventory === undefined) return unsupported("Provider record fields have no complete exact native inventory.");
   const fields: Extract<MojoValueConversion, { kind: "provider-record" }>["fields"][number][] = [];
   const seen = new Set<string>();

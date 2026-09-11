@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
+import { projectArtifactTexts as artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
 import { memoryAbiCapability } from "../../helpers/memory-abi.mjs";
 import { nativeRecordProvider, nativeRecordSource } from "../../helpers/native-record-provider.mjs";
 

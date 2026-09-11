@@ -356,7 +356,6 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
       readonly contextualType?: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
       readonly kind?: import("./model.js").MojoAnalyzedCallableKind;
       readonly name?: string;
-      readonly allowAsynchronous?: boolean;
       readonly captureSelf?: boolean;
     } = {},
   ): MojoCallableExpressionSelection | undefined => {
@@ -368,7 +367,6 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
       ...(options.contextualType === undefined ? {} : { contextualType: options.contextualType }),
       ...(options.kind === undefined ? {} : { kind: options.kind }),
       ...(options.name === undefined ? {} : { name: options.name }),
-      ...(options.allowAsynchronous === true ? { allowAsynchronous: true } : {}),
       ...(options.captureSelf === false ? { captureSelf: false } : {}),
       allocateLocalName: createNameAllocator(),
       ensureLocationStorage(declaration, bindingName) {

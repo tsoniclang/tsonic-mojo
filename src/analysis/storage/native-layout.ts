@@ -29,7 +29,7 @@ export function selectMojoNativeLayout(layout: TsonicMemoryLayoutFact, type: Moj
       if (identity?.exportId === undefined) return undefined;
       const rows = providers.types.filter((row) => row.exportId === identity.exportId && providerOwnerMatches(row, identity));
       if (rows.length !== 1) return undefined;
-      const inventory = targetFieldInventory(rows[0]!, carrier, providers);
+      const inventory = targetFieldInventory(rows[0]!, carrier, providers, "physical-layout");
       if (inventory === undefined || inventory.size !== selected.fields.length) return undefined;
       const used = new Set<string>();
       for (const field of selected.fields) {

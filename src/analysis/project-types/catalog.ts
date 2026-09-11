@@ -71,6 +71,7 @@ export function createMojoProjectTypeCatalog(
       for (const parameter of rawParameters as readonly Node[]) {
         const classified = classifyMojoSourceGenericParameter(statement, parameter, {
           ast,
+          navigation: source.navigation,
           semantics,
           sourceFacts: source.sourceFacts,
         });
