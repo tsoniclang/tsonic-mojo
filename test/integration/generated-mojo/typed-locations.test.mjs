@@ -47,6 +47,52 @@ export function main(): void {
   assert.match(emitted, /TypedLocation\[Int32\]/u);
   assert.match(emitted, /TypedLocation\[Float32\]/u);
   assert.doesNotMatch(emitted, /TypedLocation\[Float64\]/u);
+  assert.equal([...emitted.matchAll(/= allocate_callable_environment\(/gu)].length, 4);
+});
+
+test("aliased pointer projection functions retain the required runtime callable representation", () => {
+  const result = compileMojo({ files: { "index.ts": `
+import { allocatePointer, projectPointer, loadPointer, storePointer } from "@tsonic/core/lang.js";
+import type { int32, Pointer } from "@tsonic/core/types.js";
+function make(delta: int32): Pointer<int32> {
+  const source = allocatePointer<int32>(4);
+  const forward = (value: int32): int32 => value + delta;
+  const backward = (value: int32): int32 => value - delta;
+  const alias = forward;
+  return projectPointer(source, alias, backward);
+}
+export function main(): void {
+  const projected = make(3);
+  if (loadPointer(projected) !== 7) throw new Error("escaped read");
+  storePointer(projected, 11);
+  if (loadPointer(projected) !== 11) throw new Error("escaped write");
+}
+` } });
+  assert.deepEqual(result.diagnostics, []);
+  const emitted = artifactTexts(result).map(({ text }) => text).join("\n");
+  assert.equal([...emitted.matchAll(/= allocate_callable_environment\(/gu)].length, 2);
+  assert.doesNotMatch(emitted, /= lambda/u);
+});
+
+test("bound immutable receiver captures cannot be emitted as borrowing native lambdas", () => {
+  const result = compileMojo({ files: { "index.ts": `
+import { bindPointer, loadPointer, storePointer } from "@tsonic/core/lang.js";
+import type { int32, Pointer } from "@tsonic/core/types.js";
+class Owner { value: int32 = 3; }
+function make(): Pointer<int32> {
+  const owner = new Owner();
+  return bindPointer<int32>(owner, () => owner.value, value => { owner.value = value; });
+}
+export function main(): void {
+  const pointer = make();
+  storePointer(pointer, 7);
+  if (loadPointer(pointer) !== 7) throw new Error("escaped owner");
+}
+` } });
+  assert.deepEqual(result.diagnostics, []);
+  const emitted = artifactTexts(result).map(({ text }) => text).join("\n");
+  assert.equal([...emitted.matchAll(/= allocate_callable_environment\(/gu)].length, 2);
+  assert.doesNotMatch(emitted, /= lambda/u);
 });
 
 test("explicit pointer projection cannot relabel a different source storage carrier", () => {

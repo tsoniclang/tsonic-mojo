@@ -114,7 +114,10 @@ export function adaptMojoRaisingCallableError(
           name: errorName,
           statements: Object.freeze([
             ...convertedError.before,
-            Object.freeze({ kind: "raise", expression: convertedError.value }),
+            Object.freeze({
+              kind: "raise",
+              expression: consumeMojoValue(convertedError.value, targetErrorType, context.program.lifecycle),
+            }),
           ]),
         })]),
       }),

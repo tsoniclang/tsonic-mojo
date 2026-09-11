@@ -1,7 +1,20 @@
 import type { AstReader, Node } from "@tsonic/tsts";
 import type { SourceProgramNavigation } from "@tsonic/target-api/source";
 import type { MojoCallableExpressionSelection } from "../program/model.js";
+import type { MojoCallSelection } from "../operations/call-model.js";
 import type { MojoCallableDisposition } from "./model.js";
+
+export function retainedMojoCallInputs(selection: MojoCallSelection): readonly Node[] {
+  if ("arguments" in selection) {
+    return selection.arguments.filter((argument) => argument.callableConsumption === "retained")
+      .map((argument) => argument.expression);
+  }
+  if (selection.kind === "typed-location") {
+    if (selection.operation === "bind-pointer") return [selection.readExpression, selection.writeExpression];
+    if (selection.operation === "project-pointer") return [selection.fromSourceExpression, selection.toSourceExpression];
+  }
+  return [];
+}
 
 export function classifyMojoCallableDisposition(
   expression: Node,

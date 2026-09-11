@@ -24,7 +24,7 @@ import { walkSourceTree } from "../../source/syntax/traversal.js";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 import { createMojoNarrowingView } from "./narrowing.js";
-import { classifyMojoCallableDisposition } from "./callables.js";
+import { classifyMojoCallableDisposition, retainedMojoCallInputs } from "./callables.js";
 import { selectMojoAuthoredTypeAlias } from "./aliases.js";
 import type {
   MojoBindingDisposition,
@@ -127,24 +127,25 @@ export function createMojoRepresentationCatalog(
   for (const sourceFile of input.sourceFiles) {
     walkSourceTree(sourceFile, input.ast, (node): void => {
       const call = input.callSelections.get(node);
-      if (call === undefined || !("arguments" in call)) return;
-      for (const argument of call.arguments) {
+      if (call === undefined) return;
+      for (const argument of "arguments" in call ? call.arguments : []) {
         recordTypeUse(argument.sourceType);
         recordTypeUse(argument.parameterType);
         if (argument.sourceContainerType !== undefined) {
           recordTypeUse(argument.sourceContainerType);
         }
-        if (argument.callableConsumption !== "retained") continue;
-        if (sealedErasedCallableReferences.has(argument.expression)) continue;
+      }
+      for (const argument of retainedMojoCallInputs(call)) {
+        if (sealedErasedCallableReferences.has(argument)) continue;
         const expression = resolveMojoCallableExpressionDependency(
-          argument.expression,
+          argument,
           input.source,
           input.callableExpressionSelections,
           input.callableDeclarationByExpression,
         );
         if (expression === undefined) {
           const authored = resolveMojoAuthoredCallableExpressionSyntax(
-            argument.expression,
+            argument,
             input.source,
           );
           if (authored !== undefined) {
