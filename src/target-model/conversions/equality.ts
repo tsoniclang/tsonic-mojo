@@ -56,7 +56,8 @@ export function mojoValueConversionEquals(left: MojoValueConversion, right: Mojo
         (left.parameters.kind !== "prefix" || candidate.parameters.kind === "prefix" &&
           entriesEqual(left.parameters.copies, candidate.parameters.copies, (copy, other) => copy === other)) &&
         mojoTargetTypeEquals(left.targetType, candidate.targetType) && left.result === candidate.result && left.error === candidate.error &&
-        optionalTypeEquals(left.sourceErrorType, candidate.sourceErrorType) && optionalConversionEquals(left.errorConversion, candidate.errorConversion);
+        optionalTypeEquals(left.sourceErrorType, candidate.sourceErrorType) && optionalConversionEquals(left.errorConversion, candidate.errorConversion) &&
+        optionalConversionEquals(left.resultConversion, candidate.resultConversion);
     }
     case "js-callback-truthiness": {
       const candidate = right as typeof left;

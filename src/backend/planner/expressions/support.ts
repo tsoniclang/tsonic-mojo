@@ -25,6 +25,7 @@ import { convertMojoDataRest } from "./js-data-rest-conversion.js";
 import { convertMojoSourceValue } from "./source-values/conversion.js";
 import { adaptMojoRaisingCallableError } from "./callable-error-adapter.js";
 import { adaptMojoCallableArguments } from "./callable-arguments.js";
+import { adaptMojoCallableResult } from "./callable-result.js";
 import {
   convertMojoCollection,
   convertMojoNarrowedUnion,
@@ -441,7 +442,8 @@ export function applyMojoConversion(
         modulePath: Object.freeze([]),
         name: "Error",
       });
-      let adapted = expression;
+      let adapted = adaptMojoCallableResult(expression, conversion, context, convertMojoValue);
+      if (adapted === undefined) return undefined;
       if (conversion.result === "never") {
         const sourceRaises = conversion.sourceErrorType !== undefined;
         const sourceError = conversion.sourceErrorType ?? targetError;

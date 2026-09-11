@@ -2,12 +2,14 @@ import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
 import type { MojoCopyCapability } from "../../target-model/lifecycle/model.js";
+import { mojoConversionRaises } from "../../target-model/conversions/effects.js";
 
 export function classifyCallableAdaptation(
   actual: MojoTargetTypeRef,
   expected: MojoTargetTypeRef,
   classifyError: (actual: MojoTargetTypeRef, expected: MojoTargetTypeRef) => MojoValueConversion | undefined,
   parameterCopy?: (type: MojoTargetTypeRef) => MojoCopyCapability,
+  classifyResult?: (actual: MojoTargetTypeRef, expected: MojoTargetTypeRef) => MojoValueConversion | undefined,
 ): Extract<MojoValueConversion, { readonly kind: "callable-adapt" }> | undefined {
   if (actual.kind !== "callable" || expected.kind !== "callable") return undefined;
   if (actual.parameters.length > expected.parameters.length) return undefined;
@@ -23,11 +25,15 @@ export function classifyCallableAdaptation(
       argumentCopies.push(copy);
     }
   }
-  const result = mojoTargetTypeEquals(actual.result, expected.result)
+  const sameResult = mojoTargetTypeEquals(actual.result, expected.result);
+  const resultConversion = !sameResult && actual.result.kind !== "never"
+    ? classifyResult?.(actual.result, expected.result) : undefined;
+  const result = sameResult
     ? "preserve" as const
     : actual.result.kind === "never"
       ? "never" as const
-      : undefined;
+      : resultConversion !== undefined && !mojoConversionRaises(resultConversion)
+        ? "convert" as const : undefined;
   if (result === undefined) return undefined;
   let error: "preserve" | "widen" | "erase";
   let errorConversion: MojoValueConversion | undefined;
@@ -70,7 +76,7 @@ export function classifyCallableAdaptation(
     sourceType: actual,
     targetType: expected,
     parameters: prefix ? Object.freeze({ kind: "prefix", copies: Object.freeze(argumentCopies) }) : Object.freeze({ kind: "identity" }),
-    result,
+    ...(result === "convert" ? { result, resultConversion: resultConversion! } : { result }),
     error,
     ...(actualErrorType === undefined ? {} : { sourceErrorType: actualErrorType }),
     ...(errorConversion === undefined

@@ -69,18 +69,20 @@ export type MojoValueConversion =
       readonly sourceType: MojoTargetTypeRef;
       readonly targetType: MojoTargetTypeRef;
     }
-  | {
+  | ({
       readonly kind: "callable-adapt";
       readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
       readonly targetType: MojoTargetTypeRef;
       readonly parameters:
         | { readonly kind: "identity" }
         | { readonly kind: "prefix"; readonly copies: readonly ("implicit" | "explicit")[] };
-      readonly result: "preserve" | "never";
       readonly error: "preserve" | "widen" | "erase";
       readonly sourceErrorType?: MojoTargetTypeRef;
       readonly errorConversion?: MojoValueConversion;
-    }
+    } & (
+      | { readonly result: "preserve" | "never"; readonly resultConversion?: never }
+      | { readonly result: "convert"; readonly resultConversion: MojoValueConversion }
+    ))
   | { readonly kind: "js-truthiness"; readonly conversion: MojoTruthinessConversion }
   | {
       readonly kind: "js-callback-truthiness";

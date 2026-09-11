@@ -3,6 +3,8 @@ import type { MojoCallSelection } from "../program/model.js";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
+import { mojoConversionRaises } from "../../target-model/conversions/effects.js";
+export { mojoConversionRaises } from "../../target-model/conversions/effects.js";
 import {
   mergeMojoErrorTypes,
 } from "../../target-model/types/error-domains.js";
@@ -19,32 +21,6 @@ export function providerCallRequiresRaisingConversion(
   return selection.arguments.some((argument) => mojoConversionRaises(argument.conversion)) ||
     (selection.receiverConversion !== undefined && mojoConversionRaises(selection.receiverConversion)) ||
     mojoConversionRaises(selection.resultConversion);
-}
-
-export function mojoConversionRaises(conversion: MojoValueConversion): boolean {
-  switch (conversion.kind) {
-    case "provider-record": return conversion.fields.some((field) => mojoConversionRaises(field.conversion));
-    case "js-value-extract": return true;
-    case "js-to-native-string": return true;
-    case "native-error-result-unwrap": return true;
-    case "js-data-rest": return mojoConversionRaises(conversion.elementConversion);
-    case "collection-map":
-      return conversion.source === "js-array" && conversion.elementConversion !== undefined ||
-        (conversion.elementConversion !== undefined &&
-          mojoConversionRaises(conversion.elementConversion));
-    case "optional-some":
-    case "optional-map":
-    case "optional-present":
-    case "optional-to-union":
-    case "union-inject":
-      return mojoConversionRaises(conversion.valueConversion);
-    case "union-to-optional":
-      return conversion.presentMembers.some((member) => mojoConversionRaises(member.conversion));
-    case "union-map":
-    case "narrowed-union-map":
-      return conversion.members.some((member) => mojoConversionRaises(member.conversion));
-    default: return false;
-  }
 }
 
 export function mojoConversionDependencies(conversion: MojoValueConversion): readonly Node[] {

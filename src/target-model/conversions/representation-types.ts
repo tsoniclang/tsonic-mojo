@@ -28,6 +28,7 @@ export function mojoValueConversionRepresentationTypes(
       return Object.freeze([
         conversion.sourceType,
         conversion.targetType,
+        ...(conversion.resultConversion === undefined ? [] : mojoValueConversionRepresentationTypes(conversion.resultConversion)),
         ...(conversion.sourceErrorType === undefined ? [] : [conversion.sourceErrorType]),
         ...(conversion.errorConversion === undefined
           ? []

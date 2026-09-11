@@ -15,8 +15,9 @@ import {
 import type { MojoPlanningContext } from "../program/context.js";
 import { registerMojoTypeImports } from "../types/imports.js";
 import { planMojoCallableExpression } from "./callables.js";
+import { convertMojoValue } from "./support.js";
 import type { MojoValuePlanner } from "./support.js";
-import { consumeMojoValue, withMojoValue } from "./value-plan.js";
+import { consumeMojoValue, mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { planMojoTruthiness } from "./conversion-support.js";
 
@@ -62,7 +63,7 @@ export function planMojoImmediateCallable(
   const inline = ast.is.IsArrowFunction(argument.expression) ||
     ast.is.IsFunctionExpression(argument.expression);
   if (inline && disposition.kind !== "erased" &&
-    argument.conversion.kind === "callable-adapt" && argument.conversion.parameters.kind === "identity") {
+    argument.conversion.kind === "callable-adapt" && argument.conversion.result !== "convert" && argument.conversion.parameters.kind === "identity") {
     return planMojoCallableExpression(
       argument.expression,
       context,
@@ -221,6 +222,11 @@ function convertImmediateCallbackResult(
   targetType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
   context: MojoPlanningContext,
 ): MojoExpression | undefined {
+  if (conversion.kind === "callable-adapt" && conversion.result === "convert") {
+    if (conversion.resultConversion === undefined) return undefined;
+    const result = convertMojoValue(mojoValue(expression), conversion.resultConversion, context);
+    return result?.before.length === 0 ? result.value : undefined;
+  }
   if (conversion.kind === "identity" || conversion.kind === "callable-adapt") {
     return targetType.result.kind !== "unit"
       ? expression

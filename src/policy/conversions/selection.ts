@@ -271,7 +271,10 @@ export function classifyMojoValueConversion(
   const callable = classifyCallableAdaptation(actual, expected, (source, target) => {
     const result = classifyMojoValueConversion(source, target, undefined, projectRelationships, undefined, undefined, parameterCopy);
     return result.kind === "resolved" ? result.conversion : undefined;
-  }, parameterCopy);
+  }, parameterCopy, (source, target) => {
+    const result = classify(source, target);
+    return result.kind === "resolved" ? result.conversion : undefined;
+  });
   if (callable !== undefined) {
     return {
       kind: "resolved",
