@@ -9,6 +9,7 @@ import type {
   MojoTargetTypeRef,
 } from "../../target-model/types/model.js";
 import type { MojoOriginRef, MojoOriginToken } from "../../target-model/origins/model.js";
+import { mojoOriginSymbol } from "../../target-model/origins/symbol.js";
 import { mojoTargetTypeKey } from "../../target-model/types/key.js";
 import {
   concat,
@@ -106,7 +107,7 @@ export function printMojoTypeDocument(
     case "compiler-expression": return text(type.expression);
     case "reference": return concat(
       text("ref["),
-      printMojoOriginDocument(type.origin),
+      printMojoOriginDocument(type.origin, context),
       text("] "),
       requiredMojoTypeDocument(type.value, context),
     );
@@ -212,22 +213,24 @@ export function printMojoGenericArgumentValueDocument(
     case "integer": return text(argument.value);
     case "boolean": return text(argument.value ? "True" : "False");
     case "value-reference": return text(argument.path.join("."));
-    case "origin": return printMojoOriginDocument(argument.origin);
+    case "origin": return printMojoOriginDocument(argument.origin, context);
     case "unbound": return text("_");
   }
 }
 
-export function printMojoOriginDocument(origin: MojoOriginRef): MojoDocument {
+export function printMojoOriginDocument(origin: MojoOriginRef, context: MojoPrintContext): MojoDocument {
+  const symbol = mojoOriginSymbol(origin);
+  if (symbol !== undefined) {
+    const name = importedTypeName(context, ["std", "origin"], symbol);
+    return origin.kind === "static" ? text(name) : genericType(name, [
+      text(`mut=${(origin.kind === "unsafe" || origin.kind === "untracked") && origin.mutable ? "True" : "False"}`),
+    ]);
+  }
   switch (origin.kind) {
-    case "static": return text("static");
-    case "comptime": return text("comptime");
+    case "static":
+    case "untracked":
+    case "unsafe": throw new Error("Mojo named origin has no selected symbol.");
     case "inferred": return text("_");
-    case "untracked": return genericType("UntrackedOrigin", [
-      text(`mut=${origin.mutable ? "True" : "False"}`),
-    ]);
-    case "unsafe": return genericType("AnyOrigin", [
-      text(`mut=${origin.mutable ? "True" : "False"}`),
-    ]);
     case "parameter": return text(origin.name);
     case "provider-expression": return text(renderOriginTokens(origin.tokens));
   }
@@ -248,7 +251,7 @@ function printFunctionTypeParameter(
   context: MojoPrintContext,
 ): MojoDocument {
   if (parameter.convention === "ref" && parameter.type.kind === "reference") {
-    const prefix = concat(text("ref["), printMojoOriginDocument(parameter.type.origin), text("] "));
+    const prefix = concat(text("ref["), printMojoOriginDocument(parameter.type.origin, context), text("] "));
     return parameter.name === undefined
       ? concat(prefix, requiredMojoTypeDocument(parameter.type.value, context))
       : concat(prefix, text(`${parameter.name}: `), requiredMojoTypeDocument(parameter.type.value, context));

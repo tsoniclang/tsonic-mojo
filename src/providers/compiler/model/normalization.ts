@@ -30,6 +30,7 @@ import type {
 } from "./mojo-doc-schema.js";
 import { parseMojoCompilerConformanceCondition } from "./condition-parser.js";
 import { parseMojoCompilerType } from "./type-parser.js";
+import { mojoCompilerSignatureReferences } from "./signature-origins.js";
 import type { MojoCompilerTypeScope } from "./type-parser.js";
 import {
   createModuleScope,
@@ -409,7 +410,8 @@ function normalizeFunction(
     classifyGenericParameter,
   );
   const scope = mergeScope(parentScope, scopeFor(genericParameters));
-  const arguments_ = overload.args.map((argument) => normalizeArgument(argument, scope));
+  const referenceTypes = mojoCompilerSignatureReferences(overload, scope);
+  const arguments_ = overload.args.map((argument, index) => normalizeArgument(argument, scope, referenceTypes.get(index)));
   const semanticIdentity = stableDigest({
     genericParameters,
     arguments: arguments_,
@@ -438,6 +440,7 @@ function normalizeFunction(
 function normalizeArgument(
   argument: MojoDocArgument,
   scope: MojoCompilerTypeScope,
+  referenceType?: Extract<MojoCompilerType, { readonly kind: "reference" }>,
 ): MojoCompilerFunctionArgument {
   const variadic = argument.name.startsWith("*");
   return Object.freeze({
@@ -448,7 +451,7 @@ function normalizeArgument(
       : argument.passingKind === "kw"
         ? "keyword"
         : "positional-or-keyword",
-    type: parseTypeValue(argument, scope),
+    type: referenceType ?? parseTypeValue(argument, scope),
     ...(argument.default === undefined ? {} : { defaultValue: argument.default }),
     variadic,
   });

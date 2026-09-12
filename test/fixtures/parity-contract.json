@@ -710,13 +710,13 @@
       "benchmarkClassification": "target-limit",
       "benchmarkAction": "reject escaping borrowed views because TypeScript has no lifetime-bearing view type; retain exact Copy and owned-string projections",
       "proofId": "providers.escaping-borrowed-results",
-      "classification": "provider-metadata-gap",
-      "sourceProof": "test/providers/compiler/provider.test.mjs",
-      "analysisProof": "test/providers/compiler/provider.test.mjs",
-      "boundaryProof": "test/providers/compiler/provider.test.mjs",
-      "mutationProof": "test/providers/compiler/provider.test.mjs",
-      "nativeProof": "test/providers/compiler/provider.test.mjs",
-      "note": "Explicit Origin/Ref/MutRef source types exist. The compiler provider currently erases the reference from the source type projection, so escaping imported borrowed results need a lossless source/provider relation; owned and Copy projections are distinct supported cases."
+      "classification": "implemented-generated",
+      "sourceProof": "test/integration/generated-mojo/native-interop.test.mjs",
+      "analysisProof": "test/providers/compiler/interop-projection.test.mjs",
+      "emissionProof": "test/integration/generated-mojo/native-interop.test.mjs",
+      "mutationProof": "test/providers/compiler/interop-projection.test.mjs",
+      "nativeProof": "scripts/verify-native-interop.mjs",
+      "note": "Exact origin-bearing Ref/MutRef declarations and selected receiver parameters remain references through local binding and return. Native proofs compare addresses after a call and reject escape of a local origin. Opaque derived-origin expressions without an expressible source origin are not silently erased."
     },
     {
       "id": "providers.owned-custom-receivers",
@@ -739,13 +739,13 @@
       "benchmarkClassification": "target-limit",
       "benchmarkAction": "reject nested borrowed custom receivers before source projection; retain owned custom receivers such as Box<Self>",
       "proofId": "providers.borrowed-custom-receivers",
-      "classification": "provider-metadata-gap",
-      "sourceProof": "test/providers/compiler/provider.test.mjs",
-      "analysisProof": "test/providers/compiler/provider.test.mjs",
-      "boundaryProof": "test/providers/compiler/provider.test.mjs",
-      "mutationProof": "test/providers/compiler/provider.test.mjs",
-      "nativeProof": "test/providers/compiler/provider.test.mjs",
-      "note": "Simple borrowed Mojo receivers are supported. Explicit source origin types exist, but compiler-provider projection rejects non-inferred origin parameters and does not preserve an origin-bearing receiver's full source shape. This is an importer gap, not a TypeScript expressibility limit."
+      "classification": "pinned-toolchain-limit",
+      "sourceProof": "test/integration/generated-mojo/native-interop.test.mjs",
+      "analysisProof": "test/providers/compiler/interop-projection.test.mjs",
+      "boundaryProof": "test/fixtures/native-limits/custom-receiver.mojo",
+      "mutationProof": "test/providers/compiler/interop-projection.test.mjs",
+      "nativeProof": "test/fixtures/native-limits/custom-receiver.mojo",
+      "note": "Ordinary origin-bearing View<O> receivers now retain and substitute their full identity; generated native borrowed-address proofs pass. Arbitrary nested custom self types are different: native Mojo rejects self: Pointer[Self, origin] because self must have type Self. No invented receiver dereference adapter is added."
     },
     {
       "id": "providers.c-variadics",
@@ -754,12 +754,12 @@
       "benchmarkClassification": "implemented",
       "benchmarkAction": "retain C variadic tails as an explicit unsafe provider ABI without treating them as ordinary Rust rest parameters",
       "proofId": "providers.c-variadics",
-      "classification": "provider-metadata-gap",
-      "sourceProof": "test/providers/compiler/provider.test.mjs",
-      "analysisProof": "test/providers/compiler/provider.test.mjs",
-      "boundaryProof": "test/providers/compiler/provider.test.mjs",
-      "runtimeProof": "../mojo-runtime/tests/memory/c_variadic_abi_test.mojo",
-      "note": "Mojo positional/keyword variadics are supported, but are not evidence of a C-variadic ABI. Native adapters can call external_call with an explicit fixed prefix and C argument promotions; direct C variadic declaration import lacks an exact provider contract. The native-only C ABI proof does not certify that missing importer contract."
+      "classification": "implemented-generated",
+      "sourceProof": "test/integration/generated-mojo/native-interop.test.mjs",
+      "analysisProof": "test/providers/compiler/interop-projection.test.mjs",
+      "emissionProof": "test/integration/generated-mojo/native-interop.test.mjs",
+      "nativeProof": "scripts/verify-native-interop.mjs",
+      "note": "An explicit provider foreign-call relation retains the native symbol and fixed prefix. Checking requires unsafeContext, exact C carriers and a closed tail; analysis performs C default promotions. Generated code links one real C variadic call and proves width, order, tuple spread and empty-tail behavior. Automatic C-header discovery is not claimed."
     },
     {
       "id": "providers.mutable-statics",
@@ -773,7 +773,7 @@
       "analysisProof": "test/providers/compiler/provider.test.mjs",
       "boundaryProof": "test/providers/compiler/provider.test.mjs",
       "nativeProof": "test/providers/compiler/provider.test.mjs",
-      "note": "The pinned mojo doc schema does not publish addressable module-variable declarations, so mutable external static identity cannot be selected through the compiler-backed provider."
+      "note": "Native Mojo rejects authored mutable module globals, and mojo doc publishes no addressable external-global declaration. The native control is test/fixtures/native-limits/mutable-global.mojo. An external library must publish exact accessor or address/layout declarations; the target must not invent a global symbol or storage ABI."
     },
     {
       "id": "providers.closed-trait-associated-items",
@@ -802,7 +802,7 @@
       "boundaryProof": "test/providers/compiler/provider.test.mjs",
       "mutationProof": "test/providers/compiler/provider.test.mjs",
       "nativeProof": "test/providers/compiler/provider.test.mjs",
-      "note": "The target model retains associated projections, but the compiler provider projects their source shape to object. Closed resolved substitutions remain supported; open associated API results lack a lossless source-side provider projection. This is an importer gap, not a blanket claim about TypeScript expressibility."
+      "note": "Concrete associated aliases now close from their exact owning declaration and generic bindings, with generated native proofs. Abstract associated projections reject instead of becoming object. ProviderTypeExpression has no indexed-access/associated type expression, and ProviderMemberDeclaration has no abstract associated type member; that shared source contract must exist before open projections can be exposed losslessly."
     },
     {
       "id": "providers.rust-unions",
@@ -816,7 +816,7 @@
       "analysisProof": "test/providers/compiler/provider.test.mjs",
       "boundaryProof": "test/providers/compiler/provider.test.mjs",
       "nativeProof": "test/providers/compiler/provider.test.mjs",
-      "note": "The Mojo compiler metadata schema exposes structs, traits, aliases, and functions but no addressable Rust-style union field ABI. Closed TypeScript unions remain supported separately."
+      "note": "Native UnsafeUnion exists and its native construction/read control passes; Mojo does not lack union storage. The compiler-backed declaration schema does not supply addressable named C/Rust-style union fields or their overlap/layout ABI. Those require an explicit producing-library layout contract; an ordinary struct declaration cannot be guessed to describe overlapping fields. Closed discriminated source unions remain separately supported."
     },
     {
       "id": "providers.macros",

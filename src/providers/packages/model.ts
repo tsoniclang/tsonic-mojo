@@ -2,6 +2,7 @@ import type {
   ProviderDeclarationKind,
   ProviderExportDeclaration,
   ProviderMemberDeclaration,
+  ProviderTypeExpression,
 } from "@tsonic/tsts";
 import type {
   TargetCapabilityContribution,
@@ -133,6 +134,7 @@ export interface MojoProviderExportRow {
 }
 
 export type MojoProviderOperationRow = MojoProviderOperationDefinition & {
+  readonly sourceResult?: ProviderTypeExpression;
   readonly providerPackageId: string;
   readonly providerId: string;
   readonly providerVersion: string;

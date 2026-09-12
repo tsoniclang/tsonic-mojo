@@ -54,6 +54,7 @@ export function analyzeArguments(
     expression: Node,
     targetType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
   ) => Extract<MojoTargetTypeRef, { readonly kind: "callable" }> | undefined,
+  parameterOverrides?: ReadonlyMap<import("./call-argument-conversions.js").MojoSelectedArgumentBinding, MojoTargetTypeRef>,
 ): { readonly kind: "resolved"; readonly arguments: readonly MojoAnalyzedCallArgument[] } |
   { readonly kind: "unsupported"; readonly code: string; readonly reason: string } {
   if (parameterTypes.length !== targetArguments.length) {
@@ -103,7 +104,7 @@ export function analyzeArguments(
       const parameterIndex = binding.sourceParameterIndex;
       const target = targetArguments[parameterIndex];
       const spreadSequence = binding.sourceForm === "spread-sequence";
-      const restElementType = parameterTypes[parameterIndex];
+      const restElementType = parameterOverrides?.get(binding) ?? parameterTypes[parameterIndex];
       const parameterType = spreadSequence
         ? target?.variadicCollectionType ?? (target?.restPacking === "list"
           ? restElementType === undefined

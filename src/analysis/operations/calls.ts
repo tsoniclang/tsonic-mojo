@@ -11,6 +11,8 @@ import { classifyMojoRefinedValueConversion } from "../refinements/value.js";
 import { resolveMojoNonTypeGenericArguments } from "../../policy/types/generic-arguments.js";
 import { selectMojoProviderCall } from "../../policy/operations/provider-selection.js";
 import { instantiateMojoProviderOperation } from "../../policy/operations/provider-instantiation.js";
+import { mojoProviderSourceResultContract } from "../../policy/operations/provider-source-result.js";
+import { analyzeMojoForeignArguments } from "./foreign-calls.js";
 import { analyzeMojoTypedLocation } from "./typed-locations.js";
 import { analyzeMojoSourceModuleConstruction } from "../source-modules/construction.js";
 import { analyzeMojoRawPointer } from "./raw-pointers.js";
@@ -222,10 +224,11 @@ export function analyzeMojoCall(
     selectedProvider.operation,
     sourceCall,
     (type, authoredTypeNode) => {
+      if (authoredTypeNode !== undefined) return resolve(type, authoredTypeNode);
       const carriers = sourceCall.sourceArguments.flatMap((argument) => {
         if (!semantics.types.isIdentical(type, argument.type)) return [];
         const carrier = context.expressionTypes.get(argument.expression);
-        return carrier === undefined ? [] : [carrier];
+        return carrier === undefined ? [] : [carrier.kind === "reference" ? carrier.value : carrier];
       });
       if (carriers.length === 0) return resolve(type, authoredTypeNode);
       const first = carriers[0]!;
@@ -249,6 +252,10 @@ export function analyzeMojoCall(
           : { sourceCallableErrorType: context.sourceCallableErrorType }),
       },
     ),
+    sourceCall.sourceReceiver === undefined ? undefined
+      : context.expressionTypes.get(sourceCall.sourceReceiver.expression) ??
+        resolve(sourceCall.sourceReceiver.type, sourceCall.sourceReceiver.authoredTypeNode ??
+          (sourceCall.sourceReceiver.declaration === undefined ? undefined : context.source.ast.typeNode(sourceCall.sourceReceiver.declaration))),
   );
   if (instantiated.kind === "unsupported") {
     return { kind: "unsupported", code: "MOJO_PROVIDER_CALL_NOT_CLOSED", reason: instantiated.reason };
@@ -261,7 +268,7 @@ export function analyzeMojoCall(
       reason: target.reason,
     };
   }
-  if (target.kind !== "function-call" && target.kind !== "instance-call" && target.kind !== "value-predicate") {
+  if (target.kind !== "function-call" && target.kind !== "instance-call" && target.kind !== "value-predicate" && target.kind !== "foreign-call") {
     return {
       kind: "unsupported",
       code: "MOJO_PROVIDER_CALL_FORM_INVALID",
@@ -270,6 +277,8 @@ export function analyzeMojoCall(
   }
   const records = providerRecordArgumentConversions(sourceCall, instantiated.operation.parameterTypes, target.arguments, resolve, context);
   if (records.kind === "unsupported") return records;
+  const foreign = analyzeMojoForeignArguments(sourceCall, instantiated.operation, context.source, context.expressionTypes, resolve);
+  if (foreign.kind === "unsupported") return foreign;
   const arguments_ = analyzeArguments(
     context.source.ast,
     sourceCall,
@@ -284,6 +293,7 @@ export function analyzeMojoCall(
     records.conversions,
     (expression) => context.source.ast.is.IsObjectLiteralExpression(expression),
     context.contextualizeCallableArgument,
+    foreign.parameters,
   );
   if (arguments_.kind === "unsupported") return arguments_;
   const closedArguments = closeLocationBackedArguments(
@@ -301,12 +311,16 @@ export function analyzeMojoCall(
       })
     : undefined;
   if (sourceModule?.kind === "unsupported") return sourceModule;
-  const result = closeResultConversion(
-    instantiated.operation.resultType,
-    sourceCall.sourceResultType,
-    resolve,
-    context.projectRelationships,
-  );
+  const referenceResult = mojoProviderSourceResultContract(selectedProvider.operation.sourceResult,
+    instantiated.operation.resultType, selectedProvider.operation.resultType);
+  if (referenceResult === "conflict") {
+    return { kind: "unsupported", code: "MOJO_PROVIDER_REFERENCE_RESULT_MISMATCH", reason: "The selected source reference result requires an exact borrowed provider result." };
+  }
+  const result = referenceResult === "reference" || referenceResult === "exact-value" || selectedProvider.operation.operationKind === "constructor"
+    ? { kind: "resolved" as const, conversion: Object.freeze({ kind: "identity" as const }) }
+    : closeResultConversion(
+        instantiated.operation.resultType, sourceCall.sourceResultType, resolve, context.projectRelationships,
+      );
   if (result.kind === "unsupported") return result;
   let receiverConversion;
   let receiverDisposition;
@@ -315,7 +329,7 @@ export function analyzeMojoCall(
     const receiver = sourceCall.sourceReceiver;
     const actual = receiver === undefined
       ? undefined
-      : resolve(
+      : context.expressionTypes.get(receiver.expression) ?? resolve(
           receiver.type,
           receiver.authoredTypeNode ?? (receiver.declaration === undefined
             ? undefined

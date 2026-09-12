@@ -1,6 +1,6 @@
 import type { ResolvedSourceCallInfo, Type } from "@tsonic/tsts";
 import type { MojoProviderOperationRow } from "../../providers/packages/model.js";
-import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
+import { mojoTargetGenericArgumentsEqual, mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type {
   MojoProviderTargetGenericParameter,
   MojoTargetGenericArgument,
@@ -11,6 +11,8 @@ import type {
 } from "../../target-model/operations/model.js";
 import { substituteMojoTargetType } from "../../target-model/types/substitution.js";
 import type { MojoSelectedProviderOperation } from "../../target-model/operations/selection.js";
+import { bindTargetTypePattern } from "./provider-bindings.js";
+import { mojoOriginEquals } from "../../target-model/origins/identity.js";
 
 export type MojoProviderOperationInstantiation =
   | { readonly kind: "resolved"; readonly operation: MojoSelectedProviderOperation }
@@ -24,6 +26,7 @@ export function instantiateMojoProviderOperation(
     parameter: MojoProviderTargetGenericParameter,
     explicitTypeNode: import("@tsonic/tsts").Node,
   ) => readonly MojoTargetGenericArgument[] | undefined,
+  selectedReceiver?: MojoTargetTypeRef,
 ): MojoProviderOperationInstantiation {
   const typeSubstitutions = new Map<string, MojoTargetTypeRef>();
   const valueSubstitutions = new Map<string, MojoTargetGenericArgument>();
@@ -31,11 +34,13 @@ export function instantiateMojoProviderOperation(
   const packSubstitutions = new Map<string, readonly MojoTargetGenericArgument[]>();
   if (row.receiverType !== undefined) {
     const sourceReceiver = source.sourceReceiver?.type;
-    const receiver = sourceReceiver === undefined ? undefined : resolveType(sourceReceiver);
+    const receiver = selectedReceiver ?? (sourceReceiver === undefined ? undefined : resolveType(sourceReceiver));
     if (receiver === undefined) {
       return { kind: "unsupported", reason: "the selected provider receiver has no closed Mojo carrier" };
     }
-    const mismatch = bindTargetTypePattern(row.receiverType, receiver, typeSubstitutions);
+    const mismatch = bindTargetTypePattern(row.receiverType, receiver, {
+      types: typeSubstitutions, values: valueSubstitutions, origins: originSubstitutions, packs: packSubstitutions,
+    });
     if (mismatch !== undefined) {
       return { kind: "unsupported", reason: `the selected provider receiver does not close its Mojo ABI: ${mismatch}` };
     }
@@ -83,8 +88,16 @@ export function instantiateMojoProviderOperation(
       if (resolved.length === 1) {
         const [argument] = resolved;
         if (parameter.kind === "origin" && argument?.kind === "origin") {
+          const existing = originSubstitutions.get(parameter.name);
+          if (existing !== undefined && !mojoOriginEquals(existing, argument.origin)) {
+            return { kind: "unsupported", reason: `selected provider origin argument '${parameter.name}' contradicts its receiver` };
+          }
           originSubstitutions.set(parameter.name, argument.origin);
         } else if (parameter.kind === "value" && argument !== undefined) {
+          const existing = valueSubstitutions.get(parameter.name);
+          if (existing !== undefined && !mojoTargetGenericArgumentsEqual([existing], [argument])) {
+            return { kind: "unsupported", reason: `selected provider value argument '${parameter.name}' contradicts its receiver` };
+          }
           valueSubstitutions.set(parameter.name, argument);
         }
       }
@@ -161,16 +174,16 @@ export function instantiateMojoProviderPropertyOperation(
     return { kind: "unsupported", reason: "selected provider property has no receiver carrier pattern" };
   }
   const typeSubstitutions = new Map<string, MojoTargetTypeRef>();
-  const mismatch = bindTargetTypePattern(row.receiverType, receiver, typeSubstitutions);
+  const substitutions = {
+    types: typeSubstitutions,
+    values: new Map<string, MojoTargetGenericArgument>(),
+    origins: new Map<string, import("../../target-model/origins/model.js").MojoOriginRef>(),
+    packs: new Map<string, readonly MojoTargetGenericArgument[]>(),
+  };
+  const mismatch = bindTargetTypePattern(row.receiverType, receiver, substitutions);
   if (mismatch !== undefined) {
     return { kind: "unsupported", reason: `the selected provider property receiver does not close its Mojo ABI: ${mismatch}` };
   }
-  const substitutions = {
-    types: typeSubstitutions,
-    values: new Map<string, never>(),
-    origins: new Map<string, never>(),
-    packs: new Map<string, never>(),
-  };
   return {
     kind: "resolved",
     operation: Object.freeze({
@@ -241,85 +254,4 @@ function substituteOperationForm(
           }))),
         }),
   });
-}
-
-export function bindTargetTypePattern(
-  pattern: MojoTargetTypeRef,
-  actual: MojoTargetTypeRef,
-  bindings: Map<string, MojoTargetTypeRef>,
-): string | undefined {
-  if (pattern.kind === "type-parameter") {
-    const existing = bindings.get(pattern.name);
-    if (existing === undefined) {
-      bindings.set(pattern.name, actual);
-      return undefined;
-    }
-    return mojoTargetTypeEquals(existing, actual)
-      ? undefined
-      : `type parameter '${pattern.name}' received contradictory carriers`;
-  }
-  if (pattern.kind !== actual.kind) return `'${pattern.kind}' does not match '${actual.kind}'`;
-  switch (pattern.kind) {
-    case "source-primitive":
-    case "native-string":
-    case "unit":
-    case "never":
-    case "null":
-    case "undefined":
-    case "dynamic":
-    case "bigint":
-    case "symbol":
-    case "compiler-expression":
-      return mojoTargetTypeEquals(pattern, actual) ? undefined : "closed receiver carriers differ";
-    case "target-named": {
-      if (actual.kind !== "target-named" || pattern.id !== actual.id) return "target type identities differ";
-      const expected = pattern.genericArguments ?? [];
-      const observed = actual.genericArguments ?? [];
-      if (expected.length !== observed.length) return "target generic arities differ";
-      for (let index = 0; index < expected.length; index += 1) {
-        const left = expected[index]!;
-        const right = observed[index]!;
-        if (left.kind !== "type" || right.kind !== "type") {
-          if (JSON.stringify(left) !== JSON.stringify(right)) return "non-type generic arguments differ";
-          continue;
-        }
-        const mismatch = bindTargetTypePattern(left.type, right.type, bindings);
-        if (mismatch !== undefined) return mismatch;
-      }
-      return undefined;
-    }
-    case "list":
-      return actual.kind === "list" ? bindTargetTypePattern(pattern.element, actual.element, bindings) : "list carriers differ";
-    case "fixed-array":
-      return actual.kind === "fixed-array" && JSON.stringify(pattern.length) === JSON.stringify(actual.length)
-        ? bindTargetTypePattern(pattern.element, actual.element, bindings)
-        : "fixed-array carriers differ";
-    case "dictionary": {
-      if (actual.kind !== "dictionary") return "dictionary carriers differ";
-      return bindTargetTypePattern(pattern.key, actual.key, bindings) ??
-        bindTargetTypePattern(pattern.value, actual.value, bindings);
-    }
-    case "future":
-      return actual.kind === "future"
-        ? bindTargetTypePattern(pattern.output, actual.output, bindings)
-        : "future carriers differ";
-    case "optional":
-      return actual.kind === "optional" ? bindTargetTypePattern(pattern.value, actual.value, bindings) : "optional carriers differ";
-    case "union":
-    case "tuple": {
-      const left = pattern.kind === "union" ? pattern.members : pattern.elements;
-      const right = actual.kind === "union" ? actual.members : actual.kind === "tuple" ? actual.elements : [];
-      if (left.length !== right.length) return `${pattern.kind} carrier arities differ`;
-      for (let index = 0; index < left.length; index += 1) {
-        const mismatch = bindTargetTypePattern(left[index]!, right[index]!, bindings);
-        if (mismatch !== undefined) return mismatch;
-      }
-      return undefined;
-    }
-    case "associated":
-    case "reference":
-    case "callable":
-    case "function":
-      return mojoTargetTypeEquals(pattern, actual) ? undefined : "advanced receiver carriers differ";
-  }
 }

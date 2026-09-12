@@ -25,7 +25,7 @@ export function planMojoProviderCallArguments(
   });
   if (planned === undefined) return undefined;
   const target = selection.operation.target;
-  if (target.kind !== "function-call" && target.kind !== "instance-call") return undefined;
+  if (target.kind !== "function-call" && target.kind !== "instance-call" && target.kind !== "foreign-call") return undefined;
   if (!target.arguments.some((argument) => argument.restPacking === "list")) return planned;
   const result: PlannedMojoCallArgument[] = [];
   for (const [parameterIndex, parameter] of target.arguments.entries()) {

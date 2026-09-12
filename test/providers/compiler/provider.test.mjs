@@ -181,7 +181,10 @@ test("compiler metadata extraction normalizes exact conventions, keywords, const
     assert.deepEqual(bucket.associatedAliases[0].targetType, { kind: "type-parameter", name: "T" });
     const itemOperation = projection.operations.find(({ memberId }) =>
       memberId?.endsWith("::method:item") === true);
-    assert.equal(itemOperation.resultType.kind, "associated");
+    assert.deepEqual(itemOperation.resultType, { kind: "type-parameter", name: "T" });
+    const itemSource = projection.declarationModel.exports.find(({ name }) => name === "Bucket")
+      .members.find(({ name }) => name === "item").signatures[0].returnType;
+    assert.deepEqual(itemSource, { kind: "type-parameter", name: "T" });
   } finally {
     loader.close();
   }

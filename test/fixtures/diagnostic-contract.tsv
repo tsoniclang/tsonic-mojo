@@ -652,3 +652,7 @@ MOJO_VALUE_REGION_NOT_ADMITTED	planning	internal-invariant	reviewed-other	-	-	-	
 MOJO_VARIABLE_BINDING_NOT_CLOSED	planning	internal-invariant	reviewed-other	-	-	-	-
 MOJO_VARIABLE_INITIALIZER_NOT_PLANNED	planning	internal-invariant	reviewed-other	-	-	-	-
 MOJO_VOID_OPERAND_CARRIER_UNRESOLVED	analysis	internal-invariant	reviewed-other	-	-	-	-
+MOJO_FOREIGN_CALL_UNSAFE_CONTEXT_REQUIRED	analysis	exact-rejection	retain-exact-guard	test/integration/generated-mojo/native-interop.test.mjs	scripts/verify-native-interop.mjs	test/providers/compiler/interop-projection.test.mjs	-
+MOJO_C_VARIADIC_OPEN_SPREAD_UNSUPPORTED	analysis	exact-rejection	retain-exact-guard	test/integration/generated-mojo/native-interop.test.mjs	scripts/verify-native-interop.mjs	test/providers/compiler/interop-projection.test.mjs	-
+MOJO_C_VARIADIC_CARRIER_UNSUPPORTED	analysis	exact-rejection	retain-exact-guard	test/integration/generated-mojo/native-interop.test.mjs	scripts/verify-native-interop.mjs	test/providers/compiler/interop-projection.test.mjs	-
+MOJO_PROVIDER_REFERENCE_RESULT_MISMATCH	analysis	exact-rejection	retain-exact-guard	test/integration/generated-mojo/native-interop.test.mjs	scripts/verify-native-interop.mjs	test/providers/compiler/interop-projection.test.mjs	-

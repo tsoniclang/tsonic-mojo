@@ -124,7 +124,8 @@ function planVariableDeclaration(
       {
         kind: "variable",
         name,
-        ...(inferredCallable ? {} : { type }),
+        ...(inferredCallable ? {} : { type: type.kind === "reference" ? type.value : type }),
+        ...(type.kind === "reference" ? { reference: true } : {}),
         ...(compileTimeInitializer === undefined ? {} : { compileTime: true }),
         ...(initializer === undefined && defaultValue === undefined
           ? {}

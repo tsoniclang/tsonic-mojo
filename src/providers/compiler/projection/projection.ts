@@ -49,6 +49,7 @@ export function projectMojoCompilerModule(
   options: {
     readonly providerModuleId: string;
     readonly moduleSpecifier: string;
+    readonly resolveDeclaration?: MojoCompilerTypeProjectionContext["resolveDeclaration"];
     readonly exports: readonly {
       readonly declarationName: string;
       readonly exportName: string;
@@ -70,6 +71,8 @@ export function projectMojoCompilerModule(
       .filter(({ kind }) => kind !== "function")
       .map(({ name }) => name)),
     imports,
+    declarations: new Map(module.declarations.map((declaration) => [declaration.name, declaration])),
+    ...(options.resolveDeclaration === undefined ? {} : { resolveDeclaration: options.resolveDeclaration }),
   };
   const available = new Set(module.availableExports.map(({ name }) => name));
   const mappings = canonicalExportMappings(options.exports);
@@ -316,7 +319,6 @@ function projectStructMembers(
   const projectedIndex = projectStructIndexers(
     declaration,
     exportId,
-    ownerTarget,
     context,
     operations,
     functionsByName.get("__getitem__") ?? [],
@@ -350,6 +352,9 @@ function projectStructMembers(
         );
       }
       const projected = projectFunctionSignature(function_, context, memberId);
+      const callParameters = constructor
+        ? [...declaration.genericParameters, ...function_.genericParameters]
+        : function_.genericParameters;
       signatures.push(projected.signature);
       operations.push(Object.freeze({
         exportId,
@@ -362,9 +367,9 @@ function projectStructMembers(
               modulePath: Object.freeze([context.package.packageName, ...context.modulePath]),
               ...(constructor ? {} : { ownerPath: Object.freeze([declaration.name]) }),
               name: constructor ? declaration.name : name,
-              ...(function_.genericParameters.length === 0
+              ...(callParameters.length === 0
                 ? {}
-          : { genericParameters: projectMojoTargetGenericParameters(function_.genericParameters, context) }),
+                : { genericParameters: projectMojoTargetGenericParameters(callParameters, context) }),
               arguments: projected.targetArguments,
             })
           : Object.freeze({
@@ -376,7 +381,11 @@ function projectStructMembers(
                 : { genericParameters: projectMojoTargetGenericParameters(function_.genericParameters, context) }),
               arguments: projected.targetArguments,
             }),
-        ...(constructor || function_.static ? {} : { receiverType: ownerTarget }),
+        ...(constructor || function_.static ? {} : {
+          receiverType: projectMojoCompilerType(receiver!.type, {
+            ...context, genericParameters: function_.genericParameters,
+          }).target,
+        }),
         parameterTypes: projected.parameterTargets,
         resultType: constructor ? ownerTarget : projected.resultTarget,
         ...(function_.raises ? { raises: true } : {}),
@@ -397,7 +406,6 @@ function projectStructMembers(
 function projectStructIndexers(
   declaration: MojoCompilerStruct,
   exportId: string,
-  ownerTarget: import("../../../target-model/types/model.js").MojoTargetTypeRef,
   context: MojoCompilerTypeProjectionContext,
   operations: MojoProviderOperationDefinition[],
   getters: readonly MojoCompilerFunction[],
@@ -452,7 +460,9 @@ function projectStructIndexers(
         receiver: getter.receiver.convention,
         index: getter.projected.targetArguments[0]!,
       }),
-      receiverType: ownerTarget,
+      receiverType: projectMojoCompilerType(getter.receiver.type, {
+        ...context, genericParameters: getter.function_.genericParameters,
+      }).target,
       parameterTypes: getter.projected.parameterTargets,
       resultType: getter.projected.resultTarget,
       ...(getter.function_.raises ? { raises: true } : {}),
@@ -479,7 +489,9 @@ function projectStructIndexers(
         index: setter.projected.targetArguments[0]!,
         value: setter.projected.targetArguments[1]!,
       }),
-      receiverType: ownerTarget,
+      receiverType: projectMojoCompilerType(setter.receiver.type, {
+        ...context, genericParameters: setter.function_.genericParameters,
+      }).target,
       parameterTypes: setter.projected.parameterTargets,
       resultType: Object.freeze({ kind: "unit" }),
       ...(setter.function_.raises ? { raises: true } : {}),

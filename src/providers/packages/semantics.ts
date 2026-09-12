@@ -64,6 +64,9 @@ export function collectMojoProviderSemanticsFromDefinitions(
     const providerId = mojoProviderBindingProviderId(definition.id);
     const moduleByExportId = new Map(definition.modules.flatMap((module) =>
       module.exports.map((exported) => [exported.id, { module, exported }] as const)));
+    const sourceSignatures = new Map(definition.modules.flatMap((module) => module.exports.flatMap((exported) => [
+      ...(exported.signatures ?? []), ...(exported.members ?? []).flatMap((member) => member.signatures ?? []),
+    ].map((signature) => [signature.id, signature] as const))));
     for (const module of definition.modules) {
       for (const exported of module.exports) {
         exports.push(snapshotClosedMetadata({
@@ -86,6 +89,8 @@ export function collectMojoProviderSemanticsFromDefinitions(
       }
       operations.push(snapshotClosedMetadata({
         ...operation,
+        ...(operation.signatureId === undefined || sourceSignatures.get(operation.signatureId)?.returnType === undefined
+          ? {} : { sourceResult: sourceSignatures.get(operation.signatureId)!.returnType }),
         providerPackageId: definition.id,
         providerId,
         providerVersion: definition.version,

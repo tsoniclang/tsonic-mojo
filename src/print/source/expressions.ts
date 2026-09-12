@@ -275,7 +275,7 @@ export function printParameterDocument(
   context: MojoPrintContext,
 ): MojoDocument {
   if (parameter.convention === "ref" && parameter.type.kind === "reference") {
-    return concat(text("ref["), printMojoOriginDocument(parameter.type.origin),
+    return concat(text("ref["), printMojoOriginDocument(parameter.type.origin, context),
       text(`] ${parameter.name}: `), requiredMojoTypeDocument(parameter.type.value, context));
   }
   const convention = parameter.convention === undefined || parameter.convention === "imm"

@@ -16,5 +16,6 @@ export function projectMojoPassingMode(
 }
 
 export function isDirectMojoSelfReceiver(type: MojoCompilerType): boolean {
+  if (type.kind === "reference") return type.target.kind === "self" && isDirectMojoSelfReceiver(type.target);
   return type.kind === "self" && type.memberPath.length === 0 && type.arguments.length === 0;
 }

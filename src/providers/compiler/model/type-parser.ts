@@ -315,7 +315,7 @@ function parseFunctionGenericParameters(
   return Object.freeze(result);
 }
 
-function parseCallableParameter(
+export function parseCallableParameter(
   expression: string,
   scope: MojoCompilerTypeScope,
 ): import("./model.js").MojoCompilerCallableParameter {

@@ -87,7 +87,6 @@ function argumentIdentity(argument: MojoTargetGenericArgument): readonly unknown
 function originIdentity(origin: MojoOriginRef): readonly unknown[] {
   switch (origin.kind) {
     case "static":
-    case "comptime":
     case "inferred": return [origin.kind];
     case "untracked":
     case "unsafe": return [origin.kind, origin.mutable];

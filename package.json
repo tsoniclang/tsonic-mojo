@@ -16,6 +16,7 @@
     "test": "npm run build && node --test \"test/**/*.test.mjs\"",
     "test:native-limits": "node scripts/verify-native-limits.mjs",
     "test:native-memory": "node scripts/verify-native-memory.mjs",
+    "test:native-interop": "node scripts/verify-native-interop.mjs",
     "test:native-async": "node scripts/verify-native-async-callables.mjs",
     "prepack": "npm run build"
   },

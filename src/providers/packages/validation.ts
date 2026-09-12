@@ -1,3 +1,4 @@
+import { validateMojoForeignCall } from "./foreign-call-validation.js";
 import type {
   MojoProviderOperationDefinition,
   MojoProviderPackageDefinition,
@@ -275,6 +276,7 @@ function validateOperation(
   }
   validateMojoProviderType(operation.resultType);
   validateMojoSourceModuleArgument(operation);
+  validateMojoForeignCall(operation, signature?.declaration);
   for (const type of operation.parameterTypes ?? []) validateMojoProviderType(type);
   if (operation.receiverType !== undefined) validateMojoProviderType(operation.receiverType);
   if (operation.errorType !== undefined) {
@@ -287,7 +289,7 @@ function validateOperation(
     if (signature === undefined) {
       throw new Error(`Provider ${operation.operationKind} '${operation.exportId}' requires an exact signature identity.`);
     }
-    if (operation.target.kind !== "function-call" && operation.target.kind !== "instance-call" && operation.target.kind !== "value-predicate" &&
+    if (operation.target.kind !== "function-call" && operation.target.kind !== "instance-call" && operation.target.kind !== "value-predicate" && operation.target.kind !== "foreign-call" &&
       operation.target.kind !== "unsupported") {
       throw new Error(`Provider ${operation.operationKind} '${operation.exportId}' requires a Mojo call target.`);
     }

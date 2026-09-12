@@ -32,7 +32,7 @@ test("type keys preserve equality across field order, omitted defaults and calla
 
 test("canonical keys are congruent with every current target type identity form", () => {
   const origins = [
-    { kind: "static" }, { kind: "comptime" }, { kind: "inferred" },
+    { kind: "static" }, { kind: "inferred" },
     { kind: "parameter", name: "input" }, { kind: "untracked", mutable: false },
     { kind: "unsafe", mutable: true },
     { kind: "provider-expression", tokens: [{ kind: "identifier", text: "input" }] },
@@ -42,7 +42,7 @@ test("canonical keys are congruent with every current target type identity form"
     { kind: "compiler-expression", expression: "size_of[Int]()" },
     { kind: "static-string", value: "example" }, { kind: "integer", value: "12" },
     { kind: "boolean", value: true }, { kind: "value-reference", path: ["example", "count"] },
-    { kind: "origin", origin: origins[3] }, { kind: "unbound" },
+    { kind: "origin", origin: { kind: "parameter", name: "input" } }, { kind: "unbound" },
   ];
   const types = [number, text, named, callable,
     ...["unit", "never", "null", "undefined", "bigint", "symbol"].map((kind) => ({ kind })),

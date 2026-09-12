@@ -243,7 +243,6 @@ function validateNamedLifecycle(
 function validateOrigin(origin: MojoOriginRef): void {
   switch (origin.kind) {
     case "static":
-    case "comptime":
     case "inferred": return;
     case "untracked":
     case "unsafe":
@@ -257,6 +256,7 @@ function validateOrigin(origin: MojoOriginRef): void {
         throw new Error("Mojo provider origin expression must contain exact non-empty tokens.");
       }
       return;
+    default: throw new Error("Mojo reference origin has an unsupported identity kind.");
   }
 }
 

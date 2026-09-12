@@ -37,6 +37,29 @@ export function main(): void {}
   assert.doesNotMatch(artifactTexts(result).map(({ text }) => text).join("\n"), /intl_number_format_new/u);
 });
 
+test("Intl unit options survive variable snapshots and exact selected formatter operations", () => {
+  const result = compileMojo({ surfaces: ["js"], files: { "index.ts": `
+import type { uint64 } from "@tsonic/core/types.js";
+export function render(value: uint64): string {
+  const options = { style: "unit" as const, unit: "meter", unitDisplay: "long" as const };
+  const formatter = new Intl.NumberFormat("en-US", options);
+  options.unit = "liter";
+  const resolved = formatter.resolvedOptions();
+  let text = formatter.format(value);
+  if (resolved.unit !== undefined) text += resolved.unit;
+  if (resolved.unitDisplay !== undefined) text += resolved.unitDisplay;
+  for (const part of formatter.formatToParts(value)) text += part.type + part.value;
+  return text + (3).toLocaleString("en-US", options);
+}
+export function main(): void {}
+` } });
+  assert.deepEqual(result.diagnostics, []);
+  const output = artifactTexts(result).map(({ text }) => text).join("\n");
+  for (const operation of ["intl_number_format_new(", ".get_unit(", ".get_unit_display(", ".format_to_parts(", "number_to_locale_string("])
+    assert.ok(output.includes(operation), operation);
+  assert.doesNotMatch(output, /Float64\(value\)/u);
+});
+
 test("NumberFormat resolved options preserve optional fields and grouping strategies", () => {
   const result = compileMojo({ surfaces: ["js"], files: { "index.ts": `
 export function render(): string {

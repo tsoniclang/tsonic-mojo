@@ -9,6 +9,7 @@ import type {
   MojoCompilerProjectSnapshot,
   MojoCompilerType,
   MojoCompilerTypeArgument,
+  MojoCompilerTypeDeclaration,
 } from "../model/model.js";
 import type {
   MojoProviderTargetGenericParameter,
@@ -20,6 +21,9 @@ import { mojoCompilerModuleSpecifier } from "./module-specifier.js";
 import { projectMojoPassingMode } from "./call-conventions.js";
 import { parseMojoProviderReferenceOrigin } from "../../../target-model/origins/parser.js";
 import { mojoLifecycleRoleForCompilerPath } from "../classification/lifecycle.js";
+import { mojoProviderOriginSourceType, mojoProviderSourceType } from "./origins.js";
+import { mojoSourceOriginTypeIds } from "../../../source/semantics/declarations/origins.js";
+import { resolveMojoAssociatedType } from "./associated-types.js";
 
 export interface MojoCompilerTypeProjection {
   readonly source: ProviderTypeExpression;
@@ -31,6 +35,14 @@ export interface MojoCompilerTypeProjectionContext {
   readonly package: MojoCompilerPackageSnapshot;
   readonly modulePath: readonly string[];
   readonly localDeclarations: ReadonlySet<string>;
+  readonly declarations: ReadonlyMap<string, MojoCompilerTypeDeclaration>;
+  readonly resolveDeclaration?: (
+    package_: MojoCompilerPackageSnapshot,
+    modulePath: readonly string[],
+    exportName: string,
+  ) => MojoCompilerTypeDeclaration | undefined;
+  readonly resolvingAssociatedTypes?: ReadonlySet<string>;
+  readonly genericParameters?: readonly MojoCompilerGenericParameter[];
   readonly source: {
     readonly providerModuleId: string;
     readonly moduleSpecifier: string;
@@ -78,16 +90,7 @@ export function projectMojoCompilerType(
         genericArguments,
       );
       if (type.memberPath.length > 0) {
-        const projectedArguments = type.arguments.map((argument) => projectGenericArgument(argument, context));
-        return Object.freeze({
-          source: Object.freeze({ kind: "object" }),
-          target: Object.freeze({
-            kind: "associated",
-            owner: ownerTarget,
-            memberPath: type.memberPath,
-            genericArguments: Object.freeze(projectedArguments.map(({ target }) => target)),
-          }),
-        });
+        return projectAssociatedType(type, context);
       }
       return Object.freeze({
         source: Object.freeze({
@@ -105,17 +108,7 @@ export function projectMojoCompilerType(
       });
     }
     case "associated": {
-      const owner = projectMojoCompilerType(type.owner, context);
-      const arguments_ = type.arguments.map((argument) => projectGenericArgument(argument, context));
-      return Object.freeze({
-        source: Object.freeze({ kind: "object" }),
-        target: Object.freeze({
-          kind: "associated",
-          owner: owner.target,
-          memberPath: type.memberPath,
-          genericArguments: Object.freeze(arguments_.map(({ target }) => target)),
-        }),
-      });
+      return projectAssociatedType(type, context);
     }
     case "tuple": {
       const elements = type.elements.map((element) => projectMojoCompilerType(element, context));
@@ -126,14 +119,17 @@ export function projectMojoCompilerType(
     }
     case "reference": {
       const target = projectMojoCompilerType(type.target, context);
-      const originParameters = new Set(
-        (context.owner?.genericParameters ?? [])
-          .filter((parameter) => parameter.kind === "origin")
-          .map((parameter) => parameter.name),
+      const originParameter = selectedOriginParameter(type.origin, context);
+      const parsedOrigin = parseMojoProviderReferenceOrigin(
+        originParameter?.name ?? type.origin,
+        new Set(originParameter === undefined ? [] : [originParameter.name]),
       );
-      const parsedOrigin = parseMojoProviderReferenceOrigin(type.origin, originParameters);
       return Object.freeze({
-        source: target.source,
+        source: mojoProviderSourceType(
+          parsedOrigin.mutable ? mojoSourceOriginTypeIds.mutableReference : mojoSourceOriginTypeIds.reference,
+          [target.source, mojoProviderOriginSourceType(parsedOrigin.origin, context.imports)],
+          context.imports,
+        ),
         target: Object.freeze({
           kind: "reference",
           origin: parsedOrigin.origin,
@@ -147,6 +143,7 @@ export function projectMojoCompilerType(
       target: Object.freeze({ kind: "compiler-expression", expression: type.expression }),
     });
     case "function": {
+      context = { ...context, genericParameters: type.genericParameters };
       const parameters = type.parameters.map((parameter) => Object.freeze({
         parameter,
         projected: projectMojoCompilerType(parameter.type, context),
@@ -203,6 +200,27 @@ export function projectMojoCompilerType(
   }
 }
 
+function projectAssociatedType(
+  type: Extract<MojoCompilerType, { readonly kind: "self" | "associated" }>,
+  context: MojoCompilerTypeProjectionContext,
+): MojoCompilerTypeProjection {
+  const namedOwner = type.kind === "associated" && type.owner.kind === "named" ? type.owner : undefined;
+  const location = namedOwner === undefined ? undefined : resolveTypeLocation(namedOwner, context);
+  const package_ = location?.package ?? context.package;
+  const modulePath = location?.modulePath ?? context.modulePath;
+  const name = location?.exportName ?? context.owner?.name;
+  const local = package_.id === context.package.id && samePath(modulePath, context.modulePath);
+  const declarations = new Map(local ? context.declarations : []);
+  if (name !== undefined && !declarations.has(name)) {
+    const declaration = context.resolveDeclaration?.(package_, modulePath, name);
+    if (declaration !== undefined) declarations.set(name, declaration);
+  }
+  const resolved = resolveMojoAssociatedType(type, context.owner?.name, declarations,
+    `/${[package_.packageName, ...modulePath].join("/")}`,
+    context.resolvingAssociatedTypes ?? new Set());
+  return projectMojoCompilerType(resolved.type, { ...context, resolvingAssociatedTypes: resolved.resolving });
+}
+
 export function projectMojoTargetGenericParameters(
   parameters: readonly MojoCompilerGenericParameter[],
   context: MojoCompilerTypeProjectionContext,
@@ -228,7 +246,7 @@ function projectTargetGenericArgument(
     return Object.freeze({ kind: "type", type: projectMojoCompilerType(argument.type, context).target });
   }
   if (argument.kind === "value") {
-    return projectMojoCompilerValueArgument(argument.expression, argument.name);
+    return projectGenericArgument(argument, context).target;
   }
   if (argument.kind === "type-expression") {
     return Object.freeze({ kind: "type-expression", expression: argument.expression });
@@ -244,8 +262,9 @@ export function projectMojoGenericParameters(
   context: MojoCompilerTypeProjectionContext,
 ): readonly ProviderTypeParameterDeclaration[] {
   return Object.freeze(sourceVisibleMojoGenericParameters(parameters).map((parameter): ProviderTypeParameterDeclaration => {
-    const constraints = parameter.constraints.map((constraint) =>
-      projectMojoCompilerType(constraint, context).source);
+    const constraints = parameter.kind === "origin"
+      ? [mojoProviderSourceType(mojoSourceOriginTypeIds.origin, [], context.imports)]
+      : parameter.constraints.map((constraint) => projectMojoCompilerType(constraint, context).source);
     const sourceConstraints = parameter.variadic
       ? [Object.freeze({
           kind: "array" as const,
@@ -271,13 +290,6 @@ export function projectMojoGenericParameters(
 export function sourceVisibleMojoGenericParameters(
   parameters: readonly MojoCompilerGenericParameter[],
 ): readonly MojoCompilerGenericParameter[] {
-  for (const parameter of parameters) {
-    if (parameter.kind === "origin" && parameter.passingKind !== "inferred") {
-      throw new Error(
-        `Mojo origin parameter '${parameter.name}' is not infer-only and has no exact TypeScript source representation.`,
-      );
-    }
-  }
   return Object.freeze(parameters.filter((parameter) => parameter.passingKind !== "inferred"));
 }
 
@@ -361,6 +373,15 @@ function projectGenericArgument(
       }),
     });
     case "value": {
+      const parameter = selectedOriginParameter(argument.expression, context);
+      if (parameter !== undefined) return Object.freeze({
+        source: Object.freeze({ kind: "type-parameter", name: parameter.name }),
+        target: Object.freeze({
+          kind: "origin",
+          ...(argument.name === undefined ? {} : { name: argument.name }),
+          origin: Object.freeze({ kind: "parameter", name: parameter.name }),
+        }),
+      });
       const source = sourceValueArgument(argument.expression);
       return Object.freeze({
         source,
@@ -391,6 +412,19 @@ export function projectMojoCompilerValueArgument(
     } catch {}
   }
   return Object.freeze({ kind: "compiler-expression", ...named, expression });
+}
+
+function selectedOriginParameter(
+  expression: string,
+  context: MojoCompilerTypeProjectionContext,
+): MojoCompilerGenericParameter | undefined {
+  const name = expression.trim();
+  const qualified = /^Self\.([_A-Za-z][_A-Za-z0-9]*)$/u.exec(name);
+  const parameters = qualified === null
+    ? [...(context.genericParameters ?? []), ...(context.owner?.genericParameters ?? [])]
+    : context.owner?.genericParameters ?? [];
+  const selected = parameters.find((parameter) => parameter.name === (qualified?.[1] ?? name));
+  return selected?.kind === "origin" ? selected : undefined;
 }
 
 function sourceValueArgument(expression: string): ProviderTypeExpression {

@@ -22,7 +22,7 @@ import type {
   MojoValuePlanner,
   PlannedMojoCallArgument,
 } from "./support.js";
-import { registerMojoTypeImports } from "../types/imports.js";
+import { registerMojoGenericArgumentImports, registerMojoTypeImports } from "../types/imports.js";
 import { planMojoIntrinsicCall } from "./intrinsic-calls.js";
 import { mojoValue, retainMojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
@@ -66,7 +66,7 @@ export function planMojoCall(
       context,
     );
     for (const argument of genericArguments) {
-      if (argument.kind === "type") registerMojoTypeImports(argument.type, context);
+      registerMojoGenericArgumentImports(argument, context);
     }
     const plannedArguments = planSelectedArguments(selection.arguments, context, planValue);
     if (plannedArguments === undefined) return undefined;
@@ -349,6 +349,29 @@ export function planMojoCall(
       : finishOptionalMojoOperation(node, callee, converted, context);
   }
   const target = selection.operation.target;
+  if (target.kind === "foreign-call") {
+    const arguments_ = planSelectedArguments(selection.arguments, context, planValue);
+    if (arguments_ === undefined) return undefined;
+    const ordered = invocation.orderArguments(arguments_);
+    if (ordered.arguments.some((argument) => argument.spread || argument.name !== undefined)) {
+      throw new Error("A sealed C call contains an open or labelled native argument.");
+    }
+    const resultType = mojoTargetTypeInContext(selection.operation.resultType, context);
+    registerMojoTypeImports(resultType, context);
+    const call: MojoExpression = Object.freeze({
+      kind: "call",
+      callee: mojoModulePathExpression(context, ["std", "ffi"], ["external_call"]),
+      genericArguments: Object.freeze([
+        Object.freeze({ kind: "static-string", value: target.symbol }),
+        Object.freeze({ kind: "type", type: resultType }),
+        ...(target.fixedParameterCount === target.arguments.length ? [] : [
+          Object.freeze({ kind: "integer" as const, name: "num_fixed_args", value: String(target.fixedParameterCount) }),
+        ]),
+      ]),
+      arguments: ordered.arguments,
+    });
+    return invocation.convertResult(withMojoValue(ordered.before, call));
+  }
   if (target.kind === "value-predicate") {
     const argument = selection.arguments[0];
     if (selection.optionalChain || selection.arguments.length !== 1 || argument === undefined) {
@@ -364,7 +387,7 @@ export function planMojoCall(
   }
   const genericArguments = mojoTargetGenericArgumentsInContext(selection.operation.genericArguments, context);
   for (const argument of genericArguments) {
-    if (argument.kind === "type") registerMojoTypeImports(argument.type, context);
+    registerMojoGenericArgumentImports(argument, context);
   }
   if (target.kind !== "function-call" && target.kind !== "instance-call") {
     appendMojoPlanningDiagnostic(

@@ -278,6 +278,15 @@ function projectResolvedExportClosure(
     const projection = projectMojoCompilerModule(options.snapshot, resolved.package, model, {
       providerModuleId: options.providerModuleId,
       moduleSpecifier: options.moduleSpecifier,
+      resolveDeclaration: (package_, modulePath, exportName) => {
+        const declarationModel = options.loader.module({
+          snapshot: options.snapshot,
+          package: package_,
+          module: findModule(package_, modulePath),
+          requestedExports: [exportName],
+        });
+        return declarationModel.declarations.find((declaration) => declaration.name === exportName);
+      },
       exports: [...selected.entries()]
         .sort(([left], [right]) => compareText(left, right))
         .map(([declarationName, exportName]) => Object.freeze({ declarationName, exportName })),
