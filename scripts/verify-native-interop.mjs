@@ -4,7 +4,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { artifactTexts, compileMojo } from "../test/helpers/mojo-session.mjs";
-import { associatedNative, associatedProvider, associatedSource, borrowedNative, borrowedProvider, borrowedSource, foreignNative, foreignProvider, foreignSource } from "../test/helpers/native-interop-provider.mjs";
+import { associatedNative, associatedProvider, associatedSource, borrowedNative, borrowedProvider, borrowedSource, boundedBorrowSource, foreignNative, foreignProvider, foreignSource } from "../test/helpers/native-interop-provider.mjs";
 import { verifyCompilerMetadata } from "./native-interop/compiler-metadata.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -56,6 +56,42 @@ def main():
     _ = invalid[origin_of(value)](value)
 `,
   rejection: /cannot return reference with incompatible origin/u,
+}, {
+  name: "mutable-borrow-writeback", capabilities: [borrowedProvider({ mutable: true })], source: boundedBorrowSource(true),
+  fixtures: { "native_borrow.mojo": borrowedNative.replaceAll("origin: Origin", "origin: MutOrigin") },
+  runner: `from std.memory import Pointer
+from std.testing import assert_equal
+from native_interop_proof import relay
+def main() raises:
+    var value = Int32(7)
+    ref selected = relay[origin_of(value)](value)
+    assert_equal(Int(Pointer(to=selected)), Int(Pointer(to=value)))
+    selected = 19
+    assert_equal(value, 19)
+`,
+}, {
+  name: "immutable-borrow-identity", capabilities: [borrowedProvider({ mutable: false })], source: boundedBorrowSource(false),
+  fixtures: { "native_borrow.mojo": borrowedNative.replaceAll("origin: Origin", "origin: ImmOrigin") },
+  runner: `from std.memory import Pointer
+from std.testing import assert_equal
+from native_interop_proof import relay
+def main() raises:
+    var value = Int32(7)
+    ref immutable = Pointer(to=value).as_imm()[]
+    ref selected = relay[origin_of(immutable)](immutable)
+    assert_equal(selected, 7)
+    assert_equal(Int(Pointer(to=selected)), Int(Pointer(to=value)))
+`,
+}, {
+  name: "mutable-borrow-bound-rejection", capabilities: [borrowedProvider({ mutable: true })],
+  source: boundedBorrowSource(true).replace("O extends MutOrigin", "O extends Origin").replace("{ MutOrigin,", "{ Origin,"),
+  fixtures: { "native_borrow.mojo": borrowedNative.replaceAll("origin: Origin", "origin: MutOrigin") },
+  runner: `from native_interop_proof import relay
+def main():
+    var value = Int32(7)
+    ref selected = relay[origin_of(value)](value)
+`,
+  rejection: /value passed to 'origin' cannot be converted from 'Origin\[mut=mut\]' to 'MutOrigin'/u,
 }];
 const failures = [];
 try {

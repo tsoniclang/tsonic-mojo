@@ -10,8 +10,22 @@ import { mojoCompilerSignatureReferences } from "../../dist/providers/compiler/m
 export function verifyCompilerMetadata(workspace, mojo, guarded) {
   const output = join(workspace, "compiler-metadata");
   mkdirSync(output, { recursive: true });
-  const source = `def borrow[origin: Origin](ref[origin] value: Int32) -> ref[origin] Int32:
+  const source = `from std.origin import ImmOrigin, MutOrigin
+def borrow[origin: Origin](ref[origin] value: Int32) -> ref[origin] Int32:
     return value
+def borrow_mut[origin: MutOrigin](ref[origin] value: Int32) -> ref[origin] Int32:
+    return value
+def borrow_imm[origin: ImmOrigin](ref[origin] value: Int32) -> ref[origin] Int32:
+    return value
+def elided(ref value: Int32) -> Int32:
+    return value
+@fieldwise_init
+struct Cell:
+    var value: Int32
+    def read(ref self) -> Int32:
+        return self.value
+    def borrowed[origin: Origin](ref[origin] self) -> ref[origin] Self:
+        return self
 struct Family[T: Copyable & Deinitable](Copyable):
     comptime Element = Self.T
     var value: Self.T
@@ -31,7 +45,7 @@ struct Family[T: Copyable & Deinitable](Copyable):
     package: package_, modulePath: [], sourceDigest: createHash("sha256").update(source).digest("hex"), document,
     resolveTypePath: (_name, path) => path,
     classifyGenericParameter: ({ parameter }) => {
-      if (parameter.path === "/std/origin/Origin") return "origin";
+      if (["/std/origin/Origin", "/std/origin/#mutorigin", "/std/origin/#immorigin"].includes(parameter.path)) return "origin";
       assert.ok(parameter.traits?.length > 0);
       for (const trait of parameter.traits) assert.ok(typeConstraints.has(trait.path));
       return "type";
@@ -51,11 +65,24 @@ struct Family[T: Copyable & Deinitable](Copyable):
     modules: [{ modulePath: ["traits", "copyable"] }, { modulePath: ["traits", "deinitable"] }, { modulePath: ["origin"] }] };
   const projection = projectMojoCompilerModule({ packages: [package_, standard] }, package_, model, {
     providerModuleId: "test:native-metadata", moduleSpecifier: "test:native-metadata",
-    exports: [{ declarationName: "borrow", exportName: "borrow" }, { declarationName: "Family", exportName: "Family" }],
+    exports: ["borrow", "borrow_mut", "borrow_imm", "elided", "Cell", "Family"].map((name) => ({ declarationName: name, exportName: name })),
   });
   const selected = projection.declarationModel.exports.find(({ name }) => name === "borrow").signatures[0];
   assert.equal(selected.parameters[0].type.exportName, "Ref");
   assert.equal(selected.returnType.exportName, "Ref");
+  for (const [name, origin, reference] of [["borrow_mut", "MutOrigin", "MutRef"], ["borrow_imm", "ImmOrigin", "Ref"]]) {
+    const selected = projection.declarationModel.exports.find((item) => item.name === name).signatures[0];
+    assert.equal(selected.typeParameters[0].constraints[0].exportName, origin);
+    assert.equal(selected.parameters[0].type.exportName, reference);
+    assert.equal(selected.returnType.exportName, reference);
+  }
+  assert.equal(model.functions.find((item) => item.name === "elided").arguments[0].type.kind, "named");
+  const cell = model.declarations.find((item) => item.name === "Cell");
+  assert.equal(cell.functions.find((item) => item.name === "read").arguments[0].type.kind, "self");
+  const borrowedSelf = cell.functions.find((item) => item.name === "borrowed").arguments[0].type;
+  assert.equal(borrowedSelf.kind, "reference");
+  assert.equal(borrowedSelf.origin, "origin");
+  assert.equal(borrowedSelf.target.kind, "self");
   const family = projection.declarationModel.exports.find(({ name }) => name === "Family");
   assert.deepEqual(family.members.find(({ name }) => name === "read").signatures[0].returnType, { kind: "type-parameter", name: "T" });
   const original = document.decl.functions.find(({ name }) => name === "borrow").overloads[0];

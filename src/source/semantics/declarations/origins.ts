@@ -7,6 +7,8 @@ import { mojoTypesModule } from "../identity.js";
 
 export const mojoSourceOriginTypeIds = Object.freeze({
   origin: "Origin",
+  mutableOrigin: "MutOrigin",
+  immutableOrigin: "ImmOrigin",
   staticOrigin: "StaticOrigin",
   inferredOrigin: "InferredOrigin",
   untrackedOrigin: "UntrackedOrigin",
@@ -26,6 +28,8 @@ export function mojoSourceOriginDeclarations(): readonly ProviderExportDeclarati
   });
   return [
     alias(mojoSourceOriginTypeIds.origin, { kind: "unknown" }),
+    alias(mojoSourceOriginTypeIds.mutableOrigin, origin),
+    alias(mojoSourceOriginTypeIds.immutableOrigin, origin),
     alias(mojoSourceOriginTypeIds.staticOrigin, origin),
     alias(mojoSourceOriginTypeIds.inferredOrigin, origin),
     alias(mojoSourceOriginTypeIds.untrackedOrigin, origin),

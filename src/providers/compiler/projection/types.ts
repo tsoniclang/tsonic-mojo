@@ -21,7 +21,8 @@ import { mojoCompilerModuleSpecifier } from "./module-specifier.js";
 import { projectMojoPassingMode } from "./call-conventions.js";
 import { parseMojoProviderReferenceOrigin } from "../../../target-model/origins/parser.js";
 import { mojoLifecycleRoleForCompilerPath } from "../classification/lifecycle.js";
-import { mojoProviderOriginSourceType, mojoProviderSourceType } from "./origins.js";
+import { mojoCompilerOriginMutability, mojoProviderOriginSourceType, mojoProviderSourceType } from "./origins.js";
+import { mojoOriginConstraintType } from "../../../target-model/origins/constraint.js";
 import { mojoSourceOriginTypeIds } from "../../../source/semantics/declarations/origins.js";
 import { resolveMojoAssociatedType } from "./associated-types.js";
 
@@ -124,16 +125,17 @@ export function projectMojoCompilerType(
         originParameter?.name ?? type.origin,
         new Set(originParameter === undefined ? [] : [originParameter.name]),
       );
+      const mutable = originParameter === undefined ? parsedOrigin.mutable : mojoCompilerOriginMutability(originParameter) === true;
       return Object.freeze({
         source: mojoProviderSourceType(
-          parsedOrigin.mutable ? mojoSourceOriginTypeIds.mutableReference : mojoSourceOriginTypeIds.reference,
+          mutable ? mojoSourceOriginTypeIds.mutableReference : mojoSourceOriginTypeIds.reference,
           [target.source, mojoProviderOriginSourceType(parsedOrigin.origin, context.imports)],
           context.imports,
         ),
         target: Object.freeze({
           kind: "reference",
           origin: parsedOrigin.origin,
-          mutable: parsedOrigin.mutable,
+          mutable,
           value: target.target,
         }),
       });
@@ -230,8 +232,10 @@ export function projectMojoTargetGenericParameters(
     name: parameter.name,
     position: parameter.passingKind,
     variadic: parameter.variadic,
-    constraints: Object.freeze(parameter.constraints.map((constraint) =>
-      projectMojoCompilerType(constraint, context).target)),
+    constraints: Object.freeze(parameter.kind === "origin" && parameter.passingKind !== "inferred"
+      ? [mojoOriginConstraintType(mojoCompilerOriginMutability(parameter))]
+      : parameter.constraints.map((constraint) =>
+          projectMojoCompilerType(constraint, { ...context, imports: new Map() }).target)),
     ...(parameter.defaultArgument === undefined
       ? {}
       : { defaultArgument: projectTargetGenericArgument(parameter.defaultArgument, context) }),
@@ -263,7 +267,12 @@ export function projectMojoGenericParameters(
 ): readonly ProviderTypeParameterDeclaration[] {
   return Object.freeze(sourceVisibleMojoGenericParameters(parameters).map((parameter): ProviderTypeParameterDeclaration => {
     const constraints = parameter.kind === "origin"
-      ? [mojoProviderSourceType(mojoSourceOriginTypeIds.origin, [], context.imports)]
+      ? [mojoProviderSourceType(
+          mojoCompilerOriginMutability(parameter) === true ? mojoSourceOriginTypeIds.mutableOrigin
+            : mojoCompilerOriginMutability(parameter) === false ? mojoSourceOriginTypeIds.immutableOrigin
+              : mojoSourceOriginTypeIds.origin,
+          [], context.imports,
+        )]
       : parameter.constraints.map((constraint) => projectMojoCompilerType(constraint, context).source);
     const sourceConstraints = parameter.variadic
       ? [Object.freeze({

@@ -7,6 +7,7 @@ import type {
 } from "@tsonic/tsts";
 import type { SourceFileSemantics } from "@tsonic/target-api/source";
 import { mojoSourceOriginTypeContract } from "../../policy/types/origins.js";
+import type { MojoSourceOriginTypeContract } from "../../policy/types/origins.js";
 import { walkSourceTree } from "../syntax/traversal.js";
 
 export interface MojoSourceGenericParameterContext {
@@ -22,6 +23,7 @@ export interface MojoSourceGenericParameterIdentity {
   readonly declaration: Node;
   readonly name: string;
   readonly kind: MojoSourceGenericParameterKind;
+  readonly originMutable?: boolean;
 }
 
 export type MojoSourceGenericParameterClassification =
@@ -57,6 +59,7 @@ export function classifyMojoSourceGenericParameter(
       declaration,
       name: ast.text(nameNode),
       kind: origin ? "origin" : projected ? "value" : "type",
+      ...(origin?.mutable === undefined ? {} : { originMutable: origin.mutable }),
     }),
   };
 }
@@ -78,11 +81,11 @@ export function mojoSourceGenericParameterOwner(
 function sourceOriginConstraint(
   constraint: Node | undefined,
   context: MojoSourceGenericParameterContext,
-): boolean {
-  if (constraint === undefined) return false;
+): Extract<MojoSourceOriginTypeContract, { readonly kind: "origin" }> | undefined {
+  if (constraint === undefined) return undefined;
   const selected = context.semantics.types.authoredType(constraint);
-  return selected !== undefined &&
-    mojoSourceOriginTypeContract(selected, constraint, context)?.kind === "origin";
+  const contract = selected === undefined ? undefined : mojoSourceOriginTypeContract(selected, constraint, context);
+  return contract?.kind === "origin" ? contract : undefined;
 }
 
 function hasExactCompileTimeProjection(

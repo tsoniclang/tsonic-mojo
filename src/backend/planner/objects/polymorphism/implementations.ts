@@ -50,7 +50,7 @@ export function planMojoProjectImplementation(
   const declaration: MojoFunctionDeclaration = Object.freeze({
     kind: "function",
     name,
-    genericParameters: planMojoGenericParameters(implementation),
+    genericParameters: planMojoGenericParameters(implementation, specializedContext),
     parameters: Object.freeze(implementation.parameters.map((parameter): MojoParameter => {
       registerMojoTypeImports(parameter.bodyType, specializedContext);
       return Object.freeze({

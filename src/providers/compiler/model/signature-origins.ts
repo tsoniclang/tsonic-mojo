@@ -25,11 +25,14 @@ export function mojoCompilerSignatureReferences(
     if (argument.convention !== "ref") continue;
     const entry = entries[index]!;
     const equal = firstTopLevelDelimiter(entry, "=");
-    const selected = parseCallableParameter(equal === undefined ? entry : entry.slice(0, equal), scope);
+    const declaration = (equal === undefined ? entry : entry.slice(0, equal)).trim();
+    const annotated = firstTopLevelDelimiter(declaration, ":") === undefined &&
+      argument.name === "self" && argument.type === "Self" ? `${declaration}: Self` : declaration;
+    const selected = parseCallableParameter(annotated, scope);
     const value = parseMojoCompilerType(argument.type, argument.path, scope);
-    const signatureValue = selected.type.kind === "reference" ? selected.type.target : undefined;
+    const signatureValue = selected.type.kind === "reference" ? selected.type.target : selected.type;
     const declaredValue = parseMojoCompilerType(argument.type, undefined, scope);
-    if (selected.name !== argument.name || selected.convention !== "ref" || signatureValue === undefined ||
+    if (selected.name !== argument.name || selected.convention !== "ref" ||
       JSON.stringify(signatureValue) !== JSON.stringify(declaredValue)) {
       throw new Error(`Mojo reference signature contradicts structured argument '${argument.name}'.`);
     }

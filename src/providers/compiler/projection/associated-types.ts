@@ -69,7 +69,12 @@ function bindParameters(
     if (selected === undefined || selected.kind === "unbound" || parameter.variadic) {
       throw new Error(`Associated type '${owner}' has inconsistent selected generic arity for '${parameter.name}'.`);
     }
-    bindings.set(parameter.name, substituteCompilerArgument(selected, bindings));
+    const resolved = substituteCompilerArgument(selected, bindings);
+    if (parameter.kind === "type" ? resolved.kind !== "type" && resolved.kind !== "type-expression"
+      : resolved.kind !== "value") {
+      throw new Error(`Associated type '${owner}' has a contradictory argument category for '${parameter.name}'.`);
+    }
+    bindings.set(parameter.name, resolved);
   }
   if (remaining.length !== 0) throw new Error(`Associated type '${owner}' has inconsistent selected generic arity.`);
 }
@@ -82,7 +87,11 @@ function substituteCompilerArgument(
   const name = argument.kind === "type" && argument.type.kind === "type-parameter"
     ? argument.type.name : argument.kind === "value" ? argument.expression : undefined;
   const bound = name === undefined ? undefined : bindings.get(name);
-  if (bound !== undefined) return argument.name === undefined ? bound : Object.freeze({ ...bound, name: argument.name });
+  if (bound !== undefined) {
+    const value = { ...bound };
+    delete value.name;
+    return Object.freeze(argument.name === undefined ? value : { ...value, name: argument.name });
+  }
   if (argument.kind === "type") return Object.freeze({ ...argument, type: substituteCompilerType(argument.type, bindings, self) });
   if (argument.kind === "type-expression") return Object.freeze({ ...argument, sourceType: substituteCompilerType(argument.sourceType, bindings, self) });
   return argument;

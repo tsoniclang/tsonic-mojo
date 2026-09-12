@@ -11,6 +11,8 @@ import type {
 import { mojoFieldwiseInitDecorators } from "../../target-ast/index.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import { registerMojoTypeImports } from "../types/imports.js";
+import { planMojoGenericParameters } from "./generic-parameters.js";
+import { mojoGenericParameterReference } from "../../../target-model/types/constructors.js";
 import {
   mojoReferenceIdentityEqualityMethod,
 } from "./reference-wrapper.js";
@@ -25,22 +27,8 @@ export function planMojoInterface(
   interface_: MojoAnalyzedInterface,
   context: MojoPlanningContext,
 ): readonly MojoDeclaration[] {
-  const genericParameters = Object.freeze(interface_.typeParameters.map((parameter) => Object.freeze({
-    kind: "type" as const,
-    name: parameter.name,
-    identity: parameter.identity,
-    position: "positional-or-keyword" as const,
-    variadic: false,
-    constraints: parameter.constraints,
-  })));
-  const genericArguments = interface_.typeParameters.map((parameter) => Object.freeze({
-    kind: "type" as const,
-    type: Object.freeze({
-      kind: "type-parameter" as const,
-      name: parameter.name,
-      identity: parameter.identity,
-    }),
-  }));
+  const genericParameters = planMojoGenericParameters(interface_, context);
+  const genericArguments = interface_.typeParameters.map(mojoGenericParameterReference);
   const stateType: MojoTargetTypeRef = Object.freeze({
     kind: "target-named",
     id: `${interface_.targetType.kind === "target-named" ? interface_.targetType.id : interface_.name}:state`,

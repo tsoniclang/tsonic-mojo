@@ -19,7 +19,7 @@ import {
 } from "./resolution-helpers.js";
 
 export type MojoSourceOriginTypeContract =
-  | { readonly kind: "origin" }
+  | { readonly kind: "origin"; readonly mutable?: boolean }
   | { readonly kind: "static" }
   | { readonly kind: "inferred" }
   | { readonly kind: "untracked" }
@@ -63,6 +63,11 @@ export function mojoSourceOriginTypeContract(
   switch (identity.value.exportId) {
     case mojoSourceOriginTypeIds.origin:
       return nodes.length === 0 ? Object.freeze({ kind: "origin" }) : undefined;
+    case mojoSourceOriginTypeIds.mutableOrigin:
+    case mojoSourceOriginTypeIds.immutableOrigin:
+      return nodes.length === 0 ? Object.freeze({
+        kind: "origin", mutable: identity.value.exportId === mojoSourceOriginTypeIds.mutableOrigin,
+      }) : undefined;
     case mojoSourceOriginTypeIds.staticOrigin:
       return nodes.length === 0 ? Object.freeze({ kind: "static" }) : undefined;
     case mojoSourceOriginTypeIds.inferredOrigin:

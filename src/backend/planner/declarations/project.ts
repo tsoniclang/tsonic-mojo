@@ -104,7 +104,7 @@ export function planMojoProjectFunction(
   const declaration: MojoFunctionDeclaration = Object.freeze({
     kind: "function",
     name: options.targetName ?? function_.name,
-    genericParameters: planMojoGenericParameters(function_),
+    genericParameters: planMojoGenericParameters(function_, specializedContext),
     parameters: Object.freeze(function_.parameters.map((parameter) =>
       planMojoParameterDeclaration(parameter, specializedContext))),
     resultType: function_.resultType,
@@ -173,7 +173,7 @@ export function planMojoProjectClass(
   class_: MojoAnalyzedClass,
   context: MojoPlanningContext,
 ): readonly MojoDeclaration[] | undefined {
-  const genericParameters_ = planMojoGenericParameters(class_);
+  const genericParameters_ = planMojoGenericParameters(class_, context);
   const genericArguments = class_.typeParameters.map(mojoGenericParameterReference);
   const stateType: MojoTargetTypeRef = Object.freeze({
     kind: "target-named",
@@ -474,16 +474,10 @@ export function planMojoProjectTypeAlias(
   context: MojoPlanningContext,
 ): import("../../target-ast/index.js").MojoTypeAliasDeclaration {
   registerMojoTypeImports(alias.value, context, mojoTargetTypeKey(alias.value));
-  for (const parameter of alias.typeParameters) {
-    for (const constraint of parameter.constraints) registerMojoTypeImports(constraint, context);
-    if (parameter.defaultArgument?.kind === "type") {
-      registerMojoTypeImports(parameter.defaultArgument.type, context);
-    }
-  }
   return Object.freeze({
     kind: "type-alias",
     name: alias.name,
-    genericParameters: planMojoGenericParameters(alias),
+    genericParameters: planMojoGenericParameters(alias, context),
     value: alias.value,
     aliasedTypeKey: mojoTargetTypeKey(alias.value),
   });

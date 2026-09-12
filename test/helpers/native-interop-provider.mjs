@@ -62,20 +62,26 @@ double native_probe(int32_t count, ...) {
 int32_t native_fixed(int32_t value) { return value * 2; }
 `;
 
-export function borrowedProjection() {
+export function borrowedProjection({ mutable, traitReceiver = false } = {}) {
   const primitive = { kind: "named", name: "Int32", arguments: [] };
-  const parameter = { kind: "origin", name: "origin", passingKind: "positional", variadic: false, constraints: [] };
+  const parameter = { kind: "origin", name: "origin", passingKind: "positional", variadic: false,
+    constraints: mutable === undefined ? [] : [{ kind: "named", name: mutable ? "MutOrigin" : "ImmOrigin",
+      path: mutable ? "/std/origin/#mutorigin" : "/std/origin/#immorigin", arguments: [] }],
+  };
   const reference = { kind: "reference", origin: "origin", target: primitive };
   const package_ = { id: "native-interop", alias: "native-interop", packageName: "native_borrow", version: "1",
     kind: "package", modules: [{ modulePath: [] }] };
   const module = {
     packageId: package_.id, packageVersion: package_.version, modulePath: [], moduleIdentity: "native-interop",
-    availableExports: [{ name: "borrow", kind: "function" }, { name: "View", kind: "struct" }],
-    declarations: [{ kind: "struct", identity: "native.View", name: "View", genericParameters: [parameter],
+    availableExports: [{ name: "borrow", kind: "function" }, { name: "View", kind: traitReceiver ? "trait" : "struct" }],
+    declarations: [{ kind: traitReceiver ? "trait" : "struct", identity: "native.View", name: "View",
+      ...(traitReceiver ? {} : { genericParameters: [parameter] }),
       convention: "memory", parentTraits: [], aliases: [], fields: [], functions: [{
-        identity: "native.View.read", name: "read", genericParameters: [],
-        arguments: [{ name: "self", convention: "imm", position: "positional", type: { kind: "self", memberPath: [], arguments: [] }, variadic: false }],
-        result: { ...reference, origin: "Self.origin" }, raises: false, asynchronous: false, static: false, implicitConversion: false, requiredImplementation: false,
+        identity: "native.View.read", name: "read", genericParameters: traitReceiver ? [parameter] : [],
+        arguments: [{ name: "self", convention: traitReceiver ? "ref" : "imm", position: "positional",
+          type: traitReceiver ? { kind: "reference", origin: "origin", target: { kind: "self", memberPath: [], arguments: [] } }
+            : { kind: "self", memberPath: [], arguments: [] }, variadic: false }],
+        result: { ...reference, origin: traitReceiver ? "origin" : "Self.origin" }, raises: false, asynchronous: false, static: false, implicitConversion: false, requiredImplementation: false,
       }],
     }], functions: [{
       identity: "native.borrow.exact", name: "borrow", genericParameters: [parameter],
@@ -89,8 +95,8 @@ export function borrowedProjection() {
   });
 }
 
-export function borrowedProvider() {
-  const projection = borrowedProjection();
+export function borrowedProvider(options) {
+  const projection = borrowedProjection(options);
   return createMojoProviderPackage({ id: "@test/mojo-borrow", displayName: "Native borrowed ABI proof", version: "1",
     runtimePackages: [], modules: [projection.declarationModel], types: projection.types, operations: projection.operations,
   });
@@ -114,6 +120,7 @@ export function relayStatic(value: Ref<i32, StaticOrigin>): Ref<i32, StaticOrigi
 `;
 
 export const borrowedNative = `from std.memory import Pointer
+from std.origin import ImmOrigin, MutOrigin
 def borrow[origin: Origin](ref[origin] value: Int32) -> ref[origin] Int32:
     return value
 @fieldwise_init
@@ -122,6 +129,17 @@ struct View[origin: Origin](Copyable):
     def read(self) -> ref[Self.origin] Int32:
         return self.pointer[]
 `;
+
+export function boundedBorrowSource(mutable) {
+  const reference = mutable ? "MutRef" : "Ref";
+  const origin = mutable ? "MutOrigin" : "ImmOrigin";
+  return `import { borrow } from "test:borrow";
+import type { ${origin}, ${reference}, i32 } from "@tsonic/mojo/types.js";
+export function relay<O extends ${origin}>(value: ${reference}<i32, O>): ${reference}<i32, O> {
+  const alias: ${reference}<i32, O> = borrow<O>(value);
+  return alias;
+}`;
+}
 
 export function associatedProvider() {
   const self = { kind: "self", memberPath: [], arguments: [] };

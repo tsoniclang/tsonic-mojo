@@ -2,6 +2,26 @@ import type { ProviderTypeExpression } from "@tsonic/tsts";
 import type { MojoOriginRef } from "../../../target-model/origins/model.js";
 import { mojoSourceOriginTypeIds } from "../../../source/semantics/declarations/origins.js";
 import { mojoTypesModule } from "../../../source/semantics/identity.js";
+import type { MojoCompilerGenericParameter } from "../model/model.js";
+
+export function mojoCompilerOriginMutability(parameter: MojoCompilerGenericParameter): boolean | undefined {
+  if (parameter.constraints.length === 0) return undefined;
+  const constraint = parameter.constraints.length === 1 ? parameter.constraints[0] : undefined;
+  if (constraint?.kind === "named") {
+    if (constraint.path === "/std/origin/#mutorigin" && constraint.name === "MutOrigin" && constraint.arguments.length === 0) return true;
+    if (constraint.path === "/std/origin/#immorigin" && constraint.name === "ImmOrigin" && constraint.arguments.length === 0) return false;
+    if (constraint.name === "Origin" && (constraint.path === undefined || constraint.path === "/std/origin/Origin")) {
+      if (constraint.arguments.length === 0) return undefined;
+      const argument = constraint.arguments.length === 1 ? constraint.arguments[0] : undefined;
+      if (argument?.kind === "value" && argument.name === "mut") {
+        if (argument.expression === "True") return true;
+        if (argument.expression === "False") return false;
+        if (argument.expression === `${parameter.name}.mut`) return undefined;
+      }
+    }
+  }
+  throw new Error(`Mojo origin parameter '${parameter.name}' has no exact supported mutability constraint.`);
+}
 
 export function mojoProviderOriginSourceType(
   origin: MojoOriginRef,

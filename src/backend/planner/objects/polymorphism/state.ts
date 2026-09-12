@@ -159,7 +159,7 @@ export function planMojoPolymorphicClassState(
   return Object.freeze({
     kind: "struct",
     name: class_.stateName,
-    genericParameters: planMojoGenericParameters(class_),
+    genericParameters: planMojoGenericParameters(class_, stateContext),
     conformances: Object.freeze([]),
     fields: Object.freeze([
       ...(baseStateType === undefined
@@ -278,7 +278,7 @@ function planMojoPolymorphicClassConstructor(
   if (class_.stateStorage === "erased") {
     return mojoConstructionFactory({
       name: class_.constructorFactoryName,
-      genericParameters: planMojoGenericParameters(class_),
+      genericParameters: planMojoGenericParameters(class_, constructorContext),
       parameters: Object.freeze((signature?.parameters ?? []).map((parameter) =>
         planMojoParameterDeclaration(parameter, constructorContext))),
       resultType: class_.targetType,

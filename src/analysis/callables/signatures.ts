@@ -457,12 +457,7 @@ export function analyzeMojoTypeParameters(
           sourceProfiles: input.sourceProfiles,
         }).map(mojoLifecycleTraitTargetType)
       : classified.parameter.kind === "origin"
-        ? [Object.freeze({
-            kind: "target-named",
-            id: "mojo.builtin.Origin",
-            modulePath: Object.freeze([]),
-            name: "Origin",
-          })]
+        ? [mojoOriginConstraintType(classified.parameter.originMutable)]
         : [];
     if (constraintNode !== undefined && classified.parameter.kind !== "origin") {
       const selected = input.source.semantics.forFile(input.sourceFile).types.authoredType(constraintNode);
@@ -585,3 +580,4 @@ function append(
 ): void {
   input.diagnostics.push(mojoAnalysisDiagnostic(code, message, node));
 }
+import { mojoOriginConstraintType } from "../../target-model/origins/constraint.js";

@@ -191,7 +191,7 @@ function planCallableAdapter(
   return Object.freeze({
     kind: "function",
     name: adapter.name,
-    genericParameters: planMojoGenericParameters(adapter.contract),
+    genericParameters: planMojoGenericParameters(adapter.contract, adapterContext),
     parameters: Object.freeze(adapter.contract.parameters.map((parameter) =>
       planMojoParameterDeclaration(parameter, adapterContext))),
     resultType: adapter.contract.resultType,

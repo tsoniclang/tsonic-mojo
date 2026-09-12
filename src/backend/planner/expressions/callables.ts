@@ -297,7 +297,7 @@ function planNativeClosure(
       declaration: Object.freeze({
         kind: "function" as const,
         name,
-        genericParameters: planMojoGenericParameters(selection),
+        genericParameters: planMojoGenericParameters(selection, deferredContext),
         parameters: Object.freeze(selection.parameters.map((parameter) =>
           planMojoParameterDeclaration(parameter, deferredContext))),
         resultType,

@@ -22,6 +22,25 @@ integer. Generated locals use `ref alias_: Int32`; native origin checking reject
 an escaping local borrow. Origin-bearing receiver arguments participate in the
 same exact type/value/origin substitution. No reference becomes a heap owner.
 
+Native mutability bounds remain explicit as well:
+
+```ts
+import { borrow } from "@tsonic/mojo/packages/borrow/index.js";
+import type { MutOrigin, MutRef, i32 } from "@tsonic/mojo/types.js";
+
+export function relay<O extends MutOrigin>(value: MutRef<i32, O>): MutRef<i32, O> {
+  return borrow<O>(value);
+}
+```
+
+For a selected native `origin: MutOrigin` declaration this emits `O: MutOrigin`
+and `ref[O]` without a copy. `ImmOrigin` expresses the independent immutable
+bound; plain `Origin` remains polymorphic. The compiler does not silently
+tighten an authored `Origin` bound because a later call needs a mutable origin.
+Such a missing bound is rejected by native generic checking. Native `ref self`
+or `ref value: T` with no explicit qualifier keeps native elision; the importer
+does not fabricate an origin from the argument's name.
+
 `StaticOrigin`, `InferredOrigin`, `UntrackedOrigin` and
 `UnsafeOrigin` have distinct meanings. Inference requests native elision; it is
 not permission to manufacture a static or unchecked origin.

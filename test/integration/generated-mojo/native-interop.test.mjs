@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { projectArtifactTexts as artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
-import { associatedProvider, associatedSource, borrowedProvider, borrowedSource, foreignProvider, foreignSource } from "../../helpers/native-interop-provider.mjs";
+import { associatedProvider, associatedSource, borrowedProvider, borrowedSource, boundedBorrowSource, foreignProvider, foreignSource } from "../../helpers/native-interop-provider.mjs";
 
 test("selected C ABI calls preserve fixed arguments and independently promoted variadic values", () => {
   const result = compileMojo({ capabilities: [foreignProvider()], files: { "index.ts": `${foreignSource}\nexport function main(): void {}` } });
@@ -43,4 +43,20 @@ test("associated result aliases close from the exact selected receiver without a
   assert.match(output, /Family\[Int32\]/u);
   assert.match(output, /\.read\(\)/u);
   assert.doesNotMatch(output, /JsValue|Dict\[|\.copy\(\)/u);
+});
+
+test("native origin bounds remain explicit instead of tightening an authored polymorphic origin", () => {
+  for (const mutable of [true, false]) {
+    const result = compileMojo({ target: { id: "mojo", options: { outputType: "lib" } },
+      capabilities: [borrowedProvider({ mutable })], files: { "index.ts": boundedBorrowSource(mutable) } });
+    assert.deepEqual(result.diagnostics, []);
+    const output = artifactTexts(result).map(({ text }) => text).join("\n");
+    assert.match(output, mutable ? /O: MutOrigin/u : /O: ImmOrigin/u);
+    assert.match(output, /ref alias_: Int32 = borrow\[O\]\(value\)/u);
+    assert.doesNotMatch(output, /UnsafeAnyOrigin|UntrackedOrigin|\.copy\(/u);
+  }
+  const wrong = compileMojo({ target: { id: "mojo", options: { outputType: "lib" } },
+    capabilities: [borrowedProvider({ mutable: true })], files: { "index.ts": boundedBorrowSource(true).replaceAll("MutRef", "Ref") } });
+  assert.ok(wrong.diagnostics.some((diagnostic) => diagnostic.category === "error"));
+  assert.deepEqual(wrong.artifacts, []);
 });

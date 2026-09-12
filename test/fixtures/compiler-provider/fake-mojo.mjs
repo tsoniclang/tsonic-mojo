@@ -236,7 +236,7 @@ const apiModule = {
         group("__getitem__", [overload("__getitem__", [
           argument("self", "ref", "pos_or_kw", "Self"),
           argument("index", "imm", "pos_or_kw", "Int32", int32),
-        ], typeValue("Int32", int32))]),
+        ], typeValue("Int32", int32), { signature: "def __getitem__(ref self, index: Int32) -> Int32" })]),
         group("__setitem__", [overload("__setitem__", [
           argument("self", "mut", "pos_or_kw", "Self"),
           argument("index", "imm", "pos_or_kw", "Int32", int32),
@@ -275,7 +275,7 @@ const apiModule = {
       fields: [{ description: "", kind: "field", name: "value", summary: "", type: "T" }],
       functions: [group("item", [overload("item", [
         argument("self", "ref", "pos_or_kw", "Self"),
-      ], typeValue("Self.Element"))])],
+      ], typeValue("Self.Element"), { signature: "def item(ref self) -> Self.Element" })])],
       parameters: [{
         description: "",
         kind: "parameter",
