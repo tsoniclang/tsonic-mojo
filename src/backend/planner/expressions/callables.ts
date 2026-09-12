@@ -39,6 +39,7 @@ import type { MojoCallableDisposition } from "../../../analysis/representations/
 import { planMojoFunctionBody, planMojoProjectFunction } from "../declarations/project.js";
 import { mojoModuleBindingRead } from "../bindings/module-bindings.js";
 import { mojoCallableCaptureValue, planMojoNativeCaptures } from "./callable-captures.js";
+import { planMojoAsyncCallableMethods, planMojoAsyncCallableValue } from "./async-callables.js";
 
 const runtimeModule = Object.freeze(["tsonic_runtime"]);
 const unitType: MojoTargetTypeRef = Object.freeze({ kind: "unit" });
@@ -177,7 +178,9 @@ export function planMojoCallableExpression(
     name: ownerName,
     initializer: allocation,
   }));
-  const callable = Object.freeze({
+  const callable = selection.asynchronous
+    ? planMojoAsyncCallableValue(selection, callableType, environmentName, ownerName, context)
+    : Object.freeze({
     kind: "construct",
     type: callableType,
     arguments: Object.freeze([
@@ -189,6 +192,7 @@ export function planMojoCallableExpression(
       }) }),
     ]),
   } satisfies MojoExpression);
+  if (callable === undefined) return undefined;
   if (recursiveStorageName === undefined) return withMojoValue(before, callable);
   const callableValueName = allocateMojoSyntheticName(context, "recursive_callable_value");
   before.push(Object.freeze({
@@ -363,6 +367,7 @@ function planCallableEnvironment(
   }
   const contextName = `${environmentName}_context`;
   const argumentsName = `${environmentName}_arguments`;
+  const invocationOwnerName = `${environmentName}_invocation_owner`;
   const pointerName = `${environmentName}_pointer`;
   const environmentValue: MojoExpression = Object.freeze({
     kind: "postfix-deref",
@@ -401,10 +406,14 @@ function planCallableEnvironment(
       storage: "value",
     }));
   }
+  const executableType = selection.asynchronous
+    ? Object.freeze({ ...selection.callableType, result: selection.resultType,
+        raises: selection.raises, ...(selection.errorType === undefined ? {} : { errorType: selection.errorType }) })
+    : callableType;
   let callableContext = withMojoErrorType(
     withMojoBindingOverrides(withMojoDeferredExecution(context), overrides),
-    callableType.raises
-      ? callableType.errorType ?? mojoNativeErrorType()
+    executableType.raises
+      ? executableType.errorType ?? mojoNativeErrorType()
       : undefined,
   );
   const receiver = selection.captures.find((capture) => capture.declaration === selection.expression);
@@ -429,7 +438,7 @@ function planCallableEnvironment(
     false,
   );
   if (parameterPrelude === undefined) return undefined;
-  const body = planCallableBody(selection, callableContext, callableType);
+  const body = planCallableBody(selection, callableContext, executableType);
   if (body === undefined) return undefined;
   const invoke: MojoFunctionDeclaration = Object.freeze({
     kind: "function",
@@ -439,10 +448,10 @@ function planCallableEnvironment(
       Object.freeze({ name: contextName, type: contextType }),
       Object.freeze({ name: argumentsName, type: argumentType, convention: "var" }),
     ]),
-    resultType: callableType.result,
+    resultType: executableType.result,
     asynchronous: false,
-    raises: callableType.raises,
-    ...(callableType.errorType === undefined ? {} : { errorType: callableType.errorType }),
+    raises: executableType.raises,
+    ...(executableType.errorType === undefined ? {} : { errorType: executableType.errorType }),
     decorators: mojoStaticMethodDecorators,
     statements: Object.freeze([
       Object.freeze({
@@ -450,7 +459,14 @@ function planCallableEnvironment(
         name: pointerName,
         initializer: Object.freeze({
           kind: "method-call",
-          receiver: Object.freeze({ kind: "path", path: contextName }),
+          receiver: selection.asynchronous
+            ? Object.freeze({ kind: "member", name: "context", receiver: Object.freeze({
+                kind: "postfix-deref", expression: Object.freeze({ kind: "element",
+                  receiver: Object.freeze({ kind: "path", path: invocationOwnerName }),
+                  index: Object.freeze({ kind: "number-literal", text: "0" }),
+                }),
+              }) })
+            : Object.freeze({ kind: "path", path: contextName }),
           name: "unsafe_bitcast",
           genericArguments: Object.freeze([Object.freeze({
             kind: "type",
@@ -498,7 +514,12 @@ function planCallableEnvironment(
     genericParameters: Object.freeze([]),
     conformances: Object.freeze([]),
     fields: Object.freeze(fields),
-    methods: Object.freeze([invoke, destroy]),
+    methods: Object.freeze([
+      ...(selection.asynchronous
+        ? planMojoAsyncCallableMethods(invoke, selection.callableType.result, environmentName, invocationOwnerName, context)
+        : [invoke]),
+      destroy,
+    ]),
     decorators: mojoFieldwiseInitDecorators,
   });
 }

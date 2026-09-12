@@ -4,6 +4,7 @@ import { Node_Initializer } from "@tsonic/target-api/source";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import { closeMojoCallableResult } from "../../target-model/types/callable-results.js";
 import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
 import type { MojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
@@ -95,10 +96,10 @@ export function analyzeMojoCallableExpressionSignature(
     ...(input.owner === undefined ? {} : { owner: input.owner }),
   });
   if (callable === undefined) return undefined;
-  if (callable.asynchronous) {
+  if (callable.asynchronous && callable.asyncDomain !== "native") {
     input.diagnostics.push(mojoAnalysisDiagnostic(
-      "MOJO_ASYNC_CALLABLE_EXPRESSION_NATIVE_LIMIT",
-      "The pinned Mojo compiler cannot close retained asynchronous callback arguments and captures without borrowing expired storage.",
+      "MOJO_ASYNC_CALLABLE_SCHEDULER_NOT_SUPPORTED",
+      "A retained async callable requires the selected native coroutine scheduler contract.",
       input.expression,
     ));
     return undefined;
@@ -353,11 +354,20 @@ export function analyzeAndSealMojoCallableExpression(
     return;
   }
   const { errorType: _selectedErrorType, ...selectedCallableType } = selectedType;
+  const callableResult = callable.asynchronous
+    ? closeMojoCallableResult(Object.freeze({
+        kind: "future",
+        domain: "native",
+        output: callable.resultType,
+        raises,
+      }))
+    : callable.resultType;
+  const factoryRaises = !callable.asynchronous && raises;
   const callableType = Object.freeze({
     ...selectedCallableType,
-    result: callable.resultType,
-    raises,
-    ...(raises && environment.sourceCallableErrorType !== undefined
+    result: callableResult,
+    raises: factoryRaises,
+    ...(factoryRaises && environment.sourceCallableErrorType !== undefined
       ? { errorType: environment.sourceCallableErrorType }
       : {}),
   });
@@ -376,6 +386,9 @@ export function analyzeAndSealMojoCallableExpression(
     body: callable.body,
     asynchronous: callable.asynchronous,
     raises,
+    ...(raises && environment.sourceCallableErrorType !== undefined
+      ? { errorType: environment.sourceCallableErrorType }
+      : {}),
     ...(input.owner === undefined ? {} : { owner: input.owner }),
     callableType,
   }));

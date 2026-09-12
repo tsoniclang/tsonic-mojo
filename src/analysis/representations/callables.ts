@@ -34,7 +34,7 @@ export function classifyMojoCallableDisposition(
     flow.returned || flow.yielded || flow.captured || flow.storedOutsideBinding ||
     flow.hasUnclassifiedUse ||
     (use?.escapeKinds.some((kind) => kind !== "export" && kind !== "argument") ?? false);
-  if (identityObserved || escapes || selection.recursiveBinding !== undefined) {
+  if (selection.asynchronous || identityObserved || escapes || selection.recursiveBinding !== undefined) {
     return Object.freeze({
       kind: "erased",
       expression,

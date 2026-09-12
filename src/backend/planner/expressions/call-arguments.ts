@@ -94,6 +94,20 @@ export function planCallableArgumentSlot(
     );
     return undefined;
   }
+  if (slot.type.kind === "list") {
+    const name = allocateMojoSyntheticName(context, "callable_rest_values");
+    const before: readonly MojoStatement[] = Object.freeze([
+      ...ordered.before,
+      Object.freeze({ kind: "variable", name, type: slot.type, initializer: collection }),
+    ]);
+    return Object.freeze({
+      plan: withMojoValue(before, consumeMojoValue(
+        Object.freeze({ kind: "path", path: name }), slot.type, context.program.lifecycle,
+      )),
+      type: slot.type,
+      spread: false,
+    });
+  }
   return Object.freeze({
     plan: withMojoValue(ordered.before, collection),
     type: slot.type,

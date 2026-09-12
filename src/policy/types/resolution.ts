@@ -9,6 +9,7 @@ import type {
   MojoTargetTypeRef,
 } from "../../target-model/types/model.js";
 import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
+import { closeMojoCallableResult } from "../../target-model/types/callable-results.js";
 import type { MojoSourceProfileRegistry } from "./source-profile.js";
 import { mojoParameterAbi } from "../callables/parameter-abi.js";
 import { argumentPassingFactKey } from "@tsonic/tsts";
@@ -466,7 +467,7 @@ function resolveMojoTargetTypeWithState(
         type: Object.freeze({
           kind: "callable",
           parameters: Object.freeze(parameters),
-          result: result.type,
+          result: closeMojoCallableResult(result.type),
           raises: true,
           errorType: context.sourceCallableErrorType ?? mojoNativeErrorType(),
         }),

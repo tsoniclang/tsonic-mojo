@@ -24,6 +24,7 @@ import { collectMojoSourceModuleConstructions } from "../source-modules/construc
 import { closeMojoSourceModuleEntryPackages } from "../source-modules/entry-packages.js";
 import { finalizeMojoModuleBindingTypes } from "../module-initialization/bindings.js";
 import { finalizeMojoModuleEffects } from "../module-initialization/effects.js";
+import { validateMojoNativeCoroutineErrorDomain } from "../callables/native-coroutines.js";
 import { analyzeMojoModuleInitialization } from "../module-initialization/analyze.js";
 import { finalizeMojoPublicModuleBindingAbis } from "../module-initialization/public-abi.js";
 import {
@@ -160,8 +161,12 @@ export function finalizeMojoProgramResult(
   }
   const finalizedFunctions = functions.map((function_) => {
     const errorType = closeMojoErrorType(errorTypesByDeclaration.get(function_.declaration) ?? []);
+    if (function_.asynchronous && function_.asyncDomain === "native") {
+      validateMojoNativeCoroutineErrorDomain(function_.declaration, errorType, diagnostics);
+    }
+    const { errorType: _previousError, ...functionBody } = function_;
     return Object.freeze({
-      ...function_,
+      ...functionBody,
       raises: errorType !== undefined,
       ...(errorType === undefined ? {} : { errorType }),
     });

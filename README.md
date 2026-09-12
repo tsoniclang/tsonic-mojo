@@ -78,9 +78,15 @@ The native-record integration proof executes generated field-offset composition
 against exact provider-selected native fields and verifies writes through the
 original allocation. Shared layout queries supply their finalized integer
 evidence; stabilized pointer operands retain their selected native copy contract.
-Retained asynchronous callbacks remain blocked by native coroutine
-capture ownership; no erased origin or generated state machine replaces that
-missing native contract. Their intended positive tests remain enabled.
+Retained native async callbacks now own each invocation's arguments and retain
+their original captured environment. Native execution proves escaped factories,
+shared captured state, move-only argument cleanup, defaults and rest arguments.
+`npm run test:native-async` also keeps the remaining positive native acceptance
+tests enabled: nested raising-coroutine lowering remains blocked in the pinned
+compiler, and its await ABI cannot preserve non-native typed error payloads.
+Those payloads reject before artifact publication instead of being silently
+reinterpreted as native `Error`. JS promise scheduling is not substituted with a
+native scheduler. No erased origin or generated state machine is used.
 
 The pinned Mojo compiler has a reproduced runtime defect when forwarding a
 borrowed `String` to a non-inlined variadic function. It reproduces in a small

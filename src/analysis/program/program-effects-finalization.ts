@@ -4,6 +4,7 @@ import type { MojoValueConversion } from "../../target-model/conversions/model.j
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import { resolveMojoCallableExpressionDependency } from "../callables/expressions.js";
+import { validateMojoNativeCoroutineErrorDomain } from "../callables/native-coroutines.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import type {
   MojoAnalyzedCallArgument,
@@ -303,15 +304,18 @@ export function finalizeMojoProgramEffects(
     const selection = callableExpressionSelections.get(expression)!;
     const exactErrorType = closeMojoErrorType(errorTypesByDeclaration.get(expression) ?? []);
     const errorType = exactErrorType;
+    if (selection.asynchronous) validateMojoNativeCoroutineErrorDomain(expression, errorType, diagnostics);
+    const factoryErrorType = selection.asynchronous ? undefined : errorType;
     const { errorType: _previousErrorType, ...baseCallableType } = selection.callableType;
     const callableType = Object.freeze({
       ...baseCallableType,
-      raises: errorType !== undefined,
-      ...(errorType === undefined ? {} : { errorType }),
+      raises: factoryErrorType !== undefined,
+      ...(factoryErrorType === undefined ? {} : { errorType: factoryErrorType }),
     });
     expressionTypes.set(expression, callableType);
+    const { errorType: _previousBodyError, ...bodySelection } = selection;
     callableExpressionSelections.set(expression, Object.freeze({
-      ...selection,
+      ...bodySelection,
       raises: errorType !== undefined,
       ...(errorType === undefined ? {} : { errorType }),
       ...(selection.recursiveBinding === undefined

@@ -1,5 +1,5 @@
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
-import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import type { MojoTargetCallableParameter, MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
 import type { MojoCopyCapability } from "../../target-model/lifecycle/model.js";
 import { mojoConversionRaises } from "../../target-model/conversions/effects.js";
@@ -68,8 +68,8 @@ export function classifyCallableAdaptation(
     ...(expected.errorType === undefined ? {} : { errorType: expected.errorType }),
   });
   if (!mojoTargetTypeEquals(
-    Object.freeze({ ...normalized, parameters: actual.parameters }),
-    Object.freeze({ ...expected, parameters: expected.parameters.slice(0, actual.parameters.length) }),
+    Object.freeze({ ...normalized, parameters: actual.parameters.map(callableParameterAbi) }),
+    Object.freeze({ ...expected, parameters: expected.parameters.slice(0, actual.parameters.length).map(callableParameterAbi) }),
   )) return undefined;
   return Object.freeze({
     kind: "callable-adapt",
@@ -83,6 +83,12 @@ export function classifyCallableAdaptation(
       ? {}
       : { errorConversion }),
   });
+}
+
+function callableParameterAbi(parameter: MojoTargetCallableParameter): MojoTargetCallableParameter {
+  return parameter.omissionKind === "initializer"
+    ? Object.freeze({ ...parameter, omissionKind: "undefined" })
+    : parameter;
 }
 
 const mojoNativeErrorType: MojoTargetTypeRef = Object.freeze({
