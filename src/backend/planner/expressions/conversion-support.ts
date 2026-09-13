@@ -446,6 +446,7 @@ export function planMojoTruthiness(
   context: MojoPlanningContext,
 ): MojoExpression | undefined {
   switch (conversion.kind) {
+    case "boolean": return expression;
     case "always-true": return Object.freeze({ kind: "bool-literal", value: true });
     case "always-false": return Object.freeze({ kind: "bool-literal", value: false });
     case "integer": return Object.freeze({
@@ -460,10 +461,16 @@ export function planMojoTruthiness(
         callee: mojoModuleMemberExpression(context, ["tsonic_js"], "js_truthy_number"),
         arguments: Object.freeze([{ value: expression }]),
       });
-    case "string": return Object.freeze({
+    case "string":
+    case "native-string": return Object.freeze({
       kind: "binary",
       operator: "!=",
-      left: Object.freeze({
+      left: conversion.kind === "native-string" ? Object.freeze({
+        kind: "method-call",
+        receiver: expression,
+        name: "byte_length",
+        arguments: Object.freeze([]),
+      }) : Object.freeze({
         kind: "call",
         callee: Object.freeze({ kind: "path", path: "len" }),
         arguments: Object.freeze([{ value: expression }]),

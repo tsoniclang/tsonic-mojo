@@ -2,7 +2,6 @@ import type { Node, SourceFile } from "@tsonic/tsts";
 import {
   Node_Expression,
   Node_Initializer,
-  ObjectLiteralProperty_Value,
 } from "@tsonic/target-api/source";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
@@ -15,6 +14,7 @@ import { analyzeMojoObjectLiteral } from "../objects/object-literals.js";
 import { analyzeMojoArrayLiteral } from "../aggregates/array-literals.js";
 import { analyzeMojoProviderRecordLiteral } from "../objects/provider-records.js";
 import { analyzeMojoStructuralObjectLiteral } from "../objects/structural-object-literals.js";
+import { collectMojoDeferredExpression } from "../expressions/deferred.js";
 import type {
   MojoProjectTypeCatalog,
   MojoProjectTypeRelationships,
@@ -61,7 +61,7 @@ import {
 import {
   analyzeErasedValueRefinement,
   analyzeExpressionCarrier,
-  analyzeNullishComparison,
+  analyzeValueComparison,
   analyzeTypeTest,
   containsProjectInterface,
   resolveInferredBindingCarrier,
@@ -77,6 +77,7 @@ import { analyzeMojoNumericOperation } from "../operations/numeric.js";
 import type { MojoLifecycleAnalysis } from "../lifecycle/model.js";
 import type { MojoValueOwnership } from "../../target-model/lifecycle/model.js";
 import { analyzeMojoExecutableBindingProjection } from "./bindings.js";
+import { isContextualObjectCallable } from "../callables/expression-syntax.js";
 import { analyzeMojoIterationAndResources } from "./iterations.js";
 import { isDirectCallArgumentCallableExpression } from "../callables/expression-syntax.js";
 
@@ -86,6 +87,7 @@ export {
 } from "./bindings.js";
 
 export interface MojoExecutableRegionAnalysisInput {
+  readonly memoryAnalysis: import("../storage/memory-metadata.js").MojoMemoryAnalysis;
   readonly root: Node;
   readonly sourceFile: SourceFile;
   readonly owner?: MojoAnalyzedClassOwner;
@@ -125,6 +127,7 @@ export interface MojoExecutableRegionAnalysisInput {
   readonly arrayLiteralSelections: WeakMap<Node, MojoArrayLiteralSelection>;
   readonly objectLiteralNodes: Set<Node>;
   readonly templateExpressionNodes: Set<Node>;
+  readonly awaitExpressionNodes: Set<Node>;
   readonly bindingPatternSelections: WeakMap<Node, MojoBindingPatternSelection>;
   readonly bindingProjections: WeakMap<Node, MojoBindingProjectionPlan>;
   readonly exitValueTransfers: WeakSet<Node>;
@@ -148,7 +151,6 @@ export interface MojoExecutableRegionAnalysisInput {
       readonly contextualType?: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
       readonly kind?: import("../program/model.js").MojoAnalyzedCallableKind;
       readonly name?: string;
-      readonly allowAsynchronous?: boolean;
       readonly captureSelf?: boolean;
     },
   ) => MojoCallableExpressionSelection | undefined;
@@ -176,11 +178,11 @@ export function analyzeMojoExecutableRegion(
   const iterationNodes: Node[] = [];
   const resourceDeclarations: Node[] = [];
   const objectLiteralNodes: Node[] = [];
-  const callableExpressionNodes: Node[] = [];
   const bindingPatternDeclarations: Node[] = [];
   const pendingInferredBindings = new Set<Node>();
   const exitExpressions: { readonly expression: Node; readonly throwing: boolean }[] = [];
   walkSourceTree(root, ast, (node): void => {
+    if (input.memoryAnalysis.erasedSourceNodes.has(node)) return;
     if (ast.is.IsVariableDeclaration(node)) {
       const declarationKind = ast.variableDeclarationKind(node);
       if (declarationKind === "using" || declarationKind === "await using") {
@@ -203,7 +205,7 @@ export function analyzeMojoExecutableRegion(
             semantics,
           );
       if (resolved === undefined && !bindingPattern) pendingInferredBindings.add(node);
-      else if (resolved !== undefined) input.bindingTypes.set(node, resolved);
+      else if (resolved !== undefined) input.bindingTypes.set(node, input.memoryAnalysis.nativeArrayType(node, resolved));
       if (bindingPattern && !isMojoIterationBindingDeclaration(node, ast)) {
         bindingPatternDeclarations.push(node);
       }
@@ -213,7 +215,6 @@ export function analyzeMojoExecutableRegion(
     }
     if (ast.is.IsForOfStatement(node) || ast.is.IsForInStatement(node)) iterationNodes.push(node);
     if (ast.is.IsObjectLiteralExpression(node)) objectLiteralNodes.push(node);
-    if (ast.is.IsFunctionExpression(node) || ast.is.IsArrowFunction(node)) callableExpressionNodes.push(node);
     if (ast.is.IsReturnStatement(node) || ast.is.IsThrowStatement(node)) {
       const expression = Node_Expression(ast, node);
       if (expression !== undefined) exitExpressions.push({ expression, throwing: ast.is.IsThrowStatement(node) });
@@ -222,14 +223,8 @@ export function analyzeMojoExecutableRegion(
 
   analyzeExecutableRegionProviderValues(root, input);
 
-  for (const expression of callableExpressionNodes) {
-    if (!isContextualObjectCallable(expression, source, semantics) &&
-      !isDirectCallArgumentCallableExpression(expression, source)) {
-      input.analyzeCallableExpression(expression, sourceFile, input.owner);
-    }
-  }
-
   walkSourceTreePostOrder(root, ast, (node): void => {
+    if (input.memoryAnalysis.erasedSourceNodes.has(node)) return;
     if (isMojoExpressionNode(node, ast)) {
       const inferred = inferMojoExpressionType(node, ast, input.expressionTypes);
       if (inferred !== undefined) input.expressionTypes.set(node, inferred);
@@ -273,7 +268,7 @@ export function analyzeMojoExecutableRegion(
     const initializer = Node_Initializer(ast, declaration);
     const selected = initializer === undefined
       ? undefined
-      : input.expressionTypes.get(initializer) ?? resolveInferredBindingCarrier(
+      : resolveInferredBindingCarrier(
           initializer,
           input,
           semantics,
@@ -282,7 +277,7 @@ export function analyzeMojoExecutableRegion(
     input.bindingTypes.set(declaration, selected);
     for (const use of source.navigation.declarationUses(declaration)) {
       if (use.kind !== "type-only" && use.kind !== "source-linkage") {
-        input.expressionTypes.set(use.reference, selected);
+        analyzeExpressionCarrier(use.reference, input, semantics);
       }
     }
     pendingInferredBindings.delete(declaration);
@@ -327,13 +322,13 @@ export function analyzeMojoExecutableRegion(
     analyzeBindingPatternDeclaration(declaration, sourceType);
   }
 
-  for (const { expression, throwing } of exitExpressions) {
-    if (selectExitValueTransfer(expression, throwing, input)) {
-      input.exitValueTransfers.add(expression);
-    }
-  }
-
   walkSourceTreePostOrder(root, ast, (node): void => {
+    if (input.memoryAnalysis.erasedSourceNodes.has(node)) return;
+    if ((ast.is.IsArrowFunction(node) || ast.is.IsFunctionExpression(node)) &&
+      !isContextualObjectCallable(node, source, semantics) &&
+      !isDirectCallArgumentCallableExpression(node, source)) {
+      input.analyzeCallableExpression(node, sourceFile, input.owner);
+    }
     if (ast.is.IsPropertyAccessExpression(node)) analyzeProperty(node, input, semantics);
     if (ast.is.IsElementAccessExpression(node)) analyzeElement(node, input, semantics);
     if (ast.is.IsCallExpression(node) || ast.is.IsNewExpression(node)) {
@@ -345,7 +340,7 @@ export function analyzeMojoExecutableRegion(
       } else if (ast.operatorKindName(node) === "KindInstanceOfKeyword") {
         analyzeTypeTest(node, input);
       } else {
-        analyzeNullishComparison(node, input);
+        analyzeValueComparison(node, input);
       }
     }
     if (ast.is.IsAsExpression(node) || ast.is.IsTypeAssertion(node) ||
@@ -361,10 +356,8 @@ export function analyzeMojoExecutableRegion(
         input.expressionTypes.set(node, intrinsic.selection.resultType);
       }
     }
-    if (ast.kindName(node) === "KindTemplateExpression") {
-      input.templateExpressionNodes.add(node);
-    }
     if (!isMojoExpressionNode(node, ast) || !isRuntimeValueOccurrence(node, input)) return;
+    collectMojoDeferredExpression(node, ast, input);
     const inferred = inferMojoExpressionType(node, ast, input.expressionTypes);
     if (inferred !== undefined) input.expressionTypes.set(node, inferred);
     const numeric = analyzeMojoNumericOperation(node, ast, input.expressionTypes);
@@ -466,7 +459,6 @@ export function analyzeMojoExecutableRegion(
                   selectedType,
                   kind,
                   name,
-                  allowAsynchronous: true,
                   captureSelf: false,
                 },
               );
@@ -488,6 +480,9 @@ export function analyzeMojoExecutableRegion(
             source: input.source,
             sourceFile,
             expression: node,
+            analyzeCallable(expression, contextualType) {
+              input.analyzeCallableExpression(expression, sourceFile, input.owner, { contextualType });
+            },
             expressionTypes: input.expressionTypes,
             ...(expectedType === undefined ? {} : { expectedType }),
             providerSemantics: input.providerSemantics,
@@ -544,6 +539,11 @@ export function analyzeMojoExecutableRegion(
     semantics,
     input,
   });
+  for (const { expression, throwing } of exitExpressions) {
+    if (selectExitValueTransfer(expression, throwing, input)) {
+      input.exitValueTransfers.add(expression);
+    }
+  }
   const errorTypes = mergeMojoErrorTypes(
     resourceErrorTypes,
     executableRegionErrorTypes(root, input),
@@ -572,27 +572,4 @@ function classifyExecutableRegionRoot(
     return "statement";
   }
   return "expression";
-}
-
-function isContextualObjectCallable(
-  expression: Node,
-  source: TargetSourceProgram,
-  semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
-): boolean {
-  const { ast } = source;
-  let value = expression;
-  let parent = ast.parent(value);
-  while (parent !== undefined &&
-    (ast.is.IsParenthesizedExpression(parent) || ast.is.IsAsExpression(parent) ||
-      ast.is.IsTypeAssertion(parent) || ast.is.IsNonNullExpression(parent) ||
-      ast.is.IsSatisfiesExpression(parent)) && Node_Expression(ast, parent) === value) {
-    value = parent;
-    parent = ast.parent(value);
-  }
-  if (parent === undefined || !ast.is.IsPropertyAssignment(parent) ||
-    ObjectLiteralProperty_Value(ast, parent) !== value) return false;
-  const objectLiteral = ast.parent(parent);
-  const selected = semantics.operations.objectLiteralElement(parent);
-  return objectLiteral !== undefined && ast.is.IsObjectLiteralExpression(objectLiteral) &&
-    selected !== undefined && selected.objectLiteral === objectLiteral && selected.element === parent;
 }

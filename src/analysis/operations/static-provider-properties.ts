@@ -3,16 +3,16 @@ import { instantiateMojoProviderConstantOperation } from "../../policy/operation
 import { selectedProviderDeclarationIdentity } from "../../policy/operations/provider-selection.js";
 import { providerOwnerMatches } from "../../policy/types/resolution.js";
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
+import { mojoProviderCompoundWriteIssue } from "../../policy/operations/mutation-admission.js";
+import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoSelectedProviderOperation } from "../../target-model/operations/selection.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type {
   MojoPropertyAnalysis,
   MojoProviderPropertyAnalysisContext,
 } from "./properties.js";
-import {
-  classifyMojoSourceResultConversion,
-  mojoConvertedValueType,
-} from "./call-results.js";
+import { classifyMojoSourceResultConversion } from "./call-results.js";
+import { mojoConvertedValueType } from "../../target-model/conversions/result.js";
 
 export function analyzeStaticProviderProperty(
   source: ResolvedSourcePropertyAccessInfo,
@@ -22,7 +22,7 @@ export function analyzeStaticProviderProperty(
   const readRows = context.providerSemantics.operations.filter((row) =>
     providerOwnerMatches(row, identity) && row.exportId === identity.exportId &&
     row.memberId === identity.memberId && row.signatureId === undefined &&
-    row.operationKind === "property" && row.target.kind === "function-read" &&
+    row.operationKind === "property" && (row.target.kind === "function-read" || row.target.kind === "constant") &&
     row.receiverType === undefined);
   const writeRows = context.providerSemantics.operations.filter((row) =>
     providerOwnerMatches(row, identity) && row.exportId === identity.exportId &&
@@ -84,6 +84,8 @@ export function analyzeStaticProviderProperty(
       reason: writeValueConversion.reason,
     };
   }
+  const compoundIssue = mojoProviderCompoundWriteIssue(source.accessMode, selectedWrite, writeRow?.parameterTypes?.[0]);
+  if (compoundIssue !== undefined) return compoundIssue;
   let expressionType: MojoTargetTypeRef | undefined;
   let readResultConversion;
   if (read?.kind === "resolved") {
@@ -107,6 +109,14 @@ export function analyzeStaticProviderProperty(
     }
     expressionType = mojoConvertedValueType(read.operation.resultType, conversion.conversion);
     readResultConversion = conversion.conversion;
+  }
+  if (source.accessMode === "read-write" && expressionType !== undefined && selectedWrite !== undefined &&
+    !mojoTargetTypeEquals(expressionType, selectedWrite)) {
+    return {
+      kind: "unsupported",
+      code: "MOJO_PROVIDER_STATIC_COMPOUND_ASSIGNMENT_UNSUPPORTED",
+      reason: "Static provider compound assignment requires identical closed read and write carriers.",
+    };
   }
   if (expressionType === undefined) {
     expressionType = selectedWrite;

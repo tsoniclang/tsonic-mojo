@@ -9,6 +9,7 @@ const typeNames: ReadonlyMap<string, string> = new Map([
   ["IntlResolvedDateTimeFormatOptions", "IntlResolvedDateTimeFormatOptions"],
   ["IntlDateTimeFormatPart", "IntlFormatPart"],
   ["IntlNumberFormat", "IntlNumberFormat"],
+  ["IntlResolvedNumberFormatOptions", "IntlResolvedNumberFormatOptions"],
   ["IntlNumberFormatPart", "IntlFormatPart"],
 ]);
 

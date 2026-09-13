@@ -189,6 +189,12 @@ export function applyValueRefinement(
         arguments: Object.freeze([]),
       })
     : refinement.kind === "union-member"
-      ? Object.freeze({ kind: "proven-union-member", receiver: expression, type: refinement.member.type })
+      ? Object.freeze({
+          kind: "proven-union-member",
+          receiver: sourceCarrier?.type.kind === "optional"
+            ? Object.freeze({ kind: "method-call", receiver: expression, name: "value", arguments: Object.freeze([]) })
+            : expression,
+          type: refinement.member.type,
+        })
       : expression;
 }

@@ -7,8 +7,6 @@ export {
 } from "./roots.js";
 export {
   analyzeMojoParameterDisposition,
-  mojoParameterArgumentDisposition,
-  mojoParameterConvention,
 } from "./parameters.js";
 export { classifyMojoBindingDisposition } from "./bindings.js";
 export { classifyMojoCallableDisposition } from "./callables.js";
@@ -19,7 +17,5 @@ export type {
   MojoNarrowingView,
   MojoPhysicalCarrier,
   MojoPhysicalTypeId,
-  MojoParameterDisposition,
-  MojoArgumentDisposition,
   MojoRepresentationCatalog,
 } from "./model.js";

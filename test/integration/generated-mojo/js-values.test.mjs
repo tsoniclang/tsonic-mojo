@@ -127,7 +127,7 @@ test("JSON.stringify retains an exact project toJSON projection until serializat
       ].join("\n"),
     },
   }));
-  assert.match(source, /struct .*SourceValueView/u);
+  assert.match(source, /struct _source_value_view\b/u);
   assert.match(source, /def to_json\(/u);
   assert.match(source, /\bjs_value_from_source_object\b/u);
   assert.match(source, /\bjson_stringify_with_replacer\b/u);

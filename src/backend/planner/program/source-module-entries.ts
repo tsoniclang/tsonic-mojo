@@ -16,7 +16,7 @@ export function planMojoSourceModuleEntries(
     const entryName = `_module_entry_${ordinal}`;
     ordinal += 1;
     imports.push({ kind: "module", modulePath: bootstrap.modulePath, alias: providerAlias });
-    statements.push({ kind: "variable", name: entryName, initializer: invoke(`${providerAlias}.${bootstrap.entryName}`) });
+    statements.push({ kind: "variable", name: entryName, initializer: invokeMember(providerAlias, bootstrap.entryName) });
     const dispatch: MojoStatement[] = [];
     const entryValue: MojoExpression = { kind: "method-call", receiver: path(entryName), name: "value", arguments: [] };
     for (const entry of program.sourceModuleConstructions) {
@@ -51,7 +51,7 @@ export function planMojoSourceModuleEntries(
       }
       ordinal += 1;
       const finish = (success: boolean, message: MojoExpression): MojoStatement => ({
-        kind: "expression", expression: invoke(`${providerAlias}.${bootstrap.completeName}`, [{ kind: "bool-literal", value: success }, message]),
+        kind: "expression", expression: invokeMember(providerAlias, bootstrap.completeName, [{ kind: "bool-literal", value: success }, message]),
       });
       const errorName = `_module_error_${ordinal}`;
       dispatch.push({
@@ -76,4 +76,8 @@ function path(name: string): MojoExpression {
 
 function invoke(name: string, values: readonly MojoExpression[] = []): MojoExpression {
   return { kind: "call", callee: path(name), arguments: values.map((value) => ({ value })) };
+}
+
+function invokeMember(owner: string, name: string, values: readonly MojoExpression[] = []): MojoExpression {
+  return { kind: "call", callee: { kind: "member", receiver: path(owner), name }, arguments: values.map((value) => ({ value })) };
 }

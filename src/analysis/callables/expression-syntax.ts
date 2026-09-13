@@ -1,5 +1,5 @@
 import type { Node } from "@tsonic/tsts";
-import { Node_Expression, Node_Initializer } from "@tsonic/target-api/source";
+import { Node_Expression, Node_Initializer, ObjectLiteralProperty_Value } from "@tsonic/target-api/source";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 
 export function callableExpressionDeclaration(
@@ -85,4 +85,26 @@ export function isNestedCallable(node: Node, ast: TargetSourceProgram["ast"]): b
   return ast.is.IsFunctionExpression(node) || ast.is.IsArrowFunction(node) ||
     ast.is.IsMethodDeclaration(node) || ast.is.IsGetAccessorDeclaration(node) ||
     ast.is.IsSetAccessorDeclaration(node);
+}
+
+export function isContextualObjectCallable(
+  expression: Node,
+  source: TargetSourceProgram,
+  semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
+): boolean {
+  const { ast } = source;
+  let value = expression;
+  let parent = ast.parent(value);
+  while (parent !== undefined && isTransparentExpression(parent, ast) &&
+    Node_Expression(ast, parent) === value) {
+    value = parent;
+    parent = ast.parent(value);
+  }
+  if (parent === undefined || !ast.is.IsPropertyAssignment(parent) ||
+    ObjectLiteralProperty_Value(ast, parent) !== value) return false;
+  const objectLiteral = ast.parent(parent);
+  const selected = semantics.operations.objectLiteralElement(parent);
+  return objectLiteral !== undefined && ast.is.IsObjectLiteralExpression(objectLiteral) &&
+    selected !== undefined && selected.objectLiteral === objectLiteral && selected.element === parent &&
+    semantics.types.contextualValueSelection(objectLiteral).kind === "selected";
 }

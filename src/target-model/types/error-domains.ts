@@ -1,42 +1,16 @@
 import { mojoTargetTypeEquals } from "./equality.js";
 import { mojoTargetTypeKey } from "./key.js";
 import type { MojoTargetTypeRef } from "./model.js";
-import {
-  fixedMojoLifecycleContract,
-  mojoExplicitLifecycleCapabilities,
-  mojoImplicitHeapLifecycleCapabilities,
-} from "../lifecycle/index.js";
+import { mojoNativeErrorType } from "./error-carriers.js";
 
-const nativeErrorType: MojoTargetTypeRef = Object.freeze({
-  kind: "target-named",
-  id: "mojo.builtin.Error",
-  modulePath: Object.freeze([]),
-  name: "Error",
-  lifecycle: fixedMojoLifecycleContract(mojoImplicitHeapLifecycleCapabilities),
-});
-
-const sourceErrorType: MojoTargetTypeRef = Object.freeze({
-  kind: "target-named",
-  id: "tsonic.mojo.runtime.TsError",
-  modulePath: Object.freeze(["tsonic_runtime"]),
-  name: "TsError",
-  lifecycle: fixedMojoLifecycleContract(mojoExplicitLifecycleCapabilities),
-});
-
-export function mojoNativeErrorType(): MojoTargetTypeRef {
-  return nativeErrorType;
-}
-
-export function mojoSourceErrorType(): MojoTargetTypeRef {
-  return sourceErrorType;
-}
+export { mojoNativeErrorType, mojoSourceErrorType } from "./error-carriers.js";
 
 export function mojoOperationErrorTypes(operation: {
   readonly raises: boolean;
   readonly errorType?: MojoTargetTypeRef;
 }): readonly MojoTargetTypeRef[] {
   return operation.raises
-    ? Object.freeze([operation.errorType ?? nativeErrorType])
+    ? Object.freeze([operation.errorType ?? mojoNativeErrorType()])
     : Object.freeze([]);
 }
 

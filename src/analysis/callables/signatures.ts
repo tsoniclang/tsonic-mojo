@@ -19,10 +19,8 @@ import type {
   MojoAnalyzedParameter,
   MojoAnalyzedTypeParameter,
 } from "../program/model.js";
-import {
-  analyzeMojoParameterDisposition,
-  mojoParameterConvention,
-} from "../representations/index.js";
+import { analyzeMojoParameterDisposition } from "../representations/index.js";
+import { mojoParameterConvention } from "../../target-model/operations/parameters.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 import {
   classifyMojoSourceGenericParameter,
@@ -117,11 +115,14 @@ export function analyzeMojoCallableSignature(
     return undefined;
   }
   if (input.contextualType !== undefined &&
-    input.contextualType.parameters.length !== callableParameters.length) {
+    (input.contextualType.parameters.length < callableParameters.length ||
+      input.contextualType.parameters.length !== callableParameters.length &&
+      sourceParameters.some((parameter) => parameter !== undefined &&
+        ast.as.AsParameterDeclaration(parameter)?.DotDotDotToken !== undefined))) {
     append(
       input,
       "MOJO_CONTEXTUAL_CALLABLE_ARITY_MISMATCH",
-      "The exact selected target callback carrier and authored TypeScript callback have different arities.",
+      "The authored callback requires arguments not provided by the selected target contract or an unclosed rest projection.",
       declaration,
     );
     return undefined;
@@ -151,7 +152,8 @@ export function analyzeMojoCallableSignature(
     }
     const passingFact = source.sourceFacts.getFact(parameter, argumentPassingFactKey);
     const useSummary = source.navigation.parameterUseSummary(parameter);
-    const disposition = analyzeMojoParameterDisposition(
+    const disposition = parameterType.kind === "reference" && passingFact === undefined
+      ? Object.freeze({ kind: "parametric-reference" as const }) : analyzeMojoParameterDisposition(
       passingFact?.mode,
       useSummary?.bindingWritten === true,
     );
@@ -225,7 +227,8 @@ export function analyzeMojoCallableSignature(
         : { initializer: Node_Initializer(ast, parameter)! }),
     }));
   }
-  const selectedResultType = input.resultType ?? input.contextualType?.result ??
+  const contextualResult = input.contextualType?.result;
+  const selectedResultType = input.resultType ?? (contextualResult?.kind === "union" ? undefined : contextualResult) ??
     (input.kind === "setter"
       ? Object.freeze({ kind: "unit" as const })
       : callable === undefined
@@ -418,6 +421,7 @@ export function analyzeMojoTypeParameters(
 ): readonly MojoAnalyzedTypeParameter[] | undefined {
   const { ast } = input.source;
   const parameters: MojoAnalyzedTypeParameter[] = [];
+  if (ast.is.IsTypeLiteralNode(input.declaration)) return Object.freeze(parameters);
   for (const parameter of ast.typeParameters(input.declaration)) {
     const nameNode = parameter === undefined ? undefined : ast.name(parameter);
     if (parameter === undefined || !ast.is.IsTypeParameterDeclaration(parameter) ||
@@ -453,12 +457,7 @@ export function analyzeMojoTypeParameters(
           sourceProfiles: input.sourceProfiles,
         }).map(mojoLifecycleTraitTargetType)
       : classified.parameter.kind === "origin"
-        ? [Object.freeze({
-            kind: "target-named",
-            id: "mojo.builtin.Origin",
-            modulePath: Object.freeze([]),
-            name: "Origin",
-          })]
+        ? [mojoOriginConstraintType(classified.parameter.originMutable)]
         : [];
     if (constraintNode !== undefined && classified.parameter.kind !== "origin") {
       const selected = input.source.semantics.forFile(input.sourceFile).types.authoredType(constraintNode);
@@ -581,3 +580,4 @@ function append(
 ): void {
   input.diagnostics.push(mojoAnalysisDiagnostic(code, message, node));
 }
+import { mojoOriginConstraintType } from "../../target-model/origins/constraint.js";

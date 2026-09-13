@@ -12,7 +12,7 @@ import {
 import type { MojoPlanningContext } from "../program/context.js";
 import type { MojoValuePlanner } from "../expressions/support.js";
 import { registerMojoTypeImports } from "../types/imports.js";
-import { mojoParameterConvention } from "../../../analysis/representations/index.js";
+import { mojoParameterConvention } from "../../../target-model/operations/parameters.js";
 import { planMojoBindingProjection } from "../bindings/patterns.js";
 import { mojoValue } from "../expressions/value-plan.js";
 

@@ -1,7 +1,7 @@
 import type { Node } from "@tsonic/tsts";
 import type { MojoSourceCallableSpecializationVariant } from "../../../../analysis/callables/specializations.js";
 import type { MojoAnalyzedFunction } from "../../../../analysis/program/model.js";
-import { mojoParameterConvention } from "../../../../analysis/representations/index.js";
+import { mojoParameterConvention } from "../../../../target-model/operations/parameters.js";
 import type {
   MojoFunctionDeclaration,
   MojoParameter,
@@ -50,7 +50,7 @@ export function planMojoProjectImplementation(
   const declaration: MojoFunctionDeclaration = Object.freeze({
     kind: "function",
     name,
-    genericParameters: planMojoGenericParameters(implementation),
+    genericParameters: planMojoGenericParameters(implementation, specializedContext),
     parameters: Object.freeze(implementation.parameters.map((parameter): MojoParameter => {
       registerMojoTypeImports(parameter.bodyType, specializedContext);
       return Object.freeze({

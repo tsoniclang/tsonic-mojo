@@ -6,6 +6,20 @@ import type {
 
 export type MojoProviderOperationForm =
   | {
+      readonly kind: "foreign-call";
+      readonly symbol: string;
+      readonly fixedParameterCount: number;
+      readonly arguments: readonly MojoProviderTargetArgument[];
+      readonly receiver?: never;
+    }
+  | {
+      readonly kind: "value-predicate";
+      readonly predicate: import("./value-predicate.js").MojoNativeValuePredicate;
+      readonly genericParameters: readonly MojoProviderTargetGenericParameter[];
+      readonly arguments: readonly MojoProviderTargetArgument[];
+      readonly receiver?: never;
+    }
+  | {
       readonly kind: "unsupported";
       readonly code: string;
       readonly reason: string;

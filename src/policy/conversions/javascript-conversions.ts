@@ -1,6 +1,7 @@
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
 import { mojoValueConversionEquals } from "../../target-model/conversions/equality.js";
+import { mojoPrimitiveRuntimeCategory } from "../types/primitive-runtime.js";
 
 export function isJsString(type: MojoTargetTypeRef): boolean {
   return type.kind === "target-named" && type.id === "tsonic.mojo.js.JsString";
@@ -38,6 +39,9 @@ export function jsValueBoxConversion(
   if (type.kind === "source-primitive") {
     if (type.name === "bool") {
       return Object.freeze({ kind: "js-box", targetType, source: "bool" });
+    }
+    if (mojoPrimitiveRuntimeCategory(type.name) === "bigint") {
+      return Object.freeze({ kind: "js-box", targetType, source: "bigint", sourceType: type });
     }
     return type.name === "char" || type.name === "decimal"
       ? undefined

@@ -9,6 +9,7 @@ import type {
   MojoTargetTypeRef,
 } from "../../target-model/types/model.js";
 import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
+import { closeMojoCallableResult } from "../../target-model/types/callable-results.js";
 import type { MojoSourceProfileRegistry } from "./source-profile.js";
 import { mojoParameterAbi } from "../callables/parameter-abi.js";
 import { argumentPassingFactKey } from "@tsonic/tsts";
@@ -33,7 +34,7 @@ import { resolveMojoNonTypeGenericArguments } from "./generic-arguments.js";
 import { implicitHeapLifecycle, nativeSetLifecycle } from "./lifecycle-contracts.js";
 import { resolveMojoJsRegExpSourceProfileType } from "./js-regexp.js";
 import { resolveMojoGenericParameterType } from "./generic-parameter-resolution.js";
-import { mojoIteratorResultMember, mojoIteratorResultType } from "./js-iterator.js";
+import { mojoIteratorResultMember } from "./js-iterator.js";
 import { mojoIntlSourceProfileType } from "./js-intl.js";
 
 export { providerOwnerMatches } from "./resolution-helpers.js";
@@ -244,18 +245,16 @@ function resolveMojoTargetTypeWithState(
           };
     }
     if (sourceProfile?.profile === "js" && [
-      "IteratorResult", "IteratorYieldResult", "IteratorReturnResult",
+      "IteratorYieldResult", "IteratorReturnResult",
     ].includes(sourceProfile.name)) {
       const arguments_ = resolveSourceProfileTypeArguments(
-        selectedType, authoredTypeNode, sourceProfile.name === "IteratorResult" ? 2 : 1,
+        selectedType, authoredTypeNode, 1,
         context, (type, node) => resolveMojoTargetTypeWithState(type, node, context, resolving),
       );
       if (arguments_.kind === "unsupported") return arguments_;
       return {
         kind: "resolved",
-        type: sourceProfile.name === "IteratorResult"
-          ? mojoIteratorResultType(arguments_.types[0]!, arguments_.types[1]!)
-          : mojoIteratorResultMember(sourceProfile.name, arguments_.types[0]!)!,
+        type: mojoIteratorResultMember(sourceProfile.name, arguments_.types[0]!)!,
       };
     }
     if (sourceProfile?.name === "IterableIterator" || sourceProfile?.name === "Iterator") {
@@ -356,7 +355,7 @@ function resolveMojoTargetTypeWithState(
     const sourceArguments = types.effectiveTypeArguments(selectedType) ?? types.typeArguments(selectedType);
     const authoredArguments = authoredTypeArguments(authoredTypeNode, context.ast);
     const projectDefinition = context.projectTypes.definitionForSymbol(
-      symbol,
+      context.semantics.declarations.typeSymbol(selectedType),
       context.semantics.declarations.symbolDeclarations,
     );
     if (projectDefinition !== undefined) {
@@ -468,7 +467,7 @@ function resolveMojoTargetTypeWithState(
         type: Object.freeze({
           kind: "callable",
           parameters: Object.freeze(parameters),
-          result: result.type,
+          result: closeMojoCallableResult(result.type),
           raises: true,
           errorType: context.sourceCallableErrorType ?? mojoNativeErrorType(),
         }),

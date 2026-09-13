@@ -42,6 +42,34 @@ test("an exhaustive cross-module union narrowing imports its exact final member"
   assert.match(generated.text, /return True/u);
 });
 
+test("optional union type tests guard the exact payload and narrow its selected class", () => {
+  const result = compileMojo({ surfaces: ["js"], files: { "index.ts": `
+class First { value = "first"; }
+class Second { value = "second"; }
+export function selected(key: string): string {
+  const values = new Map<string, First | Second>();
+  values.set("first", new First());
+  values.set("second", new Second());
+  const value = values.get(key);
+  if (value instanceof First) return value.value;
+  if (value instanceof Second) return value.value;
+  return "absent";
+}
+export function immediate(): boolean {
+  const values = new Map<string, First | Second>();
+  return values.get("missing") instanceof First;
+}
+export function main(): void {}
+` } });
+  assert.deepEqual(result.diagnostics, []);
+  const generated = artifactTexts(result).find(({ text }) => text.includes("def selected"));
+  assert.ok(generated);
+  assert.match(generated.text, /Bool\([^\n]+\) and [^\n]+\.value\(\)\.isa\[First\]/u);
+  assert.match(generated.text, /value\.value\(\)\.unsafe_get\[First\]/u);
+  const immediate = generated.text.slice(generated.text.indexOf("def immediate"), generated.text.indexOf("def main"));
+  assert.equal((immediate.match(/\.get\(/gu) ?? []).length, 1);
+});
+
 test("ordinary declarations use native names, immutable parameters, and no module state", () => {
   const result = compileMojo({
     files: {
@@ -60,6 +88,27 @@ test("ordinary declarations use native names, immutable parameters, and no modul
   assert.match(source.text, /def add_values\(left: Int32, right: Int32\) -> Int32:/u);
   assert.match(source.text, /return left \+ right/u);
   assert.doesNotMatch(source.text, /GlobalCell|ModuleState|module_state/u);
+});
+
+test("an alias initialized from a narrowed provider result retains that occurrence's carrier", () => {
+  const result = compileMojo({ surfaces: ["js"], files: { "index.ts": `
+export function read(key: string): string {
+  const groups = new Map<string, string[]>();
+  groups.set("first", ["value"]);
+  const selected = groups.get(key);
+  if (selected !== undefined) {
+    const values = selected;
+    return values[0]!;
+  }
+  return "absent";
+}
+export function main(): void {}
+` } });
+  assert.deepEqual(result.diagnostics, []);
+  const generated = artifactTexts(result).find(({ text }) => text.includes("def read"));
+  assert.ok(generated);
+  assert.match(generated.text, /var values: JsArray\[String\] = selected\.value\(\)/u);
+  assert.doesNotMatch(generated.text, /var values: Optional/u);
 });
 
 test("a unique authored complex alias remains the module ABI name", () => {

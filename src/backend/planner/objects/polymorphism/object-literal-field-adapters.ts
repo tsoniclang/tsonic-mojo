@@ -3,7 +3,7 @@ import type {
   MojoProjectObjectLiteralFieldAdapter,
   MojoProjectObjectLiteralViewDispatch,
 } from "../../../../analysis/program/model.js";
-import { mojoParameterConvention } from "../../../../analysis/representations/index.js";
+import { mojoParameterConvention } from "../../../../target-model/operations/parameters.js";
 import type { MojoTargetTypeRef } from "../../../../target-model/types/model.js";
 import type {
   MojoExpression,
@@ -194,5 +194,4 @@ export function planObjectDowncastAdapter(
     })]),
   });
 }
-
 

@@ -20,7 +20,19 @@ export function mojoValueConversionEquals(left: MojoValueConversion, right: Mojo
   if (left === right) return true;
   if (left.kind !== right.kind) return false;
   switch (left.kind) {
+    case "provider-record": {
+      const candidate = right as typeof left;
+      return mojoTargetTypeEquals(left.sourceType, candidate.sourceType) &&
+        mojoTargetTypeEquals(left.targetType, candidate.targetType) &&
+        entriesEqual(left.fields, candidate.fields, (field, other) =>
+          field.memberId === other.memberId && field.targetName === other.targetName &&
+          mojoTargetTypeEquals(field.sourceType, other.sourceType) && mojoTargetTypeEquals(field.targetType, other.targetType) &&
+          mojoValueConversionEquals(field.conversion, other.conversion) && field.read.kind === other.read.kind &&
+          (field.read.kind === "structural" ? other.read.kind === "structural" && field.read.index === other.read.index :
+            other.read.kind !== "structural" && field.read.declaration === other.read.declaration && field.read.name === other.read.name));
+    }
     case "identity":
+    case "undefined-to-unit":
     case "js-to-native-string": return true;
     case "primitive-cast":
     case "reference-copy":
@@ -34,12 +46,18 @@ export function mojoValueConversionEquals(left: MojoValueConversion, right: Mojo
     case "js-box": {
       const candidate = right as typeof left;
       return left.source === candidate.source && mojoTargetTypeEquals(left.targetType, candidate.targetType) &&
-        (left.source !== "number" || candidate.source === "number" && mojoTargetTypeEquals(left.sourceType, candidate.sourceType));
+        (left.source !== "number" && left.source !== "bigint" ||
+          (candidate.source === "number" || candidate.source === "bigint") && mojoTargetTypeEquals(left.sourceType, candidate.sourceType));
     }
     case "callable-adapt": {
       const candidate = right as typeof left;
-      return mojoTargetTypeEquals(left.targetType, candidate.targetType) && left.result === candidate.result && left.error === candidate.error &&
-        optionalTypeEquals(left.sourceErrorType, candidate.sourceErrorType) && optionalConversionEquals(left.errorConversion, candidate.errorConversion);
+      return mojoTargetTypeEquals(left.sourceType, candidate.sourceType) &&
+        left.parameters.kind === candidate.parameters.kind &&
+        (left.parameters.kind !== "prefix" || candidate.parameters.kind === "prefix" &&
+          entriesEqual(left.parameters.copies, candidate.parameters.copies, (copy, other) => copy === other)) &&
+        mojoTargetTypeEquals(left.targetType, candidate.targetType) && left.result === candidate.result && left.error === candidate.error &&
+        optionalTypeEquals(left.sourceErrorType, candidate.sourceErrorType) && optionalConversionEquals(left.errorConversion, candidate.errorConversion) &&
+        optionalConversionEquals(left.resultConversion, candidate.resultConversion);
     }
     case "js-callback-truthiness": {
       const candidate = right as typeof left;
@@ -50,6 +68,10 @@ export function mojoValueConversionEquals(left: MojoValueConversion, right: Mojo
       const candidate = right as typeof left;
       return mojoTargetTypeEquals(left.sourceType, candidate.sourceType) && mojoTargetTypeEquals(left.targetType, candidate.targetType) &&
         mojoJsValueGraphEquals(left.graph, candidate.graph);
+    }
+    case "provider-native-view": {
+      const candidate = right as typeof left;
+      return mojoTargetTypeEquals(left.sourceType, candidate.sourceType) && mojoTargetTypeEquals(left.targetType, candidate.targetType) && mojoSourceValueFunctionEquals(left.factory, candidate.factory);
     }
     case "js-value-extract": {
       const candidate = right as typeof left;
@@ -122,7 +144,7 @@ function truthinessEquals(left: MojoTruthinessConversion, right: MojoTruthinessC
 }
 
 export function mojoJsValueGraphEquals(left: MojoJsValueGraph, right: MojoJsValueGraph): boolean {
-  return left.root === right.root && entriesEqual(left.definitions, right.definitions, projectionEquals);
+  return left.protocol === right.protocol && left.root === right.root && entriesEqual(left.definitions, right.definitions, projectionEquals);
 }
 
 function projectionEquals(left: MojoJsValueProjection, right: MojoJsValueProjection): boolean {
@@ -147,7 +169,7 @@ function projectionEquals(left: MojoJsValueProjection, right: MojoJsValueProject
     case "array": return left.element === (right as typeof left).element && left.sourceCopy === (right as typeof left).sourceCopy;
     case "object": {
       const candidate = right as typeof left;
-      if (left.sourceCopy !== candidate.sourceCopy || left.identity !== candidate.identity ||
+      if (left.sourceCopy !== candidate.sourceCopy || left.identity !== candidate.identity || left.prototypeIdentity !== candidate.prototypeIdentity ||
         !entriesEqual(left.accessors, candidate.accessors, (accessor, other) =>
           accessor.sourceName === other.sourceName && accessor.declaration === other.declaration && accessor.name === other.name &&
           accessor.resultProjection === other.resultProjection && mojoTargetTypeEquals(accessor.resultType, other.resultType)) ||

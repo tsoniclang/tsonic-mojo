@@ -24,6 +24,7 @@ import { isMojoModuleRuntimeStatement } from "./runtime-statements.js";
 import { analyzeModuleBindingPattern, diagnostic, isExplicitCompileTimeInitializer } from "./binding-support.js";
 
 export interface MojoModuleBindingAnalysisInput {
+  readonly erasedSourceNodes: WeakSet<Node>;
   readonly source: TargetSourceProgram;
   readonly sourceFiles: readonly SourceFile[];
   readonly modules: MojoSourceModuleCatalog;
@@ -99,6 +100,7 @@ export function analyzeMojoModuleBindings(
           continue;
         }
         for (const declaration of declarations as readonly Node[]) {
+          if (input.erasedSourceNodes.has(declaration)) continue;
           const nameNode = ast.name(declaration);
           if (nameNode !== undefined && (ast.is.IsArrayBindingPattern(nameNode) ||
             ast.is.IsObjectBindingPattern(nameNode))) {

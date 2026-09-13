@@ -7,7 +7,7 @@ import type { MojoAnalyzedCallArgument } from "../program/model.js";
 import type { MojoValueRefinementSelection } from "../refinements/model.js";
 import { mojoValueConversionNarrowing } from "../refinements/value.js";
 import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
-import type { MojoArgumentDisposition } from "../representations/model.js";
+import type { MojoArgumentDisposition } from "../../target-model/operations/parameters.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 import type { MojoValueOwnership } from "../../target-model/lifecycle/model.js";
 import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
@@ -50,11 +50,11 @@ export function analyzeArguments(
   valueOwnership: (expression: Node) => MojoValueOwnership,
   conversionOverrides?: MojoArgumentConversionMap,
   contextualAggregate?: (expression: Node, targetType: MojoTargetTypeRef) => boolean,
-  projectRelationships?: MojoProjectTypeRelationships,
   contextualizeCallable?: (
     expression: Node,
     targetType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
   ) => Extract<MojoTargetTypeRef, { readonly kind: "callable" }> | undefined,
+  parameterOverrides?: ReadonlyMap<import("./call-argument-conversions.js").MojoSelectedArgumentBinding, MojoTargetTypeRef>,
 ): { readonly kind: "resolved"; readonly arguments: readonly MojoAnalyzedCallArgument[] } |
   { readonly kind: "unsupported"; readonly code: string; readonly reason: string } {
   if (parameterTypes.length !== targetArguments.length) {
@@ -104,7 +104,7 @@ export function analyzeArguments(
       const parameterIndex = binding.sourceParameterIndex;
       const target = targetArguments[parameterIndex];
       const spreadSequence = binding.sourceForm === "spread-sequence";
-      const restElementType = parameterTypes[parameterIndex];
+      const restElementType = parameterOverrides?.get(binding) ?? parameterTypes[parameterIndex];
       const parameterType = spreadSequence
         ? target?.variadicCollectionType ?? (target?.restPacking === "list"
           ? restElementType === undefined
@@ -126,9 +126,10 @@ export function analyzeArguments(
           reason: `Source call argument ${sourceArgumentIndex} supplies an open sequence to a non-variadic Mojo parameter.`,
         };
       }
+      const callableTarget = parameterType.kind === "optional" ? parameterType.value : parameterType;
       const contextualCallableType = binding.sourceForm === "value" &&
-          parameterType.kind === "callable"
-        ? contextualizeCallable?.(sourceExpression, parameterType)
+          callableTarget.kind === "callable"
+        ? contextualizeCallable?.(sourceExpression, callableTarget)
         : undefined;
       const selectedSourceType = contextualCallableType ?? selectedMojoArgumentCarrier(
         ast, sourceCall, binding, expressionTypes, resolve,

@@ -12,6 +12,45 @@ function compile(source, surfaces = []) {
   return generated.text;
 }
 
+test("logical negation and conditional selection consume optional boolean payloads once", () => {
+  const generated = compile(`
+export function negate(next: () => boolean | undefined): boolean { return !next(); }
+export function choose(next: () => boolean | undefined): number { return next() ? 1 : 2; }
+`, ["js"]);
+  assert.equal((generated.match(/next\.call\(/gu) ?? []).length, 2);
+  assert.equal((generated.match(/var _truthiness_source: Optional\[Bool\]/gu) ?? []).length, 2);
+  assert.match(generated.replace(/\s+/gu, ""), /not\(_truthiness_source\.value\(\)ifBool\(_truthiness_source,?\)elseFalse\)/u);
+  assert.doesNotMatch(generated, /return not next\.call\(\)/u);
+});
+
+test("native string conditions and callback truthiness use byte emptiness rather than ambiguous length", () => {
+  const generated = compile(`
+export function empty(value: string): boolean { return !value; }
+export function present(values: string[]): string[] { return values.filter(value => value); }
+`, ["js"]);
+  assert.equal((generated.match(/\.byte_length\(\)/gu) ?? []).length, 2);
+  assert.doesNotMatch(generated, /len\(/u);
+});
+
+test("short-circuit source narrowing preserves the exact optional numeric payload", () => {
+  const generated = compile(`
+import type { int32 } from "@tsonic/core/types.js";
+function parse(value: int32 | undefined): int32 | undefined { return value; }
+export function valid(value: int32 | undefined): boolean {
+  const selected = parse(value);
+  return selected !== undefined && selected >= 0 && selected < 10;
+}
+export function invalid(value: int32 | undefined): boolean {
+  const selected = parse(value);
+  return selected === undefined || selected <= 0;
+}
+`);
+  assert.match(generated, /selected\.value\(\) >= Int32\(0\)/u);
+  assert.match(generated, /selected\.value\(\) < Int32\(10\)/u);
+  assert.match(generated, /selected\.value\(\) <= Int32\(0\)/u);
+  assert.doesNotMatch(generated, /(?:<=|>=|<) Optional\[/u);
+});
+
 const cases = [
   ["project field", `
 interface Box { value: number; }
@@ -86,8 +125,10 @@ export function read(values: Map<string, ${payload}>, key: () => string): ${payl
   return selected;
 }
 `, ["js"]);
-    assert.match(generated, /var _optional_source:[\s\S]*?= values\.get\(/u);
-    assert.match(generated, /if _optional_source:\n\s+var _union_source:/u);
+    assert.match(generated, /var selected: Optional\[[\s\S]*?= values\.get\(/u);
+    const guard = generated.indexOf("if not Bool(selected):");
+    assert.ok(guard >= 0);
+    assert.ok(generated.indexOf("return ", guard) < generated.indexOf("selected.value()", guard));
     assert.doesNotMatch(generated, /values\.get\([^\n]*\)\.value\(\)/u);
     assert.equal((generated.match(/key\.call\(/gu) ?? []).length, 1);
   });

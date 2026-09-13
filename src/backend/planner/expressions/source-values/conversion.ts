@@ -29,7 +29,7 @@ export function convertMojoSourceValue(
   for (const definition of definitions.values()) {
     if (definition.kind === "scalar" || definition.kind === "provider") continue;
     const type = mojoTargetTypeInContext(definition.sourceType, context);
-    const key = `${definition.kind}:${mojoTargetTypeKey(type)}`;
+    const key = `${conversion.graph.protocol}:${definition.id}:${mojoTargetTypeKey(type)}`;
     let name = context.sourceValueFunctions.get(key);
     if (name === undefined) {
       name = allocateMojoSyntheticDeclarationName(context, "source_value");
@@ -116,7 +116,7 @@ function planProjection(
         if (value === undefined) return undefined;
         const body = Object.freeze([...value.before, returned(value.value)]);
         statements = index === projection.members.length - 1 ? body : Object.freeze([Object.freeze({
-          kind: "if", condition: Object.freeze({
+          kind: "if", condition: Object.freeze<MojoExpression>({
             kind: "method-call", receiver: path("source"), name: "isa",
             genericArguments: Object.freeze([{ kind: "type", type: member.sourceType }]), arguments: Object.freeze([]),
           }), thenStatements: body, elseStatements: statements,

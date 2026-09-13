@@ -207,6 +207,10 @@ export function artifactTexts(result, language = "mojo") {
     .map((artifact) => Object.freeze({ path: artifact.path, text: artifact.text }));
 }
 
+export function projectArtifactTexts(result, language = "mojo") {
+  return artifactTexts(result, language).filter(({ path }) => !path.startsWith("packages/"));
+}
+
 function sourceDiagnostics(source) {
   const compiler = formatDiagnostics(source.diagnostics);
   const extensions = source.extensionDiagnostics

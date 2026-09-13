@@ -1,4 +1,3 @@
-import { pointerOperationFactKey } from "@tsonic/tsts";
 import type { AstReader, Node } from "@tsonic/tsts";
 import {
   BinaryExpression_Left,
@@ -8,9 +7,9 @@ import {
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
-import { mojoLocationTargetType } from "../operations/typed-locations.js";
 import { classifyMojoValueRefinement } from "../refinements/value.js";
 import { expectedExpressionType } from "../expected-types/expressions.js";
+import { analyzeMojoSourceValueEquality } from "../operations/source-value-equality.js";
 import { resolveExecutableRegionType as resolveType } from "./support.js";
 import type {
   MojoAnalyzedInterface,
@@ -153,7 +152,7 @@ export function analyzeExpressionCarrier(
   );
   const resolved = selectedOccurrenceType ?? referencedType ?? erasedCarrier ??
     authoredAggregate ?? contextualAggregate ?? semanticType ?? contextualExpected;
-  if (resolved !== undefined) input.expressionTypes.set(node, resolved);
+  if (resolved !== undefined) input.expressionTypes.set(node, input.memoryAnalysis.nativeArrayType(node, resolved));
   if (ast.kindName(node) === "KindThisKeyword" && input.owner !== undefined) {
     input.bindingNames.set(node, "self");
     input.expressionTypes.set(node, input.owner.type);
@@ -165,7 +164,8 @@ function selectAuthoredArrayCarrier(
 ): MojoTargetTypeRef | undefined {
   if (type === undefined) return undefined;
   if (type.kind === "list" || type.kind === "fixed-array" || type.kind === "tuple" ||
-    (type.kind === "target-named" && type.id === "tsonic.mojo.js.JsArray")) return type;
+    (type.kind === "target-named" && (type.id === "tsonic.mojo.js.JsArray" ||
+      type.id === "tsonic.mojo.runtime.NativeArray"))) return type;
   if (type.kind === "optional") return selectAuthoredArrayCarrier(type.value);
   if (type.kind !== "union") return undefined;
   const candidates: MojoTargetTypeRef[] = [];
@@ -184,9 +184,11 @@ function resolveContextualAggregateCarrier(
   semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
 ): MojoTargetTypeRef | undefined {
   const selected = semantics.types.contextualValueSelection(node);
-  return selected.kind === "selected"
-    ? resolveType(selected.type, undefined, input, semantics)
-    : undefined;
+  if (selected.kind !== "selected") return undefined;
+  const resolved = resolveType(selected.type, undefined, input, semantics);
+  return input.source.ast.is.IsArrayLiteralExpression(node)
+    ? selectAuthoredArrayCarrier(resolved)
+    : resolved;
 }
 
 export function containsProjectInterface(
@@ -207,7 +209,17 @@ export function analyzeReferencedValueRefinement(
 ): MojoTargetTypeRef | undefined {
   const selected = input.source.semantics.selectValueTypeRefinement(node);
   if (selected.kind !== "resolved" || selected.refinement.kind !== "members") return undefined;
-  const selectedTargetType = resolveType(
+  const declaredMembers = semantics.types.isUnion(selected.declaredType)
+    ? semantics.types.unionOrIntersectionTypes(selected.declaredType)
+    : [selected.declaredType];
+  const presentMembers = declaredMembers.filter((type) => !semantics.types.isNullish(type));
+  const selectedMembers = selected.refinement.types;
+  const exactPresentCarrier = declaredTargetType.kind === "optional" &&
+    presentMembers.length > 0 && selectedMembers.length === presentMembers.length &&
+    selectedMembers.every((type) => presentMembers.includes(type))
+    ? declaredTargetType.value
+    : undefined;
+  const selectedTargetType = exactPresentCarrier ?? resolveType(
     semantics.types.expressionType(node),
     undefined,
     input,
@@ -235,7 +247,8 @@ export function analyzeErasedValueRefinement(
   const sourceType = semantics.types.expressionType(inner);
   const selectedType = semantics.types.expressionType(node);
   const sourceTargetType = input.expressionTypes.get(inner);
-  const selectedTargetType = resolveType(
+  const selectedTargetType = input.source.ast.is.IsNonNullExpression(node) && sourceTargetType?.kind === "optional"
+    ? sourceTargetType.value : resolveType(
     selectedType,
     input.source.ast.typeNode(node),
     input,
@@ -255,7 +268,10 @@ export function analyzeErasedValueRefinement(
     input.projectRelationships,
     input.modules,
   );
-  if (refinement !== undefined) input.valueRefinements.set(node, refinement);
+  if (refinement !== undefined) {
+    input.valueRefinements.set(node, refinement);
+    input.expressionTypes.set(node, refinement.resultType);
+  }
 }
 
 export function resolveInferredBindingCarrier(
@@ -263,24 +279,23 @@ export function resolveInferredBindingCarrier(
   input: MojoExecutableRegionAnalysisInput,
   semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
 ): MojoTargetTypeRef | undefined {
-  const pointer = input.source.sourceFacts.getFact(initializer, pointerOperationFactKey);
-  if (pointer?.operation === "address-of" || pointer?.operation === "allocate") {
-    const exactOperand = pointer.operation === "address-of"
-      ? (pointer.storageDeclaration === undefined
-          ? input.expressionTypes.get(pointer.storageExpression)
-          : input.bindingTypes.get(pointer.storageDeclaration))
-      : input.expressionTypes.get(pointer.initialExpression);
-    const pointee = exactOperand ?? resolveType(
-        pointer.pointeeType,
-        pointer.explicitPointeeTypeNode,
-        input,
-        semantics,
-      );
-    if (pointee !== undefined) return mojoLocationTargetType(pointee);
+  const { ast, navigation } = input.source;
+  if (ast.is.IsIdentifier(initializer)) {
+    const reference = navigation.sourceReferenceFor(initializer);
+    if (reference?.project === true) {
+      const binding = input.bindingTypes.get(reference.declaration);
+      if (binding !== undefined || ast.is.IsVariableDeclaration(reference.declaration)) {
+        return input.valueRefinements.get(initializer)?.resultType ?? binding;
+      }
+    }
   }
+  if ((ast.is.IsCallExpression(initializer) || ast.is.IsNewExpression(initializer)) &&
+    !input.callSelections.has(initializer)) return undefined;
+  if (ast.is.IsPropertyAccessExpression(initializer) && !input.propertySelections.has(initializer)) return undefined;
+  if (ast.is.IsElementAccessExpression(initializer) && !input.elementSelections.has(initializer)) return undefined;
   const exactExpressionType = input.expressionTypes.get(initializer);
   if (exactExpressionType !== undefined) return exactExpressionType;
-  return isErasedValueWrapper(initializer, input.source.ast)
+  return isErasedValueWrapper(initializer, ast)
     ? resolveErasedExpressionCarrier(initializer, input, semantics)
     : resolveType(semantics.types.expressionType(initializer), undefined, input, semantics);
 }
@@ -299,6 +314,7 @@ function resolveErasedExpressionCarrier(
       : resolveType(semantics.types.expressionType(inner), undefined, input, semantics));
   if (sourceCarrier === undefined || ast.is.IsParenthesizedExpression(node) ||
     ast.is.IsSatisfiesExpression(node)) return sourceCarrier;
+  if (ast.is.IsNonNullExpression(node) && sourceCarrier.kind === "optional") return sourceCarrier.value;
   const selectedCarrier = resolveType(
     semantics.types.expressionType(node),
     ast.typeNode(node),
@@ -343,7 +359,8 @@ export function analyzeTypeTest(
   } else if (testedType !== undefined && sourceType.kind === "optional" &&
     mojoTargetTypeEquals(sourceType.value, testedType)) {
     selection = Object.freeze({ kind: "optional-presence", operand: left, sourceType });
-  } else if (testedType !== undefined && sourceType.kind === "union") {
+  } else if (testedType !== undefined && (sourceType.kind === "union" ||
+    sourceType.kind === "optional" && sourceType.value.kind === "union")) {
     selection = Object.freeze({ kind: "union-member", operand: left, sourceType, testedType });
   } else {
     const dispatchType = sourceType.kind === "optional" ? sourceType.value : sourceType;
@@ -385,7 +402,7 @@ export function analyzeTypeTest(
   input.expressionTypes.set(node, Object.freeze({ kind: "source-primitive", name: "bool" }));
 }
 
-export function analyzeNullishComparison(
+export function analyzeValueComparison(
   node: Node,
   input: MojoExecutableRegionAnalysisInput,
 ): void {
@@ -405,7 +422,10 @@ export function analyzeNullishComparison(
   if (leftType === undefined || rightType === undefined) return;
   const leftNullish = exactNullishTarget(leftType);
   const rightNullish = exactNullishTarget(rightType);
-  if (leftNullish === undefined && rightNullish === undefined) return;
+  if (leftNullish === undefined && rightNullish === undefined) {
+    analyzeMojoSourceValueEquality(node, input);
+    return;
+  }
   if (leftNullish !== undefined && rightNullish !== undefined) {
     const equal = !strict || leftNullish.kind === rightNullish.kind;
     input.typeTestSelections.set(node, Object.freeze({
@@ -419,6 +439,21 @@ export function analyzeNullishComparison(
   const nullish = leftNullish ?? rightNullish!;
   const valueType = leftNullish === undefined ? leftType : rightType;
   const operand: "left" | "right" = leftNullish === undefined ? "left" : "right";
+  if (valueType.kind === "dynamic" && valueType.domain === "js") {
+    input.typeTestSelections.set(node, Object.freeze({
+      kind: "nullish-comparison",
+      left,
+      right,
+      outcome: Object.freeze({
+        kind: "js-nullish",
+        operand,
+        null: !strict || nullish.kind === "null",
+        undefined: !strict || nullish.kind === "undefined",
+        equal: equality,
+      }),
+    }));
+    return;
+  }
   if (valueType.kind === "optional") {
     const matchesAbsent = !strict || nullish.kind === "undefined";
     input.typeTestSelections.set(node, Object.freeze({
@@ -471,11 +506,8 @@ function selectedProjectTypeTestMember(
   sourceType: MojoTargetTypeRef,
   projectTypeId: string,
 ): MojoTargetTypeRef | undefined {
-  const candidates = sourceType.kind === "optional"
-    ? [sourceType.value]
-    : sourceType.kind === "union"
-      ? sourceType.members
-      : [sourceType];
+  const presentType = sourceType.kind === "optional" ? sourceType.value : sourceType;
+  const candidates = presentType.kind === "union" ? presentType.members : [presentType];
   const matching = candidates.filter((candidate) =>
     candidate.kind === "target-named" && candidate.id === projectTypeId);
   return matching.length === 1 ? matching[0] : undefined;

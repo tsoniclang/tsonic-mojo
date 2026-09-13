@@ -22,6 +22,7 @@ import type {
 import {
   mergeMojoErrorTypes,
   mojoConversionRaises,
+  mojoConversionDependencies,
   mojoNativeErrorType,
   mojoOperationErrorTypes,
   providerCallRequiresRaisingConversion,
@@ -231,6 +232,9 @@ export function directMojoNodeErrorTypes(
     if (raises) errors.push(mojoNativeErrorType());
   };
   addNativeConversionError(indexes.conversions.recordedFor(node).some(mojoConversionRaises));
+  for (const conversion of indexes.conversions.recordedFor(node)) {
+    for (const dependency of mojoConversionDependencies(conversion)) errors.push(...(errorTypesByDeclaration.get(dependency) ?? []));
+  }
   if (indexes.iterationSelections.get(node)?.target === "js-array-live-values") {
     errors.push(mojoNativeErrorType());
   }
@@ -273,6 +277,9 @@ export function directMojoNodeErrorTypes(
         }
       }
       addNativeConversionError(providerCallRequiresRaisingConversion(selection));
+      for (const argument of selection.arguments) {
+        for (const dependency of mojoConversionDependencies(argument.conversion)) errors.push(...(errorTypesByDeclaration.get(dependency) ?? []));
+      }
     } else if (selection?.kind === "project") {
       const dependency = indexes.callDependencies.get(node);
       if (dependency !== undefined) {
@@ -296,6 +303,11 @@ export function directMojoNodeErrorTypes(
         selection.arguments.some((argument) => mojoConversionRaises(argument.conversion)) ||
         mojoConversionRaises(selection.resultConversion),
       );
+    } else if (selection?.kind === "typed-location") {
+      addNativeConversionError(selection.operation === "load" || selection.operation === "store" ||
+        selection.operation === "address-of" && (selection.storage.kind === "element" || selection.storage.kind === "native-element"));
+    } else if (selection?.kind === "native-memory") {
+      addNativeConversionError(selection.operation !== "observation" && selection.operation !== "keep-alive" && selection.operation !== "raw-to-address-integer");
     } else if (selection?.kind === "object-assign") {
       addNativeConversionError(selection.fields.some((field) =>
         mojoConversionRaises(field.conversion)));
@@ -351,7 +363,7 @@ export function directMojoNodeErrorTypes(
     const selection = indexes.elementSelections.get(node);
     if (selection !== undefined) {
       addNativeConversionError(
-        mojoConversionRaises(selection.indexConversion) ||
+        (selection.kind === "native" && selection.raises) || mojoConversionRaises(selection.indexConversion) ||
         (selection.readResultConversion !== undefined &&
           mojoConversionRaises(selection.readResultConversion)),
       );

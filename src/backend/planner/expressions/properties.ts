@@ -57,7 +57,8 @@ export function planMojoProperty(
     return planProviderConstant(selection.operation, selection.readResultConversion, context);
   }
   if (selection.kind === "provider-static") {
-    if (mode !== "read" || selection.readOperation?.target.kind !== "function-read" ||
+    if (mode !== "read" || (selection.readOperation?.target.kind !== "function-read" &&
+        selection.readOperation?.target.kind !== "constant") ||
       selection.readResultConversion === undefined) {
       appendMojoPlanningDiagnostic(
         context,

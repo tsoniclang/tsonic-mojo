@@ -4,6 +4,7 @@ import { Node_Initializer } from "@tsonic/target-api/source";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import { closeMojoCallableResult } from "../../target-model/types/callable-results.js";
 import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
 import type { MojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
@@ -11,11 +12,9 @@ import { analyzeMojoFunctionSignature } from "./signatures.js";
 import type {
   MojoAnalyzedClassOwner,
   MojoAnalyzedFunction,
-  MojoCallableCapture,
   MojoCallableExpressionSelection,
-  MojoRecursiveCallableBinding,
 } from "../program/model.js";
-import { walkSourceTree } from "../../source/syntax/traversal.js";
+import { collectMojoCallableCaptures } from "./captures.js";
 import {
   analyzeMojoExecutableBindingProjection,
   analyzeMojoExecutableRegion,
@@ -27,12 +26,9 @@ import { recordMojoExecutableRegionConversionUses } from "../conversions/uses.js
 import { allocateMojoLocalBindings } from "../bindings/local.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 import { resolveMojoTargetType } from "../../policy/types/resolution.js";
-import { mojoParameterConvention } from "../representations/index.js";
+import { mojoParameterConvention } from "../../target-model/operations/parameters.js";
 import {
   callableExpressionDeclaration,
-  captureEligibleDeclaration,
-  isNestedCallable,
-  nodeIsWithin,
   unwrapCallableExpression,
 } from "./expression-syntax.js";
 
@@ -44,7 +40,6 @@ export interface MojoCallableExpressionSignatureInput {
   readonly contextualType?: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
   readonly kind?: import("../program/model.js").MojoAnalyzedCallableKind;
   readonly name?: string;
-  readonly allowAsynchronous?: boolean;
   readonly source: TargetSourceProgram;
   readonly providerSemantics: MojoProviderSemantics;
   readonly projectTypes: MojoProjectTypeCatalog;
@@ -101,10 +96,10 @@ export function analyzeMojoCallableExpressionSignature(
     ...(input.owner === undefined ? {} : { owner: input.owner }),
   });
   if (callable === undefined) return undefined;
-  if (callable.asynchronous && input.allowAsynchronous !== true) {
+  if (callable.asynchronous && callable.asyncDomain !== "native") {
     input.diagnostics.push(mojoAnalysisDiagnostic(
-      "MOJO_ASYNC_CALLABLE_EXPRESSION_NATIVE_LIMIT",
-      "The pinned Mojo lambda syntax has no native asynchronous lambda form.",
+      "MOJO_ASYNC_CALLABLE_SCHEDULER_NOT_SUPPORTED",
+      "A retained async callable requires the selected native coroutine scheduler contract.",
       input.expression,
     ));
     return undefined;
@@ -123,116 +118,6 @@ export function analyzeMojoCallableExpressionSignature(
   return callable;
 }
 
-export interface MojoCallableCaptureInput {
-  readonly expression: Node;
-  readonly roots: readonly Node[];
-  readonly sourceFile: SourceFile;
-  readonly owner?: MojoAnalyzedClassOwner;
-  readonly source: TargetSourceProgram;
-  readonly bindingNames: WeakMap<Node, string>;
-  readonly bindingTypes: WeakMap<Node, MojoTargetTypeRef>;
-  readonly expressionTypes: WeakMap<Node, MojoTargetTypeRef>;
-  readonly locationStorageNames: WeakMap<Node, string>;
-  readonly ensureLocationStorage: (declaration: Node, bindingName: string) => string;
-  readonly moduleBindingByDeclaration: WeakMap<Node, unknown>;
-  readonly diagnostics: TargetDiagnostic[];
-  readonly recursiveDeclaration?: Node;
-  readonly captureSelf?: boolean;
-}
-
-export function collectMojoCallableCaptures(
-  input: MojoCallableCaptureInput,
-): {
-  readonly captures: readonly MojoCallableCapture[];
-  readonly recursiveBinding?: MojoRecursiveCallableBinding;
-} | undefined {
-  const { ast } = input.source;
-  const captures = new Map<Node, MojoCallableCapture>();
-  let recursiveBinding: MojoRecursiveCallableBinding | undefined;
-  let valid = true;
-  let capturesSelf = false;
-  for (const root of input.roots) {
-    walkSourceTree(root, ast, (node): void => {
-      if (!valid) return;
-      if (ast.kindName(node) === "KindThisKeyword") {
-        if (input.captureSelf === false && input.owner !== undefined) return;
-        if (ast.is.IsArrowFunction(input.expression) && input.owner !== undefined) {
-          capturesSelf = true;
-          return;
-        }
-        input.diagnostics.push(mojoAnalysisDiagnostic(
-          "MOJO_DYNAMIC_THIS_CALLABLE_UNSUPPORTED",
-          "A function-valued expression using dynamic 'this' requires an exact receiver-bearing method contract.",
-          node,
-        ));
-        valid = false;
-        return;
-      }
-      if (!ast.is.IsIdentifier(node)) return;
-      const expressionType = input.expressionTypes.get(node);
-      if (expressionType?.kind === "undefined" || expressionType?.kind === "null") return;
-      const reference = input.source.navigation.sourceReferenceFor(node);
-      if (reference?.project !== true) return;
-      const declaration = reference?.declaration;
-      if (declaration === undefined || nodeIsWithin(declaration, input.expression, ast) ||
-        input.moduleBindingByDeclaration.has(declaration) || captures.has(declaration)) return;
-      if (!captureEligibleDeclaration(declaration, ast)) return;
-      const bindingName = input.bindingNames.get(declaration);
-      const symbol = reference?.symbol;
-      const type = input.bindingTypes.get(declaration);
-      if (bindingName === undefined || symbol === undefined || type === undefined) {
-        input.diagnostics.push(mojoAnalysisDiagnostic(
-          "MOJO_CALLABLE_CAPTURE_IDENTITY_MISSING",
-          "A captured source binding requires one exact declaration, symbol, target name, and carrier.",
-          node,
-        ));
-        valid = false;
-        return;
-      }
-      if (declaration === input.recursiveDeclaration) {
-        if (type.kind !== "callable") {
-          input.diagnostics.push(mojoAnalysisDiagnostic(
-            "MOJO_RECURSIVE_CALLABLE_CARRIER_NOT_CLOSED",
-            "A recursive callable binding requires one exact callable carrier.",
-            node,
-          ));
-          valid = false;
-          return;
-        }
-        recursiveBinding = Object.freeze({ declaration, name: bindingName, type });
-        return;
-      }
-      const mutated = input.source.navigation.bindingWritesWithin(symbol, input.sourceFile).length > 0;
-      const existingLocation = input.locationStorageNames.get(declaration);
-      const storage = existingLocation !== undefined || mutated ? "location" : "value";
-      const name = storage === "location"
-        ? existingLocation ?? input.ensureLocationStorage(declaration, bindingName)
-        : bindingName;
-      captures.set(declaration, Object.freeze({
-        declaration,
-        name,
-        type,
-        storage,
-      }));
-    }, (node, traversalRoot) => node === traversalRoot || !isNestedCallable(node, ast));
-  }
-  if (!valid) return undefined;
-  const ordered = [...captures.values()].sort((left, right) =>
-    left.name.localeCompare(right.name, "en"));
-  if (capturesSelf) {
-    ordered.unshift(Object.freeze({
-      declaration: input.expression,
-      name: "self",
-      type: input.owner!.type,
-      storage: "value",
-    }));
-  }
-  return Object.freeze({
-    captures: Object.freeze(ordered),
-    ...(recursiveBinding === undefined ? {} : { recursiveBinding }),
-  });
-}
-
 export interface MojoCallableExpressionAnalysisInput {
   readonly expression: Node;
   readonly sourceFile: SourceFile;
@@ -241,7 +126,6 @@ export interface MojoCallableExpressionAnalysisInput {
   readonly contextualType?: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
   readonly kind?: import("../program/model.js").MojoAnalyzedCallableKind;
   readonly name?: string;
-  readonly allowAsynchronous?: boolean;
   readonly captureSelf?: boolean;
   readonly allocateLocalName: (sourceName: string) => string;
   readonly moduleBindingByDeclaration: WeakMap<Node, unknown>;
@@ -267,7 +151,6 @@ export function analyzeAndSealMojoCallableExpression(
     ...(input.contextualType === undefined ? {} : { contextualType: input.contextualType }),
     ...(input.kind === undefined ? {} : { kind: input.kind }),
     ...(input.name === undefined ? {} : { name: input.name }),
-    ...(input.allowAsynchronous === true ? { allowAsynchronous: true } : {}),
     source: environment.source,
     providerSemantics: environment.providerSemantics,
     projectTypes: environment.projectTypes,
@@ -422,6 +305,7 @@ export function analyzeAndSealMojoCallableExpression(
     ensureLocationStorage: input.ensureLocationStorage,
     moduleBindingByDeclaration: input.moduleBindingByDeclaration,
     diagnostics: environment.diagnostics,
+    callableSelections: input.selections,
     ...(declaration === undefined ? {} : { recursiveDeclaration: declaration }),
     ...(input.captureSelf === false ? { captureSelf: false } : {}),
   });
@@ -451,7 +335,7 @@ export function analyzeAndSealMojoCallableExpression(
     ));
     return;
   }
-  const selectedType = callable.kind === "getter" || callable.kind === "setter"
+  const selectedType = callable.kind === "getter" || callable.kind === "setter" || input.contextualType !== undefined
     ? callableExpressionType(callable, raises, environment.sourceCallableErrorType)
     : selectedCarrier?.kind === "resolved"
       ? selectedCarrier.type
@@ -470,11 +354,20 @@ export function analyzeAndSealMojoCallableExpression(
     return;
   }
   const { errorType: _selectedErrorType, ...selectedCallableType } = selectedType;
+  const callableResult = callable.asynchronous
+    ? closeMojoCallableResult(Object.freeze({
+        kind: "future",
+        domain: "native",
+        output: callable.resultType,
+        raises,
+      }))
+    : callable.resultType;
+  const factoryRaises = !callable.asynchronous && raises;
   const callableType = Object.freeze({
     ...selectedCallableType,
-    result: callable.resultType,
-    raises,
-    ...(raises && environment.sourceCallableErrorType !== undefined
+    result: callableResult,
+    raises: factoryRaises,
+    ...(factoryRaises && environment.sourceCallableErrorType !== undefined
       ? { errorType: environment.sourceCallableErrorType }
       : {}),
   });
@@ -493,6 +386,9 @@ export function analyzeAndSealMojoCallableExpression(
     body: callable.body,
     asynchronous: callable.asynchronous,
     raises,
+    ...(raises && environment.sourceCallableErrorType !== undefined
+      ? { errorType: environment.sourceCallableErrorType }
+      : {}),
     ...(input.owner === undefined ? {} : { owner: input.owner }),
     callableType,
   }));

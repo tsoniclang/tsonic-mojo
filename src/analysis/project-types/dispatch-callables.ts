@@ -1,5 +1,5 @@
 import type { Node } from "@tsonic/tsts";
-import { mojoParameterConvention } from "../representations/index.js";
+import { mojoParameterConvention } from "../../target-model/operations/parameters.js";
 import type {
   MojoAnalyzedAccessorProperty,
   MojoAnalyzedCallableSignature,

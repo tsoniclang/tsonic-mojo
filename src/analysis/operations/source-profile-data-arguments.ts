@@ -56,7 +56,7 @@ export function sourceProfileDataArgumentConversions(
       code: "MOJO_SOURCE_PROFILE_DATA_SPREAD_NOT_CLOSED",
       reason: "A data rest spread requires an exact homogeneous source and native JsValue list ABI.",
     };
-    const conversion = context.conversions.classify(sourceType, jsValueType);
+    const conversion = context.conversions.projectData(sourceType);
     if (conversion.kind === "unsupported") return {
       kind: "unsupported",
       code: "MOJO_SOURCE_PROFILE_DATA_ARGUMENT_NOT_CLOSED",

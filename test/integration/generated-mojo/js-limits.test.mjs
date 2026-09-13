@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
+import { projectArtifactTexts as artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
 
 function compileBody(body) {
   return compileMojo({
@@ -51,17 +51,17 @@ test("unsupported JavaScript semantic families have one deterministic boundary",
     compileBody("  new Boolean(true);"),
     "MOJO_SOURCE_PROFILE_CALL_UNSUPPORTED",
   );
-  assertTargetRejection(
-    compileBody("  console.log({ value: 1 });"),
-    "MOJO_CALL_ARGUMENT_CONVERSION_UNPROVEN",
-  );
 });
 
-test("unavailable locale and reflection declarations fail during source checking", () => {
-  assert.throws(
-    () => compileBody("  'a'.localeCompare('b');"),
-    /TS2339/u,
-  );
+test("closed console objects and locale comparison use their selected runtimes", () => {
+  const result = compileBody("console.log({ value: 1 }); 'a'.localeCompare('b');");
+  assert.deepEqual(result.diagnostics, []);
+  const output = artifactTexts(result).map(({ text }) => text).join("\n");
+  assert.match(output, /js_value_from_source_object\(/u);
+  assert.match(output, /string_locale_compare\(/u);
+});
+
+test("unavailable reflection declarations fail during source checking", () => {
   assert.throws(
     () => compileBody("  eval('1 + 1');"),
     /TS2304/u,

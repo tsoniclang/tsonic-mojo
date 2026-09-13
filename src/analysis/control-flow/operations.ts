@@ -30,6 +30,7 @@ export function analyzeCall(
     return;
   }
   const analyzed = analyzeMojoCall(node, selectedCall, {
+    memoryAnalysis: input.memoryAnalysis,
     source: input.source,
     providerSemantics: input.providerSemantics,
     projectTypes: input.projectTypes,
@@ -48,7 +49,10 @@ export function analyzeCall(
     classByDeclaration: input.classByDeclaration,
     classByTypeId: input.classByTypeId,
     locationStorageNames: input.locationStorageNames,
+    propertySelections: input.propertySelections,
+    elementSelections: input.elementSelections,
     structuralObjects: input.structuralObjects,
+    fieldByDeclaration: input.fieldByDeclaration,
     modulePathForSourceFile(owner) {
       return input.modules.forSourceFile(owner)?.modulePath ?? Object.freeze([]);
     },
@@ -65,7 +69,7 @@ export function analyzeCall(
       if (selection !== undefined && expression !== callableExpression) {
         input.expressionTypes.set(expression, selection.callableType);
       }
-      return selection?.callableType ?? targetType;
+      return selection?.callableType;
     },
   });
   if (analyzed.kind === "unsupported") {

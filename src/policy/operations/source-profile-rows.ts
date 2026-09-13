@@ -20,21 +20,39 @@ import { mojoRegExpSourceProfileCallRows } from "./source-profile-regexp-rows.js
 import { mojoDateSourceProfileCallRows } from "./source-profile-date-rows.js";
 import { mojoLocaleSourceProfileCallRows } from "./source-profile-locale-rows.js";
 import { mojoIntlSourceProfileCallRows } from "./source-profile-intl-rows.js";
+import { mojoNamedTargetType } from "../../target-model/types/constructors.js";
+
+const formattedStringResult = Object.freeze({
+  kind: "exact" as const,
+  type: mojoNamedTargetType("tsonic.mojo.js.JsString", ["tsonic_js"], "JsString"),
+});
 
 export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Object.freeze([
+  Object.freeze({
+    profile: "js", kind: "call", owner: "Global", member: "structuredClone", argumentCount: 1,
+    genericArguments: "erased",
+    parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["js-data"]),
+    runtimeResultContract: Object.freeze({ kind: "source-value" }),
+    target: Object.freeze({ kind: "function", modulePath: Object.freeze(["tsonic_js"]), name: "js_value_structured_clone" }),
+    raises: true,
+  }),
   ...jsInstanceRows("Iterator", "imm", ["next"]),
   ...sourceErrorRows,
   ...jsConstructorRows,
   ...mojoRegExpSourceProfileCallRows,
   ...mojoLocaleSourceProfileCallRows,
   ...mojoIntlSourceProfileCallRows,
-  Object.freeze({
+  ...([
+    { raises: true, oneOf: ["js-array"] },
+    { raises: false, oneOf: ["native-string", "js-string", "js-iterator"] },
+  ] as const).map(({ raises, oneOf }): MojoSourceProfileCallRow => Object.freeze({
     profile: "js",
     kind: "call",
     owner: "ArrayConstructor",
     member: "from",
     argumentCount: 1,
-    raises: true,
+    raises,
+    argumentCarriers: Object.freeze([Object.freeze({ index: 0, oneOf })]),
     parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["selected-argument"]),
     target: Object.freeze({
       kind: "function",
@@ -45,7 +63,7 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
       kind: "constructed-explicit-arguments",
       indexes: Object.freeze([0]),
     }),
-  }),
+  })),
   Object.freeze({
     profile: "js",
     kind: "call",
@@ -201,6 +219,7 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
     kind: "call",
     owner: "Boolean",
     member: "toString",
+    runtimeResultContract: formattedStringResult,
     target: Object.freeze({
       kind: "function",
       modulePath: Object.freeze(["tsonic_js"]),
@@ -220,32 +239,32 @@ export const mojoSourceProfileCallRows: readonly MojoSourceProfileCallRow[] = Ob
       receiver: "imm",
     }),
   }),
-  jsReceiverFunctionRow("Number", "toString", "number_to_string", 0, []),
-  Object.freeze({
-    profile: "js", kind: "call", owner: "Number", member: "toLocaleString", raises: true,
+  jsReceiverFunctionRow("Number", "toString", "number_to_string", 0, [], false, formattedStringResult),
+  ...["Number", "BigInt"].map((owner) => Object.freeze<MojoSourceProfileCallRow>({
+    profile: "js", kind: "call", owner, member: "toLocaleString", raises: true,
     parameterContract: Object.freeze<MojoSourceProfileParameterContract[]>(["js-data", "js-data"]),
     target: Object.freeze({ kind: "function", modulePath: Object.freeze(["tsonic_js"]), name: "number_to_locale_string", receiver: "imm" }),
-  }),
+  })),
   Object.freeze({
     ...jsReceiverFunctionRow(
-      "Number", "toString", "number_to_string_radix", 1, ["float64"], true,
+      "Number", "toString", "number_to_string_radix", 1, ["float64"], true, formattedStringResult,
     ),
     receiverCapability: "integer",
   }),
   jsReceiverFunctionRow("Number", "valueOf", "number_value_of", 0, []),
-  jsReceiverFunctionRow("Number", "toFixed", "number_to_fixed", 0, [], true),
-  jsReceiverFunctionRow("Number", "toFixed", "number_to_fixed", 1, ["float64"], true),
+  jsReceiverFunctionRow("Number", "toFixed", "number_to_fixed", 0, [], true, formattedStringResult),
+  jsReceiverFunctionRow("Number", "toFixed", "number_to_fixed", 1, ["float64"], true, formattedStringResult),
   jsReceiverFunctionRow(
-    "Number", "toExponential", "number_to_exponential_default", 0, [],
+    "Number", "toExponential", "number_to_exponential_default", 0, [], false, formattedStringResult,
   ),
   jsReceiverFunctionRow(
-    "Number", "toExponential", "number_to_exponential_digits", 1, ["float64"], true,
+    "Number", "toExponential", "number_to_exponential_digits", 1, ["float64"], true, formattedStringResult,
   ),
   jsReceiverFunctionRow(
-    "Number", "toPrecision", "number_to_precision_default", 0, [],
+    "Number", "toPrecision", "number_to_precision_default", 0, [], false, formattedStringResult,
   ),
   jsReceiverFunctionRow(
-    "Number", "toPrecision", "number_to_precision_digits", 1, ["float64"], true,
+    "Number", "toPrecision", "number_to_precision_digits", 1, ["float64"], true, formattedStringResult,
   ),
   ...jsStaticRows("StringConstructor", [
     ["fromCharCode", "native_string_from_char_code", true],

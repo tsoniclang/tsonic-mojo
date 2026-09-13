@@ -1,5 +1,6 @@
 import type { Node } from "@tsonic/tsts";
 import { planMojoNumericExpression } from "./numeric.js";
+import { planMojoSourceValueEquality } from "./source-value-equality.js";
 import {
   ConditionalExpression_Condition,
   ConditionalExpression_WhenFalse,
@@ -155,7 +156,11 @@ export function planPrefixUnary(
   }
   const operandNode = PrefixUnaryExpression_Operand(context.program.source.ast, node);
   const operator = prefixOperator(context.program.source.ast.operatorKindName(node));
-  const operand = operandNode === undefined ? undefined : planValue(operandNode, context);
+  const operand = operandNode === undefined ? undefined : planValue(
+    operandNode,
+    context,
+    operator === "not" ? { kind: "source-primitive", name: "bool" } : undefined,
+  );
   return operator === undefined || operand === undefined
     ? undefined
     : withMojoValue(operand.before, { kind: "unary", operator, operand: operand.value });
@@ -220,23 +225,9 @@ export function planAwait(
   const inner = Node_Expression(context.program.source.ast, node);
   const plan = inner === undefined ? undefined : planValue(inner, context);
   const type = inner === undefined ? undefined : context.program.queries.expressionType(inner);
-  if (plan === undefined || type?.kind !== "future") {
-    appendMojoPlanningDiagnostic(
-      context,
-      "MOJO_AWAIT_OPERAND_NOT_CLOSED",
-      "Await requires one exact finalized Mojo future carrier.",
-      node,
-    );
-    return undefined;
-  }
-  if (type.domain === "js") {
-    appendMojoPlanningDiagnostic(
-      context,
-      "MOJO_JS_PROMISE_AWAIT_RUNTIME_MISSING",
-      "JavaScript Promise awaiting requires the closed Mojo JS scheduler contract.",
-      node,
-    );
-    return undefined;
+  if (plan === undefined) return undefined;
+  if (type?.kind !== "future" || type.domain === "js") {
+    throw new Error("A sealed Mojo await lost its admitted native future carrier.");
   }
   const taskFactory = type.raises ? "create_raising_task" : "create_task";
   registerMojoSymbolImport(context, ["tsonic_runtime"], taskFactory);
@@ -274,6 +265,7 @@ export function planMojoTypeTest(
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
 ): MojoValuePlan | undefined {
+  if (selection.kind === "source-value-equality") return planMojoSourceValueEquality(selection, context, planValue);
   if (selection.kind === "nullish-comparison") {
     const left = planValue(selection.left, context);
     const right = planValue(selection.right, context);
@@ -294,7 +286,13 @@ export function planMojoTypeTest(
     }
     const operand = ordered.values[selection.outcome.operand === "left" ? 0 : 1]!;
     let equal: MojoExpression;
-    if (selection.outcome.kind === "optional-absence") {
+    if (selection.outcome.kind === "js-nullish") {
+      const tests: MojoExpression[] = [];
+      if (selection.outcome.null) tests.push({ kind: "method-call", receiver: operand, name: "is_null", arguments: [] });
+      if (selection.outcome.undefined) tests.push({ kind: "method-call", receiver: operand, name: "is_undefined", arguments: [] });
+      if (tests.length === 0) throw new Error("A sealed nullish comparison must select a runtime tag.");
+      equal = tests.reduce((leftTest, rightTest) => ({ kind: "binary", operator: "or", left: leftTest, right: rightTest }));
+    } else if (selection.outcome.kind === "optional-absence") {
       equal = Object.freeze({
         kind: "unary",
         operator: "not",
@@ -427,13 +425,34 @@ export function planMojoTypeTest(
     }));
   }
   registerMojoTypeImports(selection.testedType, context);
-  return withMojoValue(operand.before, Object.freeze({
+  const ordered = orderMojoValues(Object.freeze([Object.freeze({
+    plan: operand,
+    type: selection.sourceType,
+    role: "type_test_operand",
+    stabilize: selection.sourceType.kind === "optional",
+  })]), context, true);
+  const receiver: MojoExpression = selection.sourceType.kind === "optional"
+    ? Object.freeze({ kind: "method-call", receiver: ordered.values[0]!, name: "value", arguments: Object.freeze([]) })
+    : ordered.values[0]!;
+  const membership: MojoExpression = Object.freeze({
     kind: "method-call",
-    receiver: operand.value,
+    receiver,
     name: "isa",
     genericArguments: Object.freeze([Object.freeze({ kind: "type", type: selection.testedType })]),
     arguments: Object.freeze([]),
-  }));
+  });
+  return withMojoValue(ordered.before, selection.sourceType.kind === "optional"
+    ? Object.freeze({
+        kind: "binary",
+        operator: "and",
+        left: Object.freeze({
+          kind: "construct",
+          type: Object.freeze({ kind: "source-primitive", name: "bool" }),
+          arguments: Object.freeze([{ value: ordered.values[0]! }]),
+        }),
+        right: membership,
+      })
+    : membership);
 }
 
 export function planDictionaryKey(

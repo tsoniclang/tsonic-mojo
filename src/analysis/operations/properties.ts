@@ -6,6 +6,7 @@ import { classifyMojoRefinedValueConversion } from "../refinements/value.js";
 import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
 import type { MojoPropertySelection } from "../program/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import { mojoProviderCompoundWriteIssue } from "../../policy/operations/mutation-admission.js";
 import type { MojoSelectedProviderOperation } from "../../target-model/operations/selection.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import { providerOwnerMatches } from "../../policy/types/resolution.js";
@@ -25,10 +26,8 @@ import { mojoIntlSourceProfileProperty } from "../../policy/operations/source-pr
 import type { MojoSourceProfilePropertyAccessPolicy } from "../../policy/operations/source-profile-property-model.js";
 import { mojoIteratorResultProperty } from "../../policy/types/js-iterator.js";
 import { analyzeMojoIteratorResultProperty } from "./iterator-result-properties.js";
-import {
-  classifyMojoSourceResultConversion,
-  mojoConvertedValueType,
-} from "./call-results.js";
+import { classifyMojoSourceResultConversion } from "./call-results.js";
+import { mojoConvertedValueType } from "../../target-model/conversions/result.js";
 
 export type MojoPropertyAnalysis =
   | { readonly kind: "resolved"; readonly selection: MojoPropertySelection; readonly expressionType: MojoTargetTypeRef }
@@ -211,6 +210,8 @@ export function analyzeMojoProviderProperty(
       reason: writeValueConversion.reason,
     };
   }
+  const compoundIssue = mojoProviderCompoundWriteIssue(source.accessMode, selectedWrite, writeParameterType);
+  if (compoundIssue !== undefined) return compoundIssue;
   let expressionType: MojoTargetTypeRef;
   let readResultConversion;
   if (read !== undefined) {

@@ -2,6 +2,7 @@ import type { Node, ResolvedSourceCallInfo, Type } from "@tsonic/tsts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProviderSemantics } from "../../providers/packages/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
 import type { MojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
 import { resolveMojoTargetType } from "../../policy/types/resolution.js";
@@ -10,11 +11,14 @@ import { classifyMojoRefinedValueConversion } from "../refinements/value.js";
 import { resolveMojoNonTypeGenericArguments } from "../../policy/types/generic-arguments.js";
 import { selectMojoProviderCall } from "../../policy/operations/provider-selection.js";
 import { instantiateMojoProviderOperation } from "../../policy/operations/provider-instantiation.js";
+import { mojoProviderSourceResultContract } from "../../policy/operations/provider-source-result.js";
+import { analyzeMojoForeignArguments } from "./foreign-calls.js";
 import { analyzeMojoTypedLocation } from "./typed-locations.js";
 import { analyzeMojoSourceModuleConstruction } from "../source-modules/construction.js";
 import { analyzeMojoRawPointer } from "./raw-pointers.js";
 import { analyzeMojoExplicitSafety } from "./explicit-safety.js";
 import { analyzeMojoNativePointer } from "./native-pointers.js";
+import { analyzeMojoMemoryOperation } from "./native-memory.js";
 import type {
   MojoAnalyzedClass,
   MojoAnalyzedProjectCallable,
@@ -38,12 +42,14 @@ import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 import type { MojoValueOwnership } from "../../target-model/lifecycle/model.js";
 import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
 import type { MojoStructuralObjectCatalog } from "../bindings/structural-objects.js";
+import { providerRecordArgumentConversions } from "../objects/provider-record-conversions.js";
 
 export type MojoCallAnalysis =
   | { readonly kind: "resolved"; readonly selection: MojoCallSelection; readonly dependency?: Node }
   | { readonly kind: "unsupported"; readonly code: string; readonly reason: string };
 
 export interface MojoCallAnalysisContext {
+  readonly memoryAnalysis: import("../storage/memory-metadata.js").MojoMemoryAnalysis;
   readonly source: TargetSourceProgram;
   readonly providerSemantics: MojoProviderSemantics;
   readonly projectTypes: MojoProjectTypeCatalog;
@@ -60,7 +66,10 @@ export interface MojoCallAnalysisContext {
   readonly classByDeclaration: WeakMap<Node, MojoAnalyzedClass>;
   readonly classByTypeId: ReadonlyMap<string, MojoAnalyzedClass>;
   readonly locationStorageNames: WeakMap<Node, string>;
+  readonly propertySelections: WeakMap<Node, import("../program/model.js").MojoPropertySelection>;
+  readonly elementSelections: WeakMap<Node, import("../program/model.js").MojoElementSelection>;
   readonly structuralObjects: MojoStructuralObjectCatalog;
+  readonly fieldByDeclaration: WeakMap<Node, import("../program/model.js").MojoAnalyzedProjectProperty>;
   readonly modulePathForSourceFile: (sourceFile: import("@tsonic/tsts").SourceFile) => readonly string[];
   readonly contextualizeCallableArgument: (
     expression: Node,
@@ -92,6 +101,9 @@ export function analyzeMojoCall(
   };
   const selectedDeclaration = sourceCall.sourceCallee.selectedDeclaration ??
     sourceCall.sourceCalleeAccess?.selectedDeclaration;
+  const memory = analyzeMojoMemoryOperation({ call: callNode, selected: sourceCall,
+    source: context.source, memory: context.memoryAnalysis, providers: context.providerSemantics, expressionTypes: context.expressionTypes, resolveType: resolve });
+  if (memory.kind !== "not-memory") return memory;
   const selectedSignatureDeclaration = semantics.declarations.signatureDeclaration(
     sourceCall.selectedSignature,
   );
@@ -144,6 +156,12 @@ export function analyzeMojoCall(
     source: context.source,
     expressionTypes: context.expressionTypes,
     locationStorageNames: context.locationStorageNames,
+    propertySelections: context.propertySelections,
+    elementSelections: context.elementSelections,
+    fieldByDeclaration: context.fieldByDeclaration,
+    projectRelationships: context.projectRelationships,
+    structuralObjects: context.structuralObjects,
+    contextualizeCallableArgument: context.contextualizeCallableArgument,
     resolveType: resolve,
   });
   if (typedLocation.kind === "unsupported") return typedLocation;
@@ -205,7 +223,18 @@ export function analyzeMojoCall(
   const instantiated = instantiateMojoProviderOperation(
     selectedProvider.operation,
     sourceCall,
-    resolve,
+    (type, authoredTypeNode) => {
+      if (authoredTypeNode !== undefined) return resolve(type, authoredTypeNode);
+      const carriers = sourceCall.sourceArguments.flatMap((argument) => {
+        if (!semantics.types.isIdentical(type, argument.type)) return [];
+        const carrier = context.expressionTypes.get(argument.expression);
+        return carrier === undefined ? [] : [carrier.kind === "reference" ? carrier.value : carrier];
+      });
+      if (carriers.length === 0) return resolve(type, authoredTypeNode);
+      const first = carriers[0]!;
+      return carriers.every((carrier) => mojoTargetTypeEquals(first, carrier))
+        ? first : undefined;
+    },
     (parameter, explicitTypeNode) => resolveMojoNonTypeGenericArguments(
       parameter,
       explicitTypeNode,
@@ -223,6 +252,10 @@ export function analyzeMojoCall(
           : { sourceCallableErrorType: context.sourceCallableErrorType }),
       },
     ),
+    sourceCall.sourceReceiver === undefined ? undefined
+      : context.expressionTypes.get(sourceCall.sourceReceiver.expression) ??
+        resolve(sourceCall.sourceReceiver.type, sourceCall.sourceReceiver.authoredTypeNode ??
+          (sourceCall.sourceReceiver.declaration === undefined ? undefined : context.source.ast.typeNode(sourceCall.sourceReceiver.declaration))),
   );
   if (instantiated.kind === "unsupported") {
     return { kind: "unsupported", code: "MOJO_PROVIDER_CALL_NOT_CLOSED", reason: instantiated.reason };
@@ -235,13 +268,17 @@ export function analyzeMojoCall(
       reason: target.reason,
     };
   }
-  if (target.kind !== "function-call" && target.kind !== "instance-call") {
+  if (target.kind !== "function-call" && target.kind !== "instance-call" && target.kind !== "value-predicate" && target.kind !== "foreign-call") {
     return {
       kind: "unsupported",
       code: "MOJO_PROVIDER_CALL_FORM_INVALID",
       reason: `Selected provider call maps to non-call target form '${target.kind}'.`,
     };
   }
+  const records = providerRecordArgumentConversions(sourceCall, instantiated.operation.parameterTypes, target.arguments, resolve, context);
+  if (records.kind === "unsupported") return records;
+  const foreign = analyzeMojoForeignArguments(sourceCall, instantiated.operation, context.source, context.expressionTypes, resolve);
+  if (foreign.kind === "unsupported") return foreign;
   const arguments_ = analyzeArguments(
     context.source.ast,
     sourceCall,
@@ -253,10 +290,10 @@ export function analyzeMojoCall(
     context.lifecycle,
     context.conversions,
     context.valueOwnership,
-    undefined,
+    records.conversions,
     (expression) => context.source.ast.is.IsObjectLiteralExpression(expression),
-    context.projectRelationships,
     context.contextualizeCallableArgument,
+    foreign.parameters,
   );
   if (arguments_.kind === "unsupported") return arguments_;
   const closedArguments = closeLocationBackedArguments(
@@ -274,12 +311,16 @@ export function analyzeMojoCall(
       })
     : undefined;
   if (sourceModule?.kind === "unsupported") return sourceModule;
-  const result = closeResultConversion(
-    instantiated.operation.resultType,
-    sourceCall.sourceResultType,
-    resolve,
-    context.projectRelationships,
-  );
+  const referenceResult = mojoProviderSourceResultContract(selectedProvider.operation.sourceResult,
+    instantiated.operation.resultType, selectedProvider.operation.resultType);
+  if (referenceResult === "conflict") {
+    return { kind: "unsupported", code: "MOJO_PROVIDER_REFERENCE_RESULT_MISMATCH", reason: "The selected source reference result requires an exact borrowed provider result." };
+  }
+  const result = referenceResult === "reference" || referenceResult === "exact-value" || selectedProvider.operation.operationKind === "constructor"
+    ? { kind: "resolved" as const, conversion: Object.freeze({ kind: "identity" as const }) }
+    : closeResultConversion(
+        instantiated.operation.resultType, sourceCall.sourceResultType, resolve, context.projectRelationships,
+      );
   if (result.kind === "unsupported") return result;
   let receiverConversion;
   let receiverDisposition;
@@ -288,7 +329,7 @@ export function analyzeMojoCall(
     const receiver = sourceCall.sourceReceiver;
     const actual = receiver === undefined
       ? undefined
-      : resolve(
+      : context.expressionTypes.get(receiver.expression) ?? resolve(
           receiver.type,
           receiver.authoredTypeNode ?? (receiver.declaration === undefined
             ? undefined
@@ -404,7 +445,6 @@ function analyzeCallableValueCall(
     context.valueOwnership,
     undefined,
     (expression) => context.source.ast.is.IsObjectLiteralExpression(expression),
-    context.projectRelationships,
     context.contextualizeCallableArgument,
   );
   if (arguments_.kind === "unsupported") return arguments_;

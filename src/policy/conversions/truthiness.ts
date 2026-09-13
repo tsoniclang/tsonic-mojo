@@ -6,14 +6,13 @@ export function classifyTruthiness(type: MojoTargetTypeRef): MojoTruthinessConve
   if (type.kind === "null" || type.kind === "undefined" || type.kind === "unit") {
     return Object.freeze({ kind: "always-false" });
   }
-  if (type.kind === "native-string" || isJsString(type)) {
-    return Object.freeze({ kind: "string" });
-  }
+  if (type.kind === "native-string") return Object.freeze({ kind: "native-string" });
+  if (isJsString(type)) return Object.freeze({ kind: "string" });
   if (type.kind === "dynamic" && type.domain === "js") {
     return Object.freeze({ kind: "dynamic" });
   }
   if (type.kind === "source-primitive") {
-    if (type.name === "bool") return undefined;
+    if (type.name === "bool") return Object.freeze({ kind: "boolean" });
     if (type.name === "float32" || type.name === "float64") {
       return Object.freeze({ kind: "float" });
     }

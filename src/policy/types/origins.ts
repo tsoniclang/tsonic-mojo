@@ -19,7 +19,7 @@ import {
 } from "./resolution-helpers.js";
 
 export type MojoSourceOriginTypeContract =
-  | { readonly kind: "origin" }
+  | { readonly kind: "origin"; readonly mutable?: boolean }
   | { readonly kind: "static" }
   | { readonly kind: "inferred" }
   | { readonly kind: "untracked" }
@@ -43,7 +43,12 @@ export function mojoSourceOriginTypeContract(
       : mojoSourceOriginTypeContract(innerType, inner, context);
   }
   if (!context.ast.is.IsTypeReferenceNode(authoredTypeNode)) return undefined;
-  const identity = uniqueProviderIdentity(typeSubjects(selectedType, authoredTypeNode, context).map((subject) =>
+  const typeName = context.ast.as.AsTypeReferenceNode(authoredTypeNode)?.TypeName;
+  const reference = context.navigation.sourceReferenceFor(typeName);
+  const subjects = reference === undefined
+    ? typeSubjects(selectedType, authoredTypeNode, context)
+    : context.semantics.facts.selectedSubjects(reference.symbol, reference.declaration);
+  const identity = uniqueProviderIdentity(subjects.map((subject) =>
     context.sourceFacts.getFact(subject, providerVirtualDeclarationFactKey)));
   if (identity.kind === "conflict" || identity.value?.providerId !== mojoSourceVirtualModulesProviderId ||
     identity.value.providerVersion !== mojoSourceProviderVersion ||
@@ -58,6 +63,11 @@ export function mojoSourceOriginTypeContract(
   switch (identity.value.exportId) {
     case mojoSourceOriginTypeIds.origin:
       return nodes.length === 0 ? Object.freeze({ kind: "origin" }) : undefined;
+    case mojoSourceOriginTypeIds.mutableOrigin:
+    case mojoSourceOriginTypeIds.immutableOrigin:
+      return nodes.length === 0 ? Object.freeze({
+        kind: "origin", mutable: identity.value.exportId === mojoSourceOriginTypeIds.mutableOrigin,
+      }) : undefined;
     case mojoSourceOriginTypeIds.staticOrigin:
       return nodes.length === 0 ? Object.freeze({ kind: "static" }) : undefined;
     case mojoSourceOriginTypeIds.inferredOrigin:

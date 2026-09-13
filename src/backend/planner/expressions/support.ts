@@ -1,4 +1,5 @@
 import type { Node } from "@tsonic/tsts";
+import { convertMojoProviderRecord } from "./provider-record-conversion.js";
 import type {
   MojoSelectedProviderOperation,
 } from "../../../target-model/operations/selection.js";
@@ -18,11 +19,13 @@ import {
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import { registerMojoTypeImports } from "../types/imports.js";
-import { mojoValue, withMojoValue } from "./value-plan.js";
+import { mojoValue, retainMojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { convertMojoDataRest } from "./js-data-rest-conversion.js";
 import { convertMojoSourceValue } from "./source-values/conversion.js";
 import { adaptMojoRaisingCallableError } from "./callable-error-adapter.js";
+import { adaptMojoCallableArguments } from "./callable-arguments.js";
+import { adaptMojoCallableResult } from "./callable-result.js";
 import {
   convertMojoCollection,
   convertMojoNarrowedUnion,
@@ -184,6 +187,9 @@ export function convertMojoValue(
   conversion: MojoValueConversion,
   context: MojoPlanningContext,
 ): MojoValuePlan | undefined {
+  if (conversion.kind === "undefined-to-unit") {
+    return withMojoValue([...plan.before, { kind: "discard", expression: plan.value }], { kind: "none-literal" });
+  }
   if (conversion.kind === "js-value-graph") {
     return convertMojoSourceValue(plan, conversion, context, convertMojoValue);
   }
@@ -196,6 +202,9 @@ export function convertMojoValue(
   if (conversion.kind === "collection-map") {
     return convertMojoCollection(plan, conversion, context, convertMojoValue);
   }
+  if (conversion.kind === "provider-record") {
+    return convertMojoProviderRecord(plan, conversion, context, convertMojoValue);
+  }
   if (conversion.kind === "optional-some") {
     const value = convertMojoValue(plan, conversion.valueConversion, context);
     if (value === undefined) return undefined;
@@ -203,7 +212,7 @@ export function convertMojoValue(
     return withMojoValue(value.before, Object.freeze({
       kind: "construct",
       type: conversion.targetType,
-      arguments: Object.freeze([{ value: value.value }]),
+      arguments: Object.freeze([{ value: retainMojoValue(value.value, conversion.targetType.value, context.program.lifecycle) }]),
     }));
   }
   if (conversion.kind === "optional-map") {
@@ -233,7 +242,7 @@ export function convertMojoValue(
     return withMojoValue(value.before, Object.freeze({
       kind: "construct",
       type: conversion.targetType,
-      arguments: Object.freeze([{ value: value.value }]),
+      arguments: Object.freeze([{ value: retainMojoValue(value.value, conversion.memberType, context.program.lifecycle) }]),
     }));
   }
   if (conversion.kind === "union-map") {
@@ -257,6 +266,9 @@ export function prepareMojoReceiver(
   if (receiver === undefined) return undefined;
   if (!optionalChain) return Object.freeze({ kind: "required", plan: receiver });
   const actualType = context.program.queries.expressionType(expression);
+  if (actualType !== undefined && mojoTargetTypeEquals(actualType, selectedType)) {
+    return Object.freeze({ kind: "required", plan: receiver });
+  }
   if (actualType?.kind !== "optional" || !mojoTargetTypeEquals(actualType.value, selectedType)) {
     appendMojoPlanningDiagnostic(
       context,
@@ -388,6 +400,15 @@ export function applyMojoConversion(
   if (conversion === undefined) return undefined;
   switch (conversion.kind) {
     case "identity": return expression;
+    case "undefined-to-unit": return undefined;
+    case "provider-native-view": {
+      registerMojoTypeImports(conversion.targetType, context);
+      return Object.freeze({
+        kind: "call",
+        callee: mojoModuleMemberExpression(context, conversion.factory.modulePath, conversion.factory.name),
+        arguments: Object.freeze([{ value: expression }]),
+      });
+    }
     case "project-view": {
       const selected = context.program.projectDispatch.conversionFor(
         conversion.sourceType,
@@ -404,9 +425,11 @@ export function applyMojoConversion(
     case "callable-adapt": {
       registerMojoTypeImports(conversion.targetType, context);
       if (conversion.targetType.kind !== "callable") return undefined;
+      const complete = (value: MojoExpression | undefined): MojoExpression | undefined =>
+        value === undefined ? undefined : adaptMojoCallableArguments(value, conversion, context);
       const argumentTuple = Object.freeze({
         kind: "tuple" as const,
-        elements: Object.freeze(conversion.targetType.parameters.map((parameter) => parameter.type)),
+        elements: Object.freeze(conversion.sourceType.parameters.map((parameter) => parameter.type)),
       });
       const resultType = conversion.targetType.result.kind === "unit"
         ? Object.freeze({
@@ -422,7 +445,8 @@ export function applyMojoConversion(
         modulePath: Object.freeze([]),
         name: "Error",
       });
-      let adapted = expression;
+      let adapted = adaptMojoCallableResult(expression, conversion, context, convertMojoValue);
+      if (adapted === undefined) return undefined;
       if (conversion.result === "never") {
         const sourceRaises = conversion.sourceErrorType !== undefined;
         const sourceError = conversion.sourceErrorType ?? targetError;
@@ -450,19 +474,20 @@ export function applyMojoConversion(
           if (conversion.errorConversion === undefined) return undefined;
           const sourceType = Object.freeze({
             ...conversion.targetType,
+            parameters: conversion.sourceType.parameters,
             raises: true,
             errorType: conversion.sourceErrorType,
           });
-          return adaptMojoRaisingCallableError(
+          return complete(adaptMojoRaisingCallableError(
             adapted,
             sourceType,
-            conversion.targetType,
+            Object.freeze({ ...conversion.targetType, parameters: conversion.sourceType.parameters }),
             conversion.errorConversion,
             context,
             convertMojoValue,
-          );
+          ));
         }
-        return Object.freeze({
+        return complete(Object.freeze({
           kind: "call",
           callee: mojoModuleMemberExpression(context, ["tsonic_runtime"], "widen_callable"),
           genericArguments: Object.freeze([
@@ -471,16 +496,16 @@ export function applyMojoConversion(
             Object.freeze({ kind: "type" as const, type: targetError }),
           ]),
           arguments: Object.freeze([{ value: adapted }]),
-        });
+        }));
       }
       if (conversion.error === "erase") {
-        return Object.freeze({
+        return complete(Object.freeze({
           kind: "call",
           callee: mojoModuleMemberExpression(context, ["tsonic_runtime"], "erase_callable_error"),
           arguments: Object.freeze([{ value: adapted }]),
-        });
+        }));
       }
-      return adapted;
+      return complete(adapted);
     }
     case "js-truthiness":
       return planMojoTruthiness(expression, conversion.conversion, context);
@@ -508,6 +533,7 @@ export function applyMojoConversion(
       registerMojoTypeImports(conversion.targetType, context);
       return { kind: "construct", type: conversion.targetType, arguments: Object.freeze([{ value: expression }]) };
     case "collection-map":
+    case "provider-record":
     case "optional-map":
     case "optional-to-union":
     case "union-to-optional":
@@ -548,7 +574,7 @@ export function applyMojoConversion(
       const value = applyMojoConversion(expression, conversion.valueConversion, context);
       if (value === undefined) return undefined;
       registerMojoTypeImports(conversion.targetType, context);
-      return { kind: "construct", type: conversion.targetType, arguments: Object.freeze([{ value }]) };
+      return { kind: "construct", type: conversion.targetType, arguments: Object.freeze([{ value: retainMojoValue(value, conversion.targetType.value, context.program.lifecycle) }]) };
     }
     case "optional-present": {
       const present = Object.freeze({
@@ -563,7 +589,7 @@ export function applyMojoConversion(
       const value = applyMojoConversion(expression, conversion.valueConversion, context);
       if (value === undefined) return undefined;
       registerMojoTypeImports(conversion.targetType, context);
-      return { kind: "construct", type: conversion.targetType, arguments: Object.freeze([{ value }]) };
+      return { kind: "construct", type: conversion.targetType, arguments: Object.freeze([{ value: retainMojoValue(value, conversion.memberType, context.program.lifecycle) }]) };
     }
   }
 }

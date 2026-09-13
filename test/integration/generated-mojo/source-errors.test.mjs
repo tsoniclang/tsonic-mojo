@@ -63,6 +63,23 @@ test("rethrows transfer an owned final-use error but retain values visible to ha
   assert.doesNotMatch(caught, /raise error\^/u);
 });
 
+test("authored throws enter the same sealed error union as nested operations", () => {
+  const result = compileMojo({ surfaces: ["js"], files: { "index.ts": `
+export function mixed(value: unknown, fail: boolean): string {
+  try {
+    if (fail) throw new Error("selected");
+    return \`\${value}\`;
+  } finally { fail = false; }
+}
+export function main(): void {}
+` } });
+  assert.deepEqual(result.diagnostics, []);
+  const emitted = artifactTexts(result).find(({ text }) => text.includes("def mixed("))?.text;
+  assert.ok(emitted);
+  assert.match(emitted, /raise Variant\[Error, TsError\]\(error_new\("selected"\)\)/u);
+  assert.doesNotMatch(emitted, /raise error_new/u);
+});
+
 const source = [
   "function makeError(message: string): Error {",
   "  const error = new Error(message);",

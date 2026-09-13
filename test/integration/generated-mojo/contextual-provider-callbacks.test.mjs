@@ -91,7 +91,8 @@ test("provider callbacks close from the exact retained target callable", () => {
   assert.ok(source);
   assert.match(source.text, /from fixture_callback import observe/u);
   assert.match(source.text, /RaisingCallable\[\s*Tuple\[String\],\s*NoneType,?\s*\]/u);
-  assert.match(source.text, /var \(value,\) = _callable_environment_arguments\^/u);
+  assert.match(source.text, /var value = _callable_environment_arguments\[0\]/u);
+  assert.doesNotMatch(source.text, /var \(value,\) = _callable_environment_arguments\^/u);
   assert.equal((source.text.match(/allocate_callable_environment\(/gu) ?? []).length, 1);
   assert.match(source.text, /observe\(\s*RaisingCallable/u);
 });
@@ -101,6 +102,6 @@ test("contextual callback ABI contradictions fail at analysis", () => {
   assert.deepEqual(result.artifacts, []);
   assert.deepEqual(result.diagnostics.map(({ code }) => code), [
     "MOJO_CONTEXTUAL_CALLABLE_PARAMETER_ABI_MISMATCH",
-    "MOJO_CALLABLE_EXPRESSION_SELECTION_UNRESOLVED",
+    "MOJO_CALL_ARGUMENT_CONVERSION_UNPROVEN",
   ]);
 });

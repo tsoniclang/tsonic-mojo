@@ -1,3 +1,4 @@
+import { validateMojoForeignCall } from "./foreign-call-validation.js";
 import type {
   MojoProviderOperationDefinition,
   MojoProviderPackageDefinition,
@@ -14,7 +15,10 @@ import {
   validateMojoProviderType,
 } from "./type-validation.js";
 import { selectMojoProviderSurfaceMembers, validateMojoProviderSurfaceMembers } from "./surface-members.js";
+import { mojoTargetTypeKey } from "../../target-model/types/key.js";
+import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import { validateMojoSourceModuleArgument } from "./source-module-validation.js";
+import { validateMojoValuePredicate } from "./value-predicate-validation.js";
 
 const identifierPattern = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 
@@ -138,6 +142,28 @@ export function validateMojoProviderPackageDefinition(
       sourceGenericNames.add(parameter.targetName);
     }
     validateMojoProviderType(type.targetType);
+    const viewTargets = new Set<string>();
+    if (type.nativeViews !== undefined && !Array.isArray(type.nativeViews)) {
+      throw new Error(`Provider type '${type.exportId}' has an invalid native view inventory.`);
+    }
+    for (const view of type.nativeViews ?? []) {
+      if (view === null || typeof view !== "object" || Array.isArray(view) || Object.keys(view).length !== 2 || view.targetType?.kind !== "target-named" || type.targetType.kind !== "target-named" ||
+        type.sourceGenericParameters.length !== 0 || (type.targetType.genericArguments?.length ?? 0) !== 0 || (view.targetType.genericArguments?.length ?? 0) !== 0) {
+        throw new Error(`Provider type '${type.exportId}' has an invalid closed native view.`);
+      }
+      validateMojoProviderType(view.targetType);
+      const identity = mojoTargetTypeKey(view.targetType);
+      if (viewTargets.has(identity) || mojoTargetTypeEquals(type.targetType, view.targetType) || !(definition.types ?? []).some((candidate) => mojoTargetTypeEquals(candidate.targetType, view.targetType))) {
+        throw new Error(`Provider type '${type.exportId}' has a duplicate or undeclared native view destination.`);
+      }
+      viewTargets.add(identity);
+      const factory = view.factory;
+      if (factory === null || typeof factory !== "object" || Object.keys(factory).length !== 2 || !Array.isArray(factory.modulePath) ||
+        factory.modulePath.length === 0 || factory.modulePath.some((segment: unknown) => typeof segment !== "string" || !identifierPattern.test(segment)) ||
+        typeof factory.name !== "string" || !identifierPattern.test(factory.name)) {
+        throw new Error(`Provider type '${type.exportId}' has an invalid native view factory.`);
+      }
+    }
     for (const [role, factory] of [
       ["factory", type.sourceValueFactory],
       ["extraction", type.sourceValueExtraction],
@@ -230,6 +256,7 @@ function validateOperation(
   operation: MojoProviderOperationDefinition,
   declarations: ProviderDeclarationIndex,
 ): void {
+  validateMojoValuePredicate(operation);
   if (!declarations.exports.has(operation.exportId)) {
     throw new Error(`Provider operation '${operation.exportId}' has no exported declaration.`);
   }
@@ -249,6 +276,7 @@ function validateOperation(
   }
   validateMojoProviderType(operation.resultType);
   validateMojoSourceModuleArgument(operation);
+  validateMojoForeignCall(operation, signature?.declaration);
   for (const type of operation.parameterTypes ?? []) validateMojoProviderType(type);
   if (operation.receiverType !== undefined) validateMojoProviderType(operation.receiverType);
   if (operation.errorType !== undefined) {
@@ -261,11 +289,15 @@ function validateOperation(
     if (signature === undefined) {
       throw new Error(`Provider ${operation.operationKind} '${operation.exportId}' requires an exact signature identity.`);
     }
-    if (operation.target.kind !== "function-call" && operation.target.kind !== "instance-call" &&
+    if (operation.target.kind !== "function-call" && operation.target.kind !== "instance-call" && operation.target.kind !== "value-predicate" && operation.target.kind !== "foreign-call" &&
       operation.target.kind !== "unsupported") {
       throw new Error(`Provider ${operation.operationKind} '${operation.exportId}' requires a Mojo call target.`);
     }
     const parameters = operation.parameterTypes ?? [];
+    if (operation.target.kind === "value-predicate" &&
+      signature.declaration.parameters.some((parameter) => parameter.optional === true || parameter.rest === true)) {
+      throw new Error(`Provider value predicate '${operation.exportId}' requires one mandatory non-rest source parameter.`);
+    }
     if (parameters.length !== signature.declaration.parameters.length ||
       operation.target.kind !== "unsupported" && parameters.length !== operation.target.arguments.length) {
       throw new Error(`Provider ${operation.operationKind} '${operation.signatureId}' has inconsistent source, target, and ABI arity.`);
@@ -278,11 +310,14 @@ function validateOperation(
     const memberProperty = operation.memberId !== undefined &&
       operation.target.kind === "property-read" &&
       operation.receiverType !== undefined;
+    const staticMember = operation.memberId === undefined
+      ? undefined : declarations.members.get(operation.memberId)?.declaration;
     const staticMemberProperty = operation.memberId !== undefined &&
-      operation.target.kind === "function-read" &&
+      (operation.target.kind === "function-read" ||
+        operation.target.kind === "constant" && staticMember?.kind === "property" && staticMember.readonly === true) &&
       operation.receiverType === undefined &&
       (operation.parameterTypes ?? []).length === 0 &&
-      declarations.members.get(operation.memberId)?.declaration.static === true;
+      staticMember?.static === true;
     const exported = declarations.exports.get(operation.exportId)!;
     const moduleConstant = operation.memberId === undefined &&
       operation.signatureId === undefined &&
@@ -368,7 +403,7 @@ function validateOperation(
   if (targetName !== undefined && !identifierPattern.test(targetName)) {
     throw new Error(`Provider operation '${operation.exportId}' has invalid Mojo name '${targetName}'.`);
   }
-  if (operation.target.kind === "function-call" || operation.target.kind === "instance-call") {
+  if (operation.target.kind === "function-call" || operation.target.kind === "instance-call" || operation.target.kind === "value-predicate") {
     const genericNames = new Set<string>();
     for (const parameter of operation.target.genericParameters ?? []) {
       if (!identifierPattern.test(parameter.name) || genericNames.has(parameter.name)) {

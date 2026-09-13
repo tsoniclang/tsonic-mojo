@@ -42,6 +42,7 @@ export interface MojoDeclarationDrafts {
 }
 
 export function collectMojoDeclarationDrafts(input: {
+  readonly projectTypes: import("../../target-model/types/project.js").MojoProjectTypeCatalog;
   readonly sourceFiles: readonly SourceFile[];
   readonly ast: TargetSourceProgram["ast"];
   readonly globalNameByDeclaration: WeakMap<Node, string>;
@@ -100,6 +101,13 @@ export function collectMojoDeclarationDrafts(input: {
         reject(input, "MOJO_TOP_LEVEL_DECLARATION_UNSUPPORTED", "Executable project declarations require a supported top-level function, class, interface, enum, or type-alias form.", statement);
       }
     }
+  }
+  for (const definition of input.projectTypes.definitions) {
+    if (!ast.is.IsTypeLiteralNode(definition.declaration)) continue;
+    input.bindingNames.set(definition.declaration, definition.targetName);
+    input.bindingSourceFiles.set(definition.declaration, definition.sourceFile);
+    interfaces.push(namedTypeDraft(definition.declaration, definition.sourceFile,
+      definition.targetName, input.globalNames));
   }
   return Object.freeze({
     functions: Object.freeze(functions),

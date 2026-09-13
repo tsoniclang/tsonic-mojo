@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
+import { projectArtifactTexts as artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
 
 test("Number locale presentation retains exact selected receiver and closed options", () => {
   const result = compileMojo({ surfaces: ["js"], files: { "index.ts": `
@@ -28,7 +28,6 @@ export function main(): void {
 test("Number locale declarations reject incompatible option contracts", () => {
   for (const expression of [
     "amount.toLocaleString(42)", 'amount.toLocaleString("en-US", { useGrouping: "false" })',
-    'amount.toLocaleString("en-US", { style: "unit" })',
     'amount.toLocaleString("en-US", { minimumFractionDigits: "2" })',
     'amount.toLocaleString("en-US", { roundingMode: "nearest" })',
     'amount.toLocaleString("en-US", { notation: "exponential" })',
@@ -48,8 +47,8 @@ export function main(): void { signed(-1n); unsigned(2n); }
 ` } });
   assert.deepEqual(result.diagnostics, []);
   const output = artifactTexts(result).map(({ text }) => text).join("\n");
-  assert.match(output, /number_to_locale_string\(value,/u);
-  assert.doesNotMatch(output, /number_to_locale_string\(Float64\(/u);
+  assert.match(output, /number_to_locale_string\(\s*value,/u);
+  assert.doesNotMatch(output, /number_to_locale_string\(\s*Float64\(/u);
 });
 
 test("authored same-spelled locale member does not select the numeric intrinsic", () => {

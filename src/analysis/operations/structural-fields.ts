@@ -46,6 +46,9 @@ export function analyzeMojoStructuralProperty(input: {
       "A structural-object property requires one exact checker-selected symbol or declaration identity.",
     );
   }
+  if (matching.length === 0 && source.callCallee) {
+    return { kind: "not-structural-field" };
+  }
   if (matching.length !== 1) {
     return unsupported(
       matching.length === 0

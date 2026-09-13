@@ -1,9 +1,18 @@
+import type { Node } from "@tsonic/tsts";
+import type { MojoSourceValueFunction } from "./source-value-function.js";
 import type { MojoTargetTypeRef } from "../types/model.js";
 
+export type MojoRecordMemberRead =
+  | { readonly kind: "structural"; readonly index: number }
+  | { readonly kind: "field"; readonly declaration: Node; readonly name: string }
+  | { readonly kind: "accessor"; readonly declaration: Node; readonly name: string };
+
 export type MojoTruthinessConversion =
+  | { readonly kind: "boolean" }
   | { readonly kind: "integer" }
   | { readonly kind: "float" }
   | { readonly kind: "string" }
+  | { readonly kind: "native-string" }
   | { readonly kind: "dynamic" }
   | { readonly kind: "always-true" }
   | { readonly kind: "always-false" }
@@ -23,6 +32,19 @@ export type MojoTruthinessConversion =
 
 export type MojoValueConversion =
   | {
+      readonly kind: "provider-record";
+      readonly sourceType: MojoTargetTypeRef;
+      readonly targetType: MojoTargetTypeRef;
+      readonly fields: readonly {
+        readonly memberId: string;
+        readonly targetName: string;
+        readonly read: MojoRecordMemberRead;
+        readonly sourceType: MojoTargetTypeRef;
+        readonly targetType: MojoTargetTypeRef;
+        readonly conversion: MojoValueConversion;
+      }[];
+    }
+  | {
       readonly kind: "js-value-extract";
       readonly sourceType: MojoTargetTypeRef;
       readonly targetType: MojoTargetTypeRef;
@@ -35,19 +57,32 @@ export type MojoValueConversion =
       readonly graph: import("./js-value-graph.js").MojoJsValueGraph;
     }
   | { readonly kind: "identity" }
+  | { readonly kind: "undefined-to-unit" }
+  | {
+      readonly kind: "provider-native-view";
+      readonly sourceType: MojoTargetTypeRef;
+      readonly targetType: MojoTargetTypeRef;
+      readonly factory: MojoSourceValueFunction;
+    }
   | {
       readonly kind: "project-view";
       readonly sourceType: MojoTargetTypeRef;
       readonly targetType: MojoTargetTypeRef;
     }
-  | {
+  | ({
       readonly kind: "callable-adapt";
+      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
       readonly targetType: MojoTargetTypeRef;
-      readonly result: "preserve" | "never";
+      readonly parameters:
+        | { readonly kind: "identity" }
+        | { readonly kind: "prefix"; readonly copies: readonly ("implicit" | "explicit")[] };
       readonly error: "preserve" | "widen" | "erase";
       readonly sourceErrorType?: MojoTargetTypeRef;
       readonly errorConversion?: MojoValueConversion;
-    }
+    } & (
+      | { readonly result: "preserve" | "never"; readonly resultConversion?: never }
+      | { readonly result: "convert"; readonly resultConversion: MojoValueConversion }
+    ))
   | { readonly kind: "js-truthiness"; readonly conversion: MojoTruthinessConversion }
   | {
       readonly kind: "js-callback-truthiness";
@@ -61,7 +96,7 @@ export type MojoValueConversion =
       readonly targetType: MojoTargetTypeRef;
     } & (
       | {
-          readonly source: "number";
+          readonly source: "number" | "bigint";
           readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "source-primitive" }>;
         }
       | {
@@ -96,7 +131,7 @@ export type MojoValueConversion =
   | { readonly kind: "optional-none"; readonly targetType: MojoTargetTypeRef }
   | {
       readonly kind: "optional-some";
-      readonly targetType: MojoTargetTypeRef;
+      readonly targetType: Extract<MojoTargetTypeRef, { readonly kind: "optional" }>;
       readonly valueConversion: MojoValueConversion;
     }
   | {

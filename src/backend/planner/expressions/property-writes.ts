@@ -17,8 +17,8 @@ import { consumeMojoValue, mojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import type { MojoPreparedMutation } from "./mutation-plan.js";
 import { planDictionaryKey } from "./conditional-values.js";
-import { mojoParameterConvention } from "../../../analysis/representations/index.js";
-import { mojoConvertedValueType } from "../../../analysis/operations/call-results.js";
+import { mojoParameterConvention } from "../../../target-model/operations/parameters.js";
+import { mojoConvertedValueType } from "../../../target-model/conversions/result.js";
 
 export function projectPropertyUsesMethodWrite(
   selection: import("../../../analysis/program/model.js").MojoPropertySelection | undefined,
@@ -138,13 +138,7 @@ export function planMojoProjectPropertyWrite(
     }
     if (readName === undefined || readType === undefined ||
       !mojoTargetTypeEquals(readType, writeType)) {
-      appendMojoPlanningDiagnostic(
-        context,
-        "MOJO_PROJECT_ACCESSOR_COMPOUND_WRITE_UNSUPPORTED",
-        "A compound project accessor write requires one identical exact read and write carrier.",
-        node,
-      );
-      return undefined;
+      throw new Error("A sealed compound project property lost its identical read and write carriers.");
     }
     const current: MojoExpression = Object.freeze({
       kind: "method-call",

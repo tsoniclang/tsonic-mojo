@@ -9,17 +9,26 @@ export function mojoValueConversionRepresentationTypes(
   conversion: MojoValueConversion,
 ): readonly MojoTargetTypeRef[] {
   switch (conversion.kind) {
+    case "provider-record": return Object.freeze([
+      conversion.sourceType, conversion.targetType,
+      ...conversion.fields.flatMap((field) => [field.sourceType, field.targetType,
+        ...mojoValueConversionRepresentationTypes(field.conversion)]),
+    ]);
     case "js-value-graph": return Object.freeze([conversion.targetType, ...mojoJsValueGraphTypes(conversion.graph)]);
     case "identity":
+    case "undefined-to-unit":
     case "js-to-native-string":
       return Object.freeze([]);
     case "project-view":
+    case "provider-native-view":
     case "js-value-extract":
     case "native-error-result-unwrap":
       return Object.freeze([conversion.sourceType, conversion.targetType]);
     case "callable-adapt":
       return Object.freeze([
+        conversion.sourceType,
         conversion.targetType,
+        ...(conversion.resultConversion === undefined ? [] : mojoValueConversionRepresentationTypes(conversion.resultConversion)),
         ...(conversion.sourceErrorType === undefined ? [] : [conversion.sourceErrorType]),
         ...(conversion.errorConversion === undefined
           ? []
@@ -36,7 +45,7 @@ export function mojoValueConversionRepresentationTypes(
     case "js-box":
       return Object.freeze([
         conversion.targetType,
-        ...(conversion.source === "number" ? [conversion.sourceType] : []),
+        ...(conversion.source === "number" || conversion.source === "bigint" ? [conversion.sourceType] : []),
       ]);
     case "js-data-rest":
       return Object.freeze([

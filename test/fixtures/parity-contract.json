@@ -645,7 +645,7 @@
       "analysisProof": "test/integration/generated-mojo/language-parity.test.mjs",
       "emissionProof": "test/integration/generated-mojo/language-parity.test.mjs",
       "nativeProof": "../mojo-pudding/scripts/verify.sh",
-      "note": "Exact facts close supplied raw-address equality/hash and explicit unsafe native-pointer load/store/element-offset. Layout-backed raw-memory conversions are not implemented; the retired object-binding marker is absent."
+      "note": "Exact facts close raw-address equality/hash, unsafe native-pointer operations, retained typed locations and layout-backed scalar/array views. Generated provider-record integration executes exact field-offset composition, native field/type/offset checks and aliased writes against the original allocation. Native layout and owner proofs remain required; logical accessors and unproved source allocations do not manufacture physical addresses."
     },
     {
       "id": "providers.cargo-dependencies",
@@ -710,13 +710,13 @@
       "benchmarkClassification": "target-limit",
       "benchmarkAction": "reject escaping borrowed views because TypeScript has no lifetime-bearing view type; retain exact Copy and owned-string projections",
       "proofId": "providers.escaping-borrowed-results",
-      "classification": "shared-intentional-rejection",
-      "sourceProof": "test/providers/compiler/provider.test.mjs",
-      "analysisProof": "test/providers/compiler/provider.test.mjs",
-      "boundaryProof": "test/providers/compiler/provider.test.mjs",
-      "mutationProof": "test/providers/compiler/provider.test.mjs",
-      "nativeProof": "test/providers/compiler/provider.test.mjs",
-      "note": "Mojo borrowed results carry explicit origins. TypeScript has no origin-bearing view type, so an escaping borrowed result rejects unless a provider exposes an owned or Copy projection."
+      "classification": "implemented-generated",
+      "sourceProof": "test/integration/generated-mojo/native-interop.test.mjs",
+      "analysisProof": "test/providers/compiler/interop-projection.test.mjs",
+      "emissionProof": "test/integration/generated-mojo/native-interop.test.mjs",
+      "mutationProof": "test/providers/compiler/interop-projection.test.mjs",
+      "nativeProof": "scripts/verify-native-interop.mjs",
+      "note": "Exact origin-bearing Ref/MutRef declarations and selected receiver parameters remain references through local binding and return. Native proofs compare addresses after a call and reject escape of a local origin. Opaque derived-origin expressions without an expressible source origin are not silently erased."
     },
     {
       "id": "providers.owned-custom-receivers",
@@ -739,13 +739,13 @@
       "benchmarkClassification": "target-limit",
       "benchmarkAction": "reject nested borrowed custom receivers before source projection; retain owned custom receivers such as Box<Self>",
       "proofId": "providers.borrowed-custom-receivers",
-      "classification": "shared-intentional-rejection",
-      "sourceProof": "test/providers/compiler/provider.test.mjs",
-      "analysisProof": "test/providers/compiler/provider.test.mjs",
-      "boundaryProof": "test/providers/compiler/provider.test.mjs",
-      "mutationProof": "test/providers/compiler/provider.test.mjs",
-      "nativeProof": "test/providers/compiler/provider.test.mjs",
-      "note": "Simple borrowed Mojo receivers are supported. A receiver whose own carrier embeds an open origin cannot cross TypeScript because the source type system cannot name that origin."
+      "classification": "pinned-toolchain-limit",
+      "sourceProof": "test/integration/generated-mojo/native-interop.test.mjs",
+      "analysisProof": "test/providers/compiler/interop-projection.test.mjs",
+      "boundaryProof": "test/fixtures/native-limits/custom-receiver.mojo",
+      "mutationProof": "test/providers/compiler/interop-projection.test.mjs",
+      "nativeProof": "test/fixtures/native-limits/custom-receiver.mojo",
+      "note": "Ordinary origin-bearing View<O> receivers now retain and substitute their full identity; generated native borrowed-address proofs pass. Arbitrary nested custom self types are different: native Mojo rejects self: Pointer[Self, origin] because self must have type Self. No invented receiver dereference adapter is added."
     },
     {
       "id": "providers.c-variadics",
@@ -755,11 +755,11 @@
       "benchmarkAction": "retain C variadic tails as an explicit unsafe provider ABI without treating them as ordinary Rust rest parameters",
       "proofId": "providers.c-variadics",
       "classification": "implemented-generated",
-      "sourceProof": "test/providers/compiler/provider.test.mjs",
-      "analysisProof": "test/providers/compiler/provider.test.mjs",
-      "emissionProof": "test/providers/compiler/provider.test.mjs",
-      "nativeProof": "../mojo-pudding/scripts/verify.sh",
-      "note": "Compiler-declared variadic positional and keyword tails retain their exact Mojo argument position, convention, and variadic ABI rather than becoming ordinary TypeScript rest inference."
+      "sourceProof": "test/integration/generated-mojo/native-interop.test.mjs",
+      "analysisProof": "test/providers/compiler/interop-projection.test.mjs",
+      "emissionProof": "test/integration/generated-mojo/native-interop.test.mjs",
+      "nativeProof": "scripts/verify-native-interop.mjs",
+      "note": "An explicit provider foreign-call relation retains the native symbol and fixed prefix. Checking requires unsafeContext, exact C carriers and a closed tail; analysis performs C default promotions. Generated code links one real C variadic call and proves width, order, tuple spread and empty-tail behavior. Automatic C-header discovery is not claimed."
     },
     {
       "id": "providers.mutable-statics",
@@ -773,7 +773,7 @@
       "analysisProof": "test/providers/compiler/provider.test.mjs",
       "boundaryProof": "test/providers/compiler/provider.test.mjs",
       "nativeProof": "test/providers/compiler/provider.test.mjs",
-      "note": "The pinned mojo doc schema does not publish addressable module-variable declarations, so mutable external static identity cannot be selected through the compiler-backed provider."
+      "note": "Native Mojo rejects authored mutable module globals, and mojo doc publishes no addressable external-global declaration. The native control is test/fixtures/native-limits/mutable-global.mojo. An external library must publish exact accessor or address/layout declarations; the target must not invent a global symbol or storage ABI."
     },
     {
       "id": "providers.closed-trait-associated-items",
@@ -796,13 +796,13 @@
       "benchmarkClassification": "target-limit",
       "benchmarkAction": "reject open associated and generic-associated projections because TypeScript has no higher-kinded projection type; retain compiler-resolved concrete substitutions",
       "proofId": "providers.open-associated-types",
-      "classification": "shared-intentional-rejection",
+      "classification": "provider-metadata-gap",
       "sourceProof": "test/providers/compiler/provider.test.mjs",
       "analysisProof": "test/providers/compiler/provider.test.mjs",
       "boundaryProof": "test/providers/compiler/provider.test.mjs",
       "mutationProof": "test/providers/compiler/provider.test.mjs",
       "nativeProof": "test/providers/compiler/provider.test.mjs",
-      "note": "Mojo can name open associated projections using type and origin parameters, but TypeScript cannot express the higher-kinded projection identity; only compiler-resolved concrete substitutions cross the source boundary."
+      "note": "Concrete associated aliases now close from their exact owning declaration and generic bindings, with generated native proofs. Abstract associated projections reject instead of becoming object. ProviderTypeExpression has no indexed-access/associated type expression, and ProviderMemberDeclaration has no abstract associated type member; that shared source contract must exist before open projections can be exposed losslessly."
     },
     {
       "id": "providers.rust-unions",
@@ -816,7 +816,7 @@
       "analysisProof": "test/providers/compiler/provider.test.mjs",
       "boundaryProof": "test/providers/compiler/provider.test.mjs",
       "nativeProof": "test/providers/compiler/provider.test.mjs",
-      "note": "The Mojo compiler metadata schema exposes structs, traits, aliases, and functions but no addressable Rust-style union field ABI. Closed TypeScript unions remain supported separately."
+      "note": "Native UnsafeUnion exists and its native construction/read control passes; Mojo does not lack union storage. The compiler-backed declaration schema does not supply addressable named C/Rust-style union fields or their overlap/layout ABI. Those require an explicit producing-library layout contract; an ordinary struct declaration cannot be guessed to describe overlapping fields. Closed discriminated source unions remain separately supported."
     },
     {
       "id": "providers.macros",
@@ -2681,7 +2681,7 @@
       "sourceProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "analysisProof": "test/integration/generated-mojo/js-limits.test.mjs",
       "boundaryProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "note": "JSON projection does not define console inspection formatting; structural and open values remain deliberately deferred until one deterministic identity- and cycle-aware inspection contract exists."
+      "note": "Closed structural and retained source objects now use the identity- and cycle-aware inspection graph, with positive proofs in js-limits and the native console oracle. This mixed benchmark lane remains deferred only for values without a closed source projection; no runtime reflection over arbitrary native objects is admitted."
     },
     {
       "id": "js-node.138",
@@ -2690,11 +2690,13 @@
       "benchmarkClassification": "target-limit",
       "benchmarkReason": "the deterministic Rust runtime has no selected timezone database or locale-data version and does not defer source semantics to machine-dependent host defaults",
       "proofId": "js-node.138",
-      "classification": "runtime-library-gap",
-      "sourceProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "analysisProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "boundaryProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "note": "Local-time and locale Date declarations are intentionally absent because no deterministic timezone contract is selected."
+      "classification": "implemented-generated",
+      "sourceProof": "test/integration/generated-mojo/date-contracts.test.mjs",
+      "analysisProof": "test/integration/generated-mojo/locale-date-contracts.test.mjs",
+      "emissionProof": "test/integration/generated-mojo/locale-date-contracts.test.mjs",
+      "runtimeProof": "../mojo-js/tests/date/locale_date_test.mojo",
+      "nativeProof": "../mojo-js/tests/date/date_test.mojo",
+      "note": "Selected local Date operations and locale methods use the pinned timezone and ICU runtime contracts, preserving omitted inputs, explicit undefined and selected date/time styles. Native and differential oracles remain separate executed gates."
     },
     {
       "id": "js-node.139",
@@ -2729,11 +2731,12 @@
       "benchmarkClassification": "target-limit",
       "benchmarkReason": "the deterministic Rust runtime has no selected ICU locale, collation options, or locale-data version",
       "proofId": "js-node.141",
-      "classification": "runtime-library-gap",
-      "sourceProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "analysisProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "boundaryProof": "test/integration/generated-mojo/js-limits.test.mjs",
-      "note": "Locale-sensitive collation and case conversion require an explicit locale service and remain absent from the deterministic profile."
+      "classification": "implemented-generated",
+      "sourceProof": "test/integration/generated-mojo/locale-string-contracts.test.mjs",
+      "analysisProof": "test/integration/generated-mojo/locale-string-contracts.test.mjs",
+      "emissionProof": "test/integration/generated-mojo/locale-string-contracts.test.mjs",
+      "runtimeProof": "../mojo-js/tests/strings/locale_strings_test.mojo",
+      "note": "Locale comparison and casing use selected ICU-backed operations and exact live option fields, independently from JSON serialization. Unknown option shapes still require an exact source projection."
     },
     {
       "id": "js-node.142",
@@ -2822,11 +2825,13 @@
       "benchmarkClassification": "target-limit",
       "benchmarkReason": "Node stream and watch semantics require an asynchronous event, cancellation, backpressure, and resource-lifetime scheduler that is not part of the closed Rust Node capability",
       "proofId": "js-node.148",
-      "classification": "runtime-library-gap",
-      "sourceProof": "../mojo-nodejs/nodejs/test/provider.test.mjs",
-      "analysisProof": "../mojo-nodejs/nodejs/test/provider.test.mjs",
-      "boundaryProof": "../mojo-nodejs/nodejs/test/provider.test.mjs",
-      "note": "Readable and Writable carriers are implemented; fs.watch still lacks a closed asynchronous event, cancellation, and resource-lifetime contract."
+      "classification": "implemented-generated",
+      "sourceProof": "../mojo-nodejs/nodejs/test/filesystem-streams-url.test.mjs",
+      "analysisProof": "../mojo-nodejs/nodejs/test/readable-events.test.mjs",
+      "emissionProof": "../mojo-nodejs/nodejs/test/target-integration.test.mjs",
+      "runtimeProof": "../mojo-nodejs/tests/filesystem/filesystem_watch_test.mojo",
+      "nativeProof": "../mojo-nodejs/tests/filesystem/readable_events_test.mojo",
+      "note": "Declared file streams and fs.watch use retained typed callbacks, explicit polling, cancellation and resource ownership. Pipes and readline share readable consumption; writable completion and error order have separate native proofs. Arbitrary user-defined stream subclasses are not implied."
     },
     {
       "id": "js-node.149",
@@ -2863,11 +2868,12 @@
       "benchmarkClassification": "target-limit",
       "benchmarkReason": "stdin and stream event semantics require the asynchronous stream scheduler omitted by the closed Rust Node capability; direct stdout and stderr output remains exact",
       "proofId": "js-node.151",
-      "classification": "runtime-library-gap",
+      "classification": "implemented-generated",
       "sourceProof": "../mojo-nodejs/nodejs/test/provider.test.mjs",
       "analysisProof": "../mojo-nodejs/nodejs/test/provider.test.mjs",
-      "boundaryProof": "../mojo-nodejs/nodejs/test/provider.test.mjs",
-      "note": "Direct stdin reads and stdout/stderr writes are implemented; open stream-event subscription remains outside the closed scheduler contract."
+      "emissionProof": "../mojo-nodejs/nodejs/test/process-writable.test.mjs",
+      "runtimeProof": "../mojo-nodejs/tests/filesystem/stream_destruction_test.mojo",
+      "note": "stdin retains Readable consumption and events; process outputs use the shared Writable lifecycle inventory, retained callback completion and cancellation. Borrowed standard descriptors remain open when the stream wrapper is destroyed."
     },
     {
       "id": "js-node.152",
@@ -2894,7 +2900,7 @@
       "analysisProof": "../mojo-nodejs/nodejs/test/provider.test.mjs",
       "boundaryProof": "../mojo-nodejs/nodejs/test/provider.test.mjs",
       "mutationProof": "../mojo-nodejs/nodejs/test/provider.test.mjs",
-      "note": "The Mojo Node provider deliberately omits this open stream or dynamic carrier contract and proves the omission at the provider boundary."
+      "note": "util.inspect is implemented for closed live values, structural objects and branded Buffer values. Unmodeled inspection options and arbitrary native objects without a selected projection remain outside that contract; this beyond-closed-carriers lane does not mean inspect itself is absent."
     }
   ]
 }

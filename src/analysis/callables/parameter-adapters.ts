@@ -2,7 +2,7 @@ import type {
   MojoAnalyzedParameter,
   MojoCallableParameterAdapter,
 } from "../program/model.js";
-import { mojoParameterConvention } from "../representations/index.js";
+import { mojoParameterConvention } from "../../target-model/operations/parameters.js";
 import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 

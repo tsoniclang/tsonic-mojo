@@ -2,6 +2,7 @@ import type {
   ProviderDeclarationKind,
   ProviderExportDeclaration,
   ProviderMemberDeclaration,
+  ProviderTypeExpression,
 } from "@tsonic/tsts";
 import type {
   TargetCapabilityContribution,
@@ -54,6 +55,10 @@ export interface MojoProviderTypeDefinition {
   readonly targetType: MojoTargetTypeRef;
   readonly sourceValueFactory?: MojoSourceValueFunction;
   readonly sourceValueExtraction?: MojoSourceValueFunction;
+  readonly nativeViews?: readonly {
+    readonly targetType: MojoTargetTypeRef;
+    readonly factory: MojoSourceValueFunction;
+  }[];
   readonly conformances?: readonly {
     readonly trait: MojoTargetTypeRef;
     readonly condition?: MojoTargetConformanceCondition;
@@ -129,6 +134,7 @@ export interface MojoProviderExportRow {
 }
 
 export type MojoProviderOperationRow = MojoProviderOperationDefinition & {
+  readonly sourceResult?: ProviderTypeExpression;
   readonly providerPackageId: string;
   readonly providerId: string;
   readonly providerVersion: string;

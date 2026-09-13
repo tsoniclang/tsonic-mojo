@@ -22,7 +22,7 @@ import { planMojoCallableAdapterArguments } from "./parameter-adapters.js";
 import { planMojoValue } from "../expressions/value.js";
 import { registerMojoTypeImports } from "../types/imports.js";
 import { mojoTargetTypeEquals } from "../../../target-model/types/equality.js";
-import { mojoParameterConvention } from "../../../analysis/representations/index.js";
+import { mojoParameterConvention } from "../../../target-model/operations/parameters.js";
 
 export function planMojoTopLevelImplementationAdapter(
   adapter: MojoCallableImplementationAdapter,
@@ -191,7 +191,7 @@ function planCallableAdapter(
   return Object.freeze({
     kind: "function",
     name: adapter.name,
-    genericParameters: planMojoGenericParameters(adapter.contract),
+    genericParameters: planMojoGenericParameters(adapter.contract, adapterContext),
     parameters: Object.freeze(adapter.contract.parameters.map((parameter) =>
       planMojoParameterDeclaration(parameter, adapterContext))),
     resultType: adapter.contract.resultType,

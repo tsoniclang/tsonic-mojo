@@ -13,13 +13,11 @@ import type {
 import { analyzeArguments } from "./call-arguments.js";
 import type { MojoCallArgumentTarget } from "./call-arguments.js";
 import type { MojoCallAnalysis, MojoCallAnalysisContext } from "./calls.js";
-import {
-  mojoParameterArgumentDisposition,
-  mojoParameterConvention,
-} from "../representations/index.js";
+import { mojoParameterArgumentDisposition, mojoParameterConvention } from "../../target-model/operations/parameters.js";
 import { resolveMojoValueGenericArgument } from "../../policy/types/generic-arguments.js";
 import { resolveMojoSourceOrigin } from "../../policy/types/origins.js";
 import { selectMojoProjectConstruction } from "../project-types/construction.js";
+import { selectMojoProjectGenericCarrier } from "./project-generic-carriers.js";
 
 export function analyzeProjectCall(
   sourceCall: ResolvedSourceCallInfo,
@@ -42,7 +40,7 @@ export function analyzeProjectCall(
         reason: `Selected project call type parameter '${parameter.name}' has ${selected.length} exact arguments.`,
       };
     }
-    const argument = projectGenericArgument(parameter, selected[0]!, resolve, context, contract);
+    const argument = projectGenericArgument(parameter, selected[0]!, sourceCall, resolve, context, contract);
     if (argument === undefined) {
       return {
         kind: "unsupported",
@@ -120,7 +118,6 @@ export function analyzeProjectCall(
     context.valueOwnership,
     undefined,
     (expression) => context.source.ast.is.IsObjectLiteralExpression(expression),
-    context.projectRelationships,
     context.contextualizeCallableArgument,
   );
   if (arguments_.kind === "unsupported") return arguments_;
@@ -397,12 +394,13 @@ function projectCallTarget(
 function projectGenericArgument(
   parameter: MojoAnalyzedProjectCallable["contract"]["typeParameters"][number],
   selected: NonNullable<ResolvedSourceCallInfo["sourceSelectedMethodTypeArguments"]>[number],
+  call: ResolvedSourceCallInfo,
   resolve: (type: Type, authoredTypeNode?: Node) => MojoTargetTypeRef | undefined,
   context: MojoCallAnalysisContext,
   contract: MojoAnalyzedProjectCallable["contract"],
 ): MojoTargetGenericArgument | undefined {
   if (parameter.kind === "type") {
-    const type = resolve(selected.selectedType, selected.explicitTypeNode);
+    const type = selectMojoProjectGenericCarrier(parameter, selected, call, contract, resolve, context);
     return type === undefined ? undefined : Object.freeze({ kind: "type", type });
   }
   const authored = selected.explicitTypeNode;

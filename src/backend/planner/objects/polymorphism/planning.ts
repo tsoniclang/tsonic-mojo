@@ -88,7 +88,7 @@ export function planMojoPolymorphicProjectClass(
   const wrapper: MojoStructDeclaration = Object.freeze({
     kind: "struct",
     name: class_.name,
-    genericParameters: planMojoGenericParameters(class_),
+    genericParameters: planMojoGenericParameters(class_, context),
     conformances: Object.freeze([
       Object.freeze({
         kind: "target-named",
@@ -128,7 +128,7 @@ export function planMojoPolymorphicInterface(
   return Object.freeze([Object.freeze({
     kind: "struct",
     name: interface_.name,
-    genericParameters: planMojoGenericParameters(interface_),
+    genericParameters: planMojoGenericParameters(interface_, context),
     conformances: Object.freeze([
       Object.freeze({
         kind: "target-named",

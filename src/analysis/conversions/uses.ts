@@ -38,6 +38,7 @@ import type {
 import { callArgumentExpectedType } from "../expected-types/expressions.js";
 import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
 import { isMojoAssignmentOperator } from "../control-flow/syntax-validation.js";
+import { mojoSourceValueEqualityKind } from "../../policy/operations/source-value-equality.js";
 
 export function recordMojoExecutableRegionConversionUses(
   root: Node,
@@ -168,6 +169,18 @@ export function recordMojoExecutableRegionConversionUses(
     if (ast.is.IsCallExpression(expression) || ast.is.IsNewExpression(expression)) {
       visitExpression(Node_Expression(ast, expression));
       const selection = callSelections.get(expression);
+      if (selection?.kind === "typed-location" && selection.operation === "address-of" &&
+        selection.storage.kind !== "local") {
+        record(selection.storage.receiver, selection.storage.receiverType);
+        if (selection.storage.kind !== "field") record(selection.storage.index, selection.storage.indexType);
+      }
+      if (selection?.kind === "project" || selection?.kind === "provider" || selection?.kind === "callable") {
+        for (const argument of selection.arguments) {
+          if (argument.sourceForm === "spread-element" && argument.sourceContainerType !== undefined) {
+            record(argument.expression, argument.sourceContainerType);
+          }
+        }
+      }
       for (const argument of ast.arguments(expression)) {
         if (argument === undefined) continue;
         if (selection?.kind !== "project" && selection?.kind !== "provider" &&
@@ -191,6 +204,11 @@ export function recordMojoExecutableRegionConversionUses(
         visitExpression(right);
         return;
       }
+      if (mojoSourceValueEqualityKind(operator, leftType, rightType) !== undefined) {
+        visitExpression(left);
+        visitExpression(right);
+        return;
+      }
       const resultType = expressionTypes.get(expression);
       if (operator === "KindQuestionQuestionToken") {
         if (resultType !== undefined) record(right, resultType);
@@ -203,6 +221,8 @@ export function recordMojoExecutableRegionConversionUses(
         const element = left === undefined ? undefined : elementSelections.get(left);
         const leftType = property?.kind === "provider" || property?.kind === "provider-static"
           ? property.targetWriteType
+          : property?.kind === "project-accessor"
+            ? property.writeType
           : element?.kind === "provider"
             ? element.targetWriteType
             : element?.writeType ??

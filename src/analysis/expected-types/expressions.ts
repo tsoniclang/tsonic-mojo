@@ -125,6 +125,11 @@ export function callArgumentExpectedType(
         return selection.offsetExpression === expression ? selection.offsetType : undefined;
     }
   }
+  if (selection.kind === "native-memory") {
+    if (selection.operation === "observation") return undefined;
+    if (selection.expression === expression) return selection.inputType;
+    return selection.operation === "byte-offset" && selection.offset === expression ? selection.offsetType : undefined;
+  }
   if (selection.kind !== "typed-location") return undefined;
   switch (selection.operation) {
     case "address-of":
@@ -133,6 +138,16 @@ export function callArgumentExpectedType(
       return selection.initialExpression === expression ? selection.pointeeType : undefined;
     case "load":
       return selection.pointerExpression === expression ? selection.locationType : undefined;
+    case "hash-pointer":
+      return selection.pointerExpression === expression ? selection.operandType : undefined;
+    case "bind-pointer":
+      if (selection.identityExpression === expression) return selection.identityType;
+      if (selection.readExpression === expression) return selection.readType;
+      return selection.writeExpression === expression ? selection.writeType : undefined;
+    case "project-pointer":
+      if (selection.pointerExpression === expression) return selection.sourceLocationType;
+      if (selection.fromSourceExpression === expression) return selection.fromSourceType;
+      return selection.toSourceExpression === expression ? selection.toSourceType : undefined;
     case "store":
       if (selection.pointerExpression === expression) return selection.locationType;
       return selection.valueExpression === expression ? selection.pointeeType : undefined;

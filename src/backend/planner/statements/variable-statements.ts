@@ -74,6 +74,7 @@ function planVariableDeclaration(
   declaration: Node,
   context: MojoPlanningContext,
 ): readonly MojoStatement[] | undefined {
+  if (context.program.queries.isErasedSourceNode(declaration)) return Object.freeze([]);
   const { ast } = context.program.source;
   const pattern = context.program.queries.bindingPatternSelection(declaration);
   if (pattern !== undefined) {
@@ -123,7 +124,8 @@ function planVariableDeclaration(
       {
         kind: "variable",
         name,
-        ...(inferredCallable ? {} : { type }),
+        ...(inferredCallable ? {} : { type: type.kind === "reference" ? type.value : type }),
+        ...(type.kind === "reference" ? { reference: true } : {}),
         ...(compileTimeInitializer === undefined ? {} : { compileTime: true }),
         ...(initializer === undefined && defaultValue === undefined
           ? {}

@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import type { AstReader, Node, SourceFile } from "@tsonic/tsts";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoTargetTypeKey } from "../../target-model/types/key.js";
+import { namedType } from "../../policy/types/resolution-helpers.js";
+import { implicitHeapLifecycle } from "../../policy/types/lifecycle-contracts.js";
 import type { MojoValueRefinementSelection } from "../refinements/model.js";
 import type { MojoAnalyzedParameter } from "../program/model.js";
 import type {
@@ -22,7 +24,7 @@ import { walkSourceTree } from "../../source/syntax/traversal.js";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 import { createMojoNarrowingView } from "./narrowing.js";
-import { classifyMojoCallableDisposition } from "./callables.js";
+import { classifyMojoCallableDisposition, retainedMojoCallInputs } from "./callables.js";
 import { selectMojoAuthoredTypeAlias } from "./aliases.js";
 import type {
   MojoBindingDisposition,
@@ -64,7 +66,7 @@ export function createMojoRepresentationCatalog(
   const bindingCarriers = new WeakMap<Node, MojoPhysicalTypeId>();
   const expressionCarriers = new WeakMap<Node, MojoPhysicalTypeId>();
   const narrowings = new WeakMap<Node, MojoNarrowingView>();
-  const parameterDispositions = new WeakMap<Node, import("./model.js").MojoParameterDisposition>();
+  const parameterDispositions = new WeakMap<Node, import("../../target-model/operations/parameters.js").MojoParameterDisposition>();
   const callableDispositions = new WeakMap<Node, MojoCallableDisposition>();
   const bindingDispositions = new WeakMap<Node, MojoBindingDisposition>();
   const directCallableExpressions = new Map<Node, "direct" | "thin">();
@@ -125,24 +127,25 @@ export function createMojoRepresentationCatalog(
   for (const sourceFile of input.sourceFiles) {
     walkSourceTree(sourceFile, input.ast, (node): void => {
       const call = input.callSelections.get(node);
-      if (call === undefined || !("arguments" in call)) return;
-      for (const argument of call.arguments) {
+      if (call === undefined) return;
+      for (const argument of "arguments" in call ? call.arguments : []) {
         recordTypeUse(argument.sourceType);
         recordTypeUse(argument.parameterType);
         if (argument.sourceContainerType !== undefined) {
           recordTypeUse(argument.sourceContainerType);
         }
-        if (argument.callableConsumption !== "retained") continue;
-        if (sealedErasedCallableReferences.has(argument.expression)) continue;
+      }
+      for (const argument of retainedMojoCallInputs(call)) {
+        if (sealedErasedCallableReferences.has(argument)) continue;
         const expression = resolveMojoCallableExpressionDependency(
-          argument.expression,
+          argument,
           input.source,
           input.callableExpressionSelections,
           input.callableDeclarationByExpression,
         );
         if (expression === undefined) {
           const authored = resolveMojoAuthoredCallableExpressionSyntax(
-            argument.expression,
+            argument,
             input.source,
           );
           if (authored !== undefined) {
@@ -204,7 +207,12 @@ export function createMojoRepresentationCatalog(
       recordTypeUse(parameter.bodyType);
       recordTypeUse(parameter.callType);
     }
-    for (const capture of selection.captures) recordTypeUse(capture.type);
+    for (const capture of selection.captures) {
+      recordTypeUse(capture.type);
+      if (capture.storage === "location") recordTypeUse(namedType(
+        "tsonic.mojo.runtime.Location", ["tsonic_runtime"], "Location", [capture.type], implicitHeapLifecycle,
+      ));
+    }
     if (selection.errorType !== undefined) recordTypeUse(selection.errorType);
   }
   for (const sourceFile of input.sourceFiles) {

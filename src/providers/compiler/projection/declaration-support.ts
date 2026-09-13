@@ -85,6 +85,10 @@ export function projectFunctionSignature(
   readonly parameterTargets: readonly import("../../../target-model/types/model.js").MojoTargetTypeRef[];
   readonly resultTarget: import("../../../target-model/types/model.js").MojoTargetTypeRef;
 } {
+  context = {
+    ...context,
+    genericParameters: function_.genericParameters,
+  };
   const sourceArguments = function_.arguments.filter(({ name }) => name !== "self");
   const projectedArguments = sourceArguments.map((argument) => ({
     argument,

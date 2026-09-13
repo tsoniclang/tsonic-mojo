@@ -1,12 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
+import { projectArtifactTexts as artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
 
 function generated(source) {
   const result = compileMojo({ surfaces: ["js"], files: { "index.ts": source } });
   assert.deepEqual(result.diagnostics, []);
   return artifactTexts(result).filter(({ path }) => path.endsWith(".mojo")).map(({ text }) => text).join("\n");
 }
+
+test("structural storage does not claim an exactly selected inherited method call", () => {
+  const output = generated(`
+export function main(): void {
+  const record = { count: 1 };
+  const saved: unknown = record;
+  record.count = 2;
+  const present = record.hasOwnProperty("count");
+  const text = JSON.stringify(saved);
+}
+`);
+  assert.match(output, /object_has_own\(_call_receiver, JsString\("count"\)\)/u);
+});
 
 test("locale option getters use selected property readers rather than eager data snapshots", () => {
   const output = generated(`
@@ -94,7 +107,7 @@ export function main(): void {
 }
 `);
   assert.match(output, /js_value_from_source_object\(/u);
-  assert.match(output, /SourceValueView/u);
+  assert.match(output, /struct _source_value_view\b/u);
   assert.doesNotMatch(output, /runtime_reflect|type_of_name/u);
 });
 

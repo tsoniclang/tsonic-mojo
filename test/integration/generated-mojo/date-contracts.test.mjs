@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
+import { projectArtifactTexts as artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
 
 function sourceFor(source) {
   const result = compileMojo({ surfaces: ["js"], files: { "index.ts": source } });
@@ -23,11 +23,11 @@ test("Date keeps supplied undefined separate from omitted native arguments", () 
     }
     export function main(): void { update(new Date(1234), undefined); }
   `);
-  assert.match(source, /set_utc_seconds\(2(?:\.0)?\)/u);
-  assert.match(source, /set_utc_seconds\(2(?:\.0)?, supplied\)/u);
-  assert.match(source, /set_utc_minutes\(3(?:\.0)?, [^\n]*None/u);
-  assert.match(source, /date_utc\(1970(?:\.0)?\)/u);
-  assert.match(source, /date_utc\(1970(?:\.0)?, [^\n]*None/u);
+  assert.match(source, /set_utc_seconds\(Float64\(2\)\)/u);
+  assert.match(source, /set_utc_seconds\(Float64\(2\), supplied\)/u);
+  assert.match(source, /set_utc_minutes\(Float64\(3\), Optional\[Float64\]\(\)\)/u);
+  assert.match(source, /date_utc\(Float64\(1970\)\)/u);
+  assert.match(source, /date_utc\(Float64\(1970\), Optional\[Float64\]\(\)\)/u);
   assert.doesNotMatch(source, /FloatLiteral\.nan/u);
 });
 
@@ -70,5 +70,7 @@ test("same-spelled authored Date methods are not native Date operations", () => 
       calendar.toJSON();
     }
   `);
-  assert.doesNotMatch(source, /date_to_json_native|\.set_utc_seconds\(/u);
+  assert.doesNotMatch(source, /date_to_json_native|\bJsDate\b/u);
+  assert.match(source, /def set_utc_seconds\(/u);
+  assert.match(source, /calendar\.set_utc_seconds\(/u);
 });

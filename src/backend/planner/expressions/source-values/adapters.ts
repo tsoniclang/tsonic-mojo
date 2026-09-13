@@ -34,7 +34,7 @@ export function planMojoSourceView(
   const adapterExpression: MojoExpression = Object.freeze({ kind: "type-value", type: adapterType });
   const adapterContext = withMojoLocalNameScope(withMojoDeferredExecution(context));
   const restored: MojoExpression = Object.freeze({
-    kind: "postfix-deref", expression: Object.freeze({
+    kind: "postfix-deref", expression: Object.freeze<MojoExpression>({
       kind: "method-call", receiver: path("context"), name: "unsafe_bitcast",
       genericArguments: Object.freeze([{ kind: "type", type: adapterType }]), arguments: Object.freeze([]),
     }),
@@ -52,7 +52,7 @@ export function planMojoSourceView(
     registerMojoTypeImports(type, context);
     registerMojoTypeImports(argumentsType, context);
     callbacks.push(Object.freeze({ name, type }));
-    methods.push(Object.freeze({
+    methods.push(Object.freeze<MojoFunctionDeclaration>({
       kind: "function", name, genericParameters: Object.freeze([]), asynchronous: false,
       parameters: Object.freeze([{ name: "context", type: erasedContextType },
         { name: "arguments", type: argumentsType, convention: "var" }]),
@@ -83,7 +83,7 @@ export function planMojoSourceView(
           const storage = context.program.queries.projectState(projection.sourceType);
           if (storage !== undefined) {
             registerMojoTypeImports(storage.stateType, context);
-            state = Object.freeze({ kind: "method-call", receiver: member(source, "_object"), name: "state",
+            state = Object.freeze<MojoExpression>({ kind: "method-call", receiver: member(source, "_object"), name: "state",
               genericArguments: Object.freeze([{ kind: "type", type: storage.stateType }]), arguments: Object.freeze([]),
             });
           }
@@ -121,11 +121,11 @@ export function planMojoSourceView(
   }
   registerMojoTypeImports(erasedContextType, context);
   registerMojoTypeImports(projection.sourceType, context);
-  methods.push(Object.freeze({
+  methods.push(Object.freeze<MojoFunctionDeclaration>({
     kind: "function", name: "destroy", genericParameters: Object.freeze([]), asynchronous: false,
     parameters: Object.freeze([{ name: "context", type: erasedContextType }]),
     resultType: Object.freeze({ kind: "unit" }), raises: false, decorators: mojoStaticMethodDecorators,
-    statements: Object.freeze([Object.freeze({ kind: "expression", expression: Object.freeze({
+    statements: Object.freeze([Object.freeze<MojoStatement>({ kind: "expression", expression: Object.freeze<MojoExpression>({
       kind: "call", callee: mojoModuleMemberExpression(context, ["tsonic_runtime"], "destroy_callable_environment"),
       genericArguments: Object.freeze([{ kind: "type", type: adapterType }]),
       arguments: Object.freeze([{ value: path("context") }]),
@@ -157,7 +157,11 @@ export function planMojoSourceView(
     Object.freeze({ kind: "variable", name: "environment", initializer: environment }),
     returned(Object.freeze({ kind: "call", callee: mojoModuleMemberExpression(context, ["tsonic_js"], projection.kind === "array"
       ? "js_value_from_source_array" : "js_value_from_source_object"), arguments: Object.freeze([
-      Object.freeze({ name: "identity", value: identity }), ...callbacks.map((callback) => Object.freeze({ name: callback.name,
+      Object.freeze({ name: "identity", value: identity }),
+      ...(projection.kind === "array" ? [] : [Object.freeze({ name: "prototype_identity", value: Object.freeze<MojoExpression>({
+        kind: "string-literal", value: projection.prototypeIdentity,
+      }) })]),
+      ...callbacks.map((callback) => Object.freeze({ name: callback.name,
         value: construct(callback.type, [path("environment"), member(adapterExpression, callback.name)]),
       })),
     ]) })),

@@ -12,7 +12,7 @@ import {
 
 type MojoValueGenericArgumentContext = Pick<
   MojoTypeResolutionContext,
-  "ast" | "semantics" | "sourceFacts"
+  "ast" | "navigation" | "semantics" | "sourceFacts"
 >;
 
 export function resolveMojoNonTypeGenericArguments(

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
+import { projectArtifactTexts as artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
 
 test("Intl dates select retained native instances, closed inputs and aliased parts", () => {
   const result = compileMojo({ surfaces: ["js"], files: { "index.ts": `
@@ -23,6 +23,7 @@ export function render(value: Date | number | undefined): string {
   formatter.formatToParts();
   return output;
 }
+export function main(): void {}
 ` } });
   assert.deepEqual(result.diagnostics, []);
   const output = artifactTexts(result).filter(({ path }) => path.endsWith(".mojo")).map(({ text }) => text).join("\n");
@@ -35,6 +36,7 @@ test("a user-defined DateTimeFormat never selects Intl operations", () => {
   const result = compileMojo({ surfaces: ["js"], files: { "index.ts": `
 class DateTimeFormat { format(value: number): string { return value.toString(); } }
 export function render(): string { return new DateTimeFormat().format(7); }
+export function main(): void {}
 ` } });
   assert.deepEqual(result.diagnostics, []);
   const output = artifactTexts(result).map(({ text }) => text).join("\n");

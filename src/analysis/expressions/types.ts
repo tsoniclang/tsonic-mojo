@@ -3,6 +3,7 @@ import {
   BinaryExpression_Left,
   BinaryExpression_Right,
   Node_Expression,
+  PrefixUnaryExpression_Operand,
 } from "@tsonic/target-api/source";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
@@ -13,6 +14,12 @@ export function inferMojoExpressionType(
   ast: AstReader,
   expressionTypes: WeakMap<Node, MojoTargetTypeRef>,
 ): MojoTargetTypeRef | undefined {
+  if ((ast.is.IsPrefixUnaryExpression(node) || ast.is.IsPostfixUnaryExpression(node)) &&
+    (ast.operatorKindName(node) === "KindPlusPlusToken" || ast.operatorKindName(node) === "KindMinusMinusToken")) {
+    const operand = ast.is.IsPrefixUnaryExpression(node)
+      ? PrefixUnaryExpression_Operand(ast, node) : ast.as.AsPostfixUnaryExpression(node)?.Operand;
+    return operand === undefined ? undefined : expressionTypes.get(operand);
+  }
   if (ast.is.IsAsExpression(node) || ast.is.IsTypeAssertion(node) ||
     ast.is.IsNonNullExpression(node)) {
     const selected = expressionTypes.get(node);

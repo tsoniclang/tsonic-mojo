@@ -3,7 +3,10 @@ import type { MojoProviderTargetGenericParameter, MojoTargetTypeRef } from "../t
 import type { MojoValueConversion } from "./model.js";
 import type { MojoSourceValueFunction } from "./source-value-function.js";
 
+export type MojoSourceValueProtocol = "value" | "data";
+
 export interface MojoJsValueGraph {
+  readonly protocol: MojoSourceValueProtocol;
   readonly root: string;
   readonly definitions: readonly MojoJsValueProjection[];
 }
@@ -62,6 +65,7 @@ export type MojoJsValueProjection = ProjectionIdentity & (
     }
   | {
       readonly kind: "object";
+      readonly prototypeIdentity: string;
       readonly fields: readonly MojoJsValueField[];
       readonly accessors: readonly MojoJsValueAccessor[];
       readonly identity: "structural" | "project-direct" | "project-erased" | "project-polymorphic";

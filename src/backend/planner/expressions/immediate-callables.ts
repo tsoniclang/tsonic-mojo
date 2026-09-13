@@ -15,9 +15,11 @@ import {
 import type { MojoPlanningContext } from "../program/context.js";
 import { registerMojoTypeImports } from "../types/imports.js";
 import { planMojoCallableExpression } from "./callables.js";
+import { convertMojoValue } from "./support.js";
 import type { MojoValuePlanner } from "./support.js";
-import { consumeMojoValue, withMojoValue } from "./value-plan.js";
+import { consumeMojoValue, mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
+import { planMojoTruthiness } from "./conversion-support.js";
 
 export function planMojoImmediateCallable(
   argument: MojoAnalyzedCallArgument,
@@ -61,7 +63,7 @@ export function planMojoImmediateCallable(
   const inline = ast.is.IsArrowFunction(argument.expression) ||
     ast.is.IsFunctionExpression(argument.expression);
   if (inline && disposition.kind !== "erased" &&
-    argument.conversion.kind === "callable-adapt") {
+    argument.conversion.kind === "callable-adapt" && argument.conversion.result !== "convert" && argument.conversion.parameters.kind === "identity") {
     return planMojoCallableExpression(
       argument.expression,
       context,
@@ -73,7 +75,7 @@ export function planMojoImmediateCallable(
   const source = planValue(argument.expression, context);
   if (source === undefined) return undefined;
   if (canPassDirectly(argument.conversion, disposition)) return source;
-  return wrapImmediateCallable(
+  return adaptMojoImmediateCallable(
     argument.expression,
     source,
     argument.sourceType,
@@ -105,10 +107,10 @@ function canPassDirectly(
   if (disposition.kind === "erased") return false;
   return conversion.kind === "identity" ||
     (conversion.kind === "callable-adapt" && conversion.result === "preserve" &&
-      conversion.error === "preserve");
+      conversion.error === "preserve" && conversion.parameters.kind === "identity");
 }
 
-function wrapImmediateCallable(
+export function adaptMojoImmediateCallable(
   node: Node,
   source: MojoValuePlan,
   sourceType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
@@ -117,11 +119,13 @@ function wrapImmediateCallable(
   disposition: MojoCallableDisposition,
   context: MojoPlanningContext,
 ): MojoValuePlan | undefined {
-  if (sourceType.parameters.length !== targetType.parameters.length) {
+  if (sourceType.parameters.length !== targetType.parameters.length &&
+    !(conversion.kind === "callable-adapt" && conversion.parameters.kind === "prefix" &&
+      sourceType.parameters.length < targetType.parameters.length)) {
     appendMojoPlanningDiagnostic(
       context,
       "MOJO_IMMEDIATE_CALLBACK_ARITY_CONFLICT",
-      "An immediate callback adapter requires identical sealed source and target arities.",
+      "An immediate callback adapter requires an exact sealed parameter projection.",
       node,
     );
     return undefined;
@@ -218,6 +222,11 @@ function convertImmediateCallbackResult(
   targetType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
   context: MojoPlanningContext,
 ): MojoExpression | undefined {
+  if (conversion.kind === "callable-adapt" && conversion.result === "convert") {
+    if (conversion.resultConversion === undefined) return undefined;
+    const result = convertMojoValue(mojoValue(expression), conversion.resultConversion, context);
+    return result?.before.length === 0 ? result.value : undefined;
+  }
   if (conversion.kind === "identity" || conversion.kind === "callable-adapt") {
     return targetType.result.kind !== "unit"
       ? expression
@@ -241,16 +250,7 @@ function convertImmediateCallbackResult(
       });
     case "string":
     case "native-string":
-      return Object.freeze({
-        kind: "binary",
-        operator: "!=",
-        left: Object.freeze({
-          kind: "call",
-          callee: Object.freeze({ kind: "path", path: "len" }),
-          arguments: Object.freeze([Object.freeze({ value: expression })]),
-        }),
-        right: Object.freeze({ kind: "number-literal", text: "0" }),
-      });
+      return planMojoTruthiness(expression, { kind: conversion.source }, context);
     case "dynamic":
       return Object.freeze({
         kind: "call",

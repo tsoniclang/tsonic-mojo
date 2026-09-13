@@ -1,10 +1,10 @@
 import type { Node, SourceFile } from "@tsonic/tsts";
 import { Node_Initializer } from "@tsonic/target-api/source";
-import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import { resolveMojoCallableExpressionDependency } from "../callables/expressions.js";
+import { validateMojoNativeCoroutineErrorDomain } from "../callables/native-coroutines.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import type {
   MojoAnalyzedCallArgument,
@@ -252,10 +252,34 @@ export function finalizeMojoProgramEffects(
     Node,
     Extract<MojoTargetTypeRef, { readonly kind: "callable" }>
   >();
+  const callableValueType = (
+    expression: Node,
+    implementation: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
+  ): Extract<MojoTargetTypeRef, { readonly kind: "callable" }> => {
+    const reference = source.navigation.sourceReferenceFor(expression);
+    const binding = reference?.project === true
+      ? bindingTypes.get(reference.declaration)
+      : undefined;
+    if (binding?.kind !== "callable") return implementation;
+    const { errorType: _previousError, ...signature } = binding;
+    return Object.freeze({
+      ...signature,
+      raises: implementation.raises,
+      ...(implementation.errorType === undefined ? {} : { errorType: implementation.errorType }),
+    });
+  };
   const sealCallableDeclaration = (
     declaration: Node,
-    callableType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
+    implementation: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
   ): void => {
+    const binding = bindingTypes.get(declaration);
+    if (binding !== undefined && binding.kind !== "callable") return;
+    const { errorType: _previousError, ...signature } = binding ?? implementation;
+    const callableType = Object.freeze({
+      ...signature,
+      raises: implementation.raises,
+      ...(implementation.errorType === undefined ? {} : { errorType: implementation.errorType }),
+    });
     const existing = finalizedCallableTypesByDeclaration.get(declaration);
     if (existing !== undefined && !mojoTargetTypeEquals(existing, callableType)) {
       diagnostics.push(diagnostic(
@@ -269,8 +293,9 @@ export function finalizeMojoProgramEffects(
     bindingTypes.set(declaration, callableType);
     const initializer = Node_Initializer(ast, declaration);
     if (initializer === undefined) return;
-    expressionTypes.set(initializer, callableType);
-    const conversion = conversions.finalizeCallable(initializer, callableType, callableType);
+    const sourceType = callableValueType(initializer, implementation);
+    expressionTypes.set(initializer, sourceType);
+    const conversion = conversions.finalizeCallable(initializer, sourceType, callableType);
     if (conversion.kind === "unsupported") {
       diagnostics.push(diagnostic("MOJO_VALUE_CONVERSION_UNPROVEN", conversion.reason, initializer));
     }
@@ -279,15 +304,18 @@ export function finalizeMojoProgramEffects(
     const selection = callableExpressionSelections.get(expression)!;
     const exactErrorType = closeMojoErrorType(errorTypesByDeclaration.get(expression) ?? []);
     const errorType = exactErrorType;
+    if (selection.asynchronous) validateMojoNativeCoroutineErrorDomain(expression, errorType, diagnostics);
+    const factoryErrorType = selection.asynchronous ? undefined : errorType;
     const { errorType: _previousErrorType, ...baseCallableType } = selection.callableType;
     const callableType = Object.freeze({
       ...baseCallableType,
-      raises: errorType !== undefined,
-      ...(errorType === undefined ? {} : { errorType }),
+      raises: factoryErrorType !== undefined,
+      ...(factoryErrorType === undefined ? {} : { errorType: factoryErrorType }),
     });
     expressionTypes.set(expression, callableType);
+    const { errorType: _previousBodyError, ...bodySelection } = selection;
     callableExpressionSelections.set(expression, Object.freeze({
-      ...selection,
+      ...bodySelection,
       raises: errorType !== undefined,
       ...(errorType === undefined ? {} : { errorType }),
       ...(selection.recursiveBinding === undefined
@@ -327,13 +355,14 @@ export function finalizeMojoProgramEffects(
       ? undefined
       : callableExpressionSelections.get(dependency);
     if (callable === undefined) return argument;
+    const sourceType = callableValueType(argument.expression, callable.callableType);
     let conversion: MojoValueConversion | undefined;
     let incompatibilityReason: string | undefined;
     if (argument.conversion.kind === "js-callback-truthiness") {
       conversion = argument.conversion;
     } else {
-      const classified = classifyMojoValueConversion(
-        callable.callableType,
+      const classified = conversions.classify(
+        sourceType,
         argument.parameterType,
       );
       conversion = classified.kind === "resolved" ? classified.conversion : undefined;
@@ -350,7 +379,7 @@ export function finalizeMojoProgramEffects(
     }
     return Object.freeze({
       ...argument,
-      sourceType: callable.callableType,
+      sourceType,
       conversion,
     });
   };
@@ -392,7 +421,7 @@ export function finalizeMojoProgramEffects(
     });
     const classified = argument.conversion.kind === "js-callback-truthiness"
       ? undefined
-      : classifyMojoValueConversion(argument.sourceType, targetType);
+      : conversions.classify(argument.sourceType, targetType);
     const conversion = argument.conversion.kind === "js-callback-truthiness"
       ? Object.freeze({
           ...argument.conversion,
@@ -439,7 +468,7 @@ export function finalizeMojoProgramEffects(
     const selection = callSelections.get(callNode);
     if (selection === undefined || selection.kind === "explicit-safety" ||
       selection.kind === "native-pointer" || selection.kind === "raw-pointer" ||
-      selection.kind === "typed-location" || selection.kind === "source-intrinsic") continue;
+      selection.kind === "typed-location" || selection.kind === "native-memory" || selection.kind === "source-intrinsic") continue;
     const replacements = new Map<MojoAnalyzedCallArgument, MojoAnalyzedCallArgument>();
     const arguments_ = selection.arguments.map((argument) => {
       const finalized = finalizeCallableArgument(argument);
@@ -467,11 +496,12 @@ export function finalizeMojoProgramEffects(
     if (dependency === undefined) continue;
     const callable = callableExpressionSelections.get(dependency);
     if (callable === undefined) continue;
+    const callableType = callableValueType(selection.callee, callable.callableType);
     callSelections.set(callNode, Object.freeze({
       ...selection,
-      callableType: callable.callableType,
+      callableType,
     }));
-    expressionTypes.set(selection.callee, callable.callableType);
+    expressionTypes.set(selection.callee, callableType);
     const reference = source.navigation.sourceReferenceFor(selection.callee);
     if (reference?.project === true) {
       sealCallableDeclaration(reference.declaration, callable.callableType);
@@ -492,6 +522,18 @@ export function finalizeMojoProgramEffects(
   const evaluationErrorTypeCache = new WeakMap<Node, readonly MojoTargetTypeRef[]>();
   for (const sourceFile of sourceFiles) {
     walkSourceTree(sourceFile, ast, (node): void => {
+      const dependency = expressionTypes.get(node)?.kind !== "callable" ? undefined
+        : resolveMojoCallableExpressionDependency(
+          node, source, callableExpressionSelections, callableExpressionByDeclaration,
+        );
+      const callable = dependency === undefined ? undefined : callableExpressionSelections.get(dependency);
+      if (callable !== undefined && expressionTypes.get(node)?.kind === "callable") {
+        const actual = callableValueType(node, callable.callableType);
+        expressionTypes.set(node, actual);
+        for (const reason of conversions.finalizeCallableSource(node, actual)) {
+          diagnostics.push(diagnostic("MOJO_VALUE_CONVERSION_UNPROVEN", reason, node));
+        }
+      }
       const errorType = closeMojoErrorType(collectMojoEvaluationErrorTypes(
         node,
         errorRegionIndexes,

@@ -243,7 +243,7 @@ function planObjectImplementation(
   return Object.freeze({
     kind: "function",
     name,
-    genericParameters: planMojoGenericParameters(function_),
+    genericParameters: planMojoGenericParameters(function_, implementationContext),
     parameters: Object.freeze([
       Object.freeze({ name: objectName, type: mojoProjectObjectType, convention: "imm" }),
       ...parameters,
@@ -370,5 +370,4 @@ function planObjectViewFactory(
     })]),
   });
 }
-
 

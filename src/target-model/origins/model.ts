@@ -1,6 +1,5 @@
 export type MojoOriginRef =
   | { readonly kind: "static" }
-  | { readonly kind: "comptime" }
   | { readonly kind: "inferred" }
   | { readonly kind: "untracked"; readonly mutable: boolean }
   | { readonly kind: "unsafe"; readonly mutable: boolean }

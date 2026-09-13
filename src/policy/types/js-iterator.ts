@@ -14,19 +14,6 @@ export function mojoIteratorResultMember(
   });
 }
 
-export function mojoIteratorResultType(
-  yielded: MojoTargetTypeRef,
-  returned: MojoTargetTypeRef,
-): MojoTargetTypeRef {
-  return Object.freeze({
-    kind: "union",
-    members: Object.freeze([
-      mojoIteratorResultMember("IteratorYieldResult", yielded)!,
-      mojoIteratorResultMember("IteratorReturnResult", returned)!,
-    ]),
-  });
-}
-
 export function canonicalMojoIteratorResult(
   members: readonly MojoTargetTypeRef[],
 ): MojoTargetTypeRef | undefined {

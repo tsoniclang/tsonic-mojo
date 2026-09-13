@@ -22,6 +22,7 @@ export interface MojoProviderRecordAnalysisInput {
   readonly providerSemantics: MojoProviderSemantics;
   readonly conversions: MojoConversionIndex;
   readonly resolveType: (type: Type) => MojoTargetTypeRef | undefined;
+  readonly analyzeCallable: (expression: Node, type: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>) => void;
   readonly diagnostics: TargetDiagnostic[];
 }
 
@@ -46,6 +47,7 @@ export function analyzeMojoProviderRecordLiteral(
     construction.typeRow,
     construction.targetType,
     input.providerSemantics,
+    "construction",
   );
   if (inventory === undefined) {
     reject(input, "Provider object-literal construction requires one complete exact readable/writable native field inventory.", input.expression);
@@ -82,7 +84,12 @@ export function analyzeMojoProviderRecordLiteral(
       reject(input, "Provider object-literal property has no exact readable/writable native field relation.", property);
       return undefined;
     }
-    const sourceType = input.resolveType(selected.sourceElementType);
+    const fieldType = field.storageType.kind === "optional" ? field.storageType.value : field.storageType;
+    if (fieldType.kind === "callable" &&
+      (input.source.ast.is.IsArrowFunction(value) || input.source.ast.is.IsFunctionExpression(value))) {
+      input.analyzeCallable(value, fieldType);
+    }
+    const sourceType = input.expressionTypes.get(value) ?? input.resolveType(selected.sourceElementType);
     if (sourceType === undefined) {
       reject(input, "Provider object-literal property has no closed source value carrier.", property);
       return undefined;
@@ -113,10 +120,11 @@ export function analyzeMojoProviderRecordLiteral(
   });
 }
 
-function targetFieldInventory(
+export function targetFieldInventory(
   typeRow: MojoProviderTypeRow,
   receiverType: MojoTargetTypeRef,
   semantics: MojoProviderSemantics,
+  access: "construction" | "physical-layout",
 ): ReadonlyMap<string, { readonly targetName: string; readonly storageType: MojoTargetTypeRef }> | undefined {
   const rows = semantics.operations.filter((row) =>
     providerOwnerMatches(row, typeRow) && row.exportId === typeRow.exportId &&
@@ -132,18 +140,19 @@ function targetFieldInventory(
     const write = instantiateMojoProviderPropertyOperation(writeRows[0]!, receiverType);
     if (read.kind !== "resolved" || write.kind !== "resolved" ||
       read.operation.target.kind !== "property-read" ||
-      read.operation.target.access.kind !== "member" ||
       write.operation.target.kind !== "property-write" ||
-      read.operation.target.access.name !== write.operation.target.access.name ||
+      write.operation.target.access.kind !== "member" ||
       read.operation.receiverType === undefined || write.operation.receiverType === undefined ||
       !mojoTargetTypeEquals(read.operation.receiverType, receiverType) ||
       !mojoTargetTypeEquals(write.operation.receiverType, receiverType) ||
       write.operation.parameterTypes.length !== 1 ||
-      !mojoTargetTypeEquals(read.operation.resultType, write.operation.parameterTypes[0]!) ||
+      access === "physical-layout" && (read.operation.target.access.kind !== "member" ||
+        read.operation.target.access.name !== write.operation.target.access.name ||
+        !mojoTargetTypeEquals(read.operation.resultType, write.operation.parameterTypes[0]!)) ||
       write.operation.resultType.kind !== "unit") return undefined;
     fields.set(readRow.memberId, Object.freeze({
-      targetName: read.operation.target.access.name,
-      storageType: read.operation.resultType,
+      targetName: write.operation.target.access.name,
+      storageType: write.operation.parameterTypes[0]!,
     }));
   }
   return fields.size === reads.length &&

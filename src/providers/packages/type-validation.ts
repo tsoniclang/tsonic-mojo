@@ -76,6 +76,9 @@ export function validateMojoProviderType(type: MojoTargetTypeRef): void {
       validateMojoProviderType(type.value);
       return;
     case "future":
+      if (type.captureOrigins !== undefined && (type.captureOrigins !== "empty" || type.domain !== "native")) {
+        throw new Error("Only a native future may declare an empty capture-origin set.");
+      }
       validateMojoProviderType(type.output);
       return;
     case "optional":
@@ -240,7 +243,6 @@ function validateNamedLifecycle(
 function validateOrigin(origin: MojoOriginRef): void {
   switch (origin.kind) {
     case "static":
-    case "comptime":
     case "inferred": return;
     case "untracked":
     case "unsafe":
@@ -254,6 +256,7 @@ function validateOrigin(origin: MojoOriginRef): void {
         throw new Error("Mojo provider origin expression must contain exact non-empty tokens.");
       }
       return;
+    default: throw new Error("Mojo reference origin has an unsupported identity kind.");
   }
 }
 

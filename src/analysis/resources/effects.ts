@@ -3,6 +3,8 @@ import type { MojoCallSelection } from "../program/model.js";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
+import { mojoConversionRaises } from "../../target-model/conversions/effects.js";
+export { mojoConversionRaises } from "../../target-model/conversions/effects.js";
 import {
   mergeMojoErrorTypes,
 } from "../../target-model/types/error-domains.js";
@@ -21,28 +23,21 @@ export function providerCallRequiresRaisingConversion(
     mojoConversionRaises(selection.resultConversion);
 }
 
-export function mojoConversionRaises(conversion: MojoValueConversion): boolean {
+export function mojoConversionDependencies(conversion: MojoValueConversion): readonly Node[] {
   switch (conversion.kind) {
-    case "js-value-extract": return true;
-    case "js-to-native-string": return true;
-    case "native-error-result-unwrap": return true;
-    case "js-data-rest": return mojoConversionRaises(conversion.elementConversion);
-    case "collection-map":
-      return conversion.source === "js-array" ||
-        (conversion.elementConversion !== undefined &&
-          mojoConversionRaises(conversion.elementConversion));
+    case "provider-record": return Object.freeze(conversion.fields.flatMap((field) => [
+      ...(field.read.kind === "accessor" ? [field.read.declaration] : []),
+      ...mojoConversionDependencies(field.conversion),
+    ]));
     case "optional-some":
     case "optional-map":
     case "optional-present":
     case "optional-to-union":
-    case "union-inject":
-      return mojoConversionRaises(conversion.valueConversion);
-    case "union-to-optional":
-      return conversion.presentMembers.some((member) => mojoConversionRaises(member.conversion));
+    case "union-inject": return mojoConversionDependencies(conversion.valueConversion);
+    case "union-to-optional": return conversion.presentMembers.flatMap((member) => mojoConversionDependencies(member.conversion));
     case "union-map":
-    case "narrowed-union-map":
-      return conversion.members.some((member) => mojoConversionRaises(member.conversion));
-    default: return false;
+    case "narrowed-union-map": return conversion.members.flatMap((member) => mojoConversionDependencies(member.conversion));
+    default: return Object.freeze([]);
   }
 }
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
+import { projectArtifactTexts as artifactTexts, compileMojo } from "../../helpers/mojo-session.mjs";
 
 function generated(source) {
   const result = compileMojo({ surfaces: ["js"], files: { "index.ts": source } });
@@ -55,4 +55,38 @@ test("locale options have their own live field view independent from selected JS
   assert.match(output, /js_value_from_source_object\(/u);
   assert.match(output, /string_locale_compare\(/u);
   assert.doesNotMatch(output, /js_value_from_object_entries|js_value_from_json_projection/u);
+  assert.doesNotMatch(output, /\bto_json\s*=/u);
+});
+
+test("the same object keeps separate data and JSON protocol closures", () => {
+  const output = generated(`
+    class Options {
+      numeric: boolean = true;
+      toJSON(): number { return 17; }
+    }
+    export function main(): void {
+      const options = new Options();
+      "2".localeCompare("10", "en", options);
+      JSON.stringify(options);
+    }
+  `);
+  assert.match(output, /string_locale_compare\(/u);
+  assert.match(output, /\bto_json\s*=/u);
+  assert.match(output, /json_stringify/u);
+});
+
+test("a data-only view does not weaken an independently requested JSON contract", () => {
+  const result = compileMojo({ surfaces: ["js"], files: { "index.ts": `
+    class Options {
+      numeric: boolean = true;
+      toJSON(argument: boolean): number { return 17; }
+    }
+    export function main(): void {
+      const options = new Options();
+      "2".localeCompare("10", "en", options);
+      JSON.stringify(options);
+    }
+  ` } });
+  assert.ok(result.diagnostics.some((diagnostic) => diagnostic.message.includes("toJSON method requires")), JSON.stringify(result.diagnostics));
+  assert.equal(result.artifacts.length, 0);
 });

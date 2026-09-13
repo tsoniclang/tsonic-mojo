@@ -10,7 +10,7 @@ import { isTriviallyPureMojoValue, orderMojoValues } from "../expressions/suppor
 import type { MojoValuePlanner } from "../expressions/support.js";
 import { registerMojoTypeImports } from "../types/imports.js";
 import { applyMojoConversion } from "../expressions/support.js";
-import { withMojoValue } from "../expressions/value-plan.js";
+import { consumeMojoValue, withMojoValue } from "../expressions/value-plan.js";
 import type { MojoValuePlan } from "../expressions/value-plan.js";
 import { planDictionaryKey } from "../expressions/conditional-values.js";
 import { planMojoPolymorphicObjectLiteral } from "./polymorphism/object-literals.js";
@@ -225,14 +225,26 @@ export function planMojoProviderRecordLiteral(
     })),
     context,
   );
-  return withMojoValue(ordered.before, Object.freeze({
-    kind: "construct",
-    type: selection.targetType,
-    arguments: Object.freeze(selection.fields.map((field, index) => Object.freeze({
-      name: field.targetName,
-      value: ordered.values[index]!,
-    }))),
-  }));
+  const name = allocateMojoSyntheticName(context, "provider_record");
+  const record: MojoExpression = Object.freeze({ kind: "path", path: name });
+  return withMojoValue(Object.freeze([
+    ...ordered.before,
+    Object.freeze({
+      kind: "variable" as const,
+      name,
+      initializer: Object.freeze({
+        kind: "construct" as const,
+        type: selection.targetType,
+        arguments: Object.freeze([]),
+      }),
+    }),
+    ...selection.fields.map((field, index): MojoStatement => Object.freeze({
+      kind: "assignment",
+      operator: "=",
+      left: Object.freeze({ kind: "member", receiver: record, name: field.targetName }),
+      right: ordered.values[index]!,
+    })),
+  ]), consumeMojoValue(record, selection.targetType, context.program.lifecycle));
 }
 
 export function planMojoStructuralObjectLiteral(

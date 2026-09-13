@@ -2,6 +2,7 @@ import { pointerOperationFactKey } from "@tsonic/tsts";
 import type { AstReader, Node, SourceFile } from "@tsonic/tsts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import { walkSourceTree } from "../../source/syntax/traversal.js";
+import { unwrapMojoStorageExpression } from "./locations.js";
 
 export function collectMojoAddressedStorageDeclarations(
   sourceFiles: readonly SourceFile[],
@@ -12,10 +13,10 @@ export function collectMojoAddressedStorageDeclarations(
     walkSourceTree(sourceFile, source.ast, (node): void => {
       if (!source.ast.is.IsCallExpression(node)) return;
       const fact = source.sourceFacts.getFact(node, pointerOperationFactKey);
-      if (fact?.operation !== "address-of" || fact.call !== node ||
-        fact.storageDeclaration === undefined ||
-        !source.ast.is.IsIdentifier(fact.storageExpression)) return;
-      const reference = source.navigation.sourceReferenceFor(fact.storageExpression);
+      if (fact?.operation !== "address-of" || fact.call !== node || fact.storageDeclaration === undefined) return;
+      const expression = unwrapMojoStorageExpression(fact.storageExpression, { source });
+      if (!source.ast.is.IsIdentifier(expression)) return;
+      const reference = source.navigation.sourceReferenceFor(expression);
       if (reference?.project !== true || reference.declaration !== fact.storageDeclaration ||
         !isFunctionLocalStorageDeclaration(fact.storageDeclaration, source.ast)) return;
       declarations.add(fact.storageDeclaration);

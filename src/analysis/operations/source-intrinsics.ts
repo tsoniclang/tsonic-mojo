@@ -213,6 +213,7 @@ function compileTimeTypeValue(
     const semantics = input.source.semantics.forNode(input.call);
     const literal = resolveMojoValueGenericArgument(explicit, {
       ast: input.source.ast,
+      navigation: input.source.navigation,
       semantics,
       sourceFacts: input.source.sourceFacts,
     });
@@ -231,6 +232,7 @@ function compileTimeTypeValue(
       ? undefined
       : classifyMojoSourceGenericParameter(owner, declaration, {
           ast: input.source.ast,
+          navigation: input.source.navigation,
           semantics,
           sourceFacts: input.source.sourceFacts,
         });

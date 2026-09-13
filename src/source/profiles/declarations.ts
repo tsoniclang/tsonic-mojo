@@ -156,6 +156,8 @@ declare var Set: SetConstructor;
 `.trim();
 
 const jsCoreDeclarations = `
+declare function structuredClone<T>(value: T): T;
+
 ${commonDeclarations}
 
 interface ObjectConstructor {
@@ -210,20 +212,6 @@ interface NumberConstructor {
   parseInt(value: string, radix?: number): number;
 }
 declare var Number: NumberConstructor;
-
-interface IntlNumberFormatOptions {
-  numberingSystem?: string;
-  currencySign?: "standard" | "accounting";
-  notation?: "standard" | "scientific" | "engineering" | "compact";
-  compactDisplay?: "short" | "long";
-  signDisplay?: "auto" | "never" | "always" | "exceptZero" | "negative";
-  minimumSignificantDigits?: number;
-  maximumSignificantDigits?: number;
-  roundingPriority?: "auto" | "morePrecision" | "lessPrecision";
-  roundingIncrement?: number;
-  roundingMode?: "ceil" | "floor" | "expand" | "trunc" | "halfCeil" | "halfFloor" | "halfExpand" | "halfTrunc" | "halfEven";
-  trailingZeroDisplay?: "auto" | "stripIfInteger";
-}
 
 declare function parseInt(value: string, radix?: number): number;
 declare function parseFloat(value: string): number;

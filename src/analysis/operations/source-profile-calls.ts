@@ -9,13 +9,9 @@ import {
 import { selectMojoSourceProfileCallRow } from "../../policy/operations/source-profile-selection.js";
 import type {
   MojoSourceProfileCallRow,
-  MojoSourceProfileParameterContract,
 } from "../../policy/operations/source-profile-selection.js";
 import {
-  mojoDynamicTargetType,
   mojoNamedTargetType,
-  mojoPrimitiveTargetType,
-  mojoStringTargetType,
 } from "../../target-model/types/constructors.js";
 import type { MojoCallAnalysis, MojoCallAnalysisContext } from "./calls.js";
 import {
@@ -24,7 +20,9 @@ import {
   restCallableElementType,
 } from "./call-arguments.js";
 import { selectMojoSourceProfileCallback } from "./source-profile-callbacks.js";
+import { sourceProfileParameterType } from "../../policy/operations/source-profile-types.js";
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
+import { selectMojoSourceValueResult } from "../../policy/conversions/source-value-result.js";
 import { parameterBindingConversions } from "./call-argument-conversions.js";
 import {
   mojoNativeErrorType,
@@ -208,12 +206,12 @@ export function analyzeSourceProfileCall(
     context.valueOwnership,
     parameterConversions,
     undefined,
-    context.projectRelationships,
     context.contextualizeCallableArgument,
   );
   if (arguments_.kind === "unsupported") return arguments_;
   const genericArguments: MojoTargetGenericArgument[] = [];
-  for (const selectedArgument of sourceCall.sourceSelectedMethodTypeArguments ?? []) {
+  for (const selectedArgument of selected.row.genericArguments === "erased"
+    ? [] : sourceCall.sourceSelectedMethodTypeArguments ?? []) {
     const argument = resolve(selectedArgument.selectedType, selectedArgument.explicitTypeNode);
     if (argument === undefined) {
       return {
@@ -422,6 +420,19 @@ function closeSourceProfileResult(
       reason: "The selected source-profile call result has no exact Mojo carrier.",
     };
   }
+  if (row.runtimeResultContract?.kind === "source-value") {
+    const runtimeType = Object.freeze({ kind: "dynamic" as const, domain: "js" as const });
+    const conversion = selectMojoSourceValueResult(selectedResult);
+    return conversion === undefined
+      ? { kind: "unsupported", code: "MOJO_SOURCE_PROFILE_RUNTIME_RESULT_CONVERSION_UNPROVEN", reason: "A cloned source value requires a closed scalar or JsValue result; cloning cannot restore source prototypes or provider branding." }
+      : { kind: "resolved", type: runtimeType, conversion };
+  }
+  if (row.runtimeResultContract?.kind === "exact") {
+    const type = row.runtimeResultContract.type;
+    const result = closeResultConversion(type, sourceCall.sourceResultType, resolve, context.projectRelationships);
+    return result.kind === "unsupported" ? result :
+      Object.freeze({ kind: "resolved", type, conversion: result.conversion });
+  }
   if (row.runtimeResultContract?.kind === "native-error-result") {
     const runtimeType = mojoRegExpNativeResultType(selectedResult);
     return Object.freeze({
@@ -548,39 +559,5 @@ function isExactMojoIntegerCarrier(type: MojoTargetTypeRef): boolean {
     case "uint128":
     case "decimal":
       return false;
-  }
-}
-
-function sourceProfileParameterType(
-  contract: MojoSourceProfileParameterContract,
-  receiver: MojoTargetTypeRef | undefined,
-): MojoTargetTypeRef | undefined {
-  if (typeof contract !== "string") {
-    if (contract.kind === "optional") {
-      const value = sourceProfileParameterType(contract.value, receiver);
-      return value === undefined ? undefined : Object.freeze({ kind: "optional", value });
-    }
-    if (contract.kind === "receiver") return receiver;
-    const value = receiver?.kind === "optional" ? receiver.value : receiver;
-    if (value?.kind !== "target-named") return undefined;
-    const argument = value.genericArguments?.[contract.index];
-    return argument?.kind === "type" ? argument.type : undefined;
-  }
-  switch (contract) {
-    case "float64":
-      return mojoPrimitiveTargetType("float64");
-    case "js-string":
-      return mojoNamedTargetType(
-        "tsonic.mojo.js.JsString",
-        ["tsonic_js"],
-        "JsString",
-      );
-    case "js-value":
-    case "js-data":
-      return mojoDynamicTargetType("js");
-    case "native-string":
-      return mojoStringTargetType();
-    case "selected-argument":
-      return undefined;
   }
 }

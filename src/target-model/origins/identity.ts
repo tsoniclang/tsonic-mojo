@@ -4,7 +4,6 @@ export function mojoOriginEquals(left: MojoOriginRef, right: MojoOriginRef): boo
   if (left.kind !== right.kind) return false;
   switch (left.kind) {
     case "static":
-    case "comptime":
     case "inferred":
       return true;
     case "untracked":
@@ -20,7 +19,6 @@ export function mojoOriginEquals(left: MojoOriginRef, right: MojoOriginRef): boo
 export function mojoOriginKey(origin: MojoOriginRef): string {
   switch (origin.kind) {
     case "static":
-    case "comptime":
     case "inferred":
       return origin.kind;
     case "untracked":

@@ -15,13 +15,16 @@ import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { analyzeMojoRuntimePackages } from "../runtime/references.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import { analyzeMojoTemplateExpression } from "../operations/template-expressions.js";
+import { analyzeMojoAwaitExpressions } from "../expressions/await.js";
 import { closeMojoErrorType } from "../resources/effects.js";
+import { finalizeMojoFirstClassCallArguments } from "../callables/first-class-call-arguments.js";
 import { validateMojoExecutableRegionSyntax } from "../control-flow/syntax-validation.js";
 import { createMojoProgramQueries } from "./queries.js";
 import { collectMojoSourceModuleConstructions } from "../source-modules/construction.js";
 import { closeMojoSourceModuleEntryPackages } from "../source-modules/entry-packages.js";
 import { finalizeMojoModuleBindingTypes } from "../module-initialization/bindings.js";
 import { finalizeMojoModuleEffects } from "../module-initialization/effects.js";
+import { validateMojoNativeCoroutineErrorDomain } from "../callables/native-coroutines.js";
 import { analyzeMojoModuleInitialization } from "../module-initialization/analyze.js";
 import { finalizeMojoPublicModuleBindingAbis } from "../module-initialization/public-abi.js";
 import {
@@ -158,8 +161,12 @@ export function finalizeMojoProgramResult(
   }
   const finalizedFunctions = functions.map((function_) => {
     const errorType = closeMojoErrorType(errorTypesByDeclaration.get(function_.declaration) ?? []);
+    if (function_.asynchronous && function_.asyncDomain === "native") {
+      validateMojoNativeCoroutineErrorDomain(function_.declaration, errorType, diagnostics);
+    }
+    const { errorType: _previousError, ...functionBody } = function_;
     return Object.freeze({
-      ...function_,
+      ...functionBody,
       raises: errorType !== undefined,
       ...(errorType === undefined ? {} : { errorType }),
     });
@@ -201,11 +208,13 @@ export function finalizeMojoProgramResult(
     diagnostics,
   );
   const effectFinalizedModules = finalizeMojoModuleEffects(
-    firstClassFinalizedModules,
+    firstClassFinalizedModules.modules,
     modules,
     moduleRegionFacts,
     errorTypesByDeclaration,
   );
+  finalizeMojoFirstClassCallArguments(firstClassFinalizedModules.referenceTypes,
+    environment.callNodes, callSelections, conversions, diagnostics);
   const finalizedModules = finalizeMojoPublicModuleBindingAbis(
     effectFinalizedModules,
     modules,
@@ -267,6 +276,9 @@ export function finalizeMojoProgramResult(
       templateExpressionSelections.set(expression, template.selection);
     }
   }
+  diagnostics.push(...analyzeMojoAwaitExpressions(
+    environment.awaitExpressionNodes, checkedSource.ast, expressionTypes,
+  ));
 
   for (const [root, rootKind] of executableRegionRoots) {
     validateMojoExecutableRegionSyntax(
@@ -288,6 +300,7 @@ export function finalizeMojoProgramResult(
       bindingNames,
       expressionTypes,
       templateExpressionSelections,
+      environment.memoryAnalysis.erasedSourceNodes,
       diagnostics,
     );
   }
@@ -324,6 +337,7 @@ export function finalizeMojoProgramResult(
   const source = targetSourceSyntaxProgram(checkedSource);
   const sourceNavigation = snapshotTargetPlanningSourceNavigation(checkedSource);
   const queries = createMojoProgramQueries({
+    erasedSourceNodes: environment.memoryAnalysis.erasedSourceNodes,
     callableImplementations: finalizedByDeclaration,
     sourceNavigation,
     bindingNames,

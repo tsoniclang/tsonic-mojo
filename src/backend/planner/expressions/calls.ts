@@ -13,6 +13,7 @@ import {
   convertMojoValue,
   finishOptionalMojoOperation,
   prepareMojoReceiver,
+  orderMojoValues,
   unsupportedOptionalCall,
 } from "./support.js";
 import { planSelectedArguments } from "./call-support.js";
@@ -21,12 +22,13 @@ import type {
   MojoValuePlanner,
   PlannedMojoCallArgument,
 } from "./support.js";
-import { registerMojoTypeImports } from "../types/imports.js";
+import { registerMojoGenericArgumentImports, registerMojoTypeImports } from "../types/imports.js";
 import { planMojoIntrinsicCall } from "./intrinsic-calls.js";
-import { mojoValue, withMojoValue } from "./value-plan.js";
+import { mojoValue, retainMojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { applyArgumentDisposition, planCallableArgumentSlot } from "./call-arguments.js";
 import { mojoTargetTypeEquals } from "../../../target-model/types/equality.js";
+import { planMojoValuePredicate } from "./value-predicate.js";
 import {
   planMojoJsonStringify,
   planMojoObjectAssign,
@@ -47,7 +49,7 @@ export function planMojoCall(
   if (selection.kind === "source-intrinsic" ||
     selection.kind === "explicit-safety" ||
     selection.kind === "native-pointer" ||
-    selection.kind === "raw-pointer" ||
+    selection.kind === "raw-pointer" || selection.kind === "native-memory" ||
     selection.kind === "typed-location") {
     return planMojoIntrinsicCall(selection, node, context, planValue);
   }
@@ -64,7 +66,7 @@ export function planMojoCall(
       context,
     );
     for (const argument of genericArguments) {
-      if (argument.kind === "type") registerMojoTypeImports(argument.type, context);
+      registerMojoGenericArgumentImports(argument, context);
     }
     const plannedArguments = planSelectedArguments(selection.arguments, context, planValue);
     if (plannedArguments === undefined) return undefined;
@@ -331,7 +333,11 @@ export function planMojoCall(
       arguments: Object.freeze([Object.freeze({
         value: Object.freeze({
           kind: "tuple",
-          elements: Object.freeze(ordered.arguments.map((argument) => argument.value)),
+          elements: Object.freeze(ordered.arguments.map((argument, index) => retainMojoValue(
+            argument.value,
+            (arguments_[index] as PlannedMojoCallArgument).type,
+            context.program.lifecycle,
+          ))),
         }),
       })]),
     });
@@ -343,9 +349,45 @@ export function planMojoCall(
       : finishOptionalMojoOperation(node, callee, converted, context);
   }
   const target = selection.operation.target;
+  if (target.kind === "foreign-call") {
+    const arguments_ = planSelectedArguments(selection.arguments, context, planValue);
+    if (arguments_ === undefined) return undefined;
+    const ordered = invocation.orderArguments(arguments_);
+    if (ordered.arguments.some((argument) => argument.spread || argument.name !== undefined)) {
+      throw new Error("A sealed C call contains an open or labelled native argument.");
+    }
+    const resultType = mojoTargetTypeInContext(selection.operation.resultType, context);
+    registerMojoTypeImports(resultType, context);
+    const call: MojoExpression = Object.freeze({
+      kind: "call",
+      callee: mojoModulePathExpression(context, ["std", "ffi"], ["external_call"]),
+      genericArguments: Object.freeze([
+        Object.freeze({ kind: "static-string", value: target.symbol }),
+        Object.freeze({ kind: "type", type: resultType }),
+        ...(target.fixedParameterCount === target.arguments.length ? [] : [
+          Object.freeze({ kind: "integer" as const, name: "num_fixed_args", value: String(target.fixedParameterCount) }),
+        ]),
+      ]),
+      arguments: ordered.arguments,
+    });
+    return invocation.convertResult(withMojoValue(ordered.before, call));
+  }
+  if (target.kind === "value-predicate") {
+    const argument = selection.arguments[0];
+    if (selection.optionalChain || selection.arguments.length !== 1 || argument === undefined) {
+      throw new Error("A sealed native value predicate has an invalid call shape.");
+    }
+    const type = mojoTargetTypeInContext(argument.sourceType, context);
+    const predicate = context.program.sourceCallableSpecializations.valuePredicate(node, type);
+    if (predicate === undefined) throw new Error("A native value predicate has no sealed carrier selection.");
+    const value = planSelectedArguments(selection.arguments, context, planValue)?.[0]?.plan;
+    if (value === undefined) return undefined;
+    const ordered = orderMojoValues([{ plan: value, type, role: "predicate_value", stabilize: true }], context);
+    return invocation.convertResult(withMojoValue(ordered.before, planMojoValuePredicate(ordered.values[0]!, predicate, context)));
+  }
   const genericArguments = mojoTargetGenericArgumentsInContext(selection.operation.genericArguments, context);
   for (const argument of genericArguments) {
-    if (argument.kind === "type") registerMojoTypeImports(argument.type, context);
+    registerMojoGenericArgumentImports(argument, context);
   }
   if (target.kind !== "function-call" && target.kind !== "instance-call") {
     appendMojoPlanningDiagnostic(

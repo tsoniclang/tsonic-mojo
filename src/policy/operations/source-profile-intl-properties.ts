@@ -30,6 +30,24 @@ const propertyOwners: ReadonlyMap<string, IntlPropertyOwner> = new Map([
     target: "IntlFormatPart",
     members: new Map([["type", "type"], ["value", "value"]]),
   }],
+  ["IntlResolvedNumberFormatOptions", {
+    target: "IntlResolvedNumberFormatOptions",
+    members: new Map([
+      ["locale", "locale"], ["numberingSystem", "numbering_system"],
+      ["style", "style"], ["minimumIntegerDigits", "minimum_integer_digits"],
+      ["minimumFractionDigits", "minimum_fraction_digits"],
+      ["maximumFractionDigits", "maximum_fraction_digits"],
+      ["minimumSignificantDigits", "minimum_significant_digits"],
+      ["maximumSignificantDigits", "maximum_significant_digits"],
+      ["useGrouping", "use_grouping"], ["currency", "currency"],
+      ["currencyDisplay", "currency_display"], ["currencySign", "currency_sign"],
+      ["unit", "unit"], ["unitDisplay", "unit_display"],
+      ["notation", "notation"], ["compactDisplay", "compact_display"],
+      ["signDisplay", "sign_display"], ["roundingPriority", "rounding_priority"],
+      ["roundingIncrement", "rounding_increment"], ["roundingMode", "rounding_mode"],
+      ["trailingZeroDisplay", "trailing_zero_display"],
+    ]),
+  }],
 ]);
 
 export function mojoIntlSourceProfileProperty(

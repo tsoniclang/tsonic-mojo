@@ -1,7 +1,6 @@
 import type { Node } from "@tsonic/tsts";
 import type { MojoCallSelection } from "../../../analysis/program/model.js";
 import {
-  appendMojoPlanningDiagnostic,
   mojoModuleMemberExpression,
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
@@ -10,6 +9,8 @@ import { orderMojoValues } from "./support.js";
 import type { MojoValuePlanner } from "./support.js";
 import { consumeMojoValue, mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
+import { planMojoTypedLocation } from "./typed-locations.js";
+import { planMojoNativeMemory } from "./native-memory.js";
 
 type MojoIntrinsicCallSelection = Extract<
   MojoCallSelection,
@@ -18,6 +19,7 @@ type MojoIntrinsicCallSelection = Extract<
       | "source-intrinsic"
       | "explicit-safety"
       | "native-pointer"
+      | "native-memory"
       | "raw-pointer"
       | "typed-location";
   }
@@ -29,6 +31,7 @@ export function planMojoIntrinsicCall(
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
 ): MojoValuePlan | undefined {
+if (selection.kind === "native-memory") return planMojoNativeMemory(selection, context, planValue);
 if (selection.kind === "source-intrinsic") {
   if (selection.operation === "comptime-type") {
     return selection.value === undefined
@@ -161,76 +164,7 @@ if (selection.kind === "raw-pointer") {
       }));
 }
 if (selection.kind === "typed-location") {
-  registerMojoTypeImports(selection.locationType, context);
-  switch (selection.operation) {
-    case "address-of": {
-      const storage = context.program.queries.locationStorage(selection.storageDeclaration);
-      if (storage === undefined) {
-        appendMojoPlanningDiagnostic(
-          context,
-          "MOJO_POINTER_STORAGE_PLAN_MISSING",
-          "Address-of has no sealed promoted Mojo storage.",
-          node,
-        );
-        return undefined;
-      }
-      return mojoValue(Object.freeze({ kind: "path", path: storage.name }));
-    }
-    case "allocate": {
-      const initial = planValue(selection.initialExpression, context, selection.pointeeType);
-      return initial === undefined
-        ? undefined
-        : withMojoValue(initial.before, Object.freeze({
-            kind: "construct",
-            type: selection.locationType,
-            arguments: Object.freeze([Object.freeze({ value: initial.value })]),
-          }));
-    }
-    case "load": {
-      const pointer = planValue(selection.pointerExpression, context, selection.locationType);
-      return pointer === undefined
-        ? undefined
-        : withMojoValue(pointer.before, Object.freeze({
-            kind: "method-call",
-            receiver: pointer.value,
-            name: "read",
-            arguments: Object.freeze([]),
-          }));
-    }
-    case "store": {
-      const pointer = planValue(selection.pointerExpression, context, selection.locationType);
-      const value = planValue(selection.valueExpression, context, selection.pointeeType);
-      if (pointer === undefined || value === undefined) return undefined;
-      const ordered = orderMojoValues([
-        Object.freeze({ plan: pointer, type: selection.locationType, role: "location_pointer" }),
-        Object.freeze({ plan: value, type: selection.pointeeType, role: "location_value" }),
-      ], context);
-      return withMojoValue(ordered.before, Object.freeze({
-        kind: "method-call",
-        receiver: ordered.values[0]!,
-        name: "write",
-        arguments: Object.freeze([Object.freeze({ value: ordered.values[1]! })]),
-      }));
-    }
-    case "equal-pointer": {
-      const left = planValue(selection.leftExpression, context, selection.operandType);
-      const right = planValue(selection.rightExpression, context, selection.operandType);
-      if (left === undefined || right === undefined) return undefined;
-      const ordered = orderMojoValues([
-        Object.freeze({ plan: left, type: selection.operandType, role: "location_left" }),
-        Object.freeze({ plan: right, type: selection.operandType, role: "location_right" }),
-      ], context);
-      return withMojoValue(ordered.before, Object.freeze({
-        kind: "call",
-        callee: mojoModuleMemberExpression(
-          context,
-          ["tsonic_runtime"],
-          "equal_location",
-        ),
-        arguments: Object.freeze(ordered.values.map((value) => Object.freeze({ value }))),
-      }));
-    }
-  }
+  return planMojoTypedLocation(selection, node, context, planValue);
 }
   return undefined;
 }

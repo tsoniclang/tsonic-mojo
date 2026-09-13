@@ -23,8 +23,8 @@ export function parseMojoProviderReferenceOrigin(
       mutable: false,
     });
   }
-  if (trimmed === "static" || trimmed === "comptime") {
-    return Object.freeze({ origin: Object.freeze({ kind: trimmed }), mutable: false });
+  if (trimmed === "ImmStaticOrigin") {
+    return Object.freeze({ origin: Object.freeze({ kind: "static" }), mutable: false });
   }
   if (trimmed === "_") {
     return Object.freeze({ origin: Object.freeze({ kind: "inferred" }), mutable: false });

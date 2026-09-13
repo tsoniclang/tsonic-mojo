@@ -19,6 +19,7 @@ export interface MojoSourceProfileCallRowBase {
   readonly parameterContract?: readonly MojoSourceProfileParameterContract[];
   readonly parameterContractMode?: "exact" | "overrides";
   readonly restParameterName?: string;
+  readonly genericArguments?: "selected" | "erased";
   readonly receiverCapability?: "integer";
   readonly receiverContract?: MojoSourceProfileParameterContract;
   readonly raises?: boolean;
@@ -29,7 +30,9 @@ export interface MojoSourceProfileCallRowBase {
         readonly kind: "optional-source-union";
         readonly absence: "null" | "undefined";
       }
-    | { readonly kind: "native-error-result" };
+    | { readonly kind: "native-error-result" }
+    | { readonly kind: "exact"; readonly type: MojoTargetTypeRef }
+    | { readonly kind: "source-value" };
 }
 
 export type MojoSourceProfileCallRow = MojoSourceProfileCallRowBase & (
@@ -60,6 +63,10 @@ export interface MojoSourceProfileArgumentCarrierContract {
     | "regexp"
     | "callable"
     | "undefined"
+    | "number"
+    | "js-array"
+    | "js-iterator"
+    | "js-date"
   )[];
 }
 
@@ -186,6 +193,11 @@ function sourceProfileArgumentCarriersMatch(
           return type.kind === "target-named" && type.id === "tsonic.mojo.js.JsRegExp";
         case "callable": return type.kind === "callable";
         case "undefined": return type.kind === "undefined";
+        case "number": return type.kind === "source-primitive" &&
+          ["int8", "uint8", "int16", "uint16", "int32", "uint32", "float32", "float64"].includes(type.name);
+        case "js-array": return type.kind === "target-named" && type.id === "tsonic.mojo.js.JsArray";
+        case "js-iterator": return type.kind === "target-named" && type.id === "tsonic.mojo.js.JsIterator";
+        case "js-date": return type.kind === "target-named" && type.id === "tsonic.mojo.js.JsDate";
       }
     });
   });

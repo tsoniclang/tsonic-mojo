@@ -76,6 +76,7 @@ export const jsReceiverFunctionRow = (
   argumentCount: number,
   parameterContract: readonly MojoSourceProfileParameterContract[],
   raises = false,
+  runtimeResultContract?: MojoSourceProfileCallRow["runtimeResultContract"],
 ): MojoSourceProfileCallRow => Object.freeze({
   profile: "js",
   kind: "call",
@@ -83,6 +84,7 @@ export const jsReceiverFunctionRow = (
   member,
   argumentCount,
   parameterContract: Object.freeze([...parameterContract]),
+  ...(runtimeResultContract === undefined ? {} : { runtimeResultContract }),
   target: Object.freeze({
     kind: "function",
     modulePath: Object.freeze(["tsonic_js"]),

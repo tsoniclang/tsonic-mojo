@@ -6,7 +6,7 @@ import type {
   MojoTargetGenericArgument,
   MojoTargetTypeRef,
 } from "../../target-model/types/model.js";
-import type { MojoArgumentDisposition } from "../representations/model.js";
+import type { MojoArgumentDisposition } from "../../target-model/operations/parameters.js";
 
 export interface MojoAnalyzedCallArgument {
   readonly expression: Node;
@@ -40,6 +40,7 @@ export type MojoCallableArgumentSlot =
     };
 
 export type MojoCallSelection =
+  | import("../../target-model/operations/native-memory.js").MojoMemoryOperationSelection
   | {
       readonly kind: "source-intrinsic";
       readonly operation:
@@ -115,49 +116,7 @@ export type MojoCallSelection =
       readonly pointerType: MojoTargetTypeRef;
       readonly resultType: MojoTargetTypeRef;
     }
-  | {
-      readonly kind: "typed-location";
-      readonly operation: "address-of";
-      readonly pointeeType: MojoTargetTypeRef;
-      readonly locationType: MojoTargetTypeRef;
-      readonly resultType: MojoTargetTypeRef;
-      readonly storageDeclaration: Node;
-    }
-  | {
-      readonly kind: "typed-location";
-      readonly operation: "allocate";
-      readonly pointeeType: MojoTargetTypeRef;
-      readonly locationType: MojoTargetTypeRef;
-      readonly resultType: MojoTargetTypeRef;
-      readonly initialExpression: Node;
-    }
-  | {
-      readonly kind: "typed-location";
-      readonly operation: "load";
-      readonly pointeeType: MojoTargetTypeRef;
-      readonly locationType: MojoTargetTypeRef;
-      readonly resultType: MojoTargetTypeRef;
-      readonly pointerExpression: Node;
-    }
-  | {
-      readonly kind: "typed-location";
-      readonly operation: "store";
-      readonly pointeeType: MojoTargetTypeRef;
-      readonly locationType: MojoTargetTypeRef;
-      readonly resultType: MojoTargetTypeRef;
-      readonly pointerExpression: Node;
-      readonly valueExpression: Node;
-    }
-  | {
-      readonly kind: "typed-location";
-      readonly operation: "equal-pointer";
-      readonly pointeeType: MojoTargetTypeRef;
-      readonly locationType: MojoTargetTypeRef;
-      readonly operandType: MojoTargetTypeRef;
-      readonly resultType: MojoTargetTypeRef;
-      readonly leftExpression: Node;
-      readonly rightExpression: Node;
-    }
+  | import("../../target-model/operations/typed-locations.js").MojoTypedLocationSelection
   | {
       readonly kind: "project";
       readonly target:

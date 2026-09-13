@@ -76,6 +76,8 @@ export function planSelectedArgument(
   }
   const directCallableAdaptation = preparedExpression === undefined &&
     argument.sourceForm === "value" && argument.conversion.kind === "callable-adapt" &&
+    argument.conversion.result !== "convert" &&
+    argument.conversion.parameters.kind === "identity" &&
     argument.conversion.error !== "erase" &&
     (context.program.source.ast.is.IsArrowFunction(argument.expression) ||
       context.program.source.ast.is.IsFunctionExpression(argument.expression));

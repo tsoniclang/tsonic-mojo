@@ -63,9 +63,7 @@ export function substituteMojoTargetType(
       });
     case "future":
       return Object.freeze({
-        kind: "future",
-        domain: type.domain,
-        raises: type.raises,
+        ...type,
         output: substituteMojoTargetType(type.output, substitutions),
       });
     case "optional":

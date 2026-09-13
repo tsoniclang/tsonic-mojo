@@ -97,7 +97,6 @@ export function analyzeMojoObjectAssign(
       [1, Object.freeze({ kind: "identity" as const })],
     ])),
     undefined,
-    context.projectRelationships,
     context.contextualizeCallableArgument,
   );
   if (arguments_.kind === "unsupported") return arguments_;
@@ -236,7 +235,6 @@ export function analyzeMojoJsonStringify(
     context.valueOwnership,
     parameterBindingConversions(sourceCall, conversionOverrides),
     undefined,
-    context.projectRelationships,
     context.contextualizeCallableArgument,
   );
   if (arguments_.kind === "unsupported") return arguments_;

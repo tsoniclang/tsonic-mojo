@@ -54,7 +54,20 @@ export function splitTopLevel(text: string): string[] {
 export function matchingDelimiter(text: string, openIndex: number, open: string, close: string): number {
   if (text[openIndex] !== open) throw new Error(`Expected '${open}' in Mojo compiler expression '${text}'.`);
   let depth = 0;
+  let quoted: string | undefined;
+  let escaped = false;
   for (let index = openIndex; index < text.length; index += 1) {
+    const character = text[index]!;
+    if (quoted !== undefined) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === quoted) quoted = undefined;
+      continue;
+    }
+    if (character === "\"" || character === "'") {
+      quoted = character;
+      continue;
+    }
     if (text[index] === open) depth += 1;
     else if (text[index] === close && --depth === 0) return index;
   }

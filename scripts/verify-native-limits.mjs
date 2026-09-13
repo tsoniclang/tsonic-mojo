@@ -13,6 +13,8 @@ const fixtures = [
   ["generator.mojo", 2, /unexpected token in expression/iu],
   ["async-iteration.mojo", 2, /expected '\(' for argument list/iu],
   ["async-context-manager.mojo", 2, /expected '\(' for argument list/iu],
+  ["custom-receiver.mojo", 5, /'self' argument must have type 'Self'/u],
+  ["mutable-global.mojo", 1, /global variables are not supported/u],
 ];
 
 if (!existsSync(pixi)) throw new Error(`Pinned Mojo pixi executable is absent at '${pixi}'.`);

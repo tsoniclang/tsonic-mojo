@@ -5,6 +5,7 @@ import {
   type MojoConversionIndex,
 } from "../../policy/conversions/selection.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
+import { mojoNativeArrayElement } from "../../target-model/types/native-arrays.js";
 import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
 import type { MojoLifecycleAnalysis } from "../lifecycle/model.js";
 import type { MojoValueOwnership } from "../../target-model/lifecycle/model.js";
@@ -217,7 +218,7 @@ function targetShape(type: MojoTargetTypeRef): TargetShape | undefined {
       : Object.freeze({ kind: "fixed", elements: Object.freeze(Array.from({ length }, () => type.element)) });
   }
   if (type.kind === "list") return Object.freeze({ kind: "sequence", element: type.element });
-  const jsElement = jsArrayElement(type);
+  const jsElement = mojoNativeArrayElement(type) ?? jsArrayElement(type);
   return jsElement === undefined ? undefined : Object.freeze({ kind: "sequence", element: jsElement });
 }
 

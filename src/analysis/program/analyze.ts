@@ -8,6 +8,7 @@ import { analyzeAndSealMojoCallableExpression } from "../callables/expressions.j
 import { createMojoConversionIndex } from "../../policy/conversions/selection.js";
 import { selectMojoJsValueConversion } from "../conversions/js-value-graph.js";
 import { createMojoProviderSourceValueIndex } from "../../providers/packages/source-values.js";
+import { createMojoProviderNativeViewIndex } from "../../providers/packages/native-views.js";
 import { mojoValueConversionNarrowing } from "../refinements/value.js";
 import { createMojoProjectTypeCatalog } from "../project-types/catalog.js";
 import { createMojoProjectTypeRelationships } from "../project-types/relationships.js";
@@ -41,6 +42,7 @@ import type { MojoExecutableRegionAnalysisEnvironment } from "../control-flow/an
 import type { MojoAnalyzedModuleRegionFacts } from "../module-initialization/effects.js";
 import { collectMojoDeclarationDrafts } from "../declarations/drafts.js";
 import { collectMojoAddressedStorageDeclarations } from "../storage/addressed.js";
+import { createMojoMemoryAnalysis } from "../storage/memory-metadata.js";
 import { analyzeMojoProjectDeclarations } from "../declarations/analyze.js";
 import { createMojoStructuralObjectCatalog } from "../bindings/structural-objects.js";
 import { finalizeMojoProgramEffects } from "./program-effects-finalization.js";
@@ -119,6 +121,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
   const callableDeclarationByExpression = new WeakMap<Node, Node>();
   const templateExpressionSelections = new WeakMap<Node, MojoTemplateExpressionSelection>();
   const templateExpressionNodes = new Set<Node>();
+  const awaitExpressionNodes = new Set<Node>();
   const bindingPatternSelections = new WeakMap<Node, MojoBindingPatternSelection>();
   const bindingProjections = new WeakMap<Node, MojoBindingProjectionPlan>();
   const exitValueTransfers = new WeakSet<Node>();
@@ -133,6 +136,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
   const functionEffectRoots = new Map<Node, Node[]>();
   const moduleEffectRoots = new WeakMap<import("./model.js").MojoAnalyzedModule, Node[]>();
   const sourceValueOccurrenceKinds = new WeakMap<Node, "runtime" | "non-runtime">();
+  const memoryAnalysis = createMojoMemoryAnalysis(sourceFiles, input.source, diagnostics);
   const indexedSourceUseDeclarations = new WeakSet<Node>();
   const addressedStorageDeclarations = collectMojoAddressedStorageDeclarations(
     sourceFiles,
@@ -220,6 +224,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
   });
   const analyzedModules = analyzeMojoModuleBindings({
     source: input.source,
+    erasedSourceNodes: memoryAnalysis.erasedSourceNodes,
     sourceFiles,
     modules,
     providerSemantics,
@@ -261,6 +266,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     }
   }
   const drafts = collectMojoDeclarationDrafts({
+    projectTypes,
     sourceFiles,
     ast,
     globalNameByDeclaration,
@@ -321,15 +327,17 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
   const conversions = createMojoConversionIndex({
     narrowingForExpression: (expression) => mojoValueConversionNarrowing(valueRefinements.get(expression)),
     projectRelationships,
-    sourceValueProjection: (type) => selectMojoJsValueConversion(type, {
+    sourceValueProjection: (type, protocol) => selectMojoJsValueConversion(type, {
       source: input.source, structuralObjects, projectRelationships, lifecycle,
       callableByDeclaration, classByTypeId,
       genericParameters: sourceValueGenericParameters,
       modules,
       accessorByDeclaration: sourceValueAccessors,
       providerSourceValueFactory: providerSourceValues.factoryForType,
-    }),
+    }, protocol),
     sourceValueExtraction: providerSourceValues.extractionForType,
+    nativeView: createMojoProviderNativeViewIndex(providerSemantics.types),
+    parameterCopy: (type) => lifecycle.capabilities(type).copy,
   });
   for (const declaration of addressedStorageDeclarations) {
     const bindingName = bindingNames.get(declaration);
@@ -348,7 +356,6 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
       readonly contextualType?: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
       readonly kind?: import("./model.js").MojoAnalyzedCallableKind;
       readonly name?: string;
-      readonly allowAsynchronous?: boolean;
       readonly captureSelf?: boolean;
     } = {},
   ): MojoCallableExpressionSelection | undefined => {
@@ -360,7 +367,6 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
       ...(options.contextualType === undefined ? {} : { contextualType: options.contextualType }),
       ...(options.kind === undefined ? {} : { kind: options.kind }),
       ...(options.name === undefined ? {} : { name: options.name }),
-      ...(options.allowAsynchronous === true ? { allowAsynchronous: true } : {}),
       ...(options.captureSelf === false ? { captureSelf: false } : {}),
       allocateLocalName: createNameAllocator(),
       ensureLocationStorage(declaration, bindingName) {
@@ -395,6 +401,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     ...(sourceCallableErrorType === undefined ? {} : { sourceCallableErrorType }),
     diagnostics,
     executableRegionRoots,
+    memoryAnalysis,
     bindingNames,
     bindingSourceFiles,
     bindingTypes,
@@ -417,6 +424,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
     arrayLiteralSelections,
     objectLiteralNodes,
     templateExpressionNodes,
+    awaitExpressionNodes,
     bindingPatternSelections,
     bindingProjections,
     exitValueTransfers,

@@ -1,4 +1,6 @@
-import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
+import type { MojoTargetGenericArgument, MojoTargetTypeRef } from "../../../target-model/types/model.js";
+import type { MojoOriginRef } from "../../../target-model/origins/model.js";
+import { mojoOriginSymbol } from "../../../target-model/origins/symbol.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import {
   mojoTargetTypeInContext,
@@ -31,7 +33,7 @@ export function registerMojoTypeImports(
         genericArguments: alias.genericArguments,
       }));
       for (const argument of alias.genericArguments) {
-        if (argument.kind === "type") registerMojoTypeImports(argument.type, context);
+        registerMojoGenericArgumentImports(argument, context);
       }
       return;
     }
@@ -68,7 +70,7 @@ export function registerMojoTypeImports(
         registerMojoSymbolImport(context, type.modulePath, type.name);
       }
       for (const argument of type.genericArguments ?? []) {
-        if (argument.kind === "type") registerMojoTypeImports(argument.type, context);
+        registerMojoGenericArgumentImports(argument, context);
       }
       return;
     case "list":
@@ -85,6 +87,8 @@ export function registerMojoTypeImports(
       return;
     case "future":
       if (type.domain === "js") registerMojoSymbolImport(context, ["tsonic_js"], "JsPromise");
+      else if (type.captureOrigins === "empty") registerMojoSymbolImport(context, ["tsonic_runtime"], type.raises ? "ClosedRaisingCoroutine" : "ClosedCoroutine");
+      else registerMojoSymbolImport(context, ["std", "builtin", "_coroutine"], type.raises ? "RaisingCoroutine" : "Coroutine");
       registerMojoTypeImports(type.output, context);
       return;
     case "optional":
@@ -101,10 +105,11 @@ export function registerMojoTypeImports(
     case "associated":
       registerMojoTypeImports(type.owner, context);
       for (const argument of type.genericArguments) {
-        if (argument.kind === "type") registerMojoTypeImports(argument.type, context);
+        registerMojoGenericArgumentImports(argument, context);
       }
       return;
     case "reference":
+      registerMojoOriginImports(type.origin, context);
       registerMojoTypeImports(type.value, context);
       return;
     case "callable":
@@ -120,8 +125,8 @@ export function registerMojoTypeImports(
     case "function":
       for (const parameter of type.genericParameters) {
         for (const constraint of parameter.constraints) registerMojoTypeImports(constraint, context);
-        if (parameter.defaultArgument?.kind === "type") {
-          registerMojoTypeImports(parameter.defaultArgument.type, context);
+        if (parameter.defaultArgument !== undefined) {
+          registerMojoGenericArgumentImports(parameter.defaultArgument, context);
         }
       }
       for (const parameter of type.parameters) registerMojoTypeImports(parameter.type, context);
@@ -129,6 +134,19 @@ export function registerMojoTypeImports(
       if (type.errorType !== undefined) registerMojoTypeImports(type.errorType, context);
       return;
   }
+}
+
+export function registerMojoGenericArgumentImports(
+  argument: MojoTargetGenericArgument,
+  context: MojoPlanningContext,
+): void {
+  if (argument.kind === "type") registerMojoTypeImports(argument.type, context);
+  else if (argument.kind === "origin") registerMojoOriginImports(argument.origin, context);
+}
+
+function registerMojoOriginImports(origin: MojoOriginRef, context: MojoPlanningContext): void {
+  const symbol = mojoOriginSymbol(origin);
+  if (symbol !== undefined) registerMojoSymbolImport(context, ["std", "origin"], symbol);
 }
 
 function sameModulePath(left: readonly string[], right: readonly string[]): boolean {

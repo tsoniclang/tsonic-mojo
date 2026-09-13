@@ -49,6 +49,7 @@ import {
 import { planMojoBindingProjection } from "../bindings/patterns.js";
 import { mojoValue } from "../expressions/value-plan.js";
 import { planMojoLiveArrayIteration } from "./array-iteration.js";
+import { rethrowInErrorDomain } from "../expressions/error-domains.js";
 
 export function planMojoFunctionStatements(
   function_: MojoAnalyzedFunction,
@@ -217,10 +218,15 @@ function planStatement(
     const expression = sourceExpression === undefined ? undefined : planMojoValue(sourceExpression, context);
     const type = sourceExpression === undefined ? undefined : context.program.queries.expressionType(sourceExpression);
     if (expression === undefined || type === undefined) return undefined;
-    const raised = context.program.queries.exitValueTransfer(sourceExpression!)
-      ? consumeMojoValue(expression.value, type, context.program.lifecycle)
-      : expression.value;
-    return Object.freeze([...expression.before, { kind: "raise", expression: raised }]);
+    if (context.errorType === undefined) {
+      appendMojoPlanningDiagnostic(context, "MOJO_THROW_ERROR_DOMAIN_MISSING",
+        "An authored throw requires its sealed executable error domain.", node);
+      return undefined;
+    }
+    return Object.freeze([...expression.before, ...rethrowInErrorDomain(
+      expression.value, type, context.errorType, context,
+      context.program.queries.exitValueTransfer(sourceExpression!),
+    )]);
   }
   if (ast.is.IsVariableStatement(node)) {
     return planVariableDeclarationList(VariableStatement_DeclarationList(ast, node), context);

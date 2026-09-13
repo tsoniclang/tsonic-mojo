@@ -29,12 +29,23 @@ export function consumeMojoValue(
     : Object.freeze({ kind: "consume", expression: value });
 }
 
+export function retainMojoValue(
+  value: MojoExpression,
+  type: MojoTargetTypeRef,
+  lifecycle: MojoLifecycleResolver,
+): MojoExpression {
+  return lifecycle.capabilities(type).copy !== "explicit" ||
+    value.kind === "construct" || value.kind === "copy" || value.kind === "consume" ||
+    value.kind === "list" || value.kind === "tuple" || value.kind === "dictionary"
+    ? value
+    : Object.freeze({ kind: "copy", expression: value });
+}
+
 function isMojoPlaceExpression(value: MojoExpression): boolean {
   switch (value.kind) {
     case "path":
     case "member":
     case "element":
-    case "proven-union-member":
     case "postfix-deref":
       return true;
     case "parenthesized":
@@ -53,6 +64,7 @@ function isMojoPlaceExpression(value: MojoExpression): boolean {
     case "conditional":
     case "call":
     case "method-call":
+    case "proven-union-member":
     case "slice":
     case "construct":
     case "forced-comptime":

@@ -3,7 +3,7 @@ import type { MojoSelectedProviderOperation } from "../../target-model/operation
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoValueConversion } from "../../target-model/conversions/model.js";
 import type { MojoValueRefinementSelection } from "../refinements/model.js";
-import type { MojoParameterDisposition } from "../representations/model.js";
+import type { MojoParameterDisposition } from "../../target-model/operations/parameters.js";
 import type { MojoBindingProjectionPlan } from "../bindings/model.js";
 import type { MojoAnalyzedModuleBinding } from "../module-initialization/model.js";
 
@@ -143,15 +143,7 @@ export type MojoIntrinsicExpressionSelection =
   | {
       readonly kind: "typeof";
       readonly operand: Node;
-      readonly result:
-        | "undefined"
-        | "object"
-        | "boolean"
-        | "number"
-        | "bigint"
-        | "string"
-        | "symbol"
-        | "function";
+      readonly result: import("../../target-model/operations/typeof.js").MojoTypeofSelection;
       readonly resultType: Extract<MojoTargetTypeRef, { readonly kind: "native-string" }>;
     }
   | {
@@ -162,11 +154,25 @@ export type MojoIntrinsicExpressionSelection =
 
 export type MojoTypeTestSelection =
   | {
+      readonly kind: "source-value-equality";
+      readonly left: Node;
+      readonly right: Node;
+      readonly operandType: Extract<MojoTargetTypeRef, { readonly kind: "dynamic" }>;
+      readonly equal: boolean;
+    }
+  | {
       readonly kind: "nullish-comparison";
       readonly left: Node;
       readonly right: Node;
       readonly outcome:
         | { readonly kind: "constant"; readonly value: boolean }
+        | {
+            readonly kind: "js-nullish";
+            readonly operand: "left" | "right";
+            readonly null: boolean;
+            readonly undefined: boolean;
+            readonly equal: boolean;
+          }
         | {
             readonly kind: "optional-absence";
             readonly operand: "left" | "right";
@@ -194,7 +200,7 @@ export type MojoTypeTestSelection =
   | {
       readonly kind: "union-member";
       readonly operand: Node;
-      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "union" }>;
+      readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "union" | "optional" }>;
       readonly testedType: MojoTargetTypeRef;
     }
   | {
@@ -233,6 +239,7 @@ export type MojoNullishCoalescingSelection =
 
 export type MojoElementSelection = {
   readonly kind: "native";
+  readonly raises: boolean;
   readonly receiver: Node;
   readonly index: Node;
   readonly accessMode: "read" | "write" | "read-write";

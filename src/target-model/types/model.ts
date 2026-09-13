@@ -42,6 +42,7 @@ export type MojoTargetTypeRef =
   | {
       readonly kind: "future";
       readonly domain: "native" | "js";
+      readonly captureOrigins?: "empty";
       readonly output: MojoTargetTypeRef;
       readonly raises: boolean;
     }

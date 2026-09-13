@@ -27,6 +27,7 @@ import type {
 } from "./model.js";
 
 export interface MojoProgramQueryIndexes {
+  readonly erasedSourceNodes: WeakSet<Node>;
   readonly callableImplementations: WeakMap<Node, import("./model.js").MojoAnalyzedFunction>;
   readonly sourceNavigation: TargetPlanningSourceNavigation;
   readonly bindingNames: WeakMap<Node, string>;
@@ -66,6 +67,7 @@ export function createMojoProgramQueries(
   indexes: MojoProgramQueryIndexes,
 ): MojoProgramQueries {
   return Object.freeze({
+    isErasedSourceNode: (node: Node) => indexes.erasedSourceNodes.has(node),
     callableImplementation(declaration: Node) {
       return indexes.callableImplementations.get(declaration);
     },
