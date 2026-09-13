@@ -120,7 +120,7 @@ export function planMojoProjectPropertyWrite(
   );
   if (receiver === undefined) return undefined;
   const location = orderMojoValues([
-    Object.freeze({ plan: receiver.plan, type: selection.receiverType, role: "accessor_write_receiver" }),
+    Object.freeze({ plan: receiver.plan, type: receiver.type, role: "accessor_write_receiver" }),
   ], context, true);
   const key = selection.kind === "project-index-property"
     ? planDictionaryKey(selection.key, selection.keyType, context)

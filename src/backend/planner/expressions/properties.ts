@@ -174,7 +174,7 @@ export function planMojoProperty(
     const ordered = orderMojoValues([
       Object.freeze({
         plan: receiver.plan,
-        type: selection.receiverType,
+        type: receiver.type,
         role: "method_value_receiver",
       }),
     ], context, stabilizeReceiver);
@@ -206,7 +206,7 @@ export function planMojoProperty(
     const ordered = orderMojoValues([
       Object.freeze({
         plan: receiver.plan,
-        type: directState ? context.initializingState!.stateType : selection.receiverType,
+        type: directState ? context.initializingState!.stateType : receiver.type,
         role: "property_receiver",
       }),
     ], context, stabilizeReceiver && !directState);
@@ -284,7 +284,7 @@ export function planMojoProperty(
       return undefined;
     }
     const ordered = orderMojoValues([
-      Object.freeze({ plan: receiver.plan, type: selection.receiverType, role: "accessor_receiver" }),
+      Object.freeze({ plan: receiver.plan, type: receiver.type, role: "accessor_receiver" }),
     ], context, stabilizeReceiver);
     const operation = withMojoValue(ordered.before, Object.freeze({
       kind: "method-call",
@@ -296,7 +296,7 @@ export function planMojoProperty(
   }
   if (selection.kind === "structural-field") {
     const ordered = orderMojoValues([
-      Object.freeze({ plan: receiver.plan, type: selection.receiverType, role: "property_receiver" }),
+      Object.freeze({ plan: receiver.plan, type: receiver.type, role: "property_receiver" }),
     ], context, stabilizeReceiver);
     const operation = withMojoValue(ordered.before, Object.freeze({
       kind: "element",
@@ -324,7 +324,7 @@ export function planMojoProperty(
       return undefined;
     }
     const ordered = orderMojoValues([
-      Object.freeze({ plan: receiver.plan, type: selection.receiverType, role: "index_property_receiver" }),
+      Object.freeze({ plan: receiver.plan, type: receiver.type, role: "index_property_receiver" }),
     ], context, stabilizeReceiver);
     const dispatchView = context.program.projectDispatch.viewForType(selection.receiverType);
     const dispatch = dispatchView === undefined
@@ -404,7 +404,9 @@ export function planMojoProperty(
     : convertMojoValue(receiver.plan, selection.receiverConversion, context);
   if (convertedReceiver === undefined || operation.receiverType === undefined) return undefined;
   const ordered = orderMojoValues([
-    Object.freeze({ plan: convertedReceiver, type: operation.receiverType, role: "property_receiver" }),
+    Object.freeze({ plan: convertedReceiver,
+      type: selection.receiverConversion === undefined ? receiver.type : operation.receiverType,
+      role: "property_receiver" }),
   ], context, stabilizeReceiver);
   if (target.kind !== "property-read" && target.kind !== "property-write") return undefined;
   const member: MojoExpression = target.access.kind === "member"

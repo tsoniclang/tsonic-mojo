@@ -17,6 +17,29 @@ export function main(): void {}
   });
 }
 
+for (const operation of ["value.value", "value.value = 7", "value.value += 2", "value.value++", "++value.value", "(value.value) += 2", "(value.value)++"]) {
+  test(`narrowed union receiver retains its physical carrier: ${operation}`, () => {
+    const result = compileMojo({ files: { "index.ts": `
+class First { value: number = 1; first: boolean = true; }
+class Second { value: number = 2; second: string = "second"; }
+class Third { third: boolean = true; }
+export function change(value: First | Second | Third): number {
+  if (value instanceof Third) return 0;
+  return ${operation};
+}
+export function main(): void {}
+` } });
+    assert.deepEqual(result.diagnostics, []);
+    const source = artifactTexts(result).filter((item) => item.path.startsWith("src/")).map((item) => item.text).join("\n");
+    const parameter = /def change\(value: ([^\n]+)\) -> Float64:/u.exec(source);
+    assert.ok(parameter, source);
+    const snapshot = /var _union_property_receiver\w*: ([^\n]+?) = value/u.exec(source);
+    assert.ok(snapshot, source);
+    assert.equal(snapshot[1], parameter[1]);
+    assert.match(snapshot[1], /Third/u);
+  });
+}
+
 test("a missing union field is not fabricated for a write", () => {
   assert.throws(() => compileMojo({ files: { "index.ts": `
 class First { value: number = 1; }

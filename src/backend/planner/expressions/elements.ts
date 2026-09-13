@@ -125,7 +125,7 @@ export function planMojoElement(
       return undefined;
     }
   }
-  const receiverType = selection.kind === "provider" ? operation?.receiverType : selection.receiverType;
+  const receiverType = selection.kind === "provider" ? operation?.receiverType : preparedReceiver.type;
   const indexType = selection.kind === "provider" ? operation?.parameterTypes[0] : selection.indexType;
   if (receiverType === undefined || indexType === undefined) return undefined;
   const ordered = orderMojoValues([
@@ -456,7 +456,7 @@ export function planMojoProjectElementWrite(
     : convertMojoValue(rawIndex, selection.indexConversion, context);
   if (receiver === undefined || index === undefined) return undefined;
   const location = orderMojoValues([
-    Object.freeze({ plan: receiver.plan, type: selection.receiverType, role: "index_write_receiver" }),
+    Object.freeze({ plan: receiver.plan, type: receiver.type, role: "index_write_receiver" }),
     Object.freeze({ plan: index, type: selection.indexType, role: "index_write_key" }),
   ], context, true);
   let before: readonly MojoStatement[];

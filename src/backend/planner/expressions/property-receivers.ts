@@ -29,13 +29,12 @@ export function prepareMojoPropertyReceiver(
 ): PreparedMojoReceiver | undefined {
   const receiver = prepareMojoReceiver(expression, receiverType, optional, context, planValue);
   if (receiver === undefined || selection.evaluatedKey === undefined) return receiver;
-  return withMojoPropertyKeyEvaluation(selection, receiver, receiverType, context, planValue);
+  return withMojoPropertyKeyEvaluation(selection, receiver, context, planValue);
 }
 
 export function withMojoPropertyKeyEvaluation(
   selection: { readonly evaluatedKey?: Node },
   receiver: PreparedMojoReceiver,
-  receiverType: MojoTargetTypeRef,
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
 ): PreparedMojoReceiver | undefined {
@@ -43,7 +42,8 @@ export function withMojoPropertyKeyEvaluation(
   const key = planMojoPropertyKeyEvaluation(selection, context, planValue);
   if (key === undefined) return undefined;
   const ordered = orderMojoValues([
-    Object.freeze({ plan: receiver.plan, type: receiverType, role: "property_receiver" }),
+    Object.freeze({ plan: receiver.plan, type: receiver.type, role: "property_receiver",
+      use: receiver.type.kind === "reference" ? "location" : "snapshot" }),
   ], context, true);
   return Object.freeze({
     ...receiver,

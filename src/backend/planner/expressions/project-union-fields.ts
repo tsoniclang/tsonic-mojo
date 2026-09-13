@@ -29,7 +29,7 @@ function prepareFields(
   registerMojoTypeImports(selection.receiverType, context);
   registerMojoTypeImports(selection.resultType, context);
   const ordered = orderMojoValues([Object.freeze({
-    plan: receiver.plan, type: selection.receiverType, role: "union_property_receiver",
+    plan: receiver.plan, type: receiver.type, role: "union_property_receiver",
     use: "snapshot",
   })], context, true);
   const value = ordered.values[0]!;

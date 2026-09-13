@@ -59,9 +59,10 @@ export interface PlannedMojoCallArgument {
 }
 
 export type PreparedMojoReceiver =
-  | { readonly kind: "required"; readonly plan: MojoValuePlan }
+  | { readonly kind: "required"; readonly plan: MojoValuePlan; readonly type: MojoTargetTypeRef }
   | {
       readonly kind: "optional";
+      readonly type: MojoTargetTypeRef;
       readonly before: readonly MojoStatement[];
       readonly condition: MojoExpression;
       readonly plan: MojoValuePlan;
@@ -242,10 +243,13 @@ export function prepareMojoReceiver(
 ): PreparedMojoReceiver | undefined {
   const receiver = planValue(expression, context);
   if (receiver === undefined) return undefined;
-  if (!optionalChain) return Object.freeze({ kind: "required", plan: receiver });
+  const carrier = context.program.representations.expressionCarrier(expression);
+  const physicalType = carrier === undefined ? undefined : context.program.representations.carrier(carrier)?.type;
+  if (physicalType === undefined) throw new Error("A sealed receiver expression has no physical carrier.");
+  if (!optionalChain) return Object.freeze({ kind: "required", plan: receiver, type: physicalType });
   const actualType = context.program.queries.expressionType(expression);
   if (actualType !== undefined && mojoTargetTypeEquals(actualType, selectedType)) {
-    return Object.freeze({ kind: "required", plan: receiver });
+    return Object.freeze({ kind: "required", plan: receiver, type: physicalType });
   }
   if (actualType?.kind !== "optional" || !mojoTargetTypeEquals(actualType.value, selectedType)) {
     appendMojoPlanningDiagnostic(
@@ -269,6 +273,7 @@ export function prepareMojoReceiver(
   const valueName = explicitCopy ? allocateMojoSyntheticName(context, "optional_value") : undefined;
   return Object.freeze({
     kind: "optional",
+    type: selectedType,
     before: Object.freeze([
       ...receiver.before,
       Object.freeze({

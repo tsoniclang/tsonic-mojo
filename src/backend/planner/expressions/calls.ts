@@ -135,7 +135,7 @@ export function planMojoCall(
         const selectedReceiver = exactDispatch
           ? exactReceiver === undefined
             ? undefined
-            : Object.freeze({ kind: "required", plan: exactReceiver })
+            : Object.freeze({ kind: "required", plan: exactReceiver, type: receiverType })
           : prepareMojoReceiver(
               selection.target.receiver,
               receiverType,
@@ -144,7 +144,7 @@ export function planMojoCall(
               planValue,
             );
         const receiver = selectedReceiver === undefined ? undefined
-          : withMojoPropertyKeyEvaluation(selection, selectedReceiver, receiverType, context, planValue);
+          : withMojoPropertyKeyEvaluation(selection, selectedReceiver, context, planValue);
         if (exactDispatch && receiver === undefined) {
           appendMojoPlanningDiagnostic(
             context,
@@ -157,7 +157,7 @@ export function planMojoCall(
         if (receiver === undefined) return undefined;
         const ordered = invocation.orderArguments(plannedArguments, Object.freeze({
           plan: receiver.plan,
-          type: receiverType,
+          type: receiver.type,
           role: "call_receiver",
         }));
         before = ordered.before;
@@ -487,7 +487,7 @@ export function planMojoCall(
     }
     const ordered = invocation.orderArguments(plannedArguments, Object.freeze({
       plan: receiver,
-      type: selection.operation.receiverType,
+      type: selection.receiverConversion === undefined ? preparedReceiver.type : selection.operation.receiverType,
       role: "call_receiver",
       ...(target.receiver === "mut" ? { stabilize: true, use: "location" as const } : {}),
     }));
