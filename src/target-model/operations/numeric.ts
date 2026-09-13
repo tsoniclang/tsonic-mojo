@@ -1,7 +1,7 @@
 import type { MojoTargetTypeRef } from "../types/model.js";
 import type { MojoValueConversion } from "../conversions/model.js";
 
-export type MojoNumericOperator = "~" | "&" | "|" | "^" | "<<" | ">>" | ">>>" | "%";
+export type MojoNumericOperator = "~" | "&" | "|" | "^" | "<<" | ">>" | ">>>" | "%" | "/" | "**";
 export type MojoNumericConversion = Extract<MojoValueConversion, { readonly kind: "identity" | "primitive-cast" }>;
 
 export interface MojoNumericOperation {
@@ -13,4 +13,5 @@ export interface MojoNumericOperation {
   readonly leftConversion: MojoNumericConversion;
   readonly rightConversion?: MojoNumericConversion;
   readonly resultType: MojoTargetTypeRef;
+  readonly errorType?: MojoTargetTypeRef;
 }

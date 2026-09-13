@@ -35,6 +35,7 @@ export function mojoValueConversionEquals(left: MojoValueConversion, right: Mojo
     case "undefined-to-unit":
     case "js-to-native-string": return true;
     case "primitive-cast":
+    case "bigint-cast":
     case "reference-copy":
     case "native-to-js-string":
     case "optional-none": return mojoTargetTypeEquals(left.targetType, (right as typeof left).targetType);

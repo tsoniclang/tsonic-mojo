@@ -1,10 +1,11 @@
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoNumericOperator, MojoNumericOperation } from "../../target-model/operations/numeric.js";
 import { classifyMojoValueConversion } from "../conversions/selection.js";
+import { mojoSourceErrorType } from "../../target-model/types/error-carriers.js";
 
 const sourceNumber: MojoTargetTypeRef = Object.freeze({ kind: "source-primitive", name: "float64" });
 
-const runtimeOperations: Readonly<Record<MojoNumericOperator, string>> = Object.freeze({
+const runtimeOperations: Readonly<Partial<Record<MojoNumericOperator, string>>> = Object.freeze({
   "%": "source_number_remainder",
   "~": "source_number_bitwise_not",
   "&": "source_number_bitwise_and",
@@ -16,6 +17,8 @@ const runtimeOperations: Readonly<Record<MojoNumericOperator, string>> = Object.
 });
 
 export const mojoNumericOperators: ReadonlyMap<string, MojoNumericOperator> = new Map([
+  ["KindSlashToken", "/"], ["KindSlashEqualsToken", "/"],
+  ["KindAsteriskAsteriskToken", "**"], ["KindAsteriskAsteriskEqualsToken", "**"],
   ["KindPercentToken", "%"], ["KindPercentEqualsToken", "%"],
   ["KindTildeToken", "~"],
   ["KindAmpersandToken", "&"], ["KindAmpersandEqualsToken", "&"],
@@ -48,6 +51,9 @@ export function selectMojoNumericOperation(
       leftConversion: Object.freeze({ kind: "identity" }),
       ...(right === undefined ? {} : { rightConversion: Object.freeze({ kind: "identity" as const }) }),
       resultType: result,
+      ...(["/", "%", "**", "<<", ">>"].includes(operator)
+        ? { errorType: mojoSourceErrorType() }
+        : {}),
     });
   }
   if (!isNumeric(left) || (right !== undefined && !isNumeric(right))) return undefined;
@@ -66,10 +72,11 @@ export function selectMojoNumericOperation(
     ? unsignedPrimitives[left.name as keyof typeof unsignedPrimitives]
     : undefined;
   if (!numberOperation && operator === ">>>" && unsignedName === undefined) return undefined;
+  const runtimeName = runtimeOperations[operator];
   return Object.freeze({
     operator,
-    implementation: numberOperation
-      ? Object.freeze({ kind: "source-number", name: runtimeOperations[operator] })
+    implementation: numberOperation && runtimeName !== undefined
+      ? Object.freeze({ kind: "source-number", name: runtimeName })
       : Object.freeze({
           kind: "native",
           ...(operator === ">>>" && unsignedName !== undefined

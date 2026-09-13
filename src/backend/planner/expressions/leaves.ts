@@ -126,7 +126,25 @@ export function planMojoLeafExpression(
       );
       return undefined;
     }
-    planned = { kind: "number-literal", text: text.slice(0, -1) };
+    const literal: MojoExpression = Object.freeze({ kind: "number-literal", text: text.slice(0, -1) });
+    const targetType = numericTargetType ?? actualType;
+    if (targetType?.kind === "bigint") {
+      registerMojoTypeImports(targetType, context);
+      planned = Object.freeze({
+        kind: "call",
+        callee: Object.freeze({
+          kind: "member",
+          receiver: Object.freeze({ kind: "type-value", type: targetType }),
+          name: "from_decimal_literal",
+        }),
+        arguments: Object.freeze([Object.freeze({ value: Object.freeze({
+          kind: "string-literal",
+          value: BigInt(text.slice(0, -1).replace(/_/gu, "")).toString(),
+        }) })]),
+      });
+    } else {
+      planned = literal;
+    }
   } else if (ast.kindName(node) === "KindTrueKeyword" || ast.kindName(node) === "KindFalseKeyword") {
     planned = { kind: "bool-literal", value: ast.kindName(node) === "KindTrueKeyword" };
   } else {

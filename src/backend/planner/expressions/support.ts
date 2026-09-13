@@ -1,9 +1,6 @@
 import type { Node } from "@tsonic/tsts";
 import { convertMojoProviderRecord } from "./provider-record-conversion.js";
 import type {
-  MojoSelectedProviderOperation,
-} from "../../../target-model/operations/selection.js";
-import type {
   MojoValueConversion,
 } from "../../../target-model/conversions/model.js";
 import { mojoTargetTypeEquals } from "../../../target-model/types/equality.js";
@@ -49,7 +46,7 @@ export interface OrderedMojoValue {
   readonly type: MojoTargetTypeRef;
   readonly role: string;
   readonly stabilize?: boolean;
-  readonly use?: "value" | "location";
+  readonly use?: "value" | "location" | "snapshot";
   readonly typeAnnotation?: "inferred";
 }
 
@@ -70,26 +67,6 @@ export type PreparedMojoReceiver =
       readonly plan: MojoValuePlan;
     };
 
-export function planProviderConstant(
-  operation: MojoSelectedProviderOperation,
-  resultConversion: MojoValueConversion,
-  context: MojoPlanningContext,
-): MojoValuePlan | undefined {
-  if (operation.target.kind !== "constant" && operation.target.kind !== "function-read") return undefined;
-  const selected: MojoExpression = operation.target.kind === "constant"
-    ? mojoModuleMemberExpression(context, operation.target.modulePath, operation.target.name)
-    : {
-        kind: "call",
-        callee: mojoModuleMemberExpression(
-          context,
-          operation.target.modulePath,
-          operation.target.name,
-        ),
-        arguments: Object.freeze([]),
-      };
-  return convertMojoValue(mojoValue(selected), resultConversion, context);
-}
-
 export function orderMojoValues(
   values: readonly OrderedMojoValue[],
   context: MojoPlanningContext,
@@ -109,7 +86,8 @@ export function orderMojoValues(
       ? isStableMojoLocation(value.plan.value)
       : value.plan.value.kind === "path";
     if (value.stabilize !== false &&
-      ((value.stabilize === true || stabilizeAll || index < finalEffectIndex) && !stable ||
+      (value.use === "snapshot" ||
+        (value.stabilize === true || stabilizeAll || index < finalEffectIndex) && !stable ||
         index < finalPreludeIndex && (value.use !== "location" || !stable)) &&
       !isTriviallyPureMojoValue(value.plan.value)) {
       if (value.typeAnnotation !== "inferred") registerMojoTypeImports(value.type, context);
@@ -563,6 +541,14 @@ export function applyMojoConversion(
     case "js-data-rest":
     case "js-value-graph":
       return undefined;
+    case "bigint-cast":
+      registerMojoTypeImports(conversion.targetType, context);
+      return Object.freeze({
+        kind: "call",
+        callee: mojoModuleMemberExpression(context, ["tsonic_runtime", "bigint"], "bigint_to_integer"),
+        genericArguments: Object.freeze([Object.freeze({ kind: "type", type: conversion.targetType })]),
+        arguments: Object.freeze([Object.freeze({ value: expression })]),
+      });
     case "primitive-cast":
     case "reference-copy":
       registerMojoTypeImports(conversion.targetType, context);

@@ -354,7 +354,7 @@ export function classifyMojoValueConversion(
   if (actual.kind === "bigint" && isIntegralPrimitive(expected)) {
     return {
       kind: "resolved",
-      conversion: Object.freeze({ kind: "primitive-cast", targetType: expected }),
+      conversion: Object.freeze({ kind: "bigint-cast", targetType: expected }),
     };
   }
   if (actual.kind === "reference" && mojoTargetTypeEquals(actual.value, expected) &&
@@ -544,7 +544,7 @@ function isIntegralPrimitive(
   type: MojoTargetTypeRef,
 ): type is Extract<MojoTargetTypeRef, { readonly kind: "source-primitive" }> {
   return type.kind === "source-primitive" && type.name !== "bool" &&
-    type.name !== "char" && type.name !== "float16" &&
+    type.name !== "char" && type.name !== "decimal" && type.name !== "float16" &&
     type.name !== "float32" && type.name !== "float64";
 }
 

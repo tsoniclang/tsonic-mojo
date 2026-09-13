@@ -373,6 +373,18 @@ export function planBinary(
   const leftNode = BinaryExpression_Left(ast, node);
   const rightNode = BinaryExpression_Right(ast, node);
   const operatorKind = ast.kindName(ast.as.AsBinaryExpression(node)?.OperatorToken);
+  if (operatorKind === "KindCommaToken") {
+    const left = leftNode === undefined ? undefined : planNested(leftNode, context);
+    const right = rightNode === undefined ? undefined
+      : planNested(rightNode, context, context.program.queries.expressionType(node));
+    const leftType = leftNode === undefined ? undefined : context.program.queries.expressionType(leftNode);
+    if (left === undefined || right === undefined || leftType === undefined) return undefined;
+    const discarded: MojoStatement = leftType.kind === "unit" || leftType.kind === "never"
+      ? Object.freeze({ kind: "expression", expression: left.value,
+          ...(leftType.kind === "never" ? { neverReturns: true } : {}) })
+      : Object.freeze({ kind: "discard", expression: left.value });
+    return withMojoValue([...left.before, discarded, ...right.before], right.value);
+  }
   if (operatorKind === "KindQuestionQuestionToken") {
     return planNullishCoalescing(node, leftNode, rightNode, context, planNested);
   }

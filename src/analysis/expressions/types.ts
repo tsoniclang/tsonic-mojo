@@ -34,6 +34,10 @@ export function inferMojoExpressionType(
   if (!ast.is.IsBinaryExpression(node)) return expressionTypes.get(node);
   const binary = ast.as.AsBinaryExpression(node);
   const operator = ast.kindName(binary?.OperatorToken);
+  if (operator === "KindCommaToken") {
+    const right = BinaryExpression_Right(ast, node);
+    return right === undefined ? undefined : expressionTypes.get(right);
+  }
   if (isMojoAssignmentOperator(operator)) {
     if (operator === "KindEqualsToken") {
       const right = BinaryExpression_Right(ast, node);

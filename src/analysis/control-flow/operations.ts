@@ -204,7 +204,8 @@ export function analyzeElement(
   if (selected.callCallee && selectedSubjects.some((subject) => input.callableByDeclaration.has(subject as Node))) return;
   const projectMember = selectedSubjects.some((subject) => {
     const field = input.fieldByDeclaration.get(subject as Node);
-    return field !== undefined && field.kind !== "interface-index-signature";
+    return field !== undefined && field.kind !== "interface-index-signature" ||
+      input.callableByDeclaration.has(subject as Node);
   });
   const receiverType = input.expressionTypes.get(selected.receiver.expression);
   const structural = input.structuralObjects.definitionForType(receiverType);

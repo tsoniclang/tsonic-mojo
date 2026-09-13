@@ -18,9 +18,9 @@ import { planMojoLeafExpression } from "./leaves.js";
 import { mojoNumericLiteralCanInitialize } from "../../../target-model/types/numeric-literals.js";
 import {
   convertMojoValue,
-  planProviderConstant,
   requiredConversion,
 } from "./support.js";
+import { planProviderConstant } from "./provider-constants.js";
 import { mojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { planMojoCallableExpression } from "./callables.js";

@@ -15,6 +15,7 @@ import type {
   MojoCallSelection,
   MojoElementSelection,
   MojoIterationSelection,
+  MojoIntrinsicExpressionSelection,
   MojoPropertySelection,
   MojoResourceManagementSelection,
   MojoValueSelection,
@@ -41,6 +42,7 @@ export interface MojoErrorRegionIndexes {
   readonly iterationSelections: WeakMap<Node, MojoIterationSelection>;
   readonly resourceManagementSelections: WeakMap<Node, MojoResourceManagementSelection>;
   readonly valueSelections: WeakMap<Node, MojoValueSelection>;
+  readonly intrinsicExpressionSelections: WeakMap<Node, MojoIntrinsicExpressionSelection>;
 }
 
 export interface MojoErrorEffectOwner {
@@ -228,6 +230,10 @@ export function directMojoNodeErrorTypes(
 ): readonly MojoTargetTypeRef[] {
   const { ast } = indexes.source;
   const errors: MojoTargetTypeRef[] = [];
+  const intrinsic = indexes.intrinsicExpressionSelections.get(node);
+  if (intrinsic?.kind === "numeric" && intrinsic.operation.errorType !== undefined) {
+    errors.push(intrinsic.operation.errorType);
+  }
   const addNativeConversionError = (raises: boolean): void => {
     if (raises) errors.push(mojoNativeErrorType());
   };

@@ -229,7 +229,7 @@ export function recordMojoExecutableRegionConversionUses(
         return;
       }
       const resultType = expressionTypes.get(expression);
-      if (operator === "KindQuestionQuestionToken") {
+      if (operator === "KindQuestionQuestionToken" || operator === "KindCommaToken") {
         if (resultType !== undefined) record(right, resultType);
       } else if (operator === "KindAmpersandAmpersandToken" || operator === "KindBarBarToken") {
         const bool: MojoTargetTypeRef = { kind: "source-primitive", name: "bool" };

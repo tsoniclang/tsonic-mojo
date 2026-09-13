@@ -98,7 +98,7 @@ function resolveCapabilities(
     case "native-string":
       return lifecycle("implicit", true, true, "unavailable");
     case "bigint":
-      return explicitLifecycle;
+      return implicitHeapLifecycle;
     case "dynamic":
       return type.domain === "js" ? implicitHeapLifecycle : explicitLifecycle;
     case "type-parameter": {

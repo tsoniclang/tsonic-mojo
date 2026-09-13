@@ -593,6 +593,7 @@ MOJO_SPREAD_ELEMENT_PLAN_INCOMPLETE	planning	internal-invariant	reviewed-other	-
 MOJO_STATEMENT_NOT_PLANNED	planning	internal-invariant	reviewed-other	-	-	-	-
 MOJO_STATEMENT_UNSUPPORTED	analysis	target-gap	split-or-delete	-	-	-	-
 MOJO_STATIC_FIELD_OPTIONAL_CHAIN_UNSUPPORTED	planning	target-gap	close-capability	-	-	-	-
+MOJO_STATIC_METHOD_BINDING_NOT_SEALED	planning	internal-invariant	reviewed-other	test/integration/generated-mojo/static-method-values.test.mjs	mojo-pudding/packages/language/src/static-method-values.ts	-	-
 MOJO_STATIC_METHOD_PROPERTY_UNSUPPORTED	analysis	target-gap	close-capability	-	-	-	-
 MOJO_STRUCTURAL_OBJECT_DEFINITION_CONFLICT	analysis	internal-invariant	reviewed-other	-	-	-	-
 MOJO_STRUCTURAL_OBJECT_ELEMENT_EVIDENCE_MISSING	analysis	internal-invariant	reviewed-other	-	-	-	-

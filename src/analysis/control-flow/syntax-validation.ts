@@ -41,6 +41,7 @@ import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 
 const supportedBinaryOperators = new Set([
+  "KindCommaToken",
   "KindPlusToken",
   "KindMinusToken",
   "KindAsteriskToken",
@@ -365,6 +366,7 @@ export function validateMojoExecutableRegionSyntax(
       if (selection?.kind !== "provider-constant" &&
         selection?.kind !== "project-enum-member" &&
         selection?.kind !== "project-static-field" &&
+        selection?.kind !== "project-static-method" &&
         selection?.kind !== "provider-static") {
         validateExpression(Node_Expression(ast, expression));
       }

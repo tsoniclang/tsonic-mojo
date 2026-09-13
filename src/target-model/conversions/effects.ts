@@ -4,6 +4,7 @@ export function mojoConversionRaises(conversion: MojoValueConversion): boolean {
   switch (conversion.kind) {
     case "provider-record": return conversion.fields.some((field) => mojoConversionRaises(field.conversion));
     case "js-value-extract":
+    case "bigint-cast":
     case "js-to-native-string":
     case "native-error-result-unwrap": return true;
     case "js-data-rest": return mojoConversionRaises(conversion.elementConversion);

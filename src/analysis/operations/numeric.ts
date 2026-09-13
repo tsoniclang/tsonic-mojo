@@ -18,6 +18,7 @@ export function analyzeMojoNumericOperation(
   const operand = ast.is.IsBinaryExpression(node) ? BinaryExpression_Left(ast, node) : PrefixUnaryExpression_Operand(ast, node);
   const right = ast.is.IsBinaryExpression(node) ? BinaryExpression_Right(ast, node) : undefined;
   const leftType = operand === undefined ? undefined : types.get(operand);
+  if ((operator === "/" || operator === "**") && leftType?.kind !== "bigint") return undefined;
   const rightType = right === undefined ? undefined : types.get(right);
   const result = types.get(node);
   if (operand === undefined || leftType === undefined || result === undefined ||

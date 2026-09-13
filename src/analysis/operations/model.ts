@@ -13,6 +13,11 @@ export type MojoPropertySelection = MojoPropertyOperation & {
 
 type MojoPropertyOperation =
   | {
+      readonly kind: "project-static-method";
+      readonly declaration: Node;
+      readonly callableType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
+    }
+  | {
       readonly kind: "project-method";
       readonly declaration: Node;
       readonly receiver: Node;
@@ -75,7 +80,7 @@ type MojoPropertyOperation =
         readonly fieldType: MojoTargetTypeRef;
       }[];
       readonly resultType: MojoTargetTypeRef;
-      readonly accessMode: "read";
+      readonly accessMode: "read" | "write" | "read-write";
     }
   | {
       readonly kind: "provider-union-property";

@@ -118,13 +118,16 @@ function functionValueAdapter(
       ...(parameter.omissionKind === "rest" ? { spread: true } : {}),
     });
   });
+  if (function_.owner !== undefined) registerMojoTypeImports(function_.owner.type, context);
   const call: MojoExpression = Object.freeze({
     kind: "call",
-    callee: mojoModuleMemberExpression(
-      context,
-      context.module.modulePath,
-      function_.name,
-    ),
+    callee: function_.owner === undefined
+      ? mojoModuleMemberExpression(context, context.module.modulePath, function_.name)
+      : Object.freeze({
+          kind: "member",
+          receiver: Object.freeze({ kind: "type-value", type: function_.owner.type }),
+          name: function_.name,
+        }),
     arguments: Object.freeze(callArguments),
   });
   const invokeStatements: readonly MojoStatement[] = function_.resultType.kind === "unit"

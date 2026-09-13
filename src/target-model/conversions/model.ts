@@ -90,14 +90,19 @@ export type MojoValueConversion =
       readonly source: "number" | "string" | "native-string" | "dynamic" | "always-true" | "always-false";
     }
   | { readonly kind: "primitive-cast"; readonly targetType: MojoTargetTypeRef }
+  | { readonly kind: "bigint-cast"; readonly targetType: Extract<MojoTargetTypeRef, { readonly kind: "source-primitive" }> }
   | { readonly kind: "reference-copy"; readonly targetType: MojoTargetTypeRef }
   | ({
       readonly kind: "js-box";
       readonly targetType: MojoTargetTypeRef;
     } & (
       | {
-          readonly source: "number" | "bigint";
+          readonly source: "number";
           readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "source-primitive" }>;
+        }
+      | {
+          readonly source: "bigint";
+          readonly sourceType: Extract<MojoTargetTypeRef, { readonly kind: "source-primitive" | "bigint" }>;
         }
       | {
           readonly source: "bool" | "string" | "native-string" | "symbol" | "null" | "undefined";

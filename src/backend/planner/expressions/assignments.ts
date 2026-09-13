@@ -35,6 +35,8 @@ import type {
 import { plannedLocationExpression } from "./mutation-locations.js";
 import { planMojoCompoundValue } from "./numeric.js";
 import { mojoValue } from "./value-plan.js";
+import { mojoLocationExpression } from "../../../source/syntax/locations.js";
+import { planMojoProjectUnionWrite } from "./project-union-fields.js";
 
 const assignmentOperatorText = new Map<string, string>([
   ["KindEqualsToken", "="],
@@ -66,12 +68,22 @@ export function planMojoAssignment(
     ast.kindName(ast.as.AsBinaryExpression(node)?.OperatorToken),
   );
   if (operator === undefined) return undefined;
-  const leftNode = BinaryExpression_Left(ast, node);
+  const authoredLeft = BinaryExpression_Left(ast, node);
+  const leftNode = authoredLeft === undefined ? undefined : mojoLocationExpression(authoredLeft, ast);
   const rightNode = BinaryExpression_Right(ast, node);
   if (leftNode === undefined || rightNode === undefined) return undefined;
   const leftType = context.program.queries.expressionType(leftNode);
   const property = context.program.queries.propertySelection(leftNode);
   const element = context.program.queries.elementSelection(leftNode);
+  if (property?.kind === "project-union-field") {
+    const right = planValue(rightNode, context, context.program.queries.expressionType(node));
+    if (right === undefined) return undefined;
+    const prepared = planMojoProjectUnionWrite(leftNode, property, right, operator, node, context, planValue);
+    return prepared === undefined ? undefined : materializeMojoMutation(
+      prepared, resultUse === "discard" ? "discard" : "assigned",
+      context.program.queries.expressionType(node), node, context,
+    );
+  }
   const targetWriteType = property?.kind === "provider" || property?.kind === "provider-static"
     ? property.targetWriteType
     : property?.kind === "project-method" ? property.callableType

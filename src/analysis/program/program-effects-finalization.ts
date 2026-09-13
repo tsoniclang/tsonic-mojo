@@ -95,6 +95,7 @@ export function finalizeMojoProgramEffects(
     resourceDeclarations,
     valueSelections,
     conversions,
+    intrinsicExpressionSelections,
   } = environment;
   const { ast } = source;
   for (const callNode of callNodes) {
@@ -159,6 +160,7 @@ export function finalizeMojoProgramEffects(
     iterationSelections,
     resourceManagementSelections,
     valueSelections,
+    intrinsicExpressionSelections,
   });
   const effectOwners = Object.freeze([
     ...functions.map((function_) => Object.freeze({
