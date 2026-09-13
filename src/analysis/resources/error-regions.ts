@@ -335,7 +335,8 @@ export function directMojoNodeErrorTypes(
       }
       addNativeConversionError(
         (selection.receiverConversion !== undefined && mojoConversionRaises(selection.receiverConversion)) ||
-        (selection.readResultConversion !== undefined && mojoConversionRaises(selection.readResultConversion)),
+        (selection.readResultConversion !== undefined && mojoConversionRaises(selection.readResultConversion)) ||
+        (selection.writeValueConversion !== undefined && mojoConversionRaises(selection.writeValueConversion)),
       );
     } else if (selection?.kind === "provider-constant") {
       errors.push(...mojoOperationErrorTypes(selection.operation));
@@ -349,6 +350,9 @@ export function directMojoNodeErrorTypes(
       }
       if (selection.readResultConversion !== undefined) {
         addNativeConversionError(mojoConversionRaises(selection.readResultConversion));
+      }
+      if (selection.writeValueConversion !== undefined) {
+        addNativeConversionError(mojoConversionRaises(selection.writeValueConversion));
       }
     }
   }
@@ -375,6 +379,9 @@ export function directMojoNodeErrorTypes(
           errors.push(...mojoOperationErrorTypes(selection.writeOperation));
         }
         addNativeConversionError(mojoConversionRaises(selection.receiverConversion));
+        if (selection.writeValueConversion !== undefined) {
+          addNativeConversionError(mojoConversionRaises(selection.writeValueConversion));
+        }
       }
     }
   }

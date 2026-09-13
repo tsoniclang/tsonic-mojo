@@ -18,6 +18,7 @@ import type { MojoValuePlanner } from "./support.js";
 import { consumeMojoValue, mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import type { MojoPreparedMutation } from "./mutation-plan.js";
+import { prepareMojoMutationValue } from "./mutation-plan.js";
 import { applyValueRefinement } from "./leaves.js";
 import { mojoProjectStateValue } from "../declarations/state-storage.js";
 
@@ -252,15 +253,14 @@ export function projectElementUsesMethodWrite(
     context.program.projectDispatch.viewForType(selection.receiverType) !== undefined;
 }
 
-export function providerElementUsesMethodWrite(
+export function providerElementUsesWriteOperation(
   selection: import("../../../analysis/program/model.js").MojoElementSelection | undefined,
 ): boolean {
   return selection?.kind === "provider" &&
-    selection.writeOperation?.target.kind === "index-write" &&
-    selection.writeOperation.target.access.kind === "method";
+    selection.writeOperation?.target.kind === "index-write";
 }
 
-export function planMojoProviderElementMethodWrite(
+export function planMojoProviderElementWrite(
   node: Node,
   value: MojoValuePlan,
   operator: string,
@@ -274,8 +274,10 @@ export function planMojoProviderElementMethodWrite(
   if (write?.target.kind !== "index-write" || write.receiverType === undefined ||
     write.parameterTypes.length !== 2) return undefined;
   const target = write.target;
-  if (target.access.kind !== "method") return undefined;
-  const writeName = target.access.name;
+  if (selection.sourceWriteType === undefined || selection.writeValueConversion === undefined) return undefined;
+  const mutationValue = prepareMojoMutationValue(
+    operationNode, selection.sourceWriteType, context, selection.writeValueConversion,
+  );
   if (selection.optionalChain) {
     appendMojoPlanningDiagnostic(
       context,
@@ -311,7 +313,7 @@ export function planMojoProviderElementMethodWrite(
   let previousValue: MojoExpression | undefined;
   if (operator === "=") {
     const orderedValue = orderMojoValues([
-      Object.freeze({ plan: value, type: mojoCompoundRightType(operationNode, write.parameterTypes[1]!, context), role: "element_write_value" }),
+      Object.freeze({ plan: value, type: mutationValue.assignedType, role: "element_write_value" }),
     ], context, true);
     before = Object.freeze([...before, ...orderedValue.before]);
     assigned = orderedValue.values[0]!;
@@ -364,7 +366,7 @@ export function planMojoProviderElementMethodWrite(
       Object.freeze({ plan: current, type: selection.readType!, role: "element_write_current" }),
     ], context, true);
     const orderedValue = orderMojoValues([
-      Object.freeze({ plan: value, type: mojoCompoundRightType(operationNode, write.parameterTypes[1]!, context), role: "element_write_value" }),
+      Object.freeze({ plan: value, type: mojoCompoundRightType(operationNode, mutationValue.assignedType, context), role: "element_write_value" }),
     ], context, true);
     before = Object.freeze([
       ...before,
@@ -377,19 +379,27 @@ export function planMojoProviderElementMethodWrite(
   return Object.freeze({
     before,
     assignedValue: assigned,
-    assignedType: write.parameterTypes[1]!,
+    ...mutationValue,
     ...(previousValue === undefined ? {} : { previousValue }),
     valuePassing: target.value.convention === "var" ? "consume" : "borrow",
     createWrite(argumentValue: MojoExpression): MojoStatement {
       const argument = target.value.convention === "var"
         ? consumeMojoValue(argumentValue, write.parameterTypes[1]!, context.program.lifecycle)
         : argumentValue;
+      if (target.access.kind === "element") {
+        return Object.freeze({
+          kind: "assignment",
+          operator: "=",
+          left: Object.freeze({ kind: "element", receiver: location.values[0]!, index: location.values[1]! }),
+          right: argument,
+        });
+      }
       return Object.freeze({
         kind: "expression",
         expression: Object.freeze({
           kind: "method-call",
           receiver: location.values[0]!,
-          name: writeName,
+          name: target.access.name,
           arguments: Object.freeze([
             Object.freeze({ value: location.values[1]! }),
             Object.freeze({ value: argument }),
@@ -423,6 +433,7 @@ export function planMojoProjectElementWrite(
     );
     return undefined;
   }
+  const mutationValue = prepareMojoMutationValue(operationNode, selection.writeType, context);
   if (selection.optionalChain) {
     appendMojoPlanningDiagnostic(
       context,
@@ -452,12 +463,11 @@ export function planMojoProjectElementWrite(
   let assigned: MojoExpression;
   let previousValue: MojoExpression | undefined;
   if (operator !== "=") {
-    if (selection.readType === undefined ||
-      !mojoTargetTypeEquals(selection.readType, selection.writeType)) {
+    if (selection.readType === undefined) {
       appendMojoPlanningDiagnostic(
         context,
         "MOJO_PROJECT_INDEX_COMPOUND_WRITE_UNSUPPORTED",
-        "A compound project index write requires one identical exact read and write carrier.",
+        "A compound project index write requires an exact readable carrier.",
         node,
       );
       return undefined;
@@ -470,14 +480,14 @@ export function planMojoProjectElementWrite(
     });
     const ordered = orderMojoValues([
       Object.freeze({ plan: mojoValue(current), type: selection.readType, role: "index_write_current" }),
-      Object.freeze({ plan: value, type: mojoCompoundRightType(operationNode, selection.writeType, context), role: "index_write_value" }),
+      Object.freeze({ plan: value, type: mojoCompoundRightType(operationNode, mutationValue.assignedType, context), role: "index_write_value" }),
     ], context, true);
     before = Object.freeze([...location.before, ...ordered.before]);
     previousValue = ordered.values[0]!;
     assigned = planMojoCompoundValue(operationNode, operator, previousValue, ordered.values[1]!, context);
   } else {
     const ordered = orderMojoValues([
-      Object.freeze({ plan: value, type: selection.writeType, role: "index_write_value" }),
+      Object.freeze({ plan: value, type: mutationValue.assignedType, role: "index_write_value" }),
     ], context, true);
     before = Object.freeze([...location.before, ...ordered.before]);
     assigned = ordered.values[0]!;
@@ -485,7 +495,7 @@ export function planMojoProjectElementWrite(
   return Object.freeze({
     before,
     assignedValue: assigned,
-    assignedType: selection.writeType,
+    ...mutationValue,
     ...(previousValue === undefined ? {} : { previousValue }),
     valuePassing: "borrow",
     createWrite(argumentValue: MojoExpression): MojoStatement {

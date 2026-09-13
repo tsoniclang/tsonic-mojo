@@ -1,10 +1,11 @@
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
-import type { MojoBitwiseOperator, MojoNumericOperation } from "../../target-model/operations/numeric.js";
+import type { MojoNumericOperator, MojoNumericOperation } from "../../target-model/operations/numeric.js";
 import { classifyMojoValueConversion } from "../conversions/selection.js";
 
 const sourceNumber: MojoTargetTypeRef = Object.freeze({ kind: "source-primitive", name: "float64" });
 
-const runtimeOperations: Readonly<Record<MojoBitwiseOperator, string>> = Object.freeze({
+const runtimeOperations: Readonly<Record<MojoNumericOperator, string>> = Object.freeze({
+  "%": "source_number_remainder",
   "~": "source_number_bitwise_not",
   "&": "source_number_bitwise_and",
   "|": "source_number_bitwise_or",
@@ -14,7 +15,8 @@ const runtimeOperations: Readonly<Record<MojoBitwiseOperator, string>> = Object.
   ">>>": "source_number_unsigned_shift_right",
 });
 
-export const mojoBitwiseOperators: ReadonlyMap<string, MojoBitwiseOperator> = new Map([
+export const mojoNumericOperators: ReadonlyMap<string, MojoNumericOperator> = new Map([
+  ["KindPercentToken", "%"], ["KindPercentEqualsToken", "%"],
   ["KindTildeToken", "~"],
   ["KindAmpersandToken", "&"], ["KindAmpersandEqualsToken", "&"],
   ["KindBarToken", "|"], ["KindBarEqualsToken", "|"],
@@ -32,7 +34,7 @@ const unsignedPrimitives = Object.freeze({
 } as const);
 
 export function selectMojoNumericOperation(
-  operator: MojoBitwiseOperator,
+  operator: MojoNumericOperator,
   left: MojoTargetTypeRef,
   right: MojoTargetTypeRef | undefined,
   result: MojoTargetTypeRef,

@@ -3,6 +3,7 @@ import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoProjectTypeCatalog } from "../../target-model/types/project.js";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
+import { mojoProjectMemberName } from "./well-known-methods.js";
 import type {
   MojoAnalyzedEnum,
   MojoAnalyzedEnumMember,
@@ -42,9 +43,9 @@ export function analyzeMojoEnum(
       append(input, "MOJO_ENUM_MEMBER_NODE_KIND_INVALID", "The checked enum member list contains a non-enum node.", member);
       continue;
     }
-    const nameNode = input.source.ast.name(member);
-    if (nameNode === undefined || !input.source.ast.is.IsIdentifier(nameNode)) {
-      append(input, "MOJO_ENUM_MEMBER_NAME_UNSUPPORTED", "Enum members require one exact identifier name.", member);
+    const sourceName = mojoProjectMemberName(member, semantics, input.source.ast);
+    if (sourceName === undefined) {
+      append(input, "MOJO_ENUM_MEMBER_NAME_UNSUPPORTED", "Enum members require one exact statically selected property name.", member);
       continue;
     }
     const value = semantics.types.constantValue(member);
@@ -57,7 +58,6 @@ export function analyzeMojoEnum(
       );
       continue;
     }
-    const sourceName = input.source.ast.text(nameNode);
     const name = input.allocateMemberName(sourceName);
     input.bindName(member, name);
     analyzed.push(Object.freeze({

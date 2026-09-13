@@ -102,7 +102,7 @@ test("every production Mojo diagnostic has one classified contract row", async (
 test("the explicit unsupported and native-limit baseline is dispositioned", () => {
   const explicitRows = rows.filter((row) =>
     /(?:UNSUPPORTED|NATIVE_LIMIT|NOT_IMPLEMENTED|UNAVAILABLE)/u.test(row.code));
-  assert.equal(explicitRows.length, 121);
+  assert.equal(explicitRows.length, 117);
   assert.deepEqual(
     Object.fromEntries([...allowedAuditDispositions]
       .filter((disposition) => disposition !== "reviewed-other")
@@ -111,7 +111,7 @@ test("the explicit unsupported and native-limit baseline is dispositioned", () =
         explicitRows.filter((row) => row.auditDisposition === disposition).length,
       ])),
     {
-      "close-capability": 75,
+      "close-capability": 71,
       "replace-runtime-umbrella": 3,
       "retain-exact-guard": 22,
       "eliminate-late-planning": 8,

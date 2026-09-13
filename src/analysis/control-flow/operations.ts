@@ -1,4 +1,4 @@
-import type { Node, Type } from "@tsonic/tsts";
+import type { Node, ResolvedSourcePropertyAccessInfo, Type } from "@tsonic/tsts";
 import type { TargetSourceProgram } from "@tsonic/target-api/source";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoOptionalTargetType } from "../../target-model/types/constructors.js";
@@ -78,7 +78,15 @@ export function analyzeCall(
   }
   if (analyzed.dependency !== undefined) dependencies.add(analyzed.dependency);
   if (analyzed.dependency !== undefined) input.callDependencies.set(node, analyzed.dependency);
-  input.callSelections.set(node, analyzed.selection);
+  const callee = selectedCall.sourceCallee.expression;
+  const key = input.source.ast.is.IsElementAccessExpression(callee)
+    ? input.source.ast.as.AsElementAccessExpression(callee)?.ArgumentExpression
+    : undefined;
+  const effects = key === undefined ? undefined : input.source.navigation.expressionEffects(key);
+  const evaluateKey = effects !== undefined && (effects.invokes || effects.mutates || effects.suspends || effects.mayThrow);
+  input.callSelections.set(node, analyzed.selection.kind === "project" && evaluateKey
+    ? Object.freeze({ ...analyzed.selection, evaluatedKey: key! })
+    : analyzed.selection);
   input.callNodes.add(node);
   input.expressionTypes.set(node, optionalOperationResult(
     mojoCallResultType(analyzed.selection),
@@ -100,6 +108,15 @@ export function analyzeProperty(
     ));
     return;
   }
+  analyzeSelectedProperty(node, selected, input, semantics);
+}
+
+function analyzeSelectedProperty(
+  node: Node,
+  selected: ResolvedSourcePropertyAccessInfo,
+  input: MojoExecutableRegionAnalysisInput,
+  semantics: ReturnType<TargetSourceProgram["semantics"]["forFile"]>,
+): void {
   const resolve = (type: Type): MojoTargetTypeRef | undefined => resolveType(type, undefined, input, semantics);
   const selectedReceiverType = resolve(selected.receiver.type);
   const exactReceiverType = input.expressionTypes.get(selected.receiver.expression) ??
@@ -181,6 +198,23 @@ export function analyzeElement(
       "Element lowering requires one exact checker-selected access.",
       node,
     ));
+    return;
+  }
+  const selectedSubjects = semantics.facts.selectedSubjects(selected.selectedSymbol, selected.selectedDeclaration);
+  if (selected.callCallee && selectedSubjects.some((subject) => input.callableByDeclaration.has(subject as Node))) return;
+  const projectMember = selectedSubjects.some((subject) => {
+    const field = input.fieldByDeclaration.get(subject as Node);
+    return field !== undefined && field.kind !== "interface-index-signature";
+  });
+  const receiverType = input.expressionTypes.get(selected.receiver.expression);
+  const structural = input.structuralObjects.definitionForType(receiverType);
+  if (projectMember || structural !== undefined) {
+    analyzeSelectedProperty(node, selected, input, semantics);
+    const property = input.propertySelections.get(node);
+    const effects = input.source.navigation.expressionEffects(selected.argument.expression);
+    if (property !== undefined && (effects.invokes || effects.mutates || effects.suspends || effects.mayThrow)) {
+      input.propertySelections.set(node, Object.freeze({ ...property, evaluatedKey: selected.argument.expression }));
+    }
     return;
   }
   const element = analyzeMojoElementAccess(selected, {

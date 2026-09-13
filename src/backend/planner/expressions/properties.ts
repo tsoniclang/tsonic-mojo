@@ -13,13 +13,13 @@ import {
   finishOptionalMojoOperation,
   orderMojoValues,
   planProviderConstant,
-  prepareMojoReceiver,
 } from "./support.js";
 import type { MojoValuePlanner } from "./support.js";
-import { mojoValue, withMojoValue } from "./value-plan.js";
+import { withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { planMojoProviderUnionProperty } from "./union-properties.js";
 import { planDictionaryKey } from "./conditional-values.js";
+import { planMojoPropertyKeyEvaluation, prepareMojoPropertyReceiver } from "./property-receivers.js";
 import { selectedMojoDispatchField } from "./property-writes.js";
 import {
   mojoProjectStateValue,
@@ -85,7 +85,9 @@ export function planMojoProperty(
       return undefined;
     }
     registerMojoTypeImports(selection.owner, context);
-    return mojoValue(Object.freeze({
+    const key = planMojoPropertyKeyEvaluation(selection, context, planValue);
+    if (key === undefined) return undefined;
+    return withMojoValue(key, Object.freeze({
       kind: "member",
       receiver: Object.freeze({ kind: "type-value", type: selection.owner }),
       name: selection.name,
@@ -104,7 +106,8 @@ export function planMojoProperty(
     const field = mode === "read"
       ? mojoModuleBindingRead(selection.binding, context)
       : mojoModuleBindingWrite(selection.binding, context);
-    return field === undefined ? undefined : mojoValue(field);
+    const key = planMojoPropertyKeyEvaluation(selection, context, planValue);
+    return field === undefined || key === undefined ? undefined : withMojoValue(key, field);
   }
   if (selection.kind === "project-union-field") {
     if (mode !== "read") {
@@ -116,7 +119,8 @@ export function planMojoProperty(
       );
       return undefined;
     }
-    const receiver = prepareMojoReceiver(
+    const receiver = prepareMojoPropertyReceiver(
+      selection,
       selection.receiver,
       selection.receiverType,
       false,
@@ -181,7 +185,8 @@ export function planMojoProperty(
     selection.kind === "structural-field"
     ? selection.receiverType
     : selection.sourceReceiverType;
-  const receiver = prepareMojoReceiver(
+  const receiver = prepareMojoPropertyReceiver(
+    selection,
     selection.receiver,
     sourceReceiverType,
     selection.optionalChain,

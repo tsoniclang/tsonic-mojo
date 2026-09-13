@@ -74,6 +74,18 @@ export function recordMojoExecutableRegionConversionUses(
       ));
     }
   };
+  const mutationWriteType = (location: Node | undefined): MojoTargetTypeRef | undefined => {
+    if (location === undefined) return undefined;
+    if (ast.is.IsParenthesizedExpression(location)) return mutationWriteType(Node_Expression(ast, location));
+    const property = propertySelections.get(location);
+    const element = elementSelections.get(location);
+    return property?.kind === "provider" || property?.kind === "provider-static"
+      ? property.sourceWriteType
+      : property?.kind === "project-accessor" ? property.writeType
+      : property?.kind === "project-method" ? property.callableType
+      : element?.kind === "provider" ? element.sourceWriteType
+      : element?.writeType ?? expressionTypes.get(location);
+  };
   const visitExpression = (expression: Node | undefined): void => {
     if (expression === undefined) return;
     if (isCallableBoundary(expression, ast)) return;
@@ -86,7 +98,7 @@ export function recordMojoExecutableRegionConversionUses(
     }
     if (ast.is.IsArrayLiteralExpression(expression)) {
       for (const element of ast.elements(expression)) {
-        if (element === undefined) continue;
+        if (element === undefined || ast.is.IsOmittedExpression(element)) continue;
         visitExpression(ast.is.IsSpreadElement(element) ? Node_Expression(ast, element) : element);
       }
       return;
@@ -147,8 +159,15 @@ export function recordMojoExecutableRegionConversionUses(
       visitExpression(whenFalse);
       return;
     }
-    if (ast.is.IsPrefixUnaryExpression(expression)) {
-      const operand = PrefixUnaryExpression_Operand(ast, expression);
+    if (ast.is.IsPrefixUnaryExpression(expression) || ast.is.IsPostfixUnaryExpression(expression)) {
+      const operand = ast.is.IsPrefixUnaryExpression(expression)
+        ? PrefixUnaryExpression_Operand(ast, expression)
+        : ast.as.AsPostfixUnaryExpression(expression)?.Operand;
+      const operator = ast.operatorKindName(expression);
+      if (operator === "KindPlusPlusToken" || operator === "KindMinusMinusToken") {
+        const writeType = mutationWriteType(operand);
+        if (writeType !== undefined) record(expression, writeType);
+      }
       const expected = ast.operatorKindName(expression) === "KindExclamationToken"
         ? { kind: "source-primitive" as const, name: "bool" as const }
         : expressionTypes.get(expression);
@@ -217,17 +236,9 @@ export function recordMojoExecutableRegionConversionUses(
         record(left, bool);
         record(right, bool);
       } else if (operator !== undefined && isMojoAssignmentOperator(operator)) {
-        const property = left === undefined ? undefined : propertySelections.get(left);
-        const element = left === undefined ? undefined : elementSelections.get(left);
-        const leftType = property?.kind === "provider" || property?.kind === "provider-static"
-          ? property.targetWriteType
-          : property?.kind === "project-accessor"
-            ? property.writeType
-          : element?.kind === "provider"
-            ? element.targetWriteType
-            : element?.writeType ??
-              (left === undefined ? undefined : expressionTypes.get(left));
-        if (leftType !== undefined) record(right, leftType);
+        const writeType = mutationWriteType(left);
+        if (writeType !== undefined) record(expression, writeType);
+        if (resultType !== undefined) record(right, resultType);
       } else if (resultType !== undefined && !isComparison(operator)) {
         record(left, resultType);
         record(right, resultType);

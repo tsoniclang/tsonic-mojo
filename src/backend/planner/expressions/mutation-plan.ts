@@ -1,6 +1,7 @@
 import type { Node } from "@tsonic/tsts";
 import { mojoTargetTypeEquals } from "../../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
+import type { MojoValueConversion } from "../../../target-model/conversions/model.js";
 import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 import {
   allocateMojoSyntheticName,
@@ -8,8 +9,9 @@ import {
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import { registerMojoTypeImports } from "../types/imports.js";
-import { withMojoValue } from "./value-plan.js";
+import { mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
+import { convertMojoValue } from "./support.js";
 
 export type MojoMutationValuePassing = "borrow" | "assign" | "consume";
 
@@ -17,6 +19,7 @@ export interface MojoPreparedMutation {
   readonly before: readonly MojoStatement[];
   readonly assignedValue: MojoExpression;
   readonly assignedType: MojoTargetTypeRef;
+  readonly writeConversions: readonly MojoValueConversion[];
   readonly previousValue?: MojoExpression;
   readonly createWrite: (value: MojoExpression) => MojoStatement;
   readonly createDiscardWrite?: () => MojoStatement;
@@ -29,6 +32,26 @@ export interface MojoPlannedMutation {
   readonly result?: MojoExpression;
 }
 
+export function prepareMojoMutationValue(
+  sourceNode: Node,
+  sourceWriteType: MojoTargetTypeRef,
+  context: MojoPlanningContext,
+  targetWriteConversion?: MojoValueConversion,
+): Pick<MojoPreparedMutation, "assignedType" | "writeConversions"> {
+  const assignedType = context.program.queries.expressionType(sourceNode);
+  const sourceConversion = context.program.queries.expressionConversion(sourceNode, sourceWriteType);
+  if (assignedType === undefined || sourceConversion === undefined) {
+    throw new Error("A sealed mutation requires its computed carrier and exact source write conversion.");
+  }
+  return Object.freeze({
+    assignedType,
+    writeConversions: Object.freeze([
+      sourceConversion,
+      ...(targetWriteConversion === undefined ? [] : [targetWriteConversion]),
+    ]),
+  });
+}
+
 export function materializeMojoMutation(
   prepared: MojoPreparedMutation,
   result: "discard" | "assigned" | "previous",
@@ -37,9 +60,15 @@ export function materializeMojoMutation(
   context: MojoPlanningContext,
 ): MojoPlannedMutation | undefined {
   if (result === "discard") {
+    if (prepared.createDiscardWrite !== undefined &&
+      prepared.writeConversions.every((conversion) => conversion.kind === "identity")) {
+      return Object.freeze({ before: prepared.before, statement: prepared.createDiscardWrite() });
+    }
+    const write = mutationWrite(prepared, prepared.assignedValue, context);
+    if (write === undefined) return undefined;
     return Object.freeze({
-      before: prepared.before,
-      statement: prepared.createDiscardWrite?.() ?? prepared.createWrite(prepared.assignedValue),
+      before: Object.freeze([...prepared.before, ...write.before]),
+      statement: write.statement,
     });
   }
   if (resultType === undefined) {
@@ -70,9 +99,11 @@ export function materializeMojoMutation(
       );
       return undefined;
     }
+    const write = mutationWrite(prepared, prepared.assignedValue, context);
+    if (write === undefined) return undefined;
     return Object.freeze({
-      before: prepared.before,
-      statement: prepared.createWrite(prepared.assignedValue),
+      before: Object.freeze([...prepared.before, ...write.before]),
+      statement: write.statement,
       result: prepared.previousValue,
     });
   }
@@ -96,6 +127,8 @@ export function materializeMojoMutation(
     context,
   );
   if (writeValue === undefined) return undefined;
+  const write = mutationWrite(prepared, writeValue, context);
+  if (write === undefined) return undefined;
   return Object.freeze({
     before: Object.freeze([
       ...prepared.before,
@@ -105,10 +138,24 @@ export function materializeMojoMutation(
         type: resultType,
         initializer: prepared.assignedValue,
       }),
+      ...write.before,
     ]),
-    statement: prepared.createWrite(writeValue),
+    statement: write.statement,
     result: path,
   });
+}
+
+function mutationWrite(
+  prepared: MojoPreparedMutation,
+  value: MojoExpression,
+  context: MojoPlanningContext,
+): MojoPlannedMutation | undefined {
+  let converted: MojoValuePlan | undefined = mojoValue(value);
+  for (const conversion of prepared.writeConversions) {
+    converted = convertMojoValue(converted, conversion, context);
+    if (converted === undefined) return undefined;
+  }
+  return Object.freeze({ before: converted.before, statement: prepared.createWrite(converted.value) });
 }
 
 export function mutationAsValue(

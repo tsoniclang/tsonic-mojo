@@ -35,6 +35,7 @@ import {
 } from "./source-profile-special-calls.js";
 import { planMojoProjectConstruction } from "./project-construction.js";
 import { planMojoProviderCallArguments } from "./provider-call-arguments.js";
+import { planMojoPropertyKeyEvaluation, withMojoPropertyKeyEvaluation } from "./property-receivers.js";
 
 export function planMojoCall(
   node: Node,
@@ -131,7 +132,7 @@ export function planMojoCall(
                   arguments: Object.freeze([]),
                 }))
           : undefined;
-        const receiver = exactDispatch
+        const selectedReceiver = exactDispatch
           ? exactReceiver === undefined
             ? undefined
             : Object.freeze({ kind: "required", plan: exactReceiver })
@@ -142,6 +143,8 @@ export function planMojoCall(
               context,
               planValue,
             );
+        const receiver = selectedReceiver === undefined ? undefined
+          : withMojoPropertyKeyEvaluation(selection, selectedReceiver, receiverType, context, planValue);
         if (exactDispatch && receiver === undefined) {
           appendMojoPlanningDiagnostic(
             context,
@@ -236,7 +239,9 @@ export function planMojoCall(
           return undefined;
         }
         const ordered = invocation.orderArguments(plannedArguments);
-        before = ordered.before;
+        const key = planMojoPropertyKeyEvaluation(selection, context, planValue);
+        if (key === undefined) return undefined;
+        before = Object.freeze([...key, ...ordered.before]);
         call = {
           kind: "method-call",
           receiver: { kind: "type-value", type: selection.target.owner },

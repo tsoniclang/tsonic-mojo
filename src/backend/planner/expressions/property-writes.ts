@@ -10,15 +10,16 @@ import { mojoTargetTypeEquals } from "../../../target-model/types/equality.js";
 import {
   convertMojoValue,
   orderMojoValues,
-  prepareMojoReceiver,
 } from "./support.js";
 import type { MojoValuePlanner } from "./support.js";
 import { consumeMojoValue, mojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import type { MojoPreparedMutation } from "./mutation-plan.js";
+import { prepareMojoMutationValue } from "./mutation-plan.js";
 import { planDictionaryKey } from "./conditional-values.js";
 import { mojoParameterConvention } from "../../../target-model/operations/parameters.js";
 import { mojoConvertedValueType } from "../../../target-model/conversions/result.js";
+import { prepareMojoPropertyReceiver } from "./property-receivers.js";
 
 export function projectPropertyUsesMethodWrite(
   selection: import("../../../analysis/program/model.js").MojoPropertySelection | undefined,
@@ -99,6 +100,7 @@ export function planMojoProjectPropertyWrite(
     : dispatch?.read?.valueType ??
       (selection.kind === "project-accessor" ? selection.readType : selection.fieldType);
   if (writeName === undefined || writeType === undefined) return undefined;
+  const mutationValue = prepareMojoMutationValue(operationNode, writeType, context);
   if (selection.optionalChain) {
     appendMojoPlanningDiagnostic(
       context,
@@ -108,7 +110,8 @@ export function planMojoProjectPropertyWrite(
     );
     return undefined;
   }
-  const receiver = prepareMojoReceiver(
+  const receiver = prepareMojoPropertyReceiver(
+    selection,
     selection.receiver,
     selection.receiverType,
     false,
@@ -136,9 +139,8 @@ export function planMojoProjectPropertyWrite(
       );
       return undefined;
     }
-    if (readName === undefined || readType === undefined ||
-      !mojoTargetTypeEquals(readType, writeType)) {
-      throw new Error("A sealed compound project property lost its identical read and write carriers.");
+    if (readName === undefined || readType === undefined) {
+      throw new Error("A sealed compound project property requires an exact read operation.");
     }
     const current: MojoExpression = Object.freeze({
       kind: "method-call",
@@ -150,14 +152,14 @@ export function planMojoProjectPropertyWrite(
     });
     const ordered = orderMojoValues([
       Object.freeze({ plan: mojoValue(current), type: readType, role: "property_write_current" }),
-      Object.freeze({ plan: value, type: mojoCompoundRightType(operationNode, writeType, context), role: "property_write_value" }),
+      Object.freeze({ plan: value, type: mojoCompoundRightType(operationNode, mutationValue.assignedType, context), role: "property_write_value" }),
     ], context, true);
     before = Object.freeze([...location.before, ...ordered.before]);
     previousValue = ordered.values[0]!;
     assigned = planMojoCompoundValue(operationNode, operator, previousValue, ordered.values[1]!, context);
   } else {
     const ordered = orderMojoValues([
-      Object.freeze({ plan: value, type: writeType, role: "property_write_value" }),
+      Object.freeze({ plan: value, type: mutationValue.assignedType, role: "property_write_value" }),
     ], context, true);
     before = Object.freeze([...location.before, ...ordered.before]);
     assigned = ordered.values[0]!;
@@ -165,7 +167,7 @@ export function planMojoProjectPropertyWrite(
   return Object.freeze({
     before,
     assignedValue: assigned,
-    assignedType: writeType,
+    ...mutationValue,
     ...(previousValue === undefined ? {} : { previousValue }),
     valuePassing: writeDisposition !== undefined && mojoParameterConvention(writeDisposition) === "var"
       ? "consume"
@@ -202,7 +204,7 @@ export function selectedMojoDispatchField(
   return unique.length === 1 ? unique[0] : undefined;
 }
 
-export function planMojoProviderPropertyMethodWrite(
+export function planMojoProviderPropertyWrite(
   node: Node,
   value: MojoValuePlan,
   operator: string,
@@ -216,8 +218,11 @@ export function planMojoProviderPropertyMethodWrite(
   if (write?.target.kind !== "property-write" || write.receiverType === undefined ||
     write.parameterTypes.length !== 1) return undefined;
   const target = write.target;
-  if (target.access.kind !== "method") return undefined;
   const writeName = target.access.name;
+  if (selection.sourceWriteType === undefined || selection.writeValueConversion === undefined) return undefined;
+  const mutationValue = prepareMojoMutationValue(
+    operationNode, selection.sourceWriteType, context, selection.writeValueConversion,
+  );
   if (selection.optionalChain) {
     appendMojoPlanningDiagnostic(
       context,
@@ -227,7 +232,8 @@ export function planMojoProviderPropertyMethodWrite(
     );
     return undefined;
   }
-  const prepared = prepareMojoReceiver(
+  const prepared = prepareMojoPropertyReceiver(
+    selection,
     selection.receiver,
     selection.sourceReceiverType,
     false,
@@ -245,7 +251,7 @@ export function planMojoProviderPropertyMethodWrite(
   let assigned: MojoExpression;
   let previousValue: MojoExpression | undefined;
   const orderedValue = orderMojoValues([
-    Object.freeze({ plan: value, type: mojoCompoundRightType(operationNode, write.parameterTypes[0]!, context), role: "property_write_value" }),
+    Object.freeze({ plan: value, type: mojoCompoundRightType(operationNode, mutationValue.assignedType, context), role: "property_write_value" }),
   ], context, true);
   if (operator !== "=") {
     const read = selection.readOperation;
@@ -305,13 +311,21 @@ export function planMojoProviderPropertyMethodWrite(
   return Object.freeze({
     before,
     assignedValue: assigned,
-    assignedType: write.parameterTypes[0]!,
+    ...mutationValue,
     ...(previousValue === undefined ? {} : { previousValue }),
     valuePassing: target.value.convention === "var" ? "consume" : "borrow",
     createWrite(argumentValue: MojoExpression): MojoStatement {
       const argument = target.value.convention === "var"
         ? consumeMojoValue(argumentValue, write.parameterTypes[0]!, context.program.lifecycle)
         : argumentValue;
+      if (target.access.kind === "member") {
+        return Object.freeze({
+          kind: "assignment",
+          operator: "=",
+          left: Object.freeze({ kind: "member", receiver: location.values[0]!, name: writeName }),
+          right: argument,
+        });
+      }
       return Object.freeze({
         kind: "expression",
         expression: Object.freeze({

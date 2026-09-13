@@ -127,7 +127,8 @@ export function planMojoValue(
     );
   } else if (ast.is.IsCallExpression(node) || ast.is.IsNewExpression(node)) {
     plan = planMojoCall(node, evaluationContext, planMojoValue);
-  } else if (ast.is.IsPropertyAccessExpression(node)) {
+  } else if (ast.is.IsPropertyAccessExpression(node) ||
+    ast.is.IsElementAccessExpression(node) && context.program.queries.propertySelection(node) !== undefined) {
     plan = planMojoProperty(node, evaluationContext, planMojoValue, "read");
   } else if (ast.is.IsElementAccessExpression(node)) {
     plan = planMojoElement(node, evaluationContext, planMojoValue, "read");

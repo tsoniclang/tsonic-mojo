@@ -6,13 +6,27 @@ import { spawnSync } from "node:child_process";
 import { artifactTexts, compileMojo } from "../test/helpers/mojo-session.mjs";
 import { associatedNative, associatedProvider, associatedSource, borrowedNative, borrowedProvider, borrowedSource, boundedBorrowSource, foreignNative, foreignProvider, foreignSource } from "../test/helpers/native-interop-provider.mjs";
 import { verifyCompilerMetadata } from "./native-interop/compiler-metadata.mjs";
+import { mutationC, mutationNative, mutationProvider, mutationSourceFor } from "../test/helpers/mutation-provider.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const runtime = resolve(root, "../mojo-runtime");
 const mojo = process.env.MOJO_BIN ?? join(runtime, ".pixi/envs/default/bin/mojo");
 mkdirSync(join(root, ".temp"), { recursive: true });
 const workspace = mkdtempSync(join(root, ".temp/native-interop-"));
-const cases = [{
+const cases = [false, true].map((field) => ({
+  name: field ? "native-location-mutations" : "accessor-mutations",
+  capabilities: [mutationProvider({ field })], source: mutationSourceFor(field), c: mutationC,
+  fixtures: { "native_mutation.mojo": field ? mutationNative.replace("Int32(self.state[].stored)", "Int32(self.stored)") : mutationNative },
+  runner: `from std.testing import assert_equal
+from native_mutation import Counter, read_global
+from native_interop_proof import change
+def main() raises:
+    var counter = Counter()
+    assert_equal(change${field ? "[origin_of(counter)]" : ""}(counter), 34)
+    assert_equal(counter.read(), 9)
+    assert_equal(read_global(), 6)
+`,
+})).concat([{
   name: "c-abi", capabilities: [foreignProvider()], source: foreignSource, c: foreignNative,
   runner: `from std.testing import assert_true
 from native_interop_proof import run, _initialize_tsonic_package
@@ -92,7 +106,7 @@ def main():
     ref selected = relay[origin_of(value)](value)
 `,
   rejection: /value passed to 'origin' cannot be converted from 'Origin\[mut=mut\]' to 'MutOrigin'/u,
-}];
+}]);
 const failures = [];
 try {
   verifyCompilerMetadata(workspace, mojo, guarded);

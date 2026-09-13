@@ -1,5 +1,6 @@
 import type { Node } from "@tsonic/tsts";
 import type { SourceFileSemantics, TargetSourceProgram } from "@tsonic/target-api/source";
+import { ObjectLiteralProperty_SourceName } from "@tsonic/target-api/source";
 
 export type MojoSupportedWellKnownMethod =
   | "dispose"
@@ -10,12 +11,16 @@ export type MojoSupportedWellKnownMethod =
   | "search"
   | "split";
 
-export function mojoProjectMethodName(
-  name: Node,
+export function mojoProjectMemberName(
+  declaration: Node,
   semantics: SourceFileSemantics,
   ast: TargetSourceProgram["ast"],
 ): string | undefined {
-  if (ast.is.IsIdentifier(name) || ast.is.IsPrivateIdentifier(name)) return ast.text(name);
+  const name = ast.name(declaration);
+  if (name === undefined) return undefined;
+  if (ast.is.IsPrivateIdentifier(name)) return ast.text(name);
+  const selectedName = ObjectLiteralProperty_SourceName(ast, declaration);
+  if (selectedName.kind === "resolved") return selectedName.name;
   const kind = mojoSupportedWellKnownMethod(name, semantics);
   if (kind === undefined) return undefined;
   switch (kind) {

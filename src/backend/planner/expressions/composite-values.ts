@@ -39,9 +39,10 @@ import {
   convertMojoValue,
   orderMojoValues,
 } from "./support.js";
-import { isJsArray, jsArrayElement } from "./js-carriers.js";
+import { isJsArray } from "./js-carriers.js";
 import type { OrderedMojoValue } from "./support.js";
 import { consumeMojoValue, mojoValue, withMojoValue } from "./value-plan.js";
+import { planMojoLiveArrayIteration } from "../statements/array-iteration.js";
 import type { MojoValuePlan } from "./value-plan.js";
 
 export type MojoCompositeValuePlanner = (
@@ -75,7 +76,7 @@ export function planArrayLiteral(
     );
     return undefined;
   }
-  return selection.contributions.some((contribution) => contribution.kind === "sequence-spread")
+  return selection.sequenceStorage !== undefined
     ? planDynamicArrayLiteral(selection, context, planNested)
     : planFixedArrayLiteral(selection, context, planNested);
 }
@@ -88,7 +89,7 @@ function planFixedArrayLiteral(
   const values: OrderedMojoValue[] = [];
   let pendingBefore: MojoStatement[] = [];
   for (const contribution of selection.contributions) {
-    if (contribution.kind === "sequence-spread") return undefined;
+    if (contribution.kind === "sequence-spread" || contribution.kind === "hole") return undefined;
     if (contribution.kind === "value") {
       const plan = planNested(contribution.expression, context, contribution.targetType);
       if (plan === undefined) return undefined;
@@ -148,11 +149,10 @@ function planDynamicArrayLiteral(
   context: MojoPlanningContext,
   planNested: MojoCompositeValuePlanner,
 ): MojoValuePlan | undefined {
-  const resultElement = selection.resultType.kind === "list"
-    ? selection.resultType.element
-    : jsArrayElement(selection.resultType);
-  if (resultElement === undefined) return undefined;
-  const listType: MojoTargetTypeRef = Object.freeze({ kind: "list", element: resultElement });
+  const storage = selection.sequenceStorage;
+  if (storage === undefined) return undefined;
+  const { type: listType, sparse } = storage;
+  const storageElement = listType.element;
   registerMojoTypeImports(listType, context);
   const resultName = allocateMojoSyntheticName(context, "array_result");
   const resultPath: MojoExpression = Object.freeze({ kind: "path", path: resultName });
@@ -162,15 +162,28 @@ function planDynamicArrayLiteral(
     type: listType,
     initializer: Object.freeze({ kind: "list", elements: Object.freeze([]) }),
   })];
+  const append = (value: MojoExpression, type: MojoTargetTypeRef): MojoStatement => {
+    const stored: MojoExpression = sparse
+      ? Object.freeze({
+          kind: "construct", type: storageElement,
+          arguments: Object.freeze([Object.freeze({ value: consumeMojoValue(value, type, context.program.lifecycle) })]),
+        })
+      : value;
+    return appendArrayValue(resultPath, stored, storageElement, context);
+  };
   for (const contribution of selection.contributions) {
+    if (contribution.kind === "hole") {
+      before.push(appendArrayValue(resultPath, Object.freeze({
+        kind: "construct", type: storageElement, arguments: Object.freeze([]),
+      }), storageElement, context));
+      continue;
+    }
     if (contribution.kind === "value") {
       const value = planNested(contribution.expression, context, contribution.targetType);
       if (value === undefined) return undefined;
-      before.push(...value.before, appendArrayValue(
-        resultPath,
+      before.push(...value.before, append(
         value.value,
         contribution.targetType,
-        context,
       ));
       continue;
     }
@@ -181,14 +194,13 @@ function planDynamicArrayLiteral(
       for (const [index, value] of spread.values.entries()) {
         before.push(
           ...value.before,
-          appendArrayValue(resultPath, value.value, contribution.values[index]!.targetType, context),
+          append(value.value, contribution.values[index]!.targetType),
         );
       }
       continue;
     }
     const source = planNested(contribution.expression, context, contribution.sourceType);
     if (source === undefined) return undefined;
-    before.push(...source.before);
     const itemName = allocateMojoSyntheticName(context, "array_spread_item");
     const itemPath: MojoExpression = Object.freeze({ kind: "path", path: itemName });
     const selectedValue = contribution.copy
@@ -196,31 +208,38 @@ function planDynamicArrayLiteral(
       : itemPath;
     const converted = convertMojoValue(mojoValue(selectedValue), contribution.conversion, context);
     if (converted === undefined) return undefined;
-    const iterable: MojoExpression = contribution.iteration === "native"
+    const statements = Object.freeze([
+      ...converted.before,
+      append(converted.value, contribution.targetType),
+    ]);
+    if (contribution.iteration === "js-array-live-values") {
+      before.push(...planMojoLiveArrayIteration({ name: itemName, type: contribution.sourceElementType }, source, statements, context));
+      continue;
+    }
+    before.push(...source.before);
+    const iterable: MojoExpression = contribution.iteration === "native-values"
       ? source.value
       : Object.freeze({
           kind: "method-call",
           receiver: source.value,
-          name: "iter_values",
+          name: contribution.iteration === "js-map-entries" ? "iter_entries" : "iter_values",
           arguments: Object.freeze([]),
         });
     before.push(Object.freeze({
       kind: "for",
       binding: itemName,
       iterable,
-      statements: Object.freeze([
-        ...converted.before,
-        appendArrayValue(resultPath, converted.value, contribution.targetType, context),
-      ]),
+      statements,
     }));
   }
-  if (!isJsArray(selection.resultType)) return withMojoValue(before, resultPath);
+  if (selection.resultType.kind === "list") return withMojoValue(before, resultPath);
   registerMojoTypeImports(selection.resultType, context);
   return withMojoValue(before, Object.freeze({
     kind: "construct",
     type: selection.resultType,
     arguments: Object.freeze([Object.freeze({
       value: consumeMojoValue(resultPath, listType, context.program.lifecycle),
+      ...(sparse ? { name: "elements" } : {}),
     })]),
   }));
 }

@@ -82,7 +82,8 @@ export function planMojoCompoundValue(
 ): MojoExpression {
   const selection = context.program.queries.intrinsicExpressionSelection(node);
   if (selection?.kind !== "numeric") {
-    if (operator !== "+=" && operator !== "-=" && operator !== "*=" && operator !== "/=") {
+    if (operator !== "+=" && operator !== "-=" && operator !== "*=" && operator !== "/=" &&
+      operator !== "%=" && operator !== "**=") {
       throw new Error("A bitwise compound operation cannot be printed without sealed numeric evidence.");
     }
     return Object.freeze({ kind: "binary", operator: operator.slice(0, -1), left, right });

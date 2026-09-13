@@ -1,6 +1,6 @@
 import type { AstReader, Node } from "@tsonic/tsts";
 import { BinaryExpression_Left, BinaryExpression_Right, PrefixUnaryExpression_Operand } from "@tsonic/target-api/source";
-import { mojoBitwiseOperators, selectMojoNumericOperation } from "../../policy/operations/numeric.js";
+import { mojoNumericOperators, selectMojoNumericOperation } from "../../policy/operations/numeric.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoIntrinsicExpressionSelection } from "../program/model.js";
 import { isMojoAssignmentOperator } from "../control-flow/syntax-validation.js";
@@ -13,7 +13,7 @@ export function analyzeMojoNumericOperation(
 ): Extract<MojoIntrinsicExpressionSelection, { readonly kind: "numeric" }> | "unclosed" | undefined {
   if (!ast.is.IsBinaryExpression(node) && !ast.is.IsPrefixUnaryExpression(node)) return undefined;
   const token = ast.operatorKindName(node);
-  const operator = mojoBitwiseOperators.get(token ?? "");
+  const operator = mojoNumericOperators.get(token ?? "");
   if (operator === undefined) return undefined;
   const operand = ast.is.IsBinaryExpression(node) ? BinaryExpression_Left(ast, node) : PrefixUnaryExpression_Operand(ast, node);
   const right = ast.is.IsBinaryExpression(node) ? BinaryExpression_Right(ast, node) : undefined;

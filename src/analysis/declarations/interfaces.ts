@@ -23,7 +23,7 @@ import { resolveMojoTargetType } from "../../policy/types/resolution.js";
 import type { MojoSourceProfileRegistry } from "../../policy/types/source-profile.js";
 import { mojoGenericParameterReference } from "../../target-model/types/constructors.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
-import { mojoProjectMethodName } from "./well-known-methods.js";
+import { mojoProjectMemberName } from "./well-known-methods.js";
 
 export interface MojoInterfaceAnalysisInput {
   readonly source: TargetSourceProgram;
@@ -113,9 +113,9 @@ export function analyzeMojoInterface(
       const nameNode = ast.name(member);
       const sourceName = nameNode === undefined
         ? undefined
-        : mojoProjectMethodName(nameNode, semantics, ast);
+        : mojoProjectMemberName(member, semantics, ast);
       if (sourceName === undefined) {
-        append(input, "MOJO_INTERFACE_METHOD_NAME_UNSUPPORTED", "Interface methods require one exact identifier or supported well-known-symbol name.", member);
+        append(input, "MOJO_INTERFACE_METHOD_NAME_UNSUPPORTED", "Interface methods require one exact statically selected property name.", member);
         continue;
       }
       const name = allocateCallableName(allocatedNames, names, `method:${sourceName}`, sourceName);
@@ -132,12 +132,11 @@ export function analyzeMojoInterface(
       continue;
     }
     if (ast.is.IsGetAccessorDeclaration(member) || ast.is.IsSetAccessorDeclaration(member)) {
-      const nameNode = ast.name(member);
-      if (nameNode === undefined || !ast.is.IsIdentifier(nameNode)) {
-        append(input, "MOJO_INTERFACE_ACCESSOR_NAME_UNSUPPORTED", "Interface accessors require one exact identifier name.", member);
+      const sourceName = mojoProjectMemberName(member, semantics, ast);
+      if (sourceName === undefined) {
+        append(input, "MOJO_INTERFACE_ACCESSOR_NAME_UNSUPPORTED", "Interface accessors require one exact statically selected property name.", member);
         continue;
       }
-      const sourceName = ast.text(nameNode);
       const getter = ast.is.IsGetAccessorDeclaration(member);
       const role = getter ? "get" : "set";
       const name = allocateCallableName(
@@ -175,9 +174,9 @@ export function analyzeMojoInterface(
       );
       continue;
     }
-    const nameNode = ast.name(member);
-    if (nameNode === undefined || !ast.is.IsIdentifier(nameNode)) {
-      append(input, "MOJO_INTERFACE_FIELD_NAME_UNSUPPORTED", "Interface fields require one exact identifier name.", member);
+    const sourceName = mojoProjectMemberName(member, semantics, ast);
+    if (sourceName === undefined) {
+      append(input, "MOJO_INTERFACE_FIELD_NAME_UNSUPPORTED", "Interface fields require one exact statically selected property name.", member);
       continue;
     }
     const selected = declaredType(member, semantics, ast);
@@ -198,7 +197,6 @@ export function analyzeMojoInterface(
       append(input, "MOJO_INTERFACE_FIELD_CARRIER_UNRESOLVED", `Selected interface field type cannot be represented exactly in Mojo: ${resolved.reason}.`, member);
       continue;
     }
-    const sourceName = ast.text(nameNode);
     const name = names(sourceName);
     const field = Object.freeze({
       kind: "interface-field" as const,

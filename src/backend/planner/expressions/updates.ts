@@ -1,5 +1,4 @@
 import type { Node } from "@tsonic/tsts";
-import { mojoTargetTypeEquals } from "../../../target-model/types/equality.js";
 import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 import { appendMojoPlanningDiagnostic } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
@@ -7,13 +6,13 @@ import {
   planMojoElement,
   planMojoProjectElementWrite,
   projectElementUsesMethodWrite,
-  planMojoProviderElementMethodWrite,
-  providerElementUsesMethodWrite,
+  planMojoProviderElementWrite,
+  providerElementUsesWriteOperation,
 } from "./elements.js";
 import {
   planMojoProjectPropertyWrite,
   projectPropertyUsesMethodWrite,
-  planMojoProviderPropertyMethodWrite,
+  planMojoProviderPropertyWrite,
 } from "./property-writes.js";
 import { planMojoProperty } from "./properties.js";
 import { orderMojoValues } from "./support.js";
@@ -21,7 +20,9 @@ import type { MojoValuePlanner } from "./support.js";
 import { consumeMojoValue, mojoValue } from "./value-plan.js";
 import {
   materializeMojoMutation,
+  prepareMojoMutationValue,
 } from "./mutation-plan.js";
+import { planMojoStaticProviderWrite } from "./static-property-writes.js";
 import type {
   MojoPlannedMutation,
   MojoPreparedMutation,
@@ -82,7 +83,7 @@ export function planMojoUpdate(
     const prepared: MojoPreparedMutation = Object.freeze({
       before: current.before,
       assignedValue,
-      assignedType: type,
+      ...prepareMojoMutationValue(node, type, context),
       previousValue,
       valuePassing: "consume",
       createWrite(value: MojoExpression): MojoStatement {
@@ -116,11 +117,18 @@ export function planMojoUpdate(
   }
   const property = context.program.queries.propertySelection(operand);
   const element = context.program.queries.elementSelection(operand);
+  if (property?.kind === "provider-static") {
+    const prepared = planMojoStaticProviderWrite(
+      operand, mojoValue(Object.freeze({ kind: "number-literal", text: "1" })),
+      operator, node, context, planValue,
+    );
+    return prepared === undefined ? undefined : materializeUpdate(prepared, node, operand, resultUse, context);
+  }
   if (property !== undefined && projectPropertyUsesMethodWrite(property, context)) {
     const type = property.kind === "project-field"
       ? property.fieldType
       : property.kind === "project-accessor"
-        ? property.writeType ?? property.readType
+        ? property.readType
         : undefined;
     if (type === undefined || type.kind !== "source-primitive" ||
       type.name === "bool" || type.name === "char") {
@@ -145,7 +153,7 @@ export function planMojoUpdate(
       : materializeUpdate(prepared, node, operand, resultUse, context);
   }
   if (projectElementUsesMethodWrite(element, context)) {
-    const type = element?.writeType ?? element?.readType;
+    const type = element?.readType;
     if (type === undefined || type.kind !== "source-primitive" ||
       type.name === "bool" || type.name === "char") {
       appendMojoPlanningDiagnostic(
@@ -168,8 +176,8 @@ export function planMojoUpdate(
       ? undefined
       : materializeUpdate(prepared, node, operand, resultUse, context);
   }
-  if (providerElementUsesMethodWrite(element)) {
-    const type = element?.writeType ?? element?.readType;
+  if (providerElementUsesWriteOperation(element)) {
+    const type = element?.readType;
     if (type === undefined || type.kind !== "source-primitive" ||
       type.name === "bool" || type.name === "char") {
       appendMojoPlanningDiagnostic(
@@ -180,7 +188,7 @@ export function planMojoUpdate(
       );
       return undefined;
     }
-    const prepared = planMojoProviderElementMethodWrite(
+    const prepared = planMojoProviderElementWrite(
       operand,
       mojoValue(Object.freeze({ kind: "number-literal", text: "1" })),
       operator,
@@ -193,9 +201,8 @@ export function planMojoUpdate(
       : materializeUpdate(prepared, node, operand, resultUse, context);
   }
   if (property?.kind === "provider" &&
-    property.writeOperation?.target.kind === "property-write" &&
-    property.writeOperation.target.access.kind === "method") {
-    const type = property.sourceWriteType;
+    property.writeOperation?.target.kind === "property-write") {
+    const type = context.program.queries.expressionType(operand);
     if (type === undefined || type.kind !== "source-primitive" ||
       type.name === "bool" || type.name === "char") {
       appendMojoPlanningDiagnostic(
@@ -206,7 +213,7 @@ export function planMojoUpdate(
       );
       return undefined;
     }
-    const prepared = planMojoProviderPropertyMethodWrite(
+    const prepared = planMojoProviderPropertyWrite(
       operand,
       mojoValue(Object.freeze({ kind: "number-literal", text: "1" })),
       operator,
@@ -218,12 +225,12 @@ export function planMojoUpdate(
       ? undefined
       : materializeUpdate(prepared, node, operand, resultUse, context);
   }
-  const left = ast.is.IsPropertyAccessExpression(operand)
+  const left = property !== undefined
     ? planMojoProperty(operand, context, planValue, "write", resultUse === "value")
     : ast.is.IsElementAccessExpression(operand)
       ? planMojoElement(operand, context, planValue, "write", resultUse === "value")
       : planValue(operand, context);
-  const providerProperty = property?.kind === "provider" || property?.kind === "provider-static"
+  const providerProperty = property?.kind === "provider"
     ? property
     : undefined;
   const providerElement = element?.kind === "provider" ? element : undefined;
@@ -241,16 +248,6 @@ export function planMojoUpdate(
     return undefined;
   }
   const type = sourceWriteType ?? element?.writeType ?? context.program.queries.expressionType(operand);
-  if (sourceWriteType !== undefined && targetWriteType !== undefined &&
-    !mojoTargetTypeEquals(sourceWriteType, targetWriteType)) {
-    appendMojoPlanningDiagnostic(
-      context,
-      "MOJO_UPDATE_WRITE_CONVERSION_UNSUPPORTED",
-      "Increment and decrement require an identity conversion from the exact source write carrier to the target location carrier.",
-      node,
-    );
-    return undefined;
-  }
   if (left === undefined || type === undefined || type.kind !== "source-primitive" ||
     type.name === "bool" || type.name === "char") {
     appendMojoPlanningDiagnostic(
@@ -276,7 +273,7 @@ export function planMojoUpdate(
   const prepared: MojoPreparedMutation = Object.freeze({
     before: Object.freeze([...left.before, ...previous.before]),
     assignedValue,
-    assignedType: type,
+    ...prepareMojoMutationValue(node, type, context),
     previousValue,
     valuePassing: "assign",
     createWrite(value: MojoExpression): MojoStatement {
