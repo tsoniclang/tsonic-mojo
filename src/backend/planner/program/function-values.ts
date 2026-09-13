@@ -13,6 +13,7 @@ import {
 } from "../../target-ast/index.js";
 import { consumeMojoValue, withMojoValue } from "../expressions/value-plan.js";
 import type { MojoValuePlan } from "../expressions/value-plan.js";
+import { planMojoAsyncCallableMethods, planMojoAsyncCallableValue } from "../expressions/async-callables.js";
 import { registerMojoTypeImports } from "../types/imports.js";
 import {
   allocateMojoSyntheticDeclarationName,
@@ -70,6 +71,11 @@ export function planMojoFunctionValue(
       }),
     ]),
   });
+  if (function_.asynchronous) {
+    const callable = planMojoAsyncCallableValue(binding.declaration, callableType,
+      callableType, adapterName, environment, context);
+    return callable === undefined ? undefined : withMojoValue(Object.freeze([]), callable);
+  }
   return withMojoValue(Object.freeze([]), Object.freeze({
     kind: "construct",
     type: callableType,
@@ -130,9 +136,18 @@ function functionValueAdapter(
         }),
     arguments: Object.freeze(callArguments),
   });
+  const result: MojoExpression = function_.asynchronous ? Object.freeze({
+    kind: "await",
+    expression: Object.freeze({
+      kind: "call",
+      callee: mojoModuleMemberExpression(context, runtimeModule,
+        function_.raises ? "create_raising_task" : "create_task"),
+      arguments: Object.freeze([Object.freeze({ value: call })]),
+    }),
+  }) : call;
   const invokeStatements: readonly MojoStatement[] = function_.resultType.kind === "unit"
-    ? Object.freeze([Object.freeze({ kind: "expression", expression: call })])
-    : Object.freeze([Object.freeze({ kind: "return", expression: call })]);
+    ? Object.freeze([Object.freeze({ kind: "expression", expression: result })])
+    : Object.freeze([Object.freeze({ kind: "return", expression: result })]);
   const invoke: MojoFunctionDeclaration = Object.freeze({
     kind: "function",
     name: "invoke",
@@ -143,8 +158,9 @@ function functionValueAdapter(
     ]),
     resultType: function_.resultType,
     asynchronous: false,
-    raises: callableType.raises,
-    ...(callableType.errorType === undefined ? {} : { errorType: callableType.errorType }),
+    raises: function_.asynchronous ? function_.raises : callableType.raises,
+    ...((function_.asynchronous ? function_.errorType : callableType.errorType) === undefined
+      ? {} : { errorType: function_.asynchronous ? function_.errorType : callableType.errorType }),
     decorators: mojoStaticMethodDecorators,
     statements: invokeStatements,
   });
@@ -179,7 +195,11 @@ function functionValueAdapter(
     genericParameters: Object.freeze([]),
     conformances: Object.freeze([]),
     fields: Object.freeze([]),
-    methods: Object.freeze([invoke, destroy]),
+    methods: Object.freeze([
+      ...(function_.asynchronous ? planMojoAsyncCallableMethods(invoke,
+        callableType.result, name, `${name}_invocation`, context) : [invoke]),
+      destroy,
+    ]),
     decorators: mojoFieldwiseInitDecorators,
   });
 }

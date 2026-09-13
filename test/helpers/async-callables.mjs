@@ -32,3 +32,11 @@ export function rejecting(): (step: number) => Promise<number> {
 export const emptyFactorySource = `
 export function empty(): () => Promise<number> { return async (): Promise<number> => 11; }
 `;
+
+export const declarationFactorySource = `
+async function load(value: string): Promise<string> { return value; }
+class Loader { static async load(value: string): Promise<string> { return value; } }
+export function callback(): (value: string) => Promise<string> { return load; }
+export function method(): (value: string) => Promise<string> { return Loader.load; }
+export function same(): boolean { return load === load && Loader.load === Loader.load; }
+`;

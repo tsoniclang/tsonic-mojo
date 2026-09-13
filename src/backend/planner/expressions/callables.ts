@@ -179,7 +179,8 @@ export function planMojoCallableExpression(
     initializer: allocation,
   }));
   const callable = selection.asynchronous
-    ? planMojoAsyncCallableValue(selection, callableType, environmentName, ownerName, context)
+    ? planMojoAsyncCallableValue(selection.expression, selection.callableType,
+        callableType, environmentName, Object.freeze({ kind: "path", path: ownerName }), context)
     : Object.freeze({
     kind: "construct",
     type: callableType,

@@ -4,7 +4,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { artifactTexts, compileMojo } from "../test/helpers/mojo-session.mjs";
-import { defaultArgumentsFactorySource, emptyFactorySource, retainedFactorySource, ownedCallbackSource, throwingFactorySource } from "../test/helpers/async-callables.mjs";
+import { declarationFactorySource, defaultArgumentsFactorySource, emptyFactorySource, retainedFactorySource, ownedCallbackSource, throwingFactorySource } from "../test/helpers/async-callables.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const runtime = resolve(root, "../mojo-runtime");
@@ -12,6 +12,22 @@ const mojo = process.env.MOJO_BIN ?? join(runtime, ".pixi/envs/default/bin/mojo"
 mkdirSync(join(root, ".temp"), { recursive: true });
 const workspace = mkdtempSync(join(root, ".temp/native-async-callables-"));
 const cases = [{
+  name: "declaration-invocations", source: declarationFactorySource,
+  runner: `from std.testing import assert_equal, assert_true
+from tsonic_runtime import ClosedRaisingCoroutine, create_raising_task
+from native_async_proof import _initialize_tsonic_package, callback, method, same
+def escaped() raises -> ClosedRaisingCoroutine[String]:
+    var selected = callback()
+    var value = String("retained argument")
+    return selected.call((value^,))
+def main() raises:
+    _initialize_tsonic_package()
+    assert_true(same())
+    assert_equal(create_raising_task(escaped()).wait(), "retained argument")
+    var selected = method()
+    assert_equal(create_raising_task(selected.call((String("static argument"),))).wait(), "static argument")
+`,
+}, {
   name: "escaped-invocations", source: retainedFactorySource,
   runner: `from std.testing import assert_equal
 from tsonic_runtime import ClosedRaisingCoroutine, create_raising_task

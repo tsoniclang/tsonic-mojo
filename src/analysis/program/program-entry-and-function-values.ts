@@ -2,6 +2,7 @@ import type { Node, SourceFile } from "@tsonic/tsts";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
+import { closeMojoCallableResult } from "../../target-model/types/callable-results.js";
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import { mojoParameterConvention } from "../../target-model/operations/parameters.js";
@@ -144,6 +145,13 @@ export function addMojoFirstClassFunctionBindings(
       ));
       continue;
     }
+    const conversionIssues = conversions.finalizeCallableSource(reference, candidate.type);
+    if (conversionIssues.length !== 0) {
+      diagnostics.push(...conversionIssues.map((reason) => diagnostic(
+        "MOJO_FIRST_CLASS_FUNCTION_CONVERSION_UNPROVEN", reason, reference,
+      )));
+      continue;
+    }
     expressionTypes.set(reference, candidate.type);
     referenceTypes.set(reference, candidate.type);
     bindingTypes.set(reference, candidate.type);
@@ -206,7 +214,7 @@ function functionValueTarget(
   contract: import("./model.js").MojoAnalyzedCallableSignature,
   implementation: MojoAnalyzedFunction,
 ): import("./model.js").MojoAnalyzedCallableSignature | undefined {
-  if (contract.asynchronous || contract.typeParameters.length !== 0 ||
+  if ((contract.asynchronous && contract.asyncDomain !== "native") || contract.typeParameters.length !== 0 ||
     contract.parameters.some((parameter) => {
       const convention = mojoParameterConvention(parameter.disposition);
       return convention !== "imm" && convention !== "var";
@@ -226,6 +234,13 @@ function functionValueCallableType(
   target: import("./model.js").MojoAnalyzedCallableSignature,
   implementation: MojoAnalyzedFunction,
 ): Extract<MojoTargetTypeRef, { readonly kind: "callable" }> {
+  const result = target.asynchronous
+    ? closeMojoCallableResult(Object.freeze({
+        kind: "future", domain: "native", output: target.resultType,
+        raises: implementation.raises,
+      }))
+    : target.resultType;
+  const raises = !target.asynchronous && implementation.raises;
   return Object.freeze({
     kind: "callable",
     parameters: Object.freeze(target.parameters.map((parameter) => Object.freeze({
@@ -235,9 +250,9 @@ function functionValueCallableType(
       type: parameter.callType,
       omissionKind: parameter.omissionKind,
     }))),
-    result: target.resultType,
-    raises: implementation.raises,
-    ...(implementation.errorType === undefined ? {} : { errorType: implementation.errorType }),
+    result,
+    raises,
+    ...(!raises || implementation.errorType === undefined ? {} : { errorType: implementation.errorType }),
   });
 }
 

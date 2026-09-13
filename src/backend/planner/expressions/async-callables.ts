@@ -1,4 +1,4 @@
-import type { MojoCallableExpressionSelection } from "../../../analysis/program/model.js";
+import type { Node } from "@tsonic/tsts";
 import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import { mojoTargetTypeEquals } from "../../../target-model/types/equality.js";
 import { mojoNativeErrorType } from "../../../target-model/types/error-domains.js";
@@ -12,20 +12,21 @@ import type { MojoPlanningContext } from "../program/context.js";
 const runtimeModule = Object.freeze(["tsonic_runtime"]);
 
 export function planMojoAsyncCallableValue(
-  selection: MojoCallableExpressionSelection,
+  expression: Node,
+  callableType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
   targetType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>,
   environmentName: string,
-  ownerName: string,
+  owner: MojoExpression,
   context: MojoPlanningContext,
 ): MojoExpression | undefined {
-  const result = selection.callableType.result;
+  const result = callableType.result;
   if (result.kind !== "future" || result.domain !== "native" ||
     result.captureOrigins !== "empty" || !result.raises ||
     !mojoTargetTypeEquals(result, targetType.result)) {
     appendMojoPlanningDiagnostic(context,
       "MOJO_ASYNC_CALLABLE_RESULT_CONTRACT_MISMATCH",
       "An async callable requires its sealed closed native future result and an explicit outer result adapter.",
-      selection.expression);
+      expression);
     return undefined;
   }
   const argumentType: MojoTargetTypeRef = Object.freeze({
@@ -40,7 +41,7 @@ export function planMojoAsyncCallableValue(
       Object.freeze({ kind: "type", type: result.output }),
     ]),
     arguments: Object.freeze([
-      Object.freeze({ value: Object.freeze({ kind: "path", path: ownerName }) }),
+      Object.freeze({ value: owner }),
       Object.freeze({ value: Object.freeze({
         kind: "member",
         receiver: Object.freeze({ kind: "path", path: environmentName }),
