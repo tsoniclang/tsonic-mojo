@@ -91,6 +91,7 @@ export type MojoValueConversion =
     }
   | { readonly kind: "primitive-cast"; readonly targetType: MojoTargetTypeRef }
   | { readonly kind: "bigint-cast"; readonly targetType: Extract<MojoTargetTypeRef, { readonly kind: "source-primitive" }> }
+  | { readonly kind: "integer-literal"; readonly text: string; readonly targetType: Extract<MojoTargetTypeRef, { readonly kind: "source-primitive" }> }
   | { readonly kind: "reference-copy"; readonly targetType: MojoTargetTypeRef }
   | ({
       readonly kind: "js-box";

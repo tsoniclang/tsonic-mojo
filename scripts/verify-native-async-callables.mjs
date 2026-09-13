@@ -4,7 +4,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { artifactTexts, compileMojo } from "../test/helpers/mojo-session.mjs";
-import { declarationFactorySource, defaultArgumentsFactorySource, emptyFactorySource, retainedFactorySource, ownedCallbackSource, throwingFactorySource } from "../test/helpers/async-callables.mjs";
+import { declarationFactorySource, defaultArgumentsFactorySource, emptyFactorySource, retainedFactorySource, ownedCallbackSource, nestedStringSource, throwingFactorySource } from "../test/helpers/async-callables.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const runtime = resolve(root, "../mojo-runtime");
@@ -12,6 +12,14 @@ const mojo = process.env.MOJO_BIN ?? join(runtime, ".pixi/envs/default/bin/mojo"
 mkdirSync(join(root, ".temp"), { recursive: true });
 const workspace = mkdtempSync(join(root, ".temp/native-async-callables-"));
 const cases = [{
+  name: "nested-string-awaits", source: nestedStringSource,
+  runner: `from std.testing import assert_equal
+from tsonic_runtime import create_task
+from native_async_proof import message
+def main() raises:
+    assert_equal(create_task(message()).wait(), "hello")
+`,
+}, {
   name: "declaration-invocations", source: declarationFactorySource,
   runner: `from std.testing import assert_equal, assert_true
 from tsonic_runtime import ClosedRaisingCoroutine, create_raising_task
@@ -95,6 +103,8 @@ def main() raises:
 }];
 
 const failures = [];
+let generated = 0;
+let executed = 0;
 for (const proof of cases) {
   try {
     const output = join(workspace, proof.name);
@@ -111,15 +121,24 @@ for (const proof of cases) {
       writeFileSync(destination, artifact.text);
     }
     writeFileSync(join(output, "runner.mojo"), proof.runner);
-    guarded(mojo, ["build", "-j", "1", "-I", join(output, "src"), "-I", join(runtime, "mojo"),
-      join(output, "runner.mojo"), "-o", join(output, "proof")]);
-    guarded(join(output, "proof"), []);
-    process.stdout.write(`PASS native async ${proof.name}\n`);
+    generated++;
+    for (const optimization of [0, 1, 2, 3]) {
+      try {
+        const binary = join(output, `proof-O${optimization}`);
+        guarded(mojo, ["build", "-O", String(optimization), "-j", "1", "-I", join(output, "src"), "-I", join(runtime, "mojo"),
+          join(output, "runner.mojo"), "-o", binary]);
+        guarded(binary, []);
+        executed++;
+        process.stdout.write(`PASS native async ${proof.name} O${optimization}\n`);
+      } catch (error) {
+        failures.push(`${proof.name} O${optimization}: ${error.stack ?? error}`);
+      }
+    }
   } catch (error) {
     failures.push(`${proof.name}: ${error.stack ?? error}`);
   }
 }
-process.stdout.write(`Native async: ${cases.length - failures.length}/${cases.length}; output: ${workspace}\n`);
+process.stdout.write(`Native async: ${generated}/${cases.length} generated; ${executed}/${cases.length * 4} required O0–O3 executions passed; output: ${workspace}\n`);
 if (failures.length !== 0) throw new Error(failures.join("\n\n"));
 
 function guarded(command, arguments_) {

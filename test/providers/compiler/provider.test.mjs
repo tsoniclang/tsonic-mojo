@@ -51,7 +51,7 @@ function configuration() {
 }
 
 test("compiler snapshots close exact command, environment, package, module, and source identity", () => {
-  const snapshot = createMojoCompilerProjectSnapshot(configuration(), "1.1.0.dev2026083005");
+  const snapshot = createMojoCompilerProjectSnapshot(configuration(), "1.0.0");
   assert.equal(snapshot.packages.length, 1);
   assert.deepEqual(snapshot.packages[0].modules.map(({ modulePath }) => modulePath), [
     [],
@@ -69,7 +69,7 @@ test("compiler snapshots close exact command, environment, package, module, and 
 
 test("compiler metadata extraction normalizes exact conventions, keywords, constructors, and receivers", () => {
   const providerConfiguration = configuration();
-  const snapshot = createMojoCompilerProjectSnapshot(providerConfiguration, "1.1.0.dev2026083005");
+  const snapshot = createMojoCompilerProjectSnapshot(providerConfiguration, "1.0.0");
   const package_ = snapshot.packages[0];
   const source = package_.modules.find(({ modulePath }) => modulePath.join(".") === "api");
   assert.ok(source);
@@ -191,7 +191,7 @@ test("compiler metadata extraction normalizes exact conventions, keywords, const
 });
 
 test("compiler aliases retain exact semantic category, target, value type, and constant operation", () => {
-  const snapshot = createMojoCompilerProjectSnapshot(configuration(), "1.1.0.dev2026083005");
+  const snapshot = createMojoCompilerProjectSnapshot(configuration(), "1.0.0");
   const package_ = snapshot.packages[0];
   const source = package_.modules.find(({ modulePath }) => modulePath.join(".") === "_private");
   assert.ok(source);
@@ -250,7 +250,7 @@ test("incremental compiler-provider slices isolate unrelated unsupported exports
   const cacheRoot = join(repositoryRoot, ".temp", `compiler-provider-slices-${process.pid}`);
   try {
     const providerConfiguration = configuration();
-    const snapshot = createMojoCompilerProjectSnapshot(providerConfiguration, "1.1.0.dev2026083005");
+    const snapshot = createMojoCompilerProjectSnapshot(providerConfiguration, "1.0.0");
     const package_ = snapshot.packages[0];
     const source = package_.modules.find(({ modulePath }) => modulePath.join(".") === "api");
     assert.ok(source);
@@ -303,8 +303,8 @@ test("incremental compiler-provider slices isolate unrelated unsupported exports
         compilerProvider: providerConfiguration,
         toolchain: {
           kind: "pixi-mojo",
-          compilerVersion: "1.1.0.dev2026083005",
-          channels: ["conda-forge", "https://conda.modular.com/max-nightly/"],
+          compilerVersion: "1.0.0",
+          channels: ["conda-forge", "https://conda.modular.com/max/"],
           platforms: ["linux-64"],
           commandEnvironment: "posix",
         },
@@ -361,7 +361,7 @@ test("incremental compiler-provider slices isolate unrelated unsupported exports
 
 test("compiler provider resolves public re-exports through exact language-server definitions", () => {
   const providerConfiguration = configuration();
-  const snapshot = createMojoCompilerProjectSnapshot(providerConfiguration, "1.1.0.dev2026083005");
+  const snapshot = createMojoCompilerProjectSnapshot(providerConfiguration, "1.0.0");
   const package_ = snapshot.packages[0];
   const surface = package_.modules.find(({ modulePath }) => modulePath.join(".") === "surface");
   assert.ok(surface);
@@ -409,7 +409,7 @@ test("compiler export ownership and enumeration persist only for the exact snaps
   process.env.TSONIC_MOJO_LSP_LOG = logPath;
   try {
     const providerConfiguration = configuration();
-    const snapshot = createMojoCompilerProjectSnapshot(providerConfiguration, "1.1.0.dev2026083005");
+    const snapshot = createMojoCompilerProjectSnapshot(providerConfiguration, "1.0.0");
     const package_ = snapshot.packages[0];
     const api = package_.modules.find(({ modulePath }) => modulePath.join(".") === "api");
     const surface = package_.modules.find(({ modulePath }) => modulePath.join(".") === "surface");
@@ -621,7 +621,7 @@ test("compiler metadata uses the exact snapshotted environment and persistent do
   process.env.TSONIC_MOJO_PROVIDER_LOG = logPath;
   try {
     const providerConfiguration = configuration();
-    const snapshot = createMojoCompilerProjectSnapshot(providerConfiguration, "1.1.0.dev2026083005");
+    const snapshot = createMojoCompilerProjectSnapshot(providerConfiguration, "1.0.0");
     const package_ = snapshot.packages[0];
     const source = package_.modules.find(({ modulePath }) => modulePath.join(".") === "api");
     assert.ok(source);
@@ -686,7 +686,7 @@ test("compiler package documents cannot publish modules absent from the immutabl
   const previousUnexpected = process.env.TSONIC_MOJO_PROVIDER_EXTRA_MODULE;
   process.env.TSONIC_MOJO_PROVIDER_EXTRA_MODULE = "unexpected";
   try {
-    const snapshot = createMojoCompilerProjectSnapshot(configuration(), "1.1.0.dev2026083005");
+    const snapshot = createMojoCompilerProjectSnapshot(configuration(), "1.0.0");
     const package_ = snapshot.packages[0];
     const source = package_.modules.find(({ modulePath }) => modulePath.join(".") === "api");
     assert.ok(source);
@@ -707,7 +707,7 @@ test("compiler package documents cannot publish modules absent from the immutabl
 test("corrupt staged sources recover through a private immutable snapshot", () => {
   const cacheRoot = join(repositoryRoot, ".temp", `compiler-provider-staging-${process.pid}`);
   const providerConfiguration = configuration();
-  const snapshot = createMojoCompilerProjectSnapshot(providerConfiguration, "1.1.0.dev2026083005");
+  const snapshot = createMojoCompilerProjectSnapshot(providerConfiguration, "1.0.0");
   const package_ = snapshot.packages[0];
   const source = package_.modules.find(({ modulePath }) => modulePath.join(".") === "api");
   assert.ok(source);
@@ -759,8 +759,8 @@ test("runtime package artifacts retain the exact analyzed Mojo sources", () => {
       } },
       toolchain: {
         kind: "pixi-mojo",
-        compilerVersion: "1.1.0.dev2026083005",
-        channels: ["conda-forge", "https://conda.modular.com/max-nightly/"],
+        compilerVersion: "1.0.0",
+        channels: ["conda-forge", "https://conda.modular.com/max/"],
         platforms: ["linux-64"],
         commandEnvironment: "posix",
       },

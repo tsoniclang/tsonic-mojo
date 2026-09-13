@@ -8,7 +8,7 @@ import { formatMojoCompileOutput, MojoFormattingError } from "../../../dist/back
 import { compileMojo } from "../../helpers/mojo-session.mjs";
 
 const command = Object.freeze({ executable: "mojo", arguments: Object.freeze([]), workingDirectory: process.cwd() });
-const version = "1.1.0.dev2026083005";
+const version = "1.0.0";
 const fakeCompiler = fileURLToPath(new URL("../../fixtures/formatter/failure.mjs", import.meta.url));
 const source = (path, text = "def value()->Int:\n    return 42\n") => Object.freeze({ kind: "source", language: "mojo", path, text });
 const output = (artifacts) => Object.freeze({ artifacts: Object.freeze(artifacts) });

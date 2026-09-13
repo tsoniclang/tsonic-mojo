@@ -40,3 +40,9 @@ export function callback(): (value: string) => Promise<string> { return load; }
 export function method(): (value: string) => Promise<string> { return Loader.load; }
 export function same(): boolean { return load === load && Loader.load === Loader.load; }
 `;
+
+export const nestedStringSource = `
+async function greeting(): Promise<string> { return "hello"; }
+async function nested(): Promise<string> { return await greeting(); }
+export async function message(): Promise<string> { return await nested(); }
+`;

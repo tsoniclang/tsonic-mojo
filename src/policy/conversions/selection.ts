@@ -14,6 +14,7 @@ import { classifyTruthiness } from "./truthiness.js";
 import { classifyCallableAdaptation } from "./callable-adaptation.js";
 import { selectMojoSourceValueResult } from "./source-value-result.js";
 import type { MojoCopyCapability } from "../../target-model/lifecycle/model.js";
+import { mojoIntegerValueFits } from "../../target-model/types/numeric-literals.js";
 
 export type MojoConversionClassification =
   | { readonly kind: "resolved"; readonly conversion: MojoValueConversion }
@@ -53,6 +54,7 @@ export interface MojoConversionIndex {
 export function createMojoConversionIndex(
   input: {
     readonly narrowingForExpression: (expression: Node) => MojoValueConversionNarrowing | undefined;
+    readonly bigintLiteralForExpression: (expression: Node) => bigint | undefined;
     readonly projectRelationships: MojoProjectTypeRelationships;
     readonly sourceValueProjection: MojoSourceValueProjectionSelector;
     readonly sourceValueExtraction?: MojoSourceValueExtractionSelector;
@@ -112,12 +114,23 @@ export function createMojoConversionIndex(
       expected: MojoTargetTypeRef,
     ): MojoConversionClassification {
       if (sealed) throw new Error("Mojo conversions cannot be recorded after analysis is sealed.");
-      const classified = index.classify(
+      let classified = index.classify(
         actual,
         expected,
         narrowingForExpression(expression),
       );
       if (classified.kind === "unsupported") return classified;
+      if (classified.conversion.kind === "bigint-cast") {
+        const literal = input.bigintLiteralForExpression(expression);
+        if (literal !== undefined && mojoIntegerValueFits(literal, classified.conversion.targetType)) {
+          classified = {
+            kind: "resolved",
+            conversion: Object.freeze({
+              kind: "integer-literal", text: literal.toString(), targetType: classified.conversion.targetType,
+            }),
+          };
+        }
+      }
       const key = mojoTargetTypeKey(expected);
       const entries = byExpression.get(expression) ?? new Map<string, MojoValueConversion>();
       const existing = entries.get(key);

@@ -88,7 +88,7 @@ export function registerMojoTypeImports(
     case "future":
       if (type.domain === "js") registerMojoSymbolImport(context, ["tsonic_js"], "JsPromise");
       else if (type.captureOrigins === "empty") registerMojoSymbolImport(context, ["tsonic_runtime"], type.raises ? "ClosedRaisingCoroutine" : "ClosedCoroutine");
-      else registerMojoSymbolImport(context, ["std", "builtin", "_coroutine"], type.raises ? "RaisingCoroutine" : "Coroutine");
+      else registerMojoSymbolImport(context, ["std", "builtin", "coroutine"], type.raises ? "RaisingCoroutine" : "Coroutine");
       registerMojoTypeImports(type.output, context);
       return;
     case "optional":

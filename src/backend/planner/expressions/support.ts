@@ -541,6 +541,13 @@ export function applyMojoConversion(
     case "js-data-rest":
     case "js-value-graph":
       return undefined;
+    case "integer-literal":
+      return Object.freeze({
+        kind: "construct", type: conversion.targetType,
+        arguments: Object.freeze([Object.freeze({
+          value: Object.freeze({ kind: "number-literal", text: conversion.text }),
+        })]),
+      });
     case "bigint-cast":
       registerMojoTypeImports(conversion.targetType, context);
       return Object.freeze({

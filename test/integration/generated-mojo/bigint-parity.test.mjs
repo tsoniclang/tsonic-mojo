@@ -59,3 +59,33 @@ export function main(): void {}
   assert.match(text, /bigint_to_integer\[Int64\]\(value\)/u);
   assert.match(text, /def narrow\(value: BigInt\) raises/u);
 });
+
+test("proved native-width bigint literals materialize without heap allocation or error effects", () => {
+  const result = compileMojo({ files: { "index.ts": `
+import type { int64, uint64, int128, uint128 } from "@tsonic/core/types.js";
+export function literals(): [int64, uint64, int128, uint128] {
+  return [(-9223372036854775808n), 0xffff_ffff_ffff_ffffn,
+    -170141183460469231731687303715884105728n, 340282366920938463463374607431768211455n];
+}
+export function main(): void {}
+` } });
+  assert.deepEqual(result.diagnostics, []);
+  const text = artifactTexts(result).filter((item) => item.path.startsWith("src/")).map((item) => item.text).join("\n");
+  for (const literal of ["Int64(-9223372036854775808)",
+    "UInt64(18446744073709551615)", "Int128(-170141183460469231731687303715884105728)",
+    "UInt128(340282366920938463463374607431768211455)"]) assert.ok(text.includes(literal), literal);
+  assert.doesNotMatch(text, /from_decimal_literal|bigint_to_integer|def literals\([^\n]*\) raises/u);
+});
+
+test("out-of-range bigint literals keep a checked native conversion", () => {
+  const result = compileMojo({ files: { "index.ts": `
+import type { int64, uint64 } from "@tsonic/core/types.js";
+export function signed(): int64 { return 9223372036854775808n as int64; }
+export function unsigned(): uint64 { return -1n as uint64; }
+export function main(): void {}
+` } });
+  assert.deepEqual(result.diagnostics, []);
+  const text = artifactTexts(result).filter((item) => item.path.startsWith("src/")).map((item) => item.text).join("\n");
+  assert.match(text, /bigint_to_integer\[Int64\]/u);
+  assert.match(text, /bigint_to_integer\[UInt64\]/u);
+});

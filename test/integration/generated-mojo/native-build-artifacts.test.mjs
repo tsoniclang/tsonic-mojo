@@ -11,8 +11,8 @@ function outputPlan(outputType) {
       compilerProvider: { command: { executable: "mojo", arguments: [], workingDirectory: process.cwd() } },
       toolchain: {
         kind: "pixi-mojo",
-        compilerVersion: "1.1.0.dev2026083005",
-        channels: ["conda-forge", "https://conda.modular.com/max-nightly/"],
+        compilerVersion: "1.0.0",
+        channels: ["conda-forge", "https://conda.modular.com/max/"],
         platforms: ["linux-64"],
         commandEnvironment: "posix",
         cCompiler: { environmentVariable: "CONDA_PREFIX", path: "bin/gcc" },
@@ -64,8 +64,8 @@ test("library precompilation publishes native link inputs without passing linker
     schemaVersion: 4,
     toolchain: {
       kind: "pixi-mojo",
-      compilerVersion: "1.1.0.dev2026083005",
-      channels: ["conda-forge", "https://conda.modular.com/max-nightly/"],
+      compilerVersion: "1.0.0",
+      channels: ["conda-forge", "https://conda.modular.com/max/"],
       platforms: ["linux-64"],
       commandEnvironment: "posix",
       cCompiler: { environmentVariable: "CONDA_PREFIX", path: "bin/gcc" },

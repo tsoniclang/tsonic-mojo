@@ -18,7 +18,7 @@ example a project's locked Pixi wrapper). This same command supplies native
 provider queries and formatting. Run the test suite in that pinned SDK
 environment, for example `pixi run --manifest-path ../mojo-runtime/pixi.toml npm test`.
 
-The supported compiler is pinned to Mojo `1.1.0.dev2026083005`. Native Mojo is
+The supported compiler is pinned to Mojo `1.0.0`. Native Mojo is
 the default source profile; JavaScript semantics are enabled only by selecting
 the `js` surface, and Node APIs are supplied independently by
 `@tsonic/mojo-nodejs`.

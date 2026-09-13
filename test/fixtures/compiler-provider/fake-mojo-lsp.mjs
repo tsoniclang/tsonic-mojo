@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 
 const args = process.argv.slice(2);
 if (args.length === 1 && args[0] === "--mojo-version") {
-  process.stdout.write("Mojo 1.1.0.dev2026083005 (fixture)\n");
+  process.stdout.write("Mojo 1.0.0 (fixture)\n");
   process.exit(0);
 }
 

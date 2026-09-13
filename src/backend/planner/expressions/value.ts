@@ -84,7 +84,14 @@ export function planMojoValue(
     conversion.error !== "erase" &&
     (ast.is.IsArrowFunction(node) || ast.is.IsFunctionExpression(node));
   let plan: MojoValuePlan | undefined;
-  if (ast.is.IsArrayLiteralExpression(node)) {
+  if (conversion?.kind === "integer-literal") {
+    plan = mojoValue(Object.freeze({
+      kind: "construct", type: conversion.targetType,
+      arguments: Object.freeze([Object.freeze({
+        value: Object.freeze({ kind: "number-literal", text: conversion.text }),
+      })]),
+    }));
+  } else if (ast.is.IsArrayLiteralExpression(node)) {
     plan = planArrayLiteral(node, evaluationContext, planMojoValue);
   } else if (ast.kindName(node) === "KindTemplateExpression") {
     plan = planMojoTemplateExpression(node, evaluationContext, planMojoValue);
@@ -168,7 +175,7 @@ export function planMojoValue(
     expectedType !== undefined && conversion?.kind === "primitive-cast" &&
     mojoNumericLiteralCanInitialize(ast.text(node), expectedType);
   const converted = expectedType === undefined || actualType === undefined ||
-      inlineCallableAdaptation || immediateConversion || directNumericConversion
+      inlineCallableAdaptation || immediateConversion || directNumericConversion || conversion?.kind === "integer-literal"
     ? plan
     : conversion === undefined
       ? undefined

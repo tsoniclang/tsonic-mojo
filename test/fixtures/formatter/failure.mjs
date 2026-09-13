@@ -2,7 +2,7 @@ import { appendFileSync, existsSync, readFileSync, unlinkSync, writeFileSync } f
 
 const [mode, ...arguments_] = process.argv.slice(2);
 if (arguments_.includes("--version")) {
-  process.stdout.write("Mojo 1.1.0.dev2026083005 (formatter-failure-fixture)\n");
+  process.stdout.write("Mojo 1.0.0 (formatter-failure-fixture)\n");
 } else {
   const files = arguments_.filter((argument) => argument.endsWith(".mojo"));
   if (mode === "late") {

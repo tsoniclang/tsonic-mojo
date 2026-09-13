@@ -59,7 +59,7 @@ from native_record_fixture import Header
 from native_memory_proof import update
 def main() raises:
     var owner = ArcPointer(Header(3, 7))
-    var raw = RawPointer.retained(owner, UInt(Int(owner.ptr())), 8)
+    var raw = RawPointer.retained(owner, UInt(Int(owner.unsafe_ptr())), 8)
     assert_equal(update(raw^), 19)
     assert_equal(owner[].amount, 19)
 `,

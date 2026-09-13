@@ -1,7 +1,7 @@
 export interface MojoSupportedToolchain {
   readonly kind: "pixi-mojo";
-  readonly compilerVersion: "1.1.0.dev2026083005";
-  readonly channels: readonly ["conda-forge", "https://conda.modular.com/max-nightly/"];
+  readonly compilerVersion: "1.0.0";
+  readonly channels: readonly ["conda-forge", "https://conda.modular.com/max/"];
   readonly platforms: readonly ["linux-64"];
   readonly commandEnvironment: "posix";
   readonly cCompiler: { readonly environmentVariable: "CONDA_PREFIX"; readonly path: "bin/gcc" };
@@ -11,12 +11,12 @@ export interface MojoSupportedToolchain {
 export function supportedMojoToolchain(): MojoSupportedToolchain {
   const channels = Object.freeze([
     "conda-forge",
-    "https://conda.modular.com/max-nightly/",
+    "https://conda.modular.com/max/",
   ]) as MojoSupportedToolchain["channels"];
   const platforms = Object.freeze(["linux-64"]) as MojoSupportedToolchain["platforms"];
   return Object.freeze({
     kind: "pixi-mojo",
-    compilerVersion: "1.1.0.dev2026083005",
+    compilerVersion: "1.0.0",
     channels,
     platforms,
     commandEnvironment: "posix",

@@ -6,6 +6,7 @@ import type {
 } from "@tsonic/target-api/artifacts";
 import { analyzeAndSealMojoCallableExpression } from "../callables/expressions.js";
 import { createMojoConversionIndex } from "../../policy/conversions/selection.js";
+import { sourceBigIntLiteral } from "../../source/syntax/bigint-literal.js";
 import { selectMojoJsValueConversion } from "../conversions/js-value-graph.js";
 import { createMojoProviderSourceValueIndex } from "../../providers/packages/source-values.js";
 import { createMojoProviderNativeViewIndex } from "../../providers/packages/native-views.js";
@@ -326,6 +327,7 @@ function analyzeMojoTargetProgramWithCallableErrorDomain(
   const providerSourceValues = createMojoProviderSourceValueIndex(providerSemantics.types);
   const conversions = createMojoConversionIndex({
     narrowingForExpression: (expression) => mojoValueConversionNarrowing(valueRefinements.get(expression)),
+    bigintLiteralForExpression: (expression) => sourceBigIntLiteral(ast, expression),
     projectRelationships,
     sourceValueProjection: (type, protocol) => selectMojoJsValueConversion(type, {
       source: input.source, structuralObjects, projectRelationships, lifecycle,
