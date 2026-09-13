@@ -12,10 +12,10 @@ import type { MojoPlanningContext } from "../program/context.js";
 import {
   convertMojoValue,
   finishOptionalMojoOperation,
-  prepareMojoReceiver,
   orderMojoValues,
   unsupportedOptionalCall,
 } from "./support.js";
+import { prepareMojoReceiver } from "./receivers.js";
 import { planSelectedArguments } from "./call-support.js";
 import { createMojoCallInvocationPlanner } from "./call-invocation.js";
 import type {
@@ -138,7 +138,6 @@ export function planMojoCall(
             : Object.freeze({ kind: "required", plan: exactReceiver, type: receiverType })
           : prepareMojoReceiver(
               selection.target.receiver,
-              receiverType,
               selection.optionalChain,
               context,
               planValue,
@@ -272,7 +271,6 @@ export function planMojoCall(
     const optionalCallee = selection.optionalChain && actualCalleeType?.kind === "optional";
     const callee = prepareMojoReceiver(
       selection.callee,
-      selection.callableType,
       optionalCallee,
       context,
       planValue,
@@ -423,7 +421,6 @@ export function planMojoCall(
       }
       preparedFunctionReceiver = prepareMojoReceiver(
         selection.receiver,
-        selection.sourceReceiverType,
         selection.optionalChain,
         context,
         planValue,
@@ -474,7 +471,6 @@ export function planMojoCall(
     if (selection.receiver === undefined || selection.sourceReceiverType === undefined) return undefined;
     const preparedReceiver = prepareMojoReceiver(
       selection.receiver,
-      selection.sourceReceiverType,
       selection.optionalChain,
       context,
       planValue,

@@ -20,8 +20,9 @@ export function planMojoLeafExpression(
 ): MojoExpression | undefined {
   const { ast } = context.program.source;
   const actualType = context.program.queries.expressionType(node);
+  const refinement = context.program.representations.narrowing(node);
   let planned: MojoExpression | undefined;
-  if (actualType?.kind === "null" || actualType?.kind === "undefined") {
+  if ((actualType?.kind === "null" || actualType?.kind === "undefined") && refinement === undefined) {
     registerMojoTypeImports(actualType, context);
     planned = { kind: "construct", type: actualType, arguments: Object.freeze([]) };
   } else if (ast.kindName(node) === "KindThisKeyword" && context.selfType !== undefined) {
@@ -161,7 +162,7 @@ export function planMojoLeafExpression(
     registerMojoTypeImports(actualType, context);
     planned = { kind: "construct", type: actualType, arguments: Object.freeze([{ value: planned }]) };
   }
-  return applyValueRefinement(planned, context.program.representations.narrowing(node), context);
+  return applyValueRefinement(planned, refinement, context);
 }
 
 export function applyValueRefinement(

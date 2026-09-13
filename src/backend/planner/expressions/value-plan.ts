@@ -41,6 +41,18 @@ export function retainMojoValue(
     : Object.freeze({ kind: "copy", expression: value });
 }
 
+export function isStableMojoLocation(expression: MojoExpression): boolean {
+  switch (expression.kind) {
+    case "path":
+    case "qualified-path":
+    case "type-value": return true;
+    case "member": return isStableMojoLocation(expression.receiver);
+    case "element": return isStableMojoLocation(expression.receiver);
+    case "postfix-deref": return true;
+    default: return false;
+  }
+}
+
 function isMojoPlaceExpression(value: MojoExpression): boolean {
   switch (value.kind) {
     case "path":

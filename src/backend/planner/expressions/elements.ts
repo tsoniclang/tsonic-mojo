@@ -12,8 +12,8 @@ import {
   convertMojoValue,
   finishOptionalMojoOperation,
   orderMojoValues,
-  prepareMojoReceiver,
 } from "./support.js";
+import { prepareMojoReceiver } from "./receivers.js";
 import type { MojoValuePlanner } from "./support.js";
 import { consumeMojoValue, mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
@@ -75,12 +75,8 @@ export function planMojoElement(
     );
     return undefined;
   }
-  const sourceReceiverType = selection.kind === "provider"
-    ? selection.sourceReceiverType
-    : selection.receiverType;
   const preparedReceiver = prepareMojoReceiver(
     selection.receiver,
-    sourceReceiverType,
     selection.optionalChain,
     context,
     planValue,
@@ -289,7 +285,6 @@ export function planMojoProviderElementWrite(
   }
   const prepared = prepareMojoReceiver(
     selection.receiver,
-    selection.sourceReceiverType,
     false,
     context,
     planValue,
@@ -445,7 +440,6 @@ export function planMojoProjectElementWrite(
   }
   const receiver = prepareMojoReceiver(
     selection.receiver,
-    selection.receiverType,
     false,
     context,
     planValue,

@@ -81,6 +81,7 @@ type MojoPropertyOperation =
       }[];
       readonly resultType: MojoTargetTypeRef;
       readonly accessMode: "read" | "write" | "read-write";
+      readonly optionalChain: boolean;
     }
   | {
       readonly kind: "provider-union-property";

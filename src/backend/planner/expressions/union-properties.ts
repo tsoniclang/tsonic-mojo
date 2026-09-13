@@ -3,7 +3,8 @@ import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import { allocateMojoSyntheticName } from "../program/context.js";
 import { registerMojoTypeImports } from "../types/imports.js";
-import { convertMojoValue, orderMojoValues, prepareMojoReceiver } from "./support.js";
+import { convertMojoValue, orderMojoValues } from "./support.js";
+import { prepareMojoReceiver } from "./receivers.js";
 import type { MojoValuePlanner } from "./support.js";
 import { mojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
@@ -14,7 +15,7 @@ export function planMojoProviderUnionProperty(
   planValue: MojoValuePlanner,
 ): MojoValuePlan | undefined {
   const receiver = prepareMojoReceiver(
-    selection.receiver, selection.receiverType, false, context, planValue,
+    selection.receiver, false, context, planValue,
   );
   if (receiver === undefined) return undefined;
   registerMojoTypeImports(selection.receiverType, context);

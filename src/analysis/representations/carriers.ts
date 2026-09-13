@@ -24,12 +24,14 @@ import { walkSourceTree } from "../../source/syntax/traversal.js";
 import { mojoAnalysisDiagnostic } from "../diagnostics.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
 import { createMojoNarrowingView } from "./narrowing.js";
+import { createMojoNullableReceiverView } from "./receivers.js";
 import { classifyMojoCallableDisposition, retainedMojoCallInputs } from "./callables.js";
 import { selectMojoAuthoredTypeAlias } from "./aliases.js";
 import type {
   MojoBindingDisposition,
   MojoCallableDisposition,
   MojoNarrowingView,
+  MojoNullableReceiverView,
   MojoPhysicalCarrier,
   MojoPhysicalTypeId,
   MojoRepresentationCatalog,
@@ -66,6 +68,7 @@ export function createMojoRepresentationCatalog(
   const bindingCarriers = new WeakMap<Node, MojoPhysicalTypeId>();
   const expressionCarriers = new WeakMap<Node, MojoPhysicalTypeId>();
   const narrowings = new WeakMap<Node, MojoNarrowingView>();
+  const nullableReceivers = new WeakMap<Node, MojoNullableReceiverView>();
   const parameterDispositions = new WeakMap<Node, import("../../target-model/operations/parameters.js").MojoParameterDisposition>();
   const callableDispositions = new WeakMap<Node, MojoCallableDisposition>();
   const bindingDispositions = new WeakMap<Node, MojoBindingDisposition>();
@@ -238,6 +241,13 @@ export function createMojoRepresentationCatalog(
       } else if (expressionType !== undefined) {
         expressionCarriers.set(node, recordTypeUse(expressionType));
       }
+      const carrierId = expressionCarriers.get(node);
+      if (expressionType !== undefined && carrierId !== undefined) {
+        const nullable = createMojoNullableReceiverView(
+          refinement?.resultType ?? expressionType, carriersById.get(carrierId)!.type, { carrierForType },
+        );
+        if (nullable !== undefined) nullableReceivers.set(node, nullable);
+      }
       const reference = input.sourceNavigation.sourceReferenceFor(node);
       if (reference?.project === true) {
         const callable = callableDispositions.get(reference.declaration);
@@ -288,6 +298,9 @@ export function createMojoRepresentationCatalog(
     },
     narrowing(expression: Node): MojoNarrowingView | undefined {
       return narrowings.get(expression);
+    },
+    nullableReceiver(expression: Node): MojoNullableReceiverView | undefined {
+      return nullableReceivers.get(expression);
     },
     narrowingFor(refinement: MojoValueRefinementSelection): MojoNarrowingView {
       return createMojoNarrowingView(refinement, {

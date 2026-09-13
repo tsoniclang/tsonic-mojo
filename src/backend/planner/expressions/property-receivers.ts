@@ -1,9 +1,10 @@
 import type { Node } from "@tsonic/tsts";
-import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import type { MojoStatement } from "../../target-ast/index.js";
 import type { MojoPlanningContext } from "../program/context.js";
-import { orderMojoValues, prepareMojoReceiver } from "./support.js";
-import type { MojoValuePlanner, PreparedMojoReceiver } from "./support.js";
+import { orderMojoValues } from "./support.js";
+import type { MojoValuePlanner } from "./support.js";
+import { prepareMojoReceiver } from "./receivers.js";
+import type { PreparedMojoReceiver } from "./receivers.js";
 import { withMojoValue } from "./value-plan.js";
 
 export function planMojoPropertyKeyEvaluation(
@@ -22,12 +23,11 @@ export function planMojoPropertyKeyEvaluation(
 export function prepareMojoPropertyReceiver(
   selection: { readonly evaluatedKey?: Node },
   expression: Node,
-  receiverType: MojoTargetTypeRef,
   optional: boolean,
   context: MojoPlanningContext,
   planValue: MojoValuePlanner,
 ): PreparedMojoReceiver | undefined {
-  const receiver = prepareMojoReceiver(expression, receiverType, optional, context, planValue);
+  const receiver = prepareMojoReceiver(expression, optional, context, planValue);
   if (receiver === undefined || selection.evaluatedKey === undefined) return receiver;
   return withMojoPropertyKeyEvaluation(selection, receiver, context, planValue);
 }

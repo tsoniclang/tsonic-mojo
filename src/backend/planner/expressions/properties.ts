@@ -132,16 +132,9 @@ export function planMojoProperty(
     }
     return planMojoProjectUnionRead(node, selection, context, planValue);
   }
-  const sourceReceiverType = selection.kind === "project-method" ||
-    selection.kind === "project-field" ||
-    selection.kind === "project-index-property" || selection.kind === "project-accessor" ||
-    selection.kind === "structural-field"
-    ? selection.receiverType
-    : selection.sourceReceiverType;
   const receiver = prepareMojoPropertyReceiver(
     selection,
     selection.receiver,
-    sourceReceiverType,
     selection.optionalChain,
     context,
     planValue,

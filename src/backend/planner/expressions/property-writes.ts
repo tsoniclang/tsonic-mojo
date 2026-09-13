@@ -113,7 +113,6 @@ export function planMojoProjectPropertyWrite(
   const receiver = prepareMojoPropertyReceiver(
     selection,
     selection.receiver,
-    selection.receiverType,
     false,
     context,
     planValue,
@@ -235,7 +234,6 @@ export function planMojoProviderPropertyWrite(
   const prepared = prepareMojoPropertyReceiver(
     selection,
     selection.receiver,
-    selection.sourceReceiverType,
     false,
     context,
     planValue,

@@ -5,7 +5,7 @@ import { appendMojoPlanningDiagnostic } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import { registerMojoTypeImports } from "../types/imports.js";
 import { mojoStateValue } from "../declarations/state-storage.js";
-import { orderMojoValues } from "./support.js";
+import { finishOptionalMojoOperation, orderMojoValues } from "./support.js";
 import type { MojoValuePlanner } from "./support.js";
 import { prepareMojoPropertyReceiver } from "./property-receivers.js";
 import { mojoValue, withMojoValue } from "./value-plan.js";
@@ -23,7 +23,7 @@ function prepareFields(
   planValue: MojoValuePlanner,
 ) {
   const receiver = prepareMojoPropertyReceiver(
-    selection, selection.receiver, selection.receiverType, false, context, planValue,
+    selection, selection.receiver, selection.optionalChain, context, planValue,
   );
   if (receiver === undefined) return undefined;
   registerMojoTypeImports(selection.receiverType, context);
@@ -61,7 +61,7 @@ function prepareFields(
     read = Object.freeze({ kind: "conditional", condition: selected[index]!.condition,
       whenTrue: selected[index]!.location, whenFalse: read });
   }
-  return Object.freeze({ before: ordered.before, fields: selected, read });
+  return Object.freeze({ receiver, before: ordered.before, fields: selected, read });
 }
 
 export function planMojoProjectUnionRead(
@@ -71,7 +71,9 @@ export function planMojoProjectUnionRead(
   planValue: MojoValuePlanner,
 ): MojoValuePlan | undefined {
   const prepared = prepareFields(node, selection, context, planValue);
-  return prepared === undefined ? undefined : withMojoValue(prepared.before, prepared.read);
+  return prepared === undefined ? undefined : finishOptionalMojoOperation(
+    node, prepared.receiver, withMojoValue(prepared.before, prepared.read), context,
+  );
 }
 
 export function planMojoProjectUnionWrite(

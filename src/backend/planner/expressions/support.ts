@@ -3,7 +3,6 @@ import { convertMojoProviderRecord } from "./provider-record-conversion.js";
 import type {
   MojoValueConversion,
 } from "../../../target-model/conversions/model.js";
-import { mojoTargetTypeEquals } from "../../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import type {
   MojoExpression,
@@ -16,8 +15,9 @@ import {
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import { registerMojoTypeImports } from "../types/imports.js";
-import { mojoValue, retainMojoValue, withMojoValue } from "./value-plan.js";
+import { isStableMojoLocation, mojoValue, retainMojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
+import type { PreparedMojoReceiver } from "./receivers.js";
 import { convertMojoDataRest } from "./js-data-rest-conversion.js";
 import { convertMojoSourceValue } from "./source-values/conversion.js";
 import { adaptMojoRaisingCallableError } from "./callable-error-adapter.js";
@@ -40,7 +40,6 @@ export type MojoValuePlanner = (
   context: MojoPlanningContext,
   expectedType?: MojoTargetTypeRef,
 ) => MojoValuePlan | undefined;
-
 export interface OrderedMojoValue {
   readonly plan: MojoValuePlan;
   readonly type: MojoTargetTypeRef;
@@ -57,16 +56,6 @@ export interface PlannedMojoCallArgument {
   readonly spread: boolean;
   readonly borrowProjection?: true;
 }
-
-export type PreparedMojoReceiver =
-  | { readonly kind: "required"; readonly plan: MojoValuePlan; readonly type: MojoTargetTypeRef }
-  | {
-      readonly kind: "optional";
-      readonly type: MojoTargetTypeRef;
-      readonly before: readonly MojoStatement[];
-      readonly condition: MojoExpression;
-      readonly plan: MojoValuePlan;
-    };
 
 export function orderMojoValues(
   values: readonly OrderedMojoValue[],
@@ -149,18 +138,6 @@ export function isTriviallyPureMojoValue(expression: MojoExpression): boolean {
   }
 }
 
-function isStableMojoLocation(expression: MojoExpression): boolean {
-  switch (expression.kind) {
-    case "path":
-    case "qualified-path":
-    case "type-value": return true;
-    case "member": return isStableMojoLocation(expression.receiver);
-    case "element": return isStableMojoLocation(expression.receiver);
-    case "postfix-deref": return true;
-    default: return false;
-  }
-}
-
 export function convertMojoValue(
   plan: MojoValuePlan,
   conversion: MojoValueConversion,
@@ -234,68 +211,6 @@ export function convertMojoValue(
   return converted === undefined ? undefined : withMojoValue(plan.before, converted);
 }
 
-export function prepareMojoReceiver(
-  expression: Node,
-  selectedType: MojoTargetTypeRef,
-  optionalChain: boolean,
-  context: MojoPlanningContext,
-  planValue: MojoValuePlanner,
-): PreparedMojoReceiver | undefined {
-  const receiver = planValue(expression, context);
-  if (receiver === undefined) return undefined;
-  const carrier = context.program.representations.expressionCarrier(expression);
-  const physicalType = carrier === undefined ? undefined : context.program.representations.carrier(carrier)?.type;
-  if (physicalType === undefined) throw new Error("A sealed receiver expression has no physical carrier.");
-  if (!optionalChain) return Object.freeze({ kind: "required", plan: receiver, type: physicalType });
-  const actualType = context.program.queries.expressionType(expression);
-  if (actualType !== undefined && mojoTargetTypeEquals(actualType, selectedType)) {
-    return Object.freeze({ kind: "required", plan: receiver, type: physicalType });
-  }
-  if (actualType?.kind !== "optional" || !mojoTargetTypeEquals(actualType.value, selectedType)) {
-    appendMojoPlanningDiagnostic(
-      context,
-      "MOJO_OPTIONAL_RECEIVER_CARRIER_UNPROVEN",
-      "Optional chaining requires one exact Optional[T] receiver whose T matches the checker-selected non-null receiver.",
-      expression,
-    );
-    return undefined;
-  }
-  registerMojoTypeImports(actualType, context);
-  const receiverName = allocateMojoSyntheticName(context, "optional_receiver");
-  const receiverPath: MojoExpression = Object.freeze({ kind: "path", path: receiverName });
-  const explicitCopy = context.program.lifecycle.capabilities(actualType).copy === "explicit";
-  const present: MojoExpression = Object.freeze({
-    kind: "method-call",
-    receiver: receiverPath,
-    name: "value",
-    arguments: Object.freeze([]),
-  });
-  const valueName = explicitCopy ? allocateMojoSyntheticName(context, "optional_value") : undefined;
-  return Object.freeze({
-    kind: "optional",
-    type: selectedType,
-    before: Object.freeze([
-      ...receiver.before,
-      Object.freeze({
-        kind: "variable",
-        name: receiverName,
-        type: actualType,
-        initializer: explicitCopy && isStableMojoLocation(receiver.value)
-          ? Object.freeze({ kind: "copy", expression: receiver.value })
-          : receiver.value,
-      }),
-    ]),
-    condition: receiverPath,
-    plan: valueName === undefined
-      ? mojoValue(present)
-      : withMojoValue([Object.freeze({
-          kind: "variable",
-          name: valueName,
-          reference: true,
-          initializer: present,
-        })], Object.freeze({ kind: "path", path: valueName })),
-  });
-}
 
 export function finishOptionalMojoOperation(
   expression: Node,

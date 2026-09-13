@@ -370,11 +370,12 @@ function analyzeProjectUnionProperty(
   receiverType: MojoTargetTypeRef | undefined,
   projectRelationships: MojoProjectTypeRelationships,
 ): MojoProjectFieldAnalysis {
-  if (receiverType?.kind !== "union" || source.accessMode === "delete" || source.optionalChain) {
+  if (receiverType?.kind !== "union" || source.accessMode === "delete" ||
+    source.optionalChain && source.accessMode !== "read") {
     return {
       kind: "unsupported",
       code: "MOJO_PROJECT_PROPERTY_IDENTITY_CONFLICT",
-      reason: "Selected property declarations require one exact non-optional union-member projection.",
+      reason: "Selected property declarations require exact union-member projections; optional access cannot be written.",
     };
   }
   const fields = receiverType.members.map((member) => {
@@ -413,7 +414,7 @@ function analyzeProjectUnionProperty(
   }
   return {
     kind: "resolved",
-    expressionType: resultType,
+    expressionType: optionalAccessResult(resultType, source.optionalChain),
     selection: Object.freeze({
       kind: "project-union-field",
       receiver: source.receiver.expression,
@@ -421,6 +422,7 @@ function analyzeProjectUnionProperty(
       fields: Object.freeze(exactFields),
       resultType,
       accessMode: source.accessMode,
+      optionalChain: source.optionalChain,
     }),
   };
 }

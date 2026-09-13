@@ -307,7 +307,6 @@ MOJO_OPEN_GENERIC_VIRTUAL_CALL_UNSUPPORTED	analysis	target-gap	close-capability	
 MOJO_OPEN_LIBRARY_CALLABLE_SPECIALIZATION_UNSUPPORTED	analysis	target-gap	close-capability	-	-	-	-
 MOJO_OPEN_LIBRARY_VIRTUAL_GENERIC_UNSUPPORTED	analysis	target-gap	close-capability	-	-	-	-
 MOJO_OPTIONAL_CALLABLE_VALUE_UNSUPPORTED	planning	target-gap	close-capability	-	-	-	-
-MOJO_OPTIONAL_RECEIVER_CARRIER_UNPROVEN	planning	internal-invariant	reviewed-other	-	-	-	-
 MOJO_OPTIONAL_RESULT_CARRIER_UNPROVEN	planning	internal-invariant	reviewed-other	-	-	-	-
 MOJO_ORIGIN_DEFAULT_UNSUPPORTED	analysis	exact-rejection	retain-exact-guard	-	-	-	-
 MOJO_OUTPUT_SOURCE_PATH_CONFLICT	planning	exact-rejection	reviewed-other	-	-	-	-
