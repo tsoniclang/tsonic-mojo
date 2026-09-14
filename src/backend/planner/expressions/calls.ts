@@ -12,10 +12,10 @@ import type { MojoPlanningContext } from "../program/context.js";
 import {
   convertMojoValue,
   finishOptionalMojoOperation,
-  prepareMojoReceiver,
   orderMojoValues,
   unsupportedOptionalCall,
 } from "./support.js";
+import { prepareMojoReceiver } from "./receivers.js";
 import { planSelectedArguments } from "./call-support.js";
 import { createMojoCallInvocationPlanner } from "./call-invocation.js";
 import type {
@@ -35,6 +35,7 @@ import {
 } from "./source-profile-special-calls.js";
 import { planMojoProjectConstruction } from "./project-construction.js";
 import { planMojoProviderCallArguments } from "./provider-call-arguments.js";
+import { planMojoPropertyKeyEvaluation, withMojoPropertyKeyEvaluation } from "./property-receivers.js";
 
 export function planMojoCall(
   node: Node,
@@ -131,17 +132,18 @@ export function planMojoCall(
                   arguments: Object.freeze([]),
                 }))
           : undefined;
-        const receiver = exactDispatch
+        const selectedReceiver = exactDispatch
           ? exactReceiver === undefined
             ? undefined
-            : Object.freeze({ kind: "required", plan: exactReceiver })
+            : Object.freeze({ kind: "required", plan: exactReceiver, type: receiverType })
           : prepareMojoReceiver(
               selection.target.receiver,
-              receiverType,
               selection.optionalChain,
               context,
               planValue,
             );
+        const receiver = selectedReceiver === undefined ? undefined
+          : withMojoPropertyKeyEvaluation(selection, selectedReceiver, context, planValue);
         if (exactDispatch && receiver === undefined) {
           appendMojoPlanningDiagnostic(
             context,
@@ -154,7 +156,7 @@ export function planMojoCall(
         if (receiver === undefined) return undefined;
         const ordered = invocation.orderArguments(plannedArguments, Object.freeze({
           plan: receiver.plan,
-          type: receiverType,
+          type: receiver.type,
           role: "call_receiver",
         }));
         before = ordered.before;
@@ -236,7 +238,9 @@ export function planMojoCall(
           return undefined;
         }
         const ordered = invocation.orderArguments(plannedArguments);
-        before = ordered.before;
+        const key = planMojoPropertyKeyEvaluation(selection, context, planValue);
+        if (key === undefined) return undefined;
+        before = Object.freeze([...key, ...ordered.before]);
         call = {
           kind: "method-call",
           receiver: { kind: "type-value", type: selection.target.owner },
@@ -267,7 +271,6 @@ export function planMojoCall(
     const optionalCallee = selection.optionalChain && actualCalleeType?.kind === "optional";
     const callee = prepareMojoReceiver(
       selection.callee,
-      selection.callableType,
       optionalCallee,
       context,
       planValue,
@@ -418,7 +421,6 @@ export function planMojoCall(
       }
       preparedFunctionReceiver = prepareMojoReceiver(
         selection.receiver,
-        selection.sourceReceiverType,
         selection.optionalChain,
         context,
         planValue,
@@ -469,7 +471,6 @@ export function planMojoCall(
     if (selection.receiver === undefined || selection.sourceReceiverType === undefined) return undefined;
     const preparedReceiver = prepareMojoReceiver(
       selection.receiver,
-      selection.sourceReceiverType,
       selection.optionalChain,
       context,
       planValue,
@@ -482,7 +483,7 @@ export function planMojoCall(
     }
     const ordered = invocation.orderArguments(plannedArguments, Object.freeze({
       plan: receiver,
-      type: selection.operation.receiverType,
+      type: selection.receiverConversion === undefined ? preparedReceiver.type : selection.operation.receiverType,
       role: "call_receiver",
       ...(target.receiver === "mut" ? { stabilize: true, use: "location" as const } : {}),
     }));

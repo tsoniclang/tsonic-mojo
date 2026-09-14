@@ -119,6 +119,7 @@ export type MojoCallSelection =
   | import("../../target-model/operations/typed-locations.js").MojoTypedLocationSelection
   | {
       readonly kind: "project";
+      readonly evaluatedKey?: Node;
       readonly target:
         | {
             readonly kind: "function";

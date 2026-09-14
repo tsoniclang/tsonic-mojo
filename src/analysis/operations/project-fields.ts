@@ -171,13 +171,6 @@ export function analyzeMojoProjectProperty(
         reason: `Selected project accessor '${field.sourceName}' does not close its exact ${source.accessMode} contract.`,
       };
     }
-    if (source.accessMode === "read-write" && !mojoTargetTypeEquals(readType!, writeType!)) {
-      return {
-        kind: "unsupported",
-        code: "MOJO_PROJECT_ACCESSOR_COMPOUND_WRITE_UNSUPPORTED",
-        reason: "A compound project accessor write requires one identical exact read and write carrier.",
-      };
-    }
     return {
       kind: "resolved",
       expressionType: optionalAccessResult(readType ?? writeType!, source.optionalChain),
@@ -264,10 +257,18 @@ function analyzeProjectMethodProperty(
     };
   }
   if (callable.contract.static === true) {
+    const type = source.sourceReadType === undefined ? undefined : resolveType(source.sourceReadType);
+    if (source.accessMode === "read" && type?.kind === "callable") {
+      return {
+        kind: "resolved",
+        expressionType: type,
+        selection: Object.freeze({ kind: "project-static-method", declaration: callable.contract.declaration, callableType: type }),
+      };
+    }
     return {
       kind: "unsupported",
       code: "MOJO_STATIC_METHOD_PROPERTY_UNSUPPORTED",
-      reason: "A static project method value requires a distinct sealed static-callable representation.",
+      reason: "A static project method reference requires a closed callable read; method replacement needs explicit static storage.",
     };
   }
   if (callable.contract.typeParameters.length !== 0) {
@@ -369,11 +370,12 @@ function analyzeProjectUnionProperty(
   receiverType: MojoTargetTypeRef | undefined,
   projectRelationships: MojoProjectTypeRelationships,
 ): MojoProjectFieldAnalysis {
-  if (receiverType?.kind !== "union" || source.accessMode !== "read" || source.optionalChain) {
+  if (receiverType?.kind !== "union" || source.accessMode === "delete" ||
+    source.optionalChain && source.accessMode !== "read") {
     return {
       kind: "unsupported",
       code: "MOJO_PROJECT_PROPERTY_IDENTITY_CONFLICT",
-      reason: "Selected property declarations require one exact readable union-member projection.",
+      reason: "Selected property declarations require exact union-member projections; optional access cannot be written.",
     };
   }
   const fields = receiverType.members.map((member) => {
@@ -412,14 +414,15 @@ function analyzeProjectUnionProperty(
   }
   return {
     kind: "resolved",
-    expressionType: resultType,
+    expressionType: optionalAccessResult(resultType, source.optionalChain),
     selection: Object.freeze({
       kind: "project-union-field",
       receiver: source.receiver.expression,
       receiverType,
       fields: Object.freeze(exactFields),
       resultType,
-      accessMode: "read",
+      accessMode: source.accessMode,
+      optionalChain: source.optionalChain,
     }),
   };
 }

@@ -61,12 +61,28 @@ export type MojoNarrowingView =
       readonly target: MojoNarrowingAlternative;
     };
 
+export type MojoNullableReceiverView =
+  | {
+      readonly kind: "optional";
+      readonly carrier: MojoPhysicalTypeId;
+      readonly value: MojoNarrowingAlternative;
+      readonly nested?: MojoNullableReceiverView;
+    }
+  | {
+      readonly kind: "union";
+      readonly carrier: MojoPhysicalTypeId;
+      readonly absent: readonly MojoNarrowingAlternative[];
+      readonly present: MojoNarrowingView;
+      readonly value: MojoNarrowingAlternative;
+    };
+
 export interface MojoRepresentationCatalog {
   carrier(id: MojoPhysicalTypeId): MojoPhysicalCarrier | undefined;
   carrierForType(type: MojoTargetTypeRef): MojoPhysicalTypeId;
   bindingCarrier(declaration: Node): MojoPhysicalTypeId | undefined;
   expressionCarrier(expression: Node): MojoPhysicalTypeId | undefined;
   narrowing(expression: Node): MojoNarrowingView | undefined;
+  nullableReceiver(expression: Node): MojoNullableReceiverView | undefined;
   narrowingFor(refinement: MojoValueRefinementSelection): MojoNarrowingView;
   callable(referenceOrExpression: Node): MojoCallableDisposition | undefined;
   parameter(declaration: Node): MojoParameterDisposition | undefined;

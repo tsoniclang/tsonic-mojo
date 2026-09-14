@@ -1,4 +1,4 @@
-import type { MojoIterationSelection } from "../../../analysis/program/model.js";
+import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 import type { MojoValuePlan } from "../expressions/value-plan.js";
 import { allocateMojoSyntheticName, mojoTargetTypeInContext } from "../program/context.js";
@@ -6,7 +6,7 @@ import type { MojoPlanningContext } from "../program/context.js";
 import { registerMojoTypeImports } from "../types/imports.js";
 
 export function planMojoLiveArrayIteration(
-  selection: MojoIterationSelection,
+  binding: { readonly name: string; readonly type: MojoTargetTypeRef },
   iterable: MojoValuePlan,
   statements: readonly MojoStatement[],
   context: MojoPlanningContext,
@@ -15,7 +15,7 @@ export function planMojoLiveArrayIteration(
   const indexName = allocateMojoSyntheticName(context, "index");
   const array: MojoExpression = Object.freeze({ kind: "path", path: arrayName });
   const index: MojoExpression = Object.freeze({ kind: "path", path: indexName });
-  const elementType = mojoTargetTypeInContext(selection.elementType, context);
+  const elementType = mojoTargetTypeInContext(binding.type, context);
   registerMojoTypeImports(elementType, context);
   return Object.freeze([
     ...iterable.before,
@@ -35,7 +35,7 @@ export function planMojoLiveArrayIteration(
       }),
       statements: Object.freeze([
         Object.freeze({
-          kind: "variable", name: selection.binding.name, type: elementType,
+          kind: "variable", name: binding.name, type: elementType,
           initializer: Object.freeze({
             kind: "method-call", receiver: array, name: "read_value",
             arguments: Object.freeze([Object.freeze({ value: index })]),

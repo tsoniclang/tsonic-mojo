@@ -25,6 +25,12 @@ function integerLiteralValue(text: string): bigint | undefined {
   return BigInt(normalized);
 }
 
+export function mojoIntegerValueFits(value: bigint, target: MojoTargetTypeRef): boolean {
+  if (target.kind !== "source-primitive") return false;
+  const bounds = integerBounds(target.name);
+  return bounds !== undefined && value >= bounds[0] && value <= bounds[1];
+}
+
 function integerBounds(
   name: Extract<MojoTargetTypeRef, { readonly kind: "source-primitive" }>["name"],
 ): readonly [bigint, bigint] | undefined {
@@ -35,14 +41,14 @@ function integerBounds(
     case "uint16": return [0n, (1n << 16n) - 1n];
     case "int32": return [-(1n << 31n), (1n << 31n) - 1n];
     case "uint32": return [0n, (1n << 32n) - 1n];
+    case "native-int":
     case "int64": return [-(1n << 63n), (1n << 63n) - 1n];
+    case "native-uint":
     case "uint64": return [0n, (1n << 64n) - 1n];
     case "int128": return [-(1n << 127n), (1n << 127n) - 1n];
     case "uint128": return [0n, (1n << 128n) - 1n];
     case "bool":
     case "char":
-    case "native-int":
-    case "native-uint":
     case "float16":
     case "float32":
     case "float64":

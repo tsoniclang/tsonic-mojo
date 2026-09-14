@@ -66,10 +66,12 @@ export function expectedExpressionType(
     parentOperator !== undefined && isMojoAssignmentOperator(parentOperator)) {
     const left = BinaryExpression_Left(ast, parent);
     if (left === undefined) return undefined;
+    if (parentOperator !== "KindEqualsToken") return input.expressionTypes.get(left);
     const property = input.propertySelections.get(left);
     const element = input.elementSelections.get(left);
     return property?.kind === "provider" || property?.kind === "provider-static"
       ? property.sourceWriteType
+      : property?.kind === "project-accessor" ? property.writeType
       : element?.kind === "provider"
         ? element.sourceWriteType
         : element?.writeType ?? input.expressionTypes.get(left);

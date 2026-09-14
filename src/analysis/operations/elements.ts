@@ -51,9 +51,10 @@ export function analyzeMojoElementAccess(
 ): MojoElementAnalysis {
   const actualReceiver = context.expressionTypes.get(source.receiver.expression) ??
     context.resolveType(source.receiver.type);
-  const receiver = source.optionalChain && actualReceiver?.kind === "optional"
-    ? actualReceiver.value
-    : actualReceiver;
+  const receiverValue = actualReceiver?.kind === "reference" ? actualReceiver.value : actualReceiver;
+  const receiver = source.optionalChain && receiverValue?.kind === "optional"
+    ? receiverValue.value
+    : receiverValue;
   const index = context.expressionTypes.get(source.argument.expression) ??
     context.resolveType(source.argument.type);
   if (receiver === undefined || index === undefined) {
@@ -347,6 +348,8 @@ function analyzeSourceProfileElement(
       ...(writeOperation === undefined ? {} : { writeOperation, writeType: sourceWrite }),
       ...(sourceWrite === undefined ? {} : { sourceWriteType: sourceWrite }),
       ...(sourceWrite === undefined ? {} : { targetWriteType: sourceWrite }),
+      ...(writeValueConversion === undefined ? {} : { writeValueConversion: writeValueConversion.conversion }),
+      ...(readContract === undefined ? {} : { readResultConversion: Object.freeze({ kind: "identity" as const }) }),
       receiverConversion: receiverConversion.conversion,
       sourceReceiverType: receiver,
       indexConversion: indexConversion.conversion,

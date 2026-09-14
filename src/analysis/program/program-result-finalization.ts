@@ -198,7 +198,11 @@ export function finalizeMojoProgramResult(
   });
   const firstClassFinalizedModules = addMojoFirstClassFunctionBindings(
     finalizeMojoModuleBindingTypes(analyzedModules, bindingTypes),
-    topLevelCallableContracts,
+    Object.freeze([
+      ...topLevelCallableContracts,
+      ...classes.flatMap((class_) => class_.callableContracts.filter((contract) =>
+        contract.kind === "method" && contract.static === true)),
+    ]),
     finalizedByDeclaration,
     checkedSource,
     expressionTypes,

@@ -7,7 +7,16 @@ import type { MojoParameterDisposition } from "../../target-model/operations/par
 import type { MojoBindingProjectionPlan } from "../bindings/model.js";
 import type { MojoAnalyzedModuleBinding } from "../module-initialization/model.js";
 
-export type MojoPropertySelection =
+export type MojoPropertySelection = MojoPropertyOperation & {
+  readonly evaluatedKey?: Node;
+};
+
+type MojoPropertyOperation =
+  | {
+      readonly kind: "project-static-method";
+      readonly declaration: Node;
+      readonly callableType: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
+    }
   | {
       readonly kind: "project-method";
       readonly declaration: Node;
@@ -71,7 +80,8 @@ export type MojoPropertySelection =
         readonly fieldType: MojoTargetTypeRef;
       }[];
       readonly resultType: MojoTargetTypeRef;
-      readonly accessMode: "read";
+      readonly accessMode: "read" | "write" | "read-write";
+      readonly optionalChain: boolean;
     }
   | {
       readonly kind: "provider-union-property";
@@ -109,6 +119,7 @@ export type MojoPropertySelection =
       readonly readResultConversion?: MojoValueConversion;
       readonly sourceWriteType?: MojoTargetTypeRef;
       readonly targetWriteType?: MojoTargetTypeRef;
+      readonly writeValueConversion?: MojoValueConversion;
       readonly optionalChain: boolean;
     }
   | {
@@ -123,6 +134,7 @@ export type MojoPropertySelection =
       readonly readResultConversion?: MojoValueConversion;
       readonly sourceWriteType?: MojoTargetTypeRef;
       readonly targetWriteType?: MojoTargetTypeRef;
+      readonly writeValueConversion?: MojoValueConversion;
     };
 
 export interface MojoValueSelection {
@@ -281,6 +293,7 @@ export type MojoElementSelection = {
   readonly writeType?: MojoTargetTypeRef;
   readonly sourceWriteType?: MojoTargetTypeRef;
   readonly targetWriteType?: MojoTargetTypeRef;
+  readonly writeValueConversion?: MojoValueConversion;
   readonly readResultConversion?: MojoValueConversion;
   readonly optionalChain: boolean;
 } | {
@@ -317,13 +330,7 @@ interface MojoIterationSelectionBase {
   readonly elementType: MojoTargetTypeRef;
 }
 
-type MojoValueIterationTarget =
-  | "native-values"
-  | "js-array-live-values"
-  | "js-array-values"
-  | "js-map-entries"
-  | "js-set-values"
-  | "js-string-values";
+type MojoValueIterationTarget = import("../../target-model/operations/iterations.js").MojoValueIterationTarget;
 
 export type MojoIterationSelection =
   | MojoIterationSelectionBase & {

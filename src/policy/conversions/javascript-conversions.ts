@@ -36,6 +36,9 @@ export function jsValueBoxConversion(
   type: MojoTargetTypeRef,
   targetType: MojoTargetTypeRef,
 ): Extract<MojoValueConversion, { kind: "js-box" }> | undefined {
+  if (type.kind === "bigint") {
+    return Object.freeze({ kind: "js-box", targetType, source: "bigint", sourceType: type });
+  }
   if (type.kind === "source-primitive") {
     if (type.name === "bool") {
       return Object.freeze({ kind: "js-box", targetType, source: "bool" });

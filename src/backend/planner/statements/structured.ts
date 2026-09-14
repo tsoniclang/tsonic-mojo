@@ -393,7 +393,7 @@ function planStatement(
     if (selection.target === "js-array-live-values") {
       return statements === undefined
         ? undefined
-        : planMojoLiveArrayIteration(selection, sourceIterable, statements, context);
+        : planMojoLiveArrayIteration({ name: selection.binding.name, type: selection.elementType }, sourceIterable, statements, context);
     }
     return statements === undefined
       ? undefined

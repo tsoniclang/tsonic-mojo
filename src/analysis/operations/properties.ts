@@ -6,7 +6,6 @@ import { classifyMojoRefinedValueConversion } from "../refinements/value.js";
 import type { MojoConversionIndex } from "../../policy/conversions/selection.js";
 import type { MojoPropertySelection } from "../program/model.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
-import { mojoProviderCompoundWriteIssue } from "../../policy/operations/mutation-admission.js";
 import type { MojoSelectedProviderOperation } from "../../target-model/operations/selection.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import { providerOwnerMatches } from "../../policy/types/resolution.js";
@@ -210,8 +209,6 @@ export function analyzeMojoProviderProperty(
       reason: writeValueConversion.reason,
     };
   }
-  const compoundIssue = mojoProviderCompoundWriteIssue(source.accessMode, selectedWrite, writeParameterType);
-  if (compoundIssue !== undefined) return compoundIssue;
   let expressionType: MojoTargetTypeRef;
   let readResultConversion;
   if (read !== undefined) {
@@ -245,6 +242,7 @@ export function analyzeMojoProviderProperty(
       ...(readResultConversion === undefined ? {} : { readResultConversion }),
       ...(selectedWrite === undefined ? {} : { sourceWriteType: selectedWrite }),
       ...(writeParameterType === undefined ? {} : { targetWriteType: writeParameterType }),
+      ...(writeValueConversion === undefined ? {} : { writeValueConversion: writeValueConversion.conversion }),
       optionalChain: source.optionalChain,
     }),
   };
@@ -413,6 +411,7 @@ function analyzeSourceProfileProperty(
       ...(readResultConversion === undefined ? {} : { readResultConversion: readResultConversion.conversion }),
       ...(writeType === undefined ? {} : { sourceWriteType: writeType }),
       ...(writeStorageType === undefined ? {} : { targetWriteType: writeStorageType }),
+      ...(writeValueConversion === undefined ? {} : { writeValueConversion: writeValueConversion.conversion }),
       optionalChain: source.optionalChain,
     }),
   };

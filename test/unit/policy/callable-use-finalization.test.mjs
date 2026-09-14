@@ -9,6 +9,7 @@ const callable = (errorType) => ({ kind: "callable", parameters: [], result: { k
 
 function index() {
   return createMojoConversionIndex({
+    bigintLiteralForExpression: () => undefined,
     narrowingForExpression: () => undefined,
     projectRelationships: undefined,
     sourceValueProjection: () => ({ kind: "unsupported", reason: "not a source-value fixture" }),

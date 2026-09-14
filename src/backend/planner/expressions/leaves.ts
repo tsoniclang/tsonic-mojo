@@ -20,8 +20,9 @@ export function planMojoLeafExpression(
 ): MojoExpression | undefined {
   const { ast } = context.program.source;
   const actualType = context.program.queries.expressionType(node);
+  const refinement = context.program.representations.narrowing(node);
   let planned: MojoExpression | undefined;
-  if (actualType?.kind === "null" || actualType?.kind === "undefined") {
+  if ((actualType?.kind === "null" || actualType?.kind === "undefined") && refinement === undefined) {
     registerMojoTypeImports(actualType, context);
     planned = { kind: "construct", type: actualType, arguments: Object.freeze([]) };
   } else if (ast.kindName(node) === "KindThisKeyword" && context.selfType !== undefined) {
@@ -126,7 +127,25 @@ export function planMojoLeafExpression(
       );
       return undefined;
     }
-    planned = { kind: "number-literal", text: text.slice(0, -1) };
+    const literal: MojoExpression = Object.freeze({ kind: "number-literal", text: text.slice(0, -1) });
+    const targetType = numericTargetType ?? actualType;
+    if (targetType?.kind === "bigint") {
+      registerMojoTypeImports(targetType, context);
+      planned = Object.freeze({
+        kind: "call",
+        callee: Object.freeze({
+          kind: "member",
+          receiver: Object.freeze({ kind: "type-value", type: targetType }),
+          name: "from_decimal_literal",
+        }),
+        arguments: Object.freeze([Object.freeze({ value: Object.freeze({
+          kind: "string-literal",
+          value: BigInt(text.slice(0, -1).replace(/_/gu, "")).toString(),
+        }) })]),
+      });
+    } else {
+      planned = literal;
+    }
   } else if (ast.kindName(node) === "KindTrueKeyword" || ast.kindName(node) === "KindFalseKeyword") {
     planned = { kind: "bool-literal", value: ast.kindName(node) === "KindTrueKeyword" };
   } else {
@@ -143,7 +162,7 @@ export function planMojoLeafExpression(
     registerMojoTypeImports(actualType, context);
     planned = { kind: "construct", type: actualType, arguments: Object.freeze([{ value: planned }]) };
   }
-  return applyValueRefinement(planned, context.program.representations.narrowing(node), context);
+  return applyValueRefinement(planned, refinement, context);
 }
 
 export function applyValueRefinement(

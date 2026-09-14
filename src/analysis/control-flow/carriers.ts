@@ -71,6 +71,7 @@ function propertyReceiver(selection: MojoPropertySelection): Node | undefined {
     case "provider":
       return selection.receiver;
     case "project-static-field":
+    case "project-static-method":
     case "project-enum-member":
     case "provider-constant":
     case "provider-static":
@@ -91,6 +92,7 @@ function propertyReceiverType(selection: MojoPropertySelection): MojoTargetTypeR
     case "provider":
       return selection.sourceReceiverType;
     case "project-static-field":
+    case "project-static-method":
     case "project-enum-member":
     case "provider-constant":
     case "provider-static":
@@ -292,7 +294,8 @@ export function resolveInferredBindingCarrier(
   if ((ast.is.IsCallExpression(initializer) || ast.is.IsNewExpression(initializer)) &&
     !input.callSelections.has(initializer)) return undefined;
   if (ast.is.IsPropertyAccessExpression(initializer) && !input.propertySelections.has(initializer)) return undefined;
-  if (ast.is.IsElementAccessExpression(initializer) && !input.elementSelections.has(initializer)) return undefined;
+  if (ast.is.IsElementAccessExpression(initializer) &&
+    !input.elementSelections.has(initializer) && !input.propertySelections.has(initializer)) return undefined;
   const exactExpressionType = input.expressionTypes.get(initializer);
   if (exactExpressionType !== undefined) return exactExpressionType;
   return isErasedValueWrapper(initializer, ast)

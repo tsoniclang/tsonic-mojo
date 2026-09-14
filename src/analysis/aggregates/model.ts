@@ -35,10 +35,11 @@ export interface MojoArrayLiteralSequenceSpreadSelection {
   readonly targetType: MojoTargetTypeRef;
   readonly conversion: MojoValueConversion;
   readonly copy: boolean;
-  readonly iteration: "native" | "js-array";
+  readonly iteration: import("../../target-model/operations/iterations.js").MojoValueIterationTarget;
 }
 
 export type MojoArrayLiteralContribution =
+  | { readonly kind: "hole"; readonly sourceElement: Node }
   | MojoArrayLiteralValueSelection
   | MojoArrayLiteralFixedSpreadSelection
   | MojoArrayLiteralSequenceSpreadSelection;
@@ -47,4 +48,8 @@ export interface MojoArrayLiteralSelection {
   readonly expression: Node;
   readonly resultType: MojoTargetTypeRef;
   readonly contributions: readonly MojoArrayLiteralContribution[];
+  readonly sequenceStorage?: {
+    readonly type: Extract<MojoTargetTypeRef, { readonly kind: "list" }>;
+    readonly sparse: boolean;
+  };
 }

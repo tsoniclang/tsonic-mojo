@@ -6,6 +6,7 @@ import {
 } from "../../policy/conversions/selection.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoNativeArrayElement } from "../../target-model/types/native-arrays.js";
+import { selectMojoClosedIteration } from "../../policy/operations/iterations.js";
 import type { MojoProjectTypeRelationships } from "../../target-model/types/project.js";
 import type { MojoLifecycleAnalysis } from "../lifecycle/model.js";
 import type { MojoValueOwnership } from "../../target-model/lifecycle/model.js";
@@ -50,9 +51,14 @@ export function analyzeMojoArrayLiteral(
   let targetIndex = 0;
   for (const element of input.ast.elements(input.expression)) {
     if (element === undefined || input.ast.is.IsOmittedExpression(element)) {
+      if (element !== undefined && jsArrayElement(input.resultType) !== undefined) {
+        contributions.push(Object.freeze({ kind: "hole", sourceElement: element }));
+        targetIndex += 1;
+        continue;
+      }
       return unsupported(
         "MOJO_ARRAY_LITERAL_HOLE_UNSUPPORTED",
-        "A sparse array hole has no exact native Mojo aggregate representation.",
+        "A sparse array hole requires the selected JavaScript array carrier, not a dense native aggregate.",
         element ?? input.expression,
       );
     }
@@ -92,6 +98,7 @@ export function analyzeMojoArrayLiteral(
         element,
       );
     }
+    input.conversions.record(expression, sourceType, sourceType);
     const fixed = fixedElementTypes(sourceType);
     if (fixed !== undefined) {
       const sourceOwnership = input.valueOwnership(expression);
@@ -147,16 +154,16 @@ export function analyzeMojoArrayLiteral(
       }));
       continue;
     }
-    const sequence = sequenceElementType(sourceType);
-    if (sequence === undefined || target.kind !== "sequence") {
+    const sequence = selectMojoClosedIteration("for-of", sourceType);
+    if (sequence === undefined || sequence.target === "dictionary-keys" || target.kind !== "sequence") {
       return unsupported(
         "MOJO_ARRAY_SPREAD_PROTOCOL_UNSUPPORTED",
-        "A variable-length spread requires one exact native List or JavaScript array source and a sequence target.",
+        "A variable-length spread requires an exact closed iterator contract and a sequence target.",
         element,
       );
     }
     const conversion = classifyMojoValueConversion(
-      sequence.element,
+      sequence.elementType,
       target.element,
       undefined,
       input.projectRelationships,
@@ -168,7 +175,7 @@ export function analyzeMojoArrayLiteral(
         element,
       );
     }
-    const copy = copyRequired(sequence.element, input.lifecycle);
+    const copy = copyRequired(sequence.elementType, input.lifecycle);
     if (copy === undefined) {
       return unsupported(
         "MOJO_ARRAY_SPREAD_ELEMENT_COPY_UNPROVEN",
@@ -181,11 +188,11 @@ export function analyzeMojoArrayLiteral(
       sourceElement: element,
       expression,
       sourceType,
-      sourceElementType: sequence.element,
+      sourceElementType: sequence.elementType,
       targetType: target.element,
       conversion: conversion.conversion,
       copy,
-      iteration: sequence.iteration,
+      iteration: sequence.target,
     }));
   }
   if (target.kind === "fixed" && targetIndex !== target.elements.length) {
@@ -195,12 +202,25 @@ export function analyzeMojoArrayLiteral(
       input.expression,
     );
   }
+  const sparse = contributions.some((contribution) => contribution.kind === "hole");
+  const dynamic = sparse || contributions.some((contribution) => contribution.kind === "sequence-spread");
+  const sequenceStorage = target.kind === "sequence" && dynamic
+    ? Object.freeze({
+        type: Object.freeze({
+          kind: "list" as const,
+          element: sparse ? Object.freeze({ kind: "optional" as const, value: target.element }) : target.element,
+        }),
+        sparse,
+      })
+    : undefined;
+  if (sequenceStorage !== undefined) input.lifecycle.capabilities(sequenceStorage.type);
   return Object.freeze({
     kind: "resolved",
     selection: Object.freeze({
       expression: input.expression,
       resultType: input.resultType,
       contributions: Object.freeze(contributions),
+      ...(sequenceStorage === undefined ? {} : { sequenceStorage }),
     }),
   });
 }
@@ -237,15 +257,6 @@ function exactLength(type: Extract<MojoTargetTypeRef, { readonly kind: "fixed-ar
   if (type.length.kind !== "integer") return undefined;
   const length = Number(type.length.value);
   return Number.isSafeInteger(length) && length >= 0 ? length : undefined;
-}
-
-function sequenceElementType(type: MojoTargetTypeRef): {
-  readonly element: MojoTargetTypeRef;
-  readonly iteration: "native" | "js-array";
-} | undefined {
-  if (type.kind === "list") return Object.freeze({ element: type.element, iteration: "native" });
-  const element = jsArrayElement(type);
-  return element === undefined ? undefined : Object.freeze({ element, iteration: "js-array" });
 }
 
 function jsArrayElement(type: MojoTargetTypeRef): MojoTargetTypeRef | undefined {

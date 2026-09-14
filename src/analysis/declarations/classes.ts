@@ -30,7 +30,7 @@ import type {
   MojoAnalyzedFunction,
 } from "../program/model.js";
 import type { MojoLifecycleResolver } from "../lifecycle/model.js";
-import { mojoProjectMethodName } from "./well-known-methods.js";
+import { mojoProjectMemberName } from "./well-known-methods.js";
 
 export interface MojoClassAnalysisInput {
   readonly source: TargetSourceProgram;
@@ -109,15 +109,14 @@ export function analyzeMojoClass(
       }
       const nameNode = ast.name(member);
       const initializer = Node_Initializer(ast, member);
-      if (nameNode === undefined ||
-        (!ast.is.IsIdentifier(nameNode) && !ast.is.IsPrivateIdentifier(nameNode))) {
-        append(input, "MOJO_CLASS_FIELD_NAME_UNSUPPORTED", "Class fields require one exact identifier or private-identifier name.", member);
+      const sourceName = mojoProjectMemberName(member, semantics, ast);
+      if (sourceName === undefined) {
+        append(input, "MOJO_CLASS_FIELD_NAME_UNSUPPORTED", "Class fields require one exact statically selected property name.", member);
         continue;
       }
       const selected = declaredOrInitializerType(member, initializer, semantics, ast);
       const resolved = resolveType(input, selected, ast.typeNode(member), member);
       if (resolved === undefined) continue;
-      const sourceName = ast.text(nameNode);
       const privateMember = ast.hasModifierKind(member, "private") ||
         ast.hasModifierKind(member, "protected") || ast.is.IsPrivateIdentifier(nameNode);
       const name = classNames(privateMember
@@ -145,7 +144,7 @@ export function analyzeMojoClass(
       const nameNode = ast.name(member);
       const selectedName = nameNode === undefined
         ? undefined
-        : mojoProjectMethodName(nameNode, semantics, ast);
+        : mojoProjectMemberName(member, semantics, ast);
       if (selectedName === undefined || (body !== undefined && !ast.is.IsBlock(body))) {
         append(input, "MOJO_CLASS_METHOD_SHAPE_UNSUPPORTED", "Class methods require one exact name and an optional block implementation body.", member);
         continue;
@@ -185,7 +184,7 @@ export function analyzeMojoClass(
       const nameNode = ast.name(member);
       const sourceName = nameNode === undefined
         ? undefined
-        : mojoProjectMethodName(nameNode, semantics, ast);
+        : mojoProjectMemberName(member, semantics, ast);
       if (sourceName === undefined || (body !== undefined && !ast.is.IsBlock(body))) {
         append(input, "MOJO_CLASS_ACCESSOR_SHAPE_UNSUPPORTED", "Class accessors require one exact name and an optional block implementation body.", member);
         continue;

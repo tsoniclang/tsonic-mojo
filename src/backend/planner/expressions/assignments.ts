@@ -3,32 +3,31 @@ import {
   BinaryExpression_Left,
   BinaryExpression_Right,
 } from "@tsonic/target-api/source";
-import { mojoTargetTypeEquals } from "../../../target-model/types/equality.js";
 import type { MojoExpression, MojoStatement } from "../../target-ast/index.js";
 import {
   allocateMojoSyntheticName,
   appendMojoPlanningDiagnostic,
-  mojoModuleMemberExpression,
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import {
   planMojoElement,
   planMojoProjectElementWrite,
   projectElementUsesMethodWrite,
-  planMojoProviderElementMethodWrite,
-  providerElementUsesMethodWrite,
+  planMojoProviderElementWrite,
+  providerElementUsesWriteOperation,
 } from "./elements.js";
 import {
   planMojoProjectPropertyWrite,
   projectPropertyUsesMethodWrite,
-  planMojoProviderPropertyMethodWrite,
+  planMojoProviderPropertyWrite,
 } from "./property-writes.js";
 import { planMojoProperty } from "./properties.js";
 import { orderMojoValues } from "./support.js";
 import type { MojoValuePlanner } from "./support.js";
 import { registerMojoTypeImports } from "../types/imports.js";
 import { consumeMojoValue } from "./value-plan.js";
-import { materializeMojoMutation } from "./mutation-plan.js";
+import { materializeMojoMutation, prepareMojoMutationValue } from "./mutation-plan.js";
+import { planMojoStaticProviderWrite } from "./static-property-writes.js";
 import type {
   MojoPlannedMutation,
   MojoPreparedMutation,
@@ -36,6 +35,8 @@ import type {
 import { plannedLocationExpression } from "./mutation-locations.js";
 import { planMojoCompoundValue } from "./numeric.js";
 import { mojoValue } from "./value-plan.js";
+import { mojoLocationExpression } from "../../../source/syntax/locations.js";
+import { planMojoProjectUnionWrite } from "./project-union-fields.js";
 
 const assignmentOperatorText = new Map<string, string>([
   ["KindEqualsToken", "="],
@@ -43,6 +44,8 @@ const assignmentOperatorText = new Map<string, string>([
   ["KindMinusEqualsToken", "-="],
   ["KindAsteriskEqualsToken", "*="],
   ["KindSlashEqualsToken", "/="],
+  ["KindPercentEqualsToken", "%="],
+  ["KindAsteriskAsteriskEqualsToken", "**="],
   ["KindAmpersandEqualsToken", "&="],
   ["KindBarEqualsToken", "|="],
   ["KindCaretEqualsToken", "^="],
@@ -65,12 +68,22 @@ export function planMojoAssignment(
     ast.kindName(ast.as.AsBinaryExpression(node)?.OperatorToken),
   );
   if (operator === undefined) return undefined;
-  const leftNode = BinaryExpression_Left(ast, node);
+  const authoredLeft = BinaryExpression_Left(ast, node);
+  const leftNode = authoredLeft === undefined ? undefined : mojoLocationExpression(authoredLeft, ast);
   const rightNode = BinaryExpression_Right(ast, node);
   if (leftNode === undefined || rightNode === undefined) return undefined;
   const leftType = context.program.queries.expressionType(leftNode);
   const property = context.program.queries.propertySelection(leftNode);
   const element = context.program.queries.elementSelection(leftNode);
+  if (property?.kind === "project-union-field") {
+    const right = planValue(rightNode, context, context.program.queries.expressionType(node));
+    if (right === undefined) return undefined;
+    const prepared = planMojoProjectUnionWrite(leftNode, property, right, operator, node, context, planValue);
+    return prepared === undefined ? undefined : materializeMojoMutation(
+      prepared, resultUse === "discard" ? "discard" : "assigned",
+      context.program.queries.expressionType(node), node, context,
+    );
+  }
   const targetWriteType = property?.kind === "provider" || property?.kind === "provider-static"
     ? property.targetWriteType
     : property?.kind === "project-method" ? property.callableType
@@ -92,14 +105,10 @@ export function planMojoAssignment(
     );
     return undefined;
   }
-  if (operator !== "=" && sourceWriteType !== undefined && targetWriteType !== undefined &&
-    !mojoTargetTypeEquals(sourceWriteType, targetWriteType)) {
-    throw new Error("A sealed provider compound write lost its identity source-to-target conversion.");
-  }
   const numeric = context.program.queries.intrinsicExpressionSelection(node);
   const rightType = numeric?.kind === "numeric"
     ? context.program.queries.expressionType(rightNode)
-    : targetWriteType ?? leftType;
+    : context.program.queries.expressionType(node);
   const right = planValue(rightNode, context, numeric?.kind === "numeric" ? undefined : rightType);
   if (right === undefined) return undefined;
   const targetType = targetWriteType ?? leftType;
@@ -134,8 +143,8 @@ export function planMojoAssignment(
     );
     return materializeAssignment(prepared, node, resultUse, context);
   }
-  if (providerElementUsesMethodWrite(element)) {
-    const prepared = planMojoProviderElementMethodWrite(
+  if (providerElementUsesWriteOperation(element)) {
+    const prepared = planMojoProviderElementWrite(
       leftNode,
       right,
       operator,
@@ -146,9 +155,8 @@ export function planMojoAssignment(
     return materializeAssignment(prepared, node, resultUse, context);
   }
   if (property?.kind === "provider" &&
-    property.writeOperation?.target.kind === "property-write" &&
-    property.writeOperation.target.access.kind === "method") {
-    const prepared = planMojoProviderPropertyMethodWrite(
+    property.writeOperation?.target.kind === "property-write") {
+    const prepared = planMojoProviderPropertyWrite(
       leftNode,
       right,
       operator,
@@ -159,66 +167,10 @@ export function planMojoAssignment(
     return materializeAssignment(prepared, node, resultUse, context);
   }
   if (property?.kind === "provider-static") {
-    const write = property.writeOperation;
-    if (write?.target.kind !== "function-write" || write.parameterTypes.length !== 1 ||
-      write.resultType.kind !== "unit") {
-      appendMojoPlanningDiagnostic(
-        context,
-        "MOJO_PROVIDER_STATIC_PROPERTY_WRITE_MISSING",
-        "Static provider assignment has no sealed target write function.",
-        leftNode,
-      );
-      return undefined;
-    }
-    const target = write.target;
-    let value = right.value;
-    const before: MojoStatement[] = [];
-    if (operator !== "=") {
-      if (leftType === undefined || targetType === undefined ||
-        !mojoTargetTypeEquals(leftType, targetType)) {
-        throw new Error("A sealed static provider compound write lost its identical read and write carriers.");
-      }
-      const current = planMojoProperty(leftNode, context, planValue, "read");
-      if (current === undefined) return undefined;
-      const ordered = orderMojoValues([
-        Object.freeze({ plan: current, type: leftType, role: "static_property_read" }),
-        Object.freeze({ plan: right, type: rightType ?? targetType, role: "static_property_right" }),
-      ], context, true);
-      before.push(...ordered.before);
-      value = planMojoCompoundValue(node, operator, ordered.values[0]!, ordered.values[1]!, context);
-    } else {
-      before.push(...right.before);
-    }
-    const prepared: MojoPreparedMutation = Object.freeze({
-      before: Object.freeze(before),
-      assignedValue: value,
-      assignedType: write.parameterTypes[0]!,
-      valuePassing: target.value.convention === "var" ? "consume" : "borrow",
-      createWrite(argumentValue: MojoExpression): MojoStatement {
-        const argument = target.value.convention === "var"
-          ? Object.freeze({ kind: "consume" as const, expression: argumentValue })
-          : argumentValue;
-        return Object.freeze({
-          kind: "expression",
-          expression: Object.freeze({
-            kind: "call",
-            callee: mojoModuleMemberExpression(
-              context,
-              target.modulePath,
-              target.name,
-            ),
-            arguments: Object.freeze([Object.freeze({
-              value: argument,
-              ...(target.value.position === "keyword"
-                ? { name: target.value.nativeName! }
-                : {}),
-            })]),
-          }),
-        });
-      },
-    });
+    const prepared = planMojoStaticProviderWrite(leftNode, right, operator, node, context, planValue);
     return materializeAssignment(prepared, node, resultUse, context);
   }
+  const mutationValue = prepareMojoMutationValue(node, targetType, context);
   const storage = plannedLocationExpression(leftNode, context);
   if (storage !== undefined) {
     const current: MojoExpression = Object.freeze({ kind: "method-call", receiver: storage, name: "read", arguments: Object.freeze([]) });
@@ -232,7 +184,7 @@ export function planMojoAssignment(
     const prepared: MojoPreparedMutation = Object.freeze({
       before: ordered?.before ?? right.before,
       assignedValue: value,
-      assignedType: targetType,
+      ...mutationValue,
       valuePassing: "consume",
       createWrite(argumentValue: MojoExpression): MojoStatement {
         return Object.freeze({
@@ -251,7 +203,7 @@ export function planMojoAssignment(
     return materializeAssignment(prepared, node, resultUse, context);
   }
   const stabilizeLocation = right.before.length !== 0 || resultUse === "value" || numeric?.kind === "numeric";
-  const left = ast.is.IsPropertyAccessExpression(leftNode)
+  const left = property !== undefined
     ? planMojoProperty(leftNode, context, planValue, "write", stabilizeLocation)
     : ast.is.IsElementAccessExpression(leftNode)
       ? planMojoElement(leftNode, context, planValue, "write", stabilizeLocation)
@@ -280,7 +232,7 @@ export function planMojoAssignment(
     assignedValue: plannedOperator === "="
       ? plannedRight
       : planMojoCompoundValue(node, plannedOperator, left.value, plannedRight, context),
-    assignedType: targetType,
+    ...mutationValue,
     valuePassing: "assign",
     createWrite(value: MojoExpression): MojoStatement {
       return Object.freeze({ kind: "assignment", operator: "=", left: left.value, right: value });

@@ -41,6 +41,7 @@ import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 
 const supportedBinaryOperators = new Set([
+  "KindCommaToken",
   "KindPlusToken",
   "KindMinusToken",
   "KindAsteriskToken",
@@ -73,6 +74,8 @@ const supportedBinaryOperators = new Set([
   "KindMinusEqualsToken",
   "KindAsteriskEqualsToken",
   "KindSlashEqualsToken",
+  "KindPercentEqualsToken",
+  "KindAsteriskAsteriskEqualsToken",
 ]);
 
 const assignmentOperators = new Set([
@@ -87,6 +90,8 @@ const assignmentOperators = new Set([
   "KindMinusEqualsToken",
   "KindAsteriskEqualsToken",
   "KindSlashEqualsToken",
+  "KindPercentEqualsToken",
+  "KindAsteriskAsteriskEqualsToken",
 ]);
 
 export function isMojoAssignmentOperator(operator: string): boolean {
@@ -173,7 +178,7 @@ export function validateMojoExecutableRegionSyntax(
         ));
       }
       for (const contribution of selection?.contributions ?? []) {
-        validateExpression(contribution.expression);
+        if (contribution.kind !== "hole") validateExpression(contribution.expression);
       }
       return;
     }
@@ -348,7 +353,8 @@ export function validateMojoExecutableRegionSyntax(
       }
       return;
     }
-    if (ast.is.IsPropertyAccessExpression(expression)) {
+    if (ast.is.IsPropertyAccessExpression(expression) ||
+      ast.is.IsElementAccessExpression(expression) && properties.has(expression)) {
       const selection = properties.get(expression);
       if (selection === undefined) {
         diagnostics.push(diagnostic(
@@ -360,9 +366,11 @@ export function validateMojoExecutableRegionSyntax(
       if (selection?.kind !== "provider-constant" &&
         selection?.kind !== "project-enum-member" &&
         selection?.kind !== "project-static-field" &&
+        selection?.kind !== "project-static-method" &&
         selection?.kind !== "provider-static") {
         validateExpression(Node_Expression(ast, expression));
       }
+      if (selection?.evaluatedKey !== undefined) validateExpression(selection.evaluatedKey);
       return;
     }
     if (ast.is.IsElementAccessExpression(expression)) {

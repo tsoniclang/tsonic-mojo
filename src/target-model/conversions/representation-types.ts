@@ -38,6 +38,8 @@ export function mojoValueConversionRepresentationTypes(
       return mojoTruthinessRepresentationTypes(conversion.conversion);
     case "js-callback-truthiness":
     case "primitive-cast":
+    case "bigint-cast":
+    case "integer-literal":
     case "reference-copy":
     case "native-to-js-string":
     case "optional-none":

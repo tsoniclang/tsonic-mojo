@@ -1,12 +1,8 @@
 import type { Node } from "@tsonic/tsts";
 import { convertMojoProviderRecord } from "./provider-record-conversion.js";
 import type {
-  MojoSelectedProviderOperation,
-} from "../../../target-model/operations/selection.js";
-import type {
   MojoValueConversion,
 } from "../../../target-model/conversions/model.js";
-import { mojoTargetTypeEquals } from "../../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../../target-model/types/model.js";
 import type {
   MojoExpression,
@@ -19,8 +15,9 @@ import {
 } from "../program/context.js";
 import type { MojoPlanningContext } from "../program/context.js";
 import { registerMojoTypeImports } from "../types/imports.js";
-import { mojoValue, retainMojoValue, withMojoValue } from "./value-plan.js";
+import { isStableMojoLocation, mojoValue, retainMojoValue, withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
+import type { PreparedMojoReceiver } from "./receivers.js";
 import { convertMojoDataRest } from "./js-data-rest-conversion.js";
 import { convertMojoSourceValue } from "./source-values/conversion.js";
 import { adaptMojoRaisingCallableError } from "./callable-error-adapter.js";
@@ -43,13 +40,12 @@ export type MojoValuePlanner = (
   context: MojoPlanningContext,
   expectedType?: MojoTargetTypeRef,
 ) => MojoValuePlan | undefined;
-
 export interface OrderedMojoValue {
   readonly plan: MojoValuePlan;
   readonly type: MojoTargetTypeRef;
   readonly role: string;
   readonly stabilize?: boolean;
-  readonly use?: "value" | "location";
+  readonly use?: "value" | "location" | "snapshot";
   readonly typeAnnotation?: "inferred";
 }
 
@@ -59,35 +55,6 @@ export interface PlannedMojoCallArgument {
   readonly name?: string;
   readonly spread: boolean;
   readonly borrowProjection?: true;
-}
-
-export type PreparedMojoReceiver =
-  | { readonly kind: "required"; readonly plan: MojoValuePlan }
-  | {
-      readonly kind: "optional";
-      readonly before: readonly MojoStatement[];
-      readonly condition: MojoExpression;
-      readonly plan: MojoValuePlan;
-    };
-
-export function planProviderConstant(
-  operation: MojoSelectedProviderOperation,
-  resultConversion: MojoValueConversion,
-  context: MojoPlanningContext,
-): MojoValuePlan | undefined {
-  if (operation.target.kind !== "constant" && operation.target.kind !== "function-read") return undefined;
-  const selected: MojoExpression = operation.target.kind === "constant"
-    ? mojoModuleMemberExpression(context, operation.target.modulePath, operation.target.name)
-    : {
-        kind: "call",
-        callee: mojoModuleMemberExpression(
-          context,
-          operation.target.modulePath,
-          operation.target.name,
-        ),
-        arguments: Object.freeze([]),
-      };
-  return convertMojoValue(mojoValue(selected), resultConversion, context);
 }
 
 export function orderMojoValues(
@@ -109,7 +76,8 @@ export function orderMojoValues(
       ? isStableMojoLocation(value.plan.value)
       : value.plan.value.kind === "path";
     if (value.stabilize !== false &&
-      ((value.stabilize === true || stabilizeAll || index < finalEffectIndex) && !stable ||
+      (value.use === "snapshot" ||
+        (value.stabilize === true || stabilizeAll || index < finalEffectIndex) && !stable ||
         index < finalPreludeIndex && (value.use !== "location" || !stable)) &&
       !isTriviallyPureMojoValue(value.plan.value)) {
       if (value.typeAnnotation !== "inferred") registerMojoTypeImports(value.type, context);
@@ -166,18 +134,6 @@ export function isTriviallyPureMojoValue(expression: MojoExpression): boolean {
       : expression.type.kind === "source-primitive" &&
         expression.arguments.every((argument) => argument.name === undefined &&
           argument.spread !== true && isTriviallyPureMojoValue(argument.value));
-    default: return false;
-  }
-}
-
-function isStableMojoLocation(expression: MojoExpression): boolean {
-  switch (expression.kind) {
-    case "path":
-    case "qualified-path":
-    case "type-value": return true;
-    case "member": return isStableMojoLocation(expression.receiver);
-    case "element": return isStableMojoLocation(expression.receiver);
-    case "postfix-deref": return true;
     default: return false;
   }
 }
@@ -255,64 +211,6 @@ export function convertMojoValue(
   return converted === undefined ? undefined : withMojoValue(plan.before, converted);
 }
 
-export function prepareMojoReceiver(
-  expression: Node,
-  selectedType: MojoTargetTypeRef,
-  optionalChain: boolean,
-  context: MojoPlanningContext,
-  planValue: MojoValuePlanner,
-): PreparedMojoReceiver | undefined {
-  const receiver = planValue(expression, context);
-  if (receiver === undefined) return undefined;
-  if (!optionalChain) return Object.freeze({ kind: "required", plan: receiver });
-  const actualType = context.program.queries.expressionType(expression);
-  if (actualType !== undefined && mojoTargetTypeEquals(actualType, selectedType)) {
-    return Object.freeze({ kind: "required", plan: receiver });
-  }
-  if (actualType?.kind !== "optional" || !mojoTargetTypeEquals(actualType.value, selectedType)) {
-    appendMojoPlanningDiagnostic(
-      context,
-      "MOJO_OPTIONAL_RECEIVER_CARRIER_UNPROVEN",
-      "Optional chaining requires one exact Optional[T] receiver whose T matches the checker-selected non-null receiver.",
-      expression,
-    );
-    return undefined;
-  }
-  registerMojoTypeImports(actualType, context);
-  const receiverName = allocateMojoSyntheticName(context, "optional_receiver");
-  const receiverPath: MojoExpression = Object.freeze({ kind: "path", path: receiverName });
-  const explicitCopy = context.program.lifecycle.capabilities(actualType).copy === "explicit";
-  const present: MojoExpression = Object.freeze({
-    kind: "method-call",
-    receiver: receiverPath,
-    name: "value",
-    arguments: Object.freeze([]),
-  });
-  const valueName = explicitCopy ? allocateMojoSyntheticName(context, "optional_value") : undefined;
-  return Object.freeze({
-    kind: "optional",
-    before: Object.freeze([
-      ...receiver.before,
-      Object.freeze({
-        kind: "variable",
-        name: receiverName,
-        type: actualType,
-        initializer: explicitCopy && isStableMojoLocation(receiver.value)
-          ? Object.freeze({ kind: "copy", expression: receiver.value })
-          : receiver.value,
-      }),
-    ]),
-    condition: receiverPath,
-    plan: valueName === undefined
-      ? mojoValue(present)
-      : withMojoValue([Object.freeze({
-          kind: "variable",
-          name: valueName,
-          reference: true,
-          initializer: present,
-        })], Object.freeze({ kind: "path", path: valueName })),
-  });
-}
 
 export function finishOptionalMojoOperation(
   expression: Node,
@@ -563,6 +461,21 @@ export function applyMojoConversion(
     case "js-data-rest":
     case "js-value-graph":
       return undefined;
+    case "integer-literal":
+      return Object.freeze({
+        kind: "construct", type: conversion.targetType,
+        arguments: Object.freeze([Object.freeze({
+          value: Object.freeze({ kind: "number-literal", text: conversion.text }),
+        })]),
+      });
+    case "bigint-cast":
+      registerMojoTypeImports(conversion.targetType, context);
+      return Object.freeze({
+        kind: "call",
+        callee: mojoModuleMemberExpression(context, ["tsonic_runtime", "bigint"], "bigint_to_integer"),
+        genericArguments: Object.freeze([Object.freeze({ kind: "type", type: conversion.targetType })]),
+        arguments: Object.freeze([Object.freeze({ value: expression })]),
+      });
     case "primitive-cast":
     case "reference-copy":
       registerMojoTypeImports(conversion.targetType, context);

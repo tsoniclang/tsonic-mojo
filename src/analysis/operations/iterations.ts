@@ -12,10 +12,7 @@ import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import type { MojoIterationSelection } from "../program/model.js";
 import type { MojoBindingProjectionPlan } from "../program/model.js";
-import {
-  sourceProfileRegExpElementType,
-  sourceProfileRegExpIteratorElement,
-} from "../../policy/types/js-regexp.js";
+import { selectMojoClosedIteration } from "../../policy/operations/iterations.js";
 
 export type MojoIterationAnalysis =
   | { readonly kind: "resolved"; readonly selection: MojoIterationSelection }
@@ -75,7 +72,7 @@ export function analyzeMojoIteration(input: MojoIterationAnalysisInput): MojoIte
       `Iteration lacks an exact ${missing.join(", ")}.`,
     );
   }
-  const target = targetIterationContract(
+  const target = selectMojoClosedIteration(
     source.iterationKind === "for-await-of" ? "for-of" : source.iterationKind,
     iterableType,
   );
@@ -220,75 +217,6 @@ function selectedBindingDeclaration(statement: Node, ast: AstReader): Node | und
   return name !== undefined && (ast.is.IsIdentifier(name) ||
     ast.is.IsArrayBindingPattern(name) || ast.is.IsObjectBindingPattern(name))
     ? declaration
-    : undefined;
-}
-
-function targetIterationContract(
-  kind: "for-of" | "for-in",
-  iterable: MojoTargetTypeRef,
-): {
-  readonly target: MojoIterationSelection["target"];
-  readonly elementType: MojoTargetTypeRef;
-} | undefined {
-  if (kind === "for-of") {
-    if (iterable.kind === "target-named" &&
-      iterable.id === "tsonic.mojo.js.JsIterator" &&
-      iterable.genericArguments?.length === 1 &&
-      iterable.genericArguments[0]?.kind === "type") {
-      return { target: "native-values", elementType: iterable.genericArguments[0].type };
-    }
-    const regexpIteratorElement = sourceProfileRegExpIteratorElement(iterable);
-    if (regexpIteratorElement !== undefined) {
-      return { target: "js-array-values", elementType: regexpIteratorElement };
-    }
-    const regexpArrayElement = sourceProfileRegExpElementType(iterable);
-    if (regexpArrayElement !== undefined) {
-      return { target: "js-array-values", elementType: regexpArrayElement };
-    }
-    if (iterable.kind === "list" || iterable.kind === "fixed-array") {
-      return { target: "native-values", elementType: iterable.element };
-    }
-    if (iterable.kind === "target-named" &&
-      iterable.id === "tsonic.mojo.js.JsArray" &&
-      iterable.genericArguments?.length === 1 &&
-      iterable.genericArguments[0]?.kind === "type") {
-      return {
-        target: "js-array-live-values",
-        elementType: iterable.genericArguments[0].type,
-      };
-    }
-    if (iterable.kind === "target-named" &&
-      iterable.id === "tsonic.mojo.js.JsString") {
-      return { target: "js-string-values", elementType: iterable };
-    }
-    if (iterable.kind === "target-named" &&
-      iterable.id === "tsonic.mojo.js.JsMap" &&
-      iterable.genericArguments?.length === 2) {
-      const key = iterable.genericArguments[0];
-      const value = iterable.genericArguments[1];
-      if (key?.kind === "type" && value?.kind === "type") {
-        return {
-          target: "js-map-entries",
-          elementType: Object.freeze({
-            kind: "tuple",
-            elements: Object.freeze([key.type, value.type]),
-          }),
-        };
-      }
-    }
-    if (iterable.kind === "target-named" &&
-      iterable.id === "tsonic.mojo.js.JsSet" &&
-      iterable.genericArguments?.length === 1 &&
-      iterable.genericArguments[0]?.kind === "type") {
-      return {
-        target: "js-set-values",
-        elementType: iterable.genericArguments[0].type,
-      };
-    }
-    return undefined;
-  }
-  return iterable.kind === "dictionary"
-    ? { target: "dictionary-keys", elementType: iterable.key }
     : undefined;
 }
 

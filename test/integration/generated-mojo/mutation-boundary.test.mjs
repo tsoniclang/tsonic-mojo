@@ -31,13 +31,29 @@ for (const surfaces of [[], ["js"]]) {
     }
   });
 
-  test(`mixed accessor compounds reject during analysis on ${profile}`, () => {
-    for (const operation of ["return counter.value += 2;", "return counter.value <<= 2;", "return ++counter.value;"]) {
+  test(`mixed accessor compounds preserve the numeric result on ${profile}`, () => {
+    for (const operation of ["return counter.value = 2;", "return counter.value += 2;", "return counter.value %= 2;", "return counter.value **= 2;", "return counter.value <<= 2;", "return ++counter.value;", "return counter.value++;"]) {
       const result = compile(operation, surfaces, "number | string");
-      assert.deepEqual(result.artifacts, []);
-      const issue = result.diagnostics.find(({ code }) => code === "MOJO_PROJECT_ACCESSOR_COMPOUND_WRITE_UNSUPPORTED");
-      assert.ok(issue, JSON.stringify(result.diagnostics));
-      assert.deepEqual(issue.evidence, ["target.capability=mojo.backend.foundation"]);
+      assert.deepEqual(result.diagnostics, []);
+      const source = artifactTexts(result).filter(({ path }) => path.startsWith("src/")).map(({ text }) => text).join("\n");
+      assert.match(source, /def change\([^\n]*\) -> Float64:/u);
+      assert.match(source, /Variant\[String, Float64\]/u);
     }
+  });
+}
+
+for (const operation of ["%=", "**="]) {
+  test(`arithmetic assignment ${operation} supports local and indexed locations`, () => {
+    const result = compileMojo({ target: { id: "mojo", options: { outputType: "lib" } }, files: { "index.ts": `
+export function change(seed: number): number {
+  let value = seed;
+  const first = value ${operation} 2;
+  const values = [first];
+  const second = values[0] ${operation} 2;
+  return value + second;
+}
+` } });
+    assert.deepEqual(result.diagnostics, []);
+    assert.ok(result.artifacts.length > 0);
   });
 }

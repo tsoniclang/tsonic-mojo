@@ -1,5 +1,6 @@
 import type { Node, SourceFile } from "@tsonic/tsts";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
+import { mojoProjectMemberName } from "../declarations/well-known-methods.js";
 import {
   ClassStaticBlock_Body,
   Node_Expression,
@@ -290,11 +291,11 @@ export function analyzeMojoModuleBindings(
           if (ast.is.IsPropertyDeclaration(member) && ast.hasModifierKind(member, "static")) {
             const nameNode = ast.name(member);
             const initializer = Node_Initializer(ast, member);
-            if (nameNode === undefined ||
-              (!ast.is.IsIdentifier(nameNode) && !ast.is.IsPrivateIdentifier(nameNode))) {
+            const sourceName = mojoProjectMemberName(member, semantics, ast);
+            if (sourceName === undefined) {
               input.diagnostics.push(diagnostic(
                 "MOJO_CLASS_STATIC_FIELD_NAME_UNSUPPORTED",
-                "Class static fields require one exact identifier or private-identifier name.",
+                "Class static fields require one exact statically selected property name.",
                 member,
               ));
               continue;
@@ -333,7 +334,6 @@ export function analyzeMojoModuleBindings(
               ));
               continue;
             }
-            const sourceName = ast.text(nameNode);
             const privateMember = ast.hasModifierKind(member, "private") ||
               ast.hasModifierKind(member, "protected") || ast.is.IsPrivateIdentifier(nameNode);
             const name = input.allocateModuleName(

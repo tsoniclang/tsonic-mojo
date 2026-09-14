@@ -15,6 +15,7 @@ import type {
   MojoCallSelection,
   MojoElementSelection,
   MojoIterationSelection,
+  MojoIntrinsicExpressionSelection,
   MojoPropertySelection,
   MojoResourceManagementSelection,
   MojoValueSelection,
@@ -41,6 +42,7 @@ export interface MojoErrorRegionIndexes {
   readonly iterationSelections: WeakMap<Node, MojoIterationSelection>;
   readonly resourceManagementSelections: WeakMap<Node, MojoResourceManagementSelection>;
   readonly valueSelections: WeakMap<Node, MojoValueSelection>;
+  readonly intrinsicExpressionSelections: WeakMap<Node, MojoIntrinsicExpressionSelection>;
 }
 
 export interface MojoErrorEffectOwner {
@@ -228,6 +230,10 @@ export function directMojoNodeErrorTypes(
 ): readonly MojoTargetTypeRef[] {
   const { ast } = indexes.source;
   const errors: MojoTargetTypeRef[] = [];
+  const intrinsic = indexes.intrinsicExpressionSelections.get(node);
+  if (intrinsic?.kind === "numeric" && intrinsic.operation.errorType !== undefined) {
+    errors.push(intrinsic.operation.errorType);
+  }
   const addNativeConversionError = (raises: boolean): void => {
     if (raises) errors.push(mojoNativeErrorType());
   };
@@ -335,7 +341,8 @@ export function directMojoNodeErrorTypes(
       }
       addNativeConversionError(
         (selection.receiverConversion !== undefined && mojoConversionRaises(selection.receiverConversion)) ||
-        (selection.readResultConversion !== undefined && mojoConversionRaises(selection.readResultConversion)),
+        (selection.readResultConversion !== undefined && mojoConversionRaises(selection.readResultConversion)) ||
+        (selection.writeValueConversion !== undefined && mojoConversionRaises(selection.writeValueConversion)),
       );
     } else if (selection?.kind === "provider-constant") {
       errors.push(...mojoOperationErrorTypes(selection.operation));
@@ -349,6 +356,9 @@ export function directMojoNodeErrorTypes(
       }
       if (selection.readResultConversion !== undefined) {
         addNativeConversionError(mojoConversionRaises(selection.readResultConversion));
+      }
+      if (selection.writeValueConversion !== undefined) {
+        addNativeConversionError(mojoConversionRaises(selection.writeValueConversion));
       }
     }
   }
@@ -375,6 +385,9 @@ export function directMojoNodeErrorTypes(
           errors.push(...mojoOperationErrorTypes(selection.writeOperation));
         }
         addNativeConversionError(mojoConversionRaises(selection.receiverConversion));
+        if (selection.writeValueConversion !== undefined) {
+          addNativeConversionError(mojoConversionRaises(selection.writeValueConversion));
+        }
       }
     }
   }

@@ -14,6 +14,7 @@ import { classifyTruthiness } from "./truthiness.js";
 import { classifyCallableAdaptation } from "./callable-adaptation.js";
 import { selectMojoSourceValueResult } from "./source-value-result.js";
 import type { MojoCopyCapability } from "../../target-model/lifecycle/model.js";
+import { mojoIntegerValueFits } from "../../target-model/types/numeric-literals.js";
 
 export type MojoConversionClassification =
   | { readonly kind: "resolved"; readonly conversion: MojoValueConversion }
@@ -53,6 +54,7 @@ export interface MojoConversionIndex {
 export function createMojoConversionIndex(
   input: {
     readonly narrowingForExpression: (expression: Node) => MojoValueConversionNarrowing | undefined;
+    readonly bigintLiteralForExpression: (expression: Node) => bigint | undefined;
     readonly projectRelationships: MojoProjectTypeRelationships;
     readonly sourceValueProjection: MojoSourceValueProjectionSelector;
     readonly sourceValueExtraction?: MojoSourceValueExtractionSelector;
@@ -112,12 +114,23 @@ export function createMojoConversionIndex(
       expected: MojoTargetTypeRef,
     ): MojoConversionClassification {
       if (sealed) throw new Error("Mojo conversions cannot be recorded after analysis is sealed.");
-      const classified = index.classify(
+      let classified = index.classify(
         actual,
         expected,
         narrowingForExpression(expression),
       );
       if (classified.kind === "unsupported") return classified;
+      if (classified.conversion.kind === "bigint-cast") {
+        const literal = input.bigintLiteralForExpression(expression);
+        if (literal !== undefined && mojoIntegerValueFits(literal, classified.conversion.targetType)) {
+          classified = {
+            kind: "resolved",
+            conversion: Object.freeze({
+              kind: "integer-literal", text: literal.toString(), targetType: classified.conversion.targetType,
+            }),
+          };
+        }
+      }
       const key = mojoTargetTypeKey(expected);
       const entries = byExpression.get(expression) ?? new Map<string, MojoValueConversion>();
       const existing = entries.get(key);
@@ -354,7 +367,7 @@ export function classifyMojoValueConversion(
   if (actual.kind === "bigint" && isIntegralPrimitive(expected)) {
     return {
       kind: "resolved",
-      conversion: Object.freeze({ kind: "primitive-cast", targetType: expected }),
+      conversion: Object.freeze({ kind: "bigint-cast", targetType: expected }),
     };
   }
   if (actual.kind === "reference" && mojoTargetTypeEquals(actual.value, expected) &&
@@ -544,7 +557,7 @@ function isIntegralPrimitive(
   type: MojoTargetTypeRef,
 ): type is Extract<MojoTargetTypeRef, { readonly kind: "source-primitive" }> {
   return type.kind === "source-primitive" && type.name !== "bool" &&
-    type.name !== "char" && type.name !== "float16" &&
+    type.name !== "char" && type.name !== "decimal" && type.name !== "float16" &&
     type.name !== "float32" && type.name !== "float64";
 }
 

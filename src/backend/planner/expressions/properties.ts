@@ -12,18 +12,18 @@ import {
   convertMojoValue,
   finishOptionalMojoOperation,
   orderMojoValues,
-  planProviderConstant,
-  prepareMojoReceiver,
 } from "./support.js";
+import { planProviderConstant } from "./provider-constants.js";
 import type { MojoValuePlanner } from "./support.js";
-import { mojoValue, withMojoValue } from "./value-plan.js";
+import { withMojoValue } from "./value-plan.js";
 import type { MojoValuePlan } from "./value-plan.js";
 import { planMojoProviderUnionProperty } from "./union-properties.js";
 import { planDictionaryKey } from "./conditional-values.js";
+import { planMojoPropertyKeyEvaluation, prepareMojoPropertyReceiver } from "./property-receivers.js";
 import { selectedMojoDispatchField } from "./property-writes.js";
+import { planMojoProjectUnionRead } from "./project-union-fields.js";
 import {
   mojoProjectStateValue,
-  mojoStateValue,
 } from "../declarations/state-storage.js";
 
 export function planMojoProperty(
@@ -37,6 +37,17 @@ export function planMojoProperty(
   if (selection === undefined) {
     appendMojoPlanningDiagnostic(context, "MOJO_PROPERTY_PLAN_MISSING", "Property access has no sealed target selection.", node);
     return undefined;
+  }
+  if (selection.kind === "project-static-method") {
+    const binding = context.program.queries.moduleBinding(node);
+    const value = binding === undefined ? undefined : mojoModuleBindingRead(binding, context);
+    const key = planMojoPropertyKeyEvaluation(selection, context, planValue);
+    if (value === undefined || key === undefined || mode !== "read") {
+      appendMojoPlanningDiagnostic(context, "MOJO_STATIC_METHOD_BINDING_NOT_SEALED",
+        "A selected static method read requires its canonical finalized function-value binding.", node);
+      return undefined;
+    }
+    return withMojoValue(key, value);
   }
   if (selection.kind === "provider-union-property") {
     if (mode === "read") return planMojoProviderUnionProperty(selection, context, planValue);
@@ -85,7 +96,9 @@ export function planMojoProperty(
       return undefined;
     }
     registerMojoTypeImports(selection.owner, context);
-    return mojoValue(Object.freeze({
+    const key = planMojoPropertyKeyEvaluation(selection, context, planValue);
+    if (key === undefined) return undefined;
+    return withMojoValue(key, Object.freeze({
       kind: "member",
       receiver: Object.freeze({ kind: "type-value", type: selection.owner }),
       name: selection.name,
@@ -104,86 +117,24 @@ export function planMojoProperty(
     const field = mode === "read"
       ? mojoModuleBindingRead(selection.binding, context)
       : mojoModuleBindingWrite(selection.binding, context);
-    return field === undefined ? undefined : mojoValue(field);
+    const key = planMojoPropertyKeyEvaluation(selection, context, planValue);
+    return field === undefined || key === undefined ? undefined : withMojoValue(key, field);
   }
   if (selection.kind === "project-union-field") {
     if (mode !== "read") {
       appendMojoPlanningDiagnostic(
         context,
         "MOJO_PROJECT_UNION_PROPERTY_WRITE_UNSUPPORTED",
-        "A sealed project-union property projection is read-only.",
+        "A union field write must use its sealed mutation plan.",
         node,
       );
       return undefined;
     }
-    const receiver = prepareMojoReceiver(
-      selection.receiver,
-      selection.receiverType,
-      false,
-      context,
-      planValue,
-    );
-    if (receiver === undefined) return undefined;
-    registerMojoTypeImports(selection.receiverType, context);
-    registerMojoTypeImports(selection.resultType, context);
-    for (const field of selection.fields) registerMojoTypeImports(field.receiverType, context);
-    const ordered = orderMojoValues([
-      Object.freeze({ plan: receiver.plan, type: selection.receiverType, role: "union_property_receiver" }),
-    ], context, true);
-    const receiverValue = ordered.values[0]!;
-    const fields = selection.fields.map((field) => Object.freeze({
-      field,
-      state: context.program.queries.projectState(field.receiverType),
-    }));
-    if (fields.some(({ state }) => state === undefined)) {
-      appendMojoPlanningDiagnostic(
-        context,
-        "MOJO_PROJECT_UNION_STATE_NOT_SEALED",
-        "A project-union property has no exact sealed state projection.",
-        node,
-      );
-      return undefined;
-    }
-    for (const { state } of fields) registerMojoTypeImports(state!.stateType, context);
-    const readField = (entry: (typeof fields)[number]): MojoExpression => Object.freeze({
-      kind: "member",
-      receiver: mojoStateValue(Object.freeze({
-        kind: "proven-union-member",
-        receiver: receiverValue,
-        type: entry.field.receiverType,
-      }), entry.state!),
-      name: entry.field.fieldName,
-    });
-    let expression = readField(fields[fields.length - 1]!);
-    for (let index = fields.length - 2; index >= 0; index -= 1) {
-      const entry = fields[index]!;
-      expression = Object.freeze({
-        kind: "conditional",
-        condition: Object.freeze({
-          kind: "method-call",
-          receiver: receiverValue,
-          name: "isa",
-          genericArguments: Object.freeze([Object.freeze({
-            kind: "type",
-            type: entry.field.receiverType,
-          })]),
-          arguments: Object.freeze([]),
-        }),
-        whenTrue: readField(entry),
-        whenFalse: expression,
-      });
-    }
-    return withMojoValue(ordered.before, expression);
+    return planMojoProjectUnionRead(node, selection, context, planValue);
   }
-  const sourceReceiverType = selection.kind === "project-method" ||
-    selection.kind === "project-field" ||
-    selection.kind === "project-index-property" || selection.kind === "project-accessor" ||
-    selection.kind === "structural-field"
-    ? selection.receiverType
-    : selection.sourceReceiverType;
-  const receiver = prepareMojoReceiver(
+  const receiver = prepareMojoPropertyReceiver(
+    selection,
     selection.receiver,
-    sourceReceiverType,
     selection.optionalChain,
     context,
     planValue,
@@ -216,7 +167,7 @@ export function planMojoProperty(
     const ordered = orderMojoValues([
       Object.freeze({
         plan: receiver.plan,
-        type: selection.receiverType,
+        type: receiver.type,
         role: "method_value_receiver",
       }),
     ], context, stabilizeReceiver);
@@ -248,7 +199,7 @@ export function planMojoProperty(
     const ordered = orderMojoValues([
       Object.freeze({
         plan: receiver.plan,
-        type: directState ? context.initializingState!.stateType : selection.receiverType,
+        type: directState ? context.initializingState!.stateType : receiver.type,
         role: "property_receiver",
       }),
     ], context, stabilizeReceiver && !directState);
@@ -326,7 +277,7 @@ export function planMojoProperty(
       return undefined;
     }
     const ordered = orderMojoValues([
-      Object.freeze({ plan: receiver.plan, type: selection.receiverType, role: "accessor_receiver" }),
+      Object.freeze({ plan: receiver.plan, type: receiver.type, role: "accessor_receiver" }),
     ], context, stabilizeReceiver);
     const operation = withMojoValue(ordered.before, Object.freeze({
       kind: "method-call",
@@ -338,7 +289,7 @@ export function planMojoProperty(
   }
   if (selection.kind === "structural-field") {
     const ordered = orderMojoValues([
-      Object.freeze({ plan: receiver.plan, type: selection.receiverType, role: "property_receiver" }),
+      Object.freeze({ plan: receiver.plan, type: receiver.type, role: "property_receiver" }),
     ], context, stabilizeReceiver);
     const operation = withMojoValue(ordered.before, Object.freeze({
       kind: "element",
@@ -366,7 +317,7 @@ export function planMojoProperty(
       return undefined;
     }
     const ordered = orderMojoValues([
-      Object.freeze({ plan: receiver.plan, type: selection.receiverType, role: "index_property_receiver" }),
+      Object.freeze({ plan: receiver.plan, type: receiver.type, role: "index_property_receiver" }),
     ], context, stabilizeReceiver);
     const dispatchView = context.program.projectDispatch.viewForType(selection.receiverType);
     const dispatch = dispatchView === undefined
@@ -446,7 +397,9 @@ export function planMojoProperty(
     : convertMojoValue(receiver.plan, selection.receiverConversion, context);
   if (convertedReceiver === undefined || operation.receiverType === undefined) return undefined;
   const ordered = orderMojoValues([
-    Object.freeze({ plan: convertedReceiver, type: operation.receiverType, role: "property_receiver" }),
+    Object.freeze({ plan: convertedReceiver,
+      type: selection.receiverConversion === undefined ? receiver.type : operation.receiverType,
+      role: "property_receiver" }),
   ], context, stabilizeReceiver);
   if (target.kind !== "property-read" && target.kind !== "property-write") return undefined;
   const member: MojoExpression = target.access.kind === "member"

@@ -2,16 +2,23 @@ import type { Node, SourceFile } from "@tsonic/tsts";
 import type { TargetDiagnostic } from "@tsonic/target-api/artifacts";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
+import { closeMojoCallableResult } from "../../target-model/types/callable-results.js";
 import { classifyMojoValueConversion } from "../../policy/conversions/selection.js";
 import { mojoAnalysisDiagnostic as diagnostic } from "../diagnostics.js";
 import { mojoParameterConvention } from "../../target-model/operations/parameters.js";
 import type { MojoSourceModuleCatalog } from "../source-modules/model.js";
 import type {
+  MojoAnalyzedCallableSignature,
   MojoAnalyzedFunction,
   MojoAnalyzedModule,
   MojoAnalyzedModuleBinding,
   MojoTargetAnalysisRequest,
 } from "./model.js";
+
+interface FunctionValueGroup {
+  readonly implementation: MojoAnalyzedFunction;
+  readonly contracts: MojoAnalyzedCallableSignature[];
+}
 
 export function selectMojoBinaryEntry(
   outputType: "bin" | "lib",
@@ -57,30 +64,32 @@ export function addMojoFirstClassFunctionBindings(
   readonly referenceTypes: ReadonlyMap<Node, Extract<MojoTargetTypeRef, { readonly kind: "callable" }>>;
 } {
   const referenceTypes = new Map<Node, Extract<MojoTargetTypeRef, { readonly kind: "callable" }>>();
-  const contractGroups = new Map<Node, {
-    readonly implementation: MojoAnalyzedFunction;
-    readonly contracts: import("./model.js").MojoAnalyzedCallableSignature[];
-  }>();
+  const contractGroups = new Map<Node, FunctionValueGroup>();
+  const groupsByContract = new Map<Node, FunctionValueGroup>();
   for (const contract of contracts) {
     const selected = source.navigation.callableImplementation(contract.declaration);
     const implementation = selected.kind === "resolved"
       ? implementations.get(selected.implementation.declaration)
       : implementations.get(contract.declaration);
-    if (implementation === undefined || implementation.kind !== "function") continue;
+    if (implementation === undefined || (implementation.kind !== "function" &&
+      !(implementation.kind === "method" && implementation.static === true))) continue;
     const group = contractGroups.get(implementation.declaration) ?? {
       implementation,
       contracts: [],
     };
     group.contracts.push(contract);
     contractGroups.set(implementation.declaration, group);
+    groupsByContract.set(contract.declaration, group);
   }
-  const uses = new Map<Node, ReturnType<
-    MojoTargetAnalysisRequest["input"]["source"]["navigation"]["declarationUseSummary"]
-  >["uses"][number]>();
+  const uses = new Map<Node, Set<FunctionValueGroup>>();
   for (const contract of contracts) {
+    const group = groupsByContract.get(contract.declaration);
+    if (group === undefined) continue;
     for (const use of source.navigation.declarationUseSummary(contract.declaration).uses) {
       if (use.kind === "first-class" && !isCallableDeclarationName(use.reference, source)) {
-        uses.set(use.reference, use);
+        const groups = uses.get(use.reference) ?? new Set();
+        groups.add(group);
+        uses.set(use.reference, groups);
       }
     }
   }
@@ -89,20 +98,14 @@ export function addMojoFirstClassFunctionBindings(
     readonly type: Extract<MojoTargetTypeRef, { readonly kind: "callable" }>;
     readonly references: Node[];
   }>>();
-  for (const use of uses.values()) {
-    const reference = source.navigation.sourceReferenceFor(use.reference);
-    const selected = reference === undefined
-      ? undefined
-      : source.navigation.callableImplementation(reference.declaration);
-    const group = selected?.kind === "resolved"
-      ? contractGroups.get(selected.implementation.declaration)
-      : undefined;
-    const expected = expressionTypes.get(use.reference);
+  for (const [reference, groups] of uses) {
+    const group = groups.size === 1 ? [...groups][0] : undefined;
+    const expected = expressionTypes.get(reference);
     if (group === undefined || expected?.kind !== "callable") {
       diagnostics.push(diagnostic(
         "MOJO_FIRST_CLASS_FUNCTION_CARRIER_UNRESOLVED",
         "A first-class project function reference requires one exact implementation group and callable carrier.",
-        use.reference,
+        reference,
       ));
       continue;
     }
@@ -129,32 +132,39 @@ export function addMojoFirstClassFunctionBindings(
         unique.length === 0
           ? "No exact project function overload can satisfy the selected first-class callable ABI."
           : "More than one project function overload can satisfy the selected first-class callable ABI.",
-        use.reference,
+        reference,
       ));
       continue;
     }
-    const finalized = conversions.finalizeCallable(use.reference, candidate.type, expected);
+    const finalized = conversions.finalizeCallable(reference, candidate.type, expected);
     if (finalized.kind === "unsupported") {
       diagnostics.push(diagnostic(
         "MOJO_FIRST_CLASS_FUNCTION_CONVERSION_UNPROVEN",
         finalized.reason,
-        use.reference,
+        reference,
       ));
       continue;
     }
-    expressionTypes.set(use.reference, candidate.type);
-    referenceTypes.set(use.reference, candidate.type);
-    bindingTypes.set(use.reference, candidate.type);
+    const conversionIssues = conversions.finalizeCallableSource(reference, candidate.type);
+    if (conversionIssues.length !== 0) {
+      diagnostics.push(...conversionIssues.map((reason) => diagnostic(
+        "MOJO_FIRST_CLASS_FUNCTION_CONVERSION_UNPROVEN", reason, reference,
+      )));
+      continue;
+    }
+    expressionTypes.set(reference, candidate.type);
+    referenceTypes.set(reference, candidate.type);
+    bindingTypes.set(reference, candidate.type);
     const ownerBindings = bindingsBySourceFile.get(group.implementation.sourceFile) ?? new Map();
     const existing = ownerBindings.get(candidate.target.declaration);
     if (existing === undefined) {
       ownerBindings.set(candidate.target.declaration, {
         target: candidate.target,
         type: candidate.type,
-        references: [use.reference],
+        references: [reference],
       });
     } else {
-      existing.references.push(use.reference);
+      existing.references.push(reference);
     }
     bindingsBySourceFile.set(group.implementation.sourceFile, ownerBindings);
   }
@@ -204,7 +214,7 @@ function functionValueTarget(
   contract: import("./model.js").MojoAnalyzedCallableSignature,
   implementation: MojoAnalyzedFunction,
 ): import("./model.js").MojoAnalyzedCallableSignature | undefined {
-  if (contract.asynchronous || contract.typeParameters.length !== 0 ||
+  if ((contract.asynchronous && contract.asyncDomain !== "native") || contract.typeParameters.length !== 0 ||
     contract.parameters.some((parameter) => {
       const convention = mojoParameterConvention(parameter.disposition);
       return convention !== "imm" && convention !== "var";
@@ -224,6 +234,13 @@ function functionValueCallableType(
   target: import("./model.js").MojoAnalyzedCallableSignature,
   implementation: MojoAnalyzedFunction,
 ): Extract<MojoTargetTypeRef, { readonly kind: "callable" }> {
+  const result = target.asynchronous
+    ? closeMojoCallableResult(Object.freeze({
+        kind: "future", domain: "native", output: target.resultType,
+        raises: implementation.raises,
+      }))
+    : target.resultType;
+  const raises = !target.asynchronous && implementation.raises;
   return Object.freeze({
     kind: "callable",
     parameters: Object.freeze(target.parameters.map((parameter) => Object.freeze({
@@ -233,9 +250,9 @@ function functionValueCallableType(
       type: parameter.callType,
       omissionKind: parameter.omissionKind,
     }))),
-    result: target.resultType,
-    raises: implementation.raises,
-    ...(implementation.errorType === undefined ? {} : { errorType: implementation.errorType }),
+    result,
+    raises,
+    ...(!raises || implementation.errorType === undefined ? {} : { errorType: implementation.errorType }),
   });
 }
 

@@ -6,7 +6,6 @@ import { providerOwnerMatches } from "../../policy/types/resolution.js";
 import type { MojoSelectedProviderOperation } from "../../target-model/operations/selection.js";
 import { mojoTargetTypeEquals } from "../../target-model/types/equality.js";
 import type { MojoTargetTypeRef } from "../../target-model/types/model.js";
-import { mojoProviderCompoundWriteIssue } from "../../policy/operations/mutation-admission.js";
 import { classifyMojoRefinedValueConversion } from "../refinements/value.js";
 import { classifyMojoSourceResultConversion } from "./call-results.js";
 import { mojoConvertedValueType } from "../../target-model/conversions/result.js";
@@ -102,8 +101,6 @@ export function analyzeProviderElement(
   if (writeValueConversion?.kind === "unsupported") {
     return unsupported("MOJO_PROVIDER_ELEMENT_WRITE_CONVERSION_UNPROVEN", writeValueConversion.reason);
   }
-  const compoundIssue = mojoProviderCompoundWriteIssue(accessMode, sourceWrite, writeType);
-  if (compoundIssue !== undefined) return compoundIssue;
   let expressionType: MojoTargetTypeRef;
   let readResultConversion;
   if (readOperation !== undefined) {
@@ -126,10 +123,11 @@ export function analyzeProviderElement(
       receiver: source.receiver.expression,
       index: source.argument.expression,
       accessMode,
-      ...(readOperation === undefined ? {} : { readOperation, readType: readOperation.resultType }),
+      ...(readOperation === undefined ? {} : { readOperation, readType: expressionType }),
       ...(writeOperation === undefined ? {} : { writeOperation, writeType }),
       ...(sourceWrite === undefined ? {} : { sourceWriteType: sourceWrite }),
       ...(writeType === undefined ? {} : { targetWriteType: writeType }),
+      ...(writeValueConversion === undefined ? {} : { writeValueConversion: writeValueConversion.conversion }),
       receiverConversion: receiverConversion.conversion,
       sourceReceiverType: receiver,
       indexConversion: indexConversion.conversion,
